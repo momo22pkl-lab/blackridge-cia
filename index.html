@@ -470,7 +470,48 @@
       <h2 style="color: var(--red-alert);">إرسال إشعار طوارئ (S.O.S)</h2>
       <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 10px;">حدد تفاصيل موقعك في لوس سانتوس والخطورة فوراً:</p>
 
-      <input type="text" id="sos-location-input" class="input-field" placeholder="الموقع / المنطقة (مثال: Vinewood / Sandy Shores)">
+      <div style="margin:8px 0;">
+  <input
+    type="text"
+    id="sos-location-input"
+    class="input-field"
+    placeholder="الموقع أو اضغط لتحديده من الخريطة"
+    style="text-align:right;"
+  >
+
+  <button
+    type="button"
+    onclick="enableSOSMapLocationPicker()"
+    style="
+      width:100%;
+      padding:10px;
+      margin-top:5px;
+      background:#111827;
+      color:#f59e0b;
+      border:1px solid #f59e0b;
+      border-radius:6px;
+      cursor:pointer;
+      font-weight:bold;
+    "
+  >
+    <i class="fa-solid fa-location-crosshairs"></i>
+    تحديد موقع البلاغ من الخريطة
+  </button>
+
+  <div
+    id="sos-location-status"
+    style="
+      display:none;
+      margin-top:6px;
+      padding:8px;
+      color:#10b981;
+      background:rgba(16,185,129,.1);
+      border:1px solid #10b981;
+      border-radius:5px;
+      font-size:.7rem;
+    "
+  ></div>
+</div>
       <input type="number" id="sos-count-input" class="input-field" placeholder="عدد الأفراد معك">
       <input type="text" id="sos-note-input" class="input-field" placeholder="معلومات إضافية / ما تحتاجه الوحدة الآن (اختياري)">
       <select id="sos-status-input" class="input-field">
@@ -609,6 +650,11 @@
       <li class="nav-btn" onclick="showPane('radio', this)"><i class="fa-solid fa-walkie-talkie"></i> الراديو وأكواد النداء</li>
       <li class="nav-btn" onclick="showPane('chat', this)"><i class="fa-solid fa-comments"></i> الاتصالات المشفرة</li>
       <li class="nav-btn" onclick="showPane('sos-alerts', this)"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red-alert);"></i> بلاغات S.O.S</li>
+      <li class="nav-btn" onclick="showPane('sos-history-map-view', this); initSOSHistoryMap();">
+  <i class="fa-solid fa-map-location-dot" style="color:var(--red-alert);"></i>
+  خريطة بلاغات الاستغاثة CIA
+</li>
+      <li class="nav-btn" onclick="showPane('sos-history-map-view', this); initSOSHistoryMap();">
       <li id="operations-nav" class="nav-btn" style="display:none;" onclick="showPane('operations', this)"><i class="fa-solid fa-crosshairs"></i> المهمات الميدانية</li>
       <li id="bank-nav" class="nav-btn" onclick="showPane('bank', this)"><i class="fa-solid fa-building-columns"></i> البنك والراتب</li>
       <li class="nav-btn" onclick="showPane('reports', this)"><i class="fa-solid fa-file-contract"></i> التقارير والعمليات</li>
@@ -824,7 +870,74 @@
         <div id="sos-alerts-list"></div>
       </div>
     </div>
+    <!-- SOS Emergency History Map -->
+    <div id="sos-history-map-view" class="view-pane">
+      <h3 style="margin-bottom:10px;color:var(--red-alert);font-size:1rem;">
+        <i class="fa-solid fa-map-location-dot"></i>
+        خريطة بلاغات الاستغاثة CIA
+      </h3>
 
+      <div class="card" style="border-color:rgba(239,68,68,.55);">
+        <p style="font-size:.72rem;color:var(--text-dim);line-height:1.7;margin-bottom:8px;">
+          تظهر هنا جميع بلاغات الاستغاثة التي تحتوي على موقع جغرافي.
+          اختر تاريخًا لعرض بلاغات ذلك اليوم.
+        </p>
+
+        <label for="sos-history-date" style="display:block;color:var(--primary-gold);font-size:.75rem;margin-bottom:5px;">
+          عرض بلاغات يوم:
+        </label>
+
+        <input
+          id="sos-history-date"
+          type="date"
+          class="input-field"
+          onchange="filterSOSHistoryMapByDate(this.value)"
+          style="text-align:center;"
+        >
+
+        <button
+          type="button"
+          onclick="clearSOSHistoryDateFilter()"
+          style="
+            width:100%;
+            padding:9px;
+            margin-top:4px;
+            background:#111827;
+            color:#fff;
+            border:1px solid #374151;
+            border-radius:5px;
+            cursor:pointer;
+          "
+        >
+          عرض جميع البلاغات
+        </button>
+
+        <div
+          id="sos-history-map"
+          style="
+            width:100%;
+            height:500px;
+            margin-top:12px;
+            border:2px solid var(--red-alert);
+            border-radius:8px;
+            background:#0fa8d7;
+          "
+        ></div>
+
+        <div
+          id="sos-history-map-summary"
+          style="
+            margin-top:8px;
+            padding:8px;
+            color:var(--text-dim);
+            font-size:.7rem;
+            text-align:center;
+          "
+        >
+          لا توجد بيانات مواقع حاليًا.
+        </div>
+      </div>
+    </div>
     <!-- Reports Section -->
     <div id="reports" class="view-pane">
       <h3 style="margin-bottom: 10px; color: var(--primary-gold); font-size: 1rem;"><i class="fa-solid fa-file-signature"></i> سجل التقارير والعمليات الميدانية</h3>
@@ -3115,6 +3228,306 @@
         ciaSocket.emit('leader:updateProfile', { name: name.trim() });
       }
     }
-  </script>
+  <script>
+(function () {
+  'use strict';
+
+  let selectedSOSLocation = null;
+  let sosLocationPickerEnabled = false;
+  let sosHistoryMap = null;
+  let sosHistoryMarkers = {};
+  let sosHistoryDateFilter = '';
+
+  function getCIAState() {
+    if (typeof appState !== 'undefined' && appState) return appState;
+    if (window.ciaState) return window.ciaState;
+    return {};
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function formatSOSDate(value) {
+    if (!value) return 'غير محدد';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('ar-EG');
+  }
+
+  function sosRank(alert) {
+    return alert.rankLabel || alert.rank || 'غير محددة';
+  }
+
+  function sosCrewCount(alert) {
+    const count = Number(alert.crewCount);
+    return Number.isFinite(count) ? `${count} فرد` : 'غير محدد';
+  }
+
+  function sosLocation(alert) {
+    if (!alert.location) return 'غير محدد';
+    if (alert.location.label) return alert.location.label;
+
+    const lat = Number(alert.location.lat);
+    const lng = Number(alert.location.lng);
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+
+    return 'غير محدد';
+  }
+
+  window.enableSOSMapLocationPicker = function () {
+    sosLocationPickerEnabled = true;
+    const status = document.getElementById('sos-location-status');
+
+    if (status) {
+      status.style.display = 'block';
+      status.textContent = 'افتح خريطة لوس سانتوس واضغط على مكان البلاغ.';
+    }
+
+    if (typeof showPane === 'function') {
+      const mapButton = document.querySelector('[onclick*="tactical-map-view"]');
+      showPane('tactical-map-view', mapButton || null);
+    }
+
+    setTimeout(function () {
+      if (typeof gtaMap !== 'undefined' && gtaMap) {
+        gtaMap.invalidateSize();
+      }
+      alert('اضغط الآن على مكان البلاغ داخل الخريطة.');
+    }, 400);
+  };
+
+  function attachSOSMapHandler() {
+    if (typeof gtaMap === 'undefined' || !gtaMap) return;
+    if (gtaMap.__sosHandlerAttached) return;
+
+    gtaMap.__sosHandlerAttached = true;
+
+    gtaMap.on('click', function (event) {
+      if (!sosLocationPickerEnabled) return;
+
+      const lat = Number(event.latlng.lat);
+      const lng = Number(event.latlng.lng);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      selectedSOSLocation = {
+        lat,
+        lng,
+        label: `موقع البلاغ: ${lat.toFixed(5)}, ${lng.toFixed(5)}`
+      };
+
+      if (gtaMap.__sosMarker) {
+        gtaMap.removeLayer(gtaMap.__sosMarker);
+      }
+
+      gtaMap.__sosMarker = L.marker([lat, lng])
+        .addTo(gtaMap)
+        .bindPopup('موقع بلاغ S.O.S')
+        .openPopup();
+
+      const locationInput = document.getElementById('sos-location-input');
+      if (locationInput) locationInput.value = selectedSOSLocation.label;
+
+      const status = document.getElementById('sos-location-status');
+      if (status) {
+        status.style.display = 'block';
+        status.textContent = `تم تحديد الموقع: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      }
+
+      sosLocationPickerEnabled = false;
+      const modal = document.getElementById('sos-input-modal');
+      if (modal) modal.style.display = 'flex';
+    });
+  }
+
+  window.confirmAndSendSOS = function () {
+    const noteInput = document.getElementById('sos-note-input');
+    const countInput = document.getElementById('sos-count-input');
+    const locationInput = document.getElementById('sos-location-input');
+    const statusInput = document.getElementById('sos-status-input');
+
+    const note = noteInput ? noteInput.value.trim() : '';
+    const countValue = countInput ? countInput.value.trim() : '';
+    const locationText = locationInput ? locationInput.value.trim() : '';
+    const dangerStatus = statusInput ? statusInput.value : '';
+
+    const crewCount = countValue === '' ? null : Number(countValue);
+
+    const payload = {
+      text: [dangerStatus ? `حالة الخطر: ${dangerStatus}` : '', note].filter(Boolean).join('\n'),
+      message: note,
+      crewCount: Number.isFinite(crewCount) ? crewCount : null,
+      membersCount: Number.isFinite(crewCount) ? crewCount : null,
+      location: selectedSOSLocation
+        ? {
+            lat: selectedSOSLocation.lat,
+            lng: selectedSOSLocation.lng,
+            label: selectedSOSLocation.label
+          }
+        : (locationText ? { lat: null, lng: null, label: locationText } : null)
+    };
+
+    if (typeof socket === 'undefined' || !socket) {
+      alert('الاتصال بالسيرفر غير متاح.');
+      return;
+    }
+
+    socket.emit('sos:broadcast', payload, function (result) {
+      if (!result || !result.ok) {
+        alert(result?.message || 'تعذر إرسال بلاغ S.O.S.');
+        return;
+      }
+
+      selectedSOSLocation = null;
+      sosLocationPickerEnabled = false;
+
+      if (typeof closeSOSModal === 'function') closeSOSModal();
+    });
+  };
+
+  function clearSOSHistoryMarkers() {
+    if (!sosHistoryMap) return;
+
+    Object.values(sosHistoryMarkers).forEach(function (marker) {
+      sosHistoryMap.removeLayer(marker);
+    });
+
+    sosHistoryMarkers = {};
+  }
+
+  function renderSOSHistoryMarkers() {
+    if (!sosHistoryMap) return;
+
+    clearSOSHistoryMarkers();
+
+    const state = getCIAState();
+    const alerts = Array.isArray(state.cia_sos) ? state.cia_sos : [];
+    const visibleAlerts = alerts.filter(function (alert) {
+      if (!sosHistoryDateFilter) return true;
+      return String(alert.at || '').slice(0, 10) === sosHistoryDateFilter;
+    });
+
+    let markerCount = 0;
+
+    visibleAlerts.forEach(function (alert) {
+      if (!alert.location) return;
+
+      const lat = Number(alert.location.lat);
+      const lng = Number(alert.location.lng);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const marker = L.marker([lat, lng])
+        .addTo(sosHistoryMap)
+        .bindPopup(`
+          <div dir="rtl">
+            <strong>S.O.S #${escapeHtml(alert.id)}</strong>
+            <hr>
+            <div>المرسل: #${escapeHtml(alert.userCode || 'غير محدد')}</div>
+            <div>الرتبة: ${escapeHtml(sosRank(alert))}</div>
+            <div>عدد الأفراد: ${escapeHtml(sosCrewCount(alert))}</div>
+            <div>الموقع: ${escapeHtml(sosLocation(alert))}</div>
+            <div>التاريخ: ${escapeHtml(formatSOSDate(alert.at))}</div>
+            <div>الحالة: ${escapeHtml(alert.status || 'OPEN')}</div>
+          </div>
+        `);
+
+      sosHistoryMarkers[alert.id] = marker;
+      markerCount += 1;
+    });
+
+    const summary = document.getElementById('sos-history-map-summary');
+    if (summary) {
+      summary.textContent = `عدد البلاغات الظاهرة على الخريطة: ${markerCount}`;
+    }
+  }
+
+  window.initSOSHistoryMap = function () {
+    if (sosHistoryMap) {
+      setTimeout(function () {
+        sosHistoryMap.invalidateSize();
+        renderSOSHistoryMarkers();
+      }, 200);
+      return;
+    }
+
+    const element = document.getElementById('sos-history-map');
+    if (!element || typeof L === 'undefined') return;
+
+    sosHistoryMap = L.map(element).setView([34.0522, -118.2437], 10);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(sosHistoryMap);
+
+    setTimeout(function () {
+      sosHistoryMap.invalidateSize();
+      renderSOSHistoryMarkers();
+    }, 300);
+  };
+
+  window.filterSOSHistoryMapByDate = function (date) {
+    sosHistoryDateFilter = date || '';
+    renderSOSHistoryMarkers();
+  };
+
+  window.clearSOSHistoryDateFilter = function () {
+    sosHistoryDateFilter = '';
+    const dateInput = document.getElementById('sos-history-date');
+    if (dateInput) dateInput.value = '';
+    renderSOSHistoryMarkers();
+  };
+
+  function removeSOSHistoryMarker(id) {
+    if (!sosHistoryMap) return;
+    const marker = sosHistoryMarkers[id];
+    if (marker) {
+      sosHistoryMap.removeLayer(marker);
+      delete sosHistoryMarkers[id];
+    }
+    renderSOSHistoryMarkers();
+  }
+
+  function attachSocketEvents() {
+    if (typeof socket === 'undefined' || !socket) {
+      setTimeout(attachSocketEvents, 500);
+      return;
+    }
+
+    socket.on('sos:alert', function () {
+      setTimeout(renderSOSHistoryMarkers, 200);
+    });
+
+    socket.on('sos:deleted', function (data) {
+      if (data && data.id) {
+        removeSOSHistoryMarker(data.id);
+      }
+    });
+
+    socket.on('map:location:deleted', function (data) {
+      if (data && data.id) {
+        removeSOSHistoryMarker(data.id);
+      }
+    });
+
+    socket.on('state:update', function (nextState) {
+      window.ciaState = nextState;
+      setTimeout(renderSOSHistoryMarkers, 200);
+    });
+  }
+
+  setInterval(attachSOSMapHandler, 1000);
+  attachSocketEvents();
+})();
+</script>
 </body>
 </html>
