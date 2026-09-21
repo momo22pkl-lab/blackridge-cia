@@ -1791,8 +1791,13 @@ io.on('connection', (socket) => {
     if (!user) return no(cb, 'يجب تسجيل الدخول أولاً.');
 
     const message = clean(payload?.text || payload?.message, 3000);
-    const crewCount = payload?.crewCount !== undefined ? Number(payload.crewCount) : (payload?.membersCount !== undefined ? Number(payload.membersCount) : null);
-    
+    const rawCrewCount = payload?.crewCount !== undefined
+  ? payload.crewCount
+  : payload?.membersCount;
+
+const crewCount = rawCrewCount === undefined || rawCrewCount === ''
+  ? null
+  : Number(rawCrewCount);
     // استلام الموقع الجغرافي للبلاغ (إذا أرسله المستخدم من واجهة الخريطة/البلاغ)
     const rawLoc = payload?.location || payload?.mapLocation || null;
     let locationInfo = null;
@@ -1808,33 +1813,38 @@ io.on('connection', (socket) => {
 
     // إذا تم تحديد إحداثيات، نقوم بحفظها تلقائياً في خريطة النظام (cia_map_locations) ليتم عرضها على الخريطة مباشرة
     if (locationInfo && locationInfo.lat !== null && locationInfo.lng !== null) {
-      if (!state.cia_map_locations || typeof state.cia_map_locations !== 'object') {
-        state.cia_map_locations = {};
-      }
-      state.cia_map_locations[sosId] = {
-        id: sosId,
-        type: 'sos',
-        title: `بلاغ طوارئ: ${user.name} (${user.publicCode})`,
-        lat: locationInfo.lat,
-        lng: locationInfo.lng,
-        label: locationInfo.label,
-        userCode: user.publicCode,
-        at: now()
-      };
-    }
+  if (!state.cia_map_locations || typeof state.cia_map_locations !== 'object') {
+    state.cia_map_locations = {};
+  }
+  state.cia_map_locations[sosId] = {
+    id: sosId,
+    type: 'sos',
+    sosId,
+    title: `بلاغ طوارئ: ${user.name} (${user.publicCode})`,
+    lat: locationInfo.lat,
+    lng: locationInfo.lng,
+    label: locationInfo.label,
+    userCode: user.publicCode,
+    rank: normalizeRank(user.rank),
+    rankLabel: rankLabel(user.rank),
+    at: now()
+  };
+}
 
     const alert = {
-      id: sosId,
-      userCode: user.publicCode, // كود العسكري الصحيح للمرسل
-      userName: user.name,
-      rank: normalizeRank(user.rank), // الرتبة البرمجية
-      rankLabel: rankLabel(user.rank), // الرتبة الحقيقية المكتوبة
-      text: message,
-      crewCount: Number.isFinite(crewCount) ? crewCount : 'غير محدد',
-      location: locationInfo,
-      at: now(),
-      status: 'OPEN'
-    };
+  id: sosId,
+  userCode: user.publicCode,
+  userName: user.name,
+  rank: normalizeRank(user.rank),
+  rankLabel: rankLabel(user.rank),
+  text: message,
+  crewCount: Number.isFinite(crewCount) && crewCount >= 0
+    ? Math.floor(crewCount)
+    : 'غير محدد',
+  location: locationInfo,
+  at: now(),
+  status: 'OPEN'
+};
 
     state.cia_sos.push(alert);
     state.cia_sos = state.cia_sos.slice(-300);
@@ -1849,34 +1859,41 @@ io.on('connection', (socket) => {
   });
 
   socket.on('sos:delete', (payload, cb) => {
-    const actor = requireSocketUser(socket);
-    if (!actor || (!isLeadership(actor) && !isHighCommander(actor))) {
-      return no(cb, 'حذف بلاغات الـ SOS متاح للقيادة وصلاحيات الإدارة العليا فقط.');
-    }
-    const alertId = clean(payload?.id || payload?.sosId, 120);
-    const initialLen = state.cia_sos.length;
-    
-    // إزالة البلاغ من القائمة
-    state.cia_sos = state.cia_sos.filter((s) => s.id !== alertId);
-    if (state.cia_sos.length === initialLen) {
-      return no(cb, 'بلاغ الطوارئ غير موجود.');
-    }
+  const actor = requireSocketUser(socket);
+  if (
+    !actor ||
+    (
+      !isChief(actor) &&
+      !isSenior(actor) &&
+      !isHighCommander(actor)
+    )
+  ) {
+    return no(
+      cb,
+      'حذف بلاغات الـ SOS متاح للقائد والسينيور كوماندر والهاي كوماندر فقط.'
+    );
+  }
+  const alertId = clean(payload?.id || payload?.sosId, 120);
+  const initialLen = state.cia_sos.length;
 
-    // حذف علامة الموقع المقترنة بهذا البلاغ من الخريطة فوراً بشكل دائم
-    if (state.cia_map_locations && state.cia_map_locations[alertId]) {
-      delete state.cia_map_locations[alertId];
-    }
+  state.cia_sos = state.cia_sos.filter((s) => s.id !== alertId);
+  if (state.cia_sos.length === initialLen) {
+    return no(cb, 'بلاغ الطوارئ غير موجود.');
+  }
 
-    saveState();
-    
-    // بث أحداث الحذف لجميع المتصلين لتحديث الشاشة والخريطة فوراً
-    io.emit('sos:deleted', { ok: true, id: alertId });
-    io.emit('map:location:deleted', { ok: true, id: alertId });
-    io.emit('shared:data:update', { key: 'cia_map_locations', value: state.cia_map_locations });
-    emitState();
-    
-    return ok(cb, { id: alertId, success: true });
-  });
+  if (state.cia_map_locations && state.cia_map_locations[alertId]) {
+    delete state.cia_map_locations[alertId];
+  }
+
+  saveState();
+
+  io.emit('sos:deleted', { ok: true, id: alertId });
+  io.emit('map:location:deleted', { ok: true, id: alertId });
+  io.emit('shared:data:update', { key: 'cia_map_locations', value: state.cia_map_locations });
+  emitState();
+
+  return ok(cb, { id: alertId, success: true });
+});
 
   /* =====================================================
      LOGOUT & DISCONNECT
