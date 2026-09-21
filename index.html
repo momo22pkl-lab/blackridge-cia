@@ -3375,12 +3375,12 @@
         : (locationText ? { lat: null, lng: null, label: locationText } : null)
     };
 
-    if (typeof socket === 'undefined' || !socket) {
+    if (typeof ciaSocket === 'undefined' || !ciaSocket) {
       alert('الاتصال بالسيرفر غير متاح.');
       return;
     }
 
-    socket.emit('sos:broadcast', payload, function (result) {
+    ciaSocket.emit('sos:broadcast', payload, function (result) {
       if (!result || !result.ok) {
         alert(result?.message || 'تعذر إرسال بلاغ S.O.S.');
         return;
@@ -3497,28 +3497,28 @@
   }
 
   function attachSocketEvents() {
-    if (typeof socket === 'undefined' || !socket) {
+    if (typeof ciaSocket === 'undefined' || !ciaSocket) {
       setTimeout(attachSocketEvents, 500);
       return;
     }
 
-    socket.on('sos:alert', function () {
+    ciaSocket.on('sos:alert', function () {
       setTimeout(renderSOSHistoryMarkers, 200);
     });
 
-    socket.on('sos:deleted', function (data) {
+    ciaSocket.on('map:location:deleted', function (data) {
       if (data && data.id) {
         removeSOSHistoryMarker(data.id);
       }
     });
 
-    socket.on('map:location:deleted', function (data) {
+    ciaSocket.on('map:location:deleted', function (data) {
       if (data && data.id) {
         removeSOSHistoryMarker(data.id);
       }
     });
 
-    socket.on('state:update', function (nextState) {
+    ciaSocket.on('state:update', function (nextState) {
       window.ciaState = nextState;
       setTimeout(renderSOSHistoryMarkers, 200);
     });
