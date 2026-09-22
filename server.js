@@ -6657,7 +6657,6 @@ process.on(
     const result = ok(cb, { action, user: publicUser(target, actor) });
     socket.emit('admin:member:result', result);
     emitState();
-  });
 
   /* =====================================================
      BANK — SALARY BY RANK
