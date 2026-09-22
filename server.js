@@ -7711,12 +7711,12 @@ process.on(
    HTTP SERVER START
 ===================================================== */
 
-server.listen(PORT, () => {
-  console.log('');
+saveState();
+
+httpServer.listen(PORT, () => {
   console.log('=================================================');
-  console.log(' BLACK RIDGE CITY CIA SYSTEM');
-  console.log(` PORT: ${PORT}`);
-  console.log(' STATUS: ONLINE');
-  console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
+  console.log(' BLACK RIDGE CITY CIA SYSTEM (S.O.S & MAP FIXED)');
+  console.log(` SERVER: http://localhost:${PORT}`);
+  console.log(' SOCKET.IO: READY');
   console.log('=================================================');
 });
