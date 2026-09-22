@@ -7713,10 +7713,11 @@ process.on(
 
 server.listen(PORT, () => {
   console.log('');
-  console.log('=================================================');
+  console.log('==================================================');
   console.log(' BLACK RIDGE CITY CIA SYSTEM');
   console.log(` PORT: ${PORT}`);
   console.log(' STATUS: ONLINE');
   console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
-  console.log('=================================================');
+  console.log('==================================================');
 });
+
