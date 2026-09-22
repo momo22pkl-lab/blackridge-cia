@@ -6654,7 +6654,6 @@ process.on(
   }
 );
     saveState();
-    socket.emit('admin:member:result', result);
     emitState();
 
   /* =====================================================
