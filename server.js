@@ -6654,7 +6654,6 @@ process.on(
   }
 );
     saveState();
-    const result = ok(cb, { action, user: publicUser(target, actor) });
     socket.emit('admin:member:result', result);
     emitState();
 
