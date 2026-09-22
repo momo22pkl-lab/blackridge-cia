@@ -6657,57 +6657,6 @@ process.on(
     emitState();
 
   /* =====================================================
-     RADIO
-  ===================================================== */
-
-  socket.on('radio:setChannel', (payload = {}, cb) => {
-    const actor = getUserBySocket(socket.id);
-
-    if (!actor) {
-      return no(cb, 'غير مسجل دخول.');
-    }
-
-    const channel = String(
-      payload.channel ||
-      ''
-    ).trim();
-
-    if (!channel) {
-      return no(cb, 'القناة غير صالحة.');
-    }
-
-    actor.radioChannel = channel;
-    actor.radioOnline = true;
-
-    saveState();
-
-    ok(cb, {
-      channel,
-      online: true
-    });
-
-    emitState();
-  });
-
-  socket.on('radio:setOnline', (payload = {}, cb) => {
-    const actor = getUserBySocket(socket.id);
-
-    if (!actor) {
-      return no(cb, 'غير مسجل دخول.');
-    }
-
-    actor.radioOnline = Boolean(payload.online);
-
-    saveState();
-
-    ok(cb, {
-      online: actor.radioOnline
-    });
-
-    emitState();
-  });
-
-  /* =====================================================
      SOS
   ===================================================== */
 
