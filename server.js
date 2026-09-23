@@ -6682,28 +6682,6 @@ process.on(
         ''
       ),
 
-
-  /* =====================================================
-     DISCONNECT
-  ===================================================== */
-
-  socket.on('disconnect', () => {
-    const actor = getUserBySocket(socket.id);
-
-    if (actor) {
-      actor.online = false;
-      actor.socketId = null;
-      actor.lastSeen = Date.now();
-
-      if (state.cia_map_locations?.[actor.publicCode]) {
-        state.cia_map_locations[actor.publicCode].radioOnline = false;
-      }
-
-      saveState();
-      emitState();
-    }
-  });
-
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
