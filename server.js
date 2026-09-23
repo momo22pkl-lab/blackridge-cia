@@ -6619,7 +6619,7 @@ io.on(
    HTTP SERVER START
 ===================================================== */
 
-server.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log('');
   console.log('==================================================');
   console.log(' BLACK RIDGE CITY CIA SYSTEM');
