@@ -6615,73 +6615,6 @@ io.on(
   }
 );
 
-/* ---------------------------------------------------------
-   START
---------------------------------------------------------- */
-
-httpServer.listen(
-  PORT,
-  () => {
-    console.log(
-      `BLACK RIDGE CITY CIA SYSTEM running on http://localhost:${PORT}`
-    );
-
-    console.log(
-      `Data file: ${DATA_FILE}`
-    );
-  }
-);
-
-process.on(
-  'SIGINT',
-  () => {
-    try {
-      saveState();
-    } finally {
-      process.exit(0);
-    }
-  }
-);
-
-process.on(
-  'SIGTERM',
-  () => {
-    try {
-      saveState();
-    } finally {
-      process.exit(0);
-    }
-  }
-);
-    saveState();
-    emitState();
-
-  /* =====================================================
-     OPERATIONS
-  ===================================================== */
-
-  socket.on('operation:create', (payload = {}, cb) => {
-    const actor = getUserBySocket(socket.id);
-
-    if (!actor) {
-      return no(cb, 'غير مسجل دخول.');
-    }
-
-    const operation = {
-      id:
-        `OP-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-
-      title: String(
-        payload.title ||
-        'عملية جديدة'
-      ),
-
-      description: String(
-        payload.description ||
-        payload.text ||
-        ''
-      ),
-
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
@@ -6695,4 +6628,3 @@ server.listen(PORT, () => {
   console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
   console.log('==================================================');
 });
-
