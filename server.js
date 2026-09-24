@@ -2454,7 +2454,58 @@ io.on(
         });
       }
     );
+socket.on('member:saveIdentity', (payload, cb) => {
+  try {
+    const actor = requireSocketUser(socket);
 
+    if (!actor) {
+      return no(cb, 'يجب تسجيل الدخول أولاً.');
+    }
+
+    const x = payload?.identity || {};
+
+    const identity = {
+      fullName: clean(x.fullName, 160),
+      birthDate: clean(x.birthDate, 30),
+      nationality: clean(x.nationality, 80),
+      height: clean(x.height, 40),
+      bloodType: clean(x.bloodType, 20),
+      occupation: clean(x.occupation, 120),
+      notes: clean(x.notes, 1000)
+    };
+
+    if (!identity.fullName || !identity.birthDate || !identity.nationality) {
+      return no(cb, 'الاسم الكامل وتاريخ الميلاد والجنسية إلزامية.');
+    }
+
+    actor.identity = identity;
+    actor.identityRequired = false;
+
+    saveState();
+
+    addAuditLog(
+      'اعتماد الهوية',
+      actor,
+      actor,
+      'تم حفظ الهوية الأمنية للشخصية.'
+    );
+
+    const result = ok(cb, {
+      user: publicUser(actor, actor)
+    });
+
+    socket.emit('identity:result', result);
+
+    emitState();
+
+  } catch (error) {
+    return no(
+      cb,
+      error.message || 'تعذر حفظ الهوية.'
+    );
+  }
+});
+    
     socket.on(
       'auth:me',
       (payload, cb) => {
@@ -6597,57 +6648,6 @@ io.on(
         );
       }
     );
-socket.on('member:saveIdentity', (p, cb) => {
-  const u = requireUser(socket);
-
-  if (!u) {
-    return no(cb, 'يجب تسجيل الدخول أولاً.');
-  }
-
-  const x = p?.identity || {};
-
-  const identity = {
-    fullName: clean(x.fullName, 160),
-    birthDate: clean(x.birthDate, 30),
-    nationality: clean(x.nationality, 80),
-    height: clean(x.height, 40),
-    bloodType: clean(x.bloodType, 20),
-    occupation: clean(x.occupation, 120),
-    notes: clean(x.notes, 1000)
-  };
-
-  if (
-    !identity.fullName ||
-    !identity.birthDate ||
-    !identity.nationality
-  ) {
-    return no(
-      cb,
-      'الاسم الكامل وتاريخ الميلاد والجنسية إلزامية.'
-    );
-  }
-
-  u.identity = identity;
-  u.identityRequired = false;
-
-  saveState();
-
-  addAuditLog(
-    'اعتماد الهوية',
-    u,
-    u,
-    'تم حفظ الهوية الأمنية للشخصية.'
-  );
-
-  const result = ok(cb, {
-    user: publicUser(u, u)
-  });
-
-  socket.emit('identity:result', result);
-
-  emitState();
-});
-
     
     /* =====================================================
        DISCONNECT
