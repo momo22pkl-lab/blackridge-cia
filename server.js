@@ -1243,6 +1243,13 @@ function radioTargets(channel) {
     : [];
 }
 
+function emitRadioToChannel(channel, event, payload) {
+  for (const socketId of radioTargets(channel)) {
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (targetSocket) targetSocket.emit(event, payload);
+  }
+}
+
 function dailySalary(user) {
   ensureBank(user);
 
@@ -3531,6 +3538,101 @@ socket.on('member:saveIdentity', (payload, cb) => {
     );
 
     /* =====================================================
+       SELF / LEADERSHIP MANAGEMENT
+    ===================================================== */
+
+    socket.on('admin:updateSelf', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+
+        if (payload?.secretCode !== undefined) {
+          const secretCode = clean(payload.secretCode, 100);
+          const error = validateSecretCode(secretCode, actor);
+          if (error) return no(cb, error);
+          actor.secretCode = secretCode;
+        }
+        if (payload?.publicCode !== undefined) {
+          const publicCode = clean(payload.publicCode, 100);
+          if (!publicCode || publicCode === 'PENDING') return no(cb, 'الكود العسكري غير صالح.');
+          const duplicate = getUserByPublicCode(publicCode);
+          if (duplicate && duplicate.id !== actor.id) return no(cb, 'الكود العسكري مستخدم من شخصية أخرى.');
+          actor.publicCode = publicCode;
+        }
+
+        saveState();
+        emitState();
+        const result = ok(cb, { user: publicUser(actor, actor) });
+        if (payload?.secretCode !== undefined) socket.emit('admin:chief-secret:result', result);
+        else socket.emit('admin:member:result', { ...result, action: 'code' });
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر تحديث بياناتك.');
+      }
+    });
+
+    socket.on('admin:updateChiefProfile', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor || !isChief(actor)) return no(cb, 'هذه العملية متاحة لـ CIA CHIEF فقط.');
+      actor.hobbies = clean(payload?.hobbies, 1000);
+      saveState();
+      emitState();
+      const result = ok(cb, { user: publicUser(actor, actor) });
+      socket.emit('admin:chief-profile:result', result);
+      return result;
+    });
+
+    socket.on('leader:updateProfile', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor || !isLeadership(actor)) return no(cb, 'تعديل بيانات القيادة متاح للقيادة فقط.');
+      const name = clean(payload?.name, 120);
+      if (!name) return no(cb, 'اسم القائد لا يمكن أن يكون فارغاً.');
+      const duplicate = state.cia_users.find(
+        (user) => user.id !== actor.id && lower(user.name) === lower(name)
+      );
+      if (duplicate) return no(cb, 'اسم الشخصية مستخدم بالفعل.');
+      actor.name = name;
+      saveState();
+      emitState();
+      const result = ok(cb, { user: publicUser(actor, actor) });
+      socket.emit('leader:profile:result', result);
+      return result;
+    });
+
+    socket.on('leadership:handover', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor || !isChief(actor)) return no(cb, 'تسليم القيادة متاح لـ CIA CHIEF فقط.');
+        const targetCode = clean(payload?.targetCode || payload?.publicCode, 100);
+        const target = getUserByPublicCode(targetCode);
+        if (!target) return no(cb, 'الشخصية المستهدفة غير موجودة.');
+        if (target.id === actor.id) return no(cb, 'لا يمكنك تسليم القيادة لنفسك.');
+        if (target.suspended || target.activeService === false || target.approved === false) {
+          return no(cb, 'لا يمكن تسليم القيادة لشخصية موقوفة أو غير معتمدة.');
+        }
+
+        target.rank = 'CIA CHIEF';
+        actor.rank = 'SUPREME COMMANDER';
+        ensureBank(target);
+        ensureBank(actor);
+        target.bank.salary = defaultSalaryForRank('CIA CHIEF');
+        actor.bank.salary = defaultSalaryForRank('SUPREME COMMANDER');
+        addAuditLog('تسليم القيادة', actor, target, `تم نقل منصب CIA CHIEF إلى ${target.name}.`);
+        saveState();
+        emitState();
+
+        const result = ok(cb, {
+          previousChief: publicUser(actor, actor),
+          newChief: publicUser(target, target)
+        });
+        socket.emit('leader:handover:result', result);
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر تسليم القيادة.');
+      }
+    });
+
+    /* =====================================================
        CHARACTER MANAGEMENT
     ===================================================== */
 
@@ -3941,8 +4043,292 @@ socket.on('member:saveIdentity', (payload, cb) => {
     );
 
     /* =====================================================
+       CHARACTER ACCOUNT UI ALIASES
+    ===================================================== */
+
+    socket.on('character:list', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+      const characters = characterListForUser(actor)
+        .filter((user) => user.suspended !== true && !user.separatedAt)
+        .map((user) => publicUser(user, actor));
+      return ok(cb, {
+        owner: { id: actor.characterOwnerId || actor.id, name: actor.name, accountId: actor.accountId || null },
+        characters,
+        limit: 10
+      });
+    });
+
+    socket.on('character:request', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+        const name = clean(payload?.requestedName || payload?.name || payload?.characterName, 120);
+        if (!name) return no(cb, 'أدخل اسم الشخصية الجديدة.');
+
+        const owned = characterListForUser(actor).filter((user) => user.suspended !== true && !user.separatedAt);
+        if (owned.length >= 10) return no(cb, 'وصلت إلى الحد الأقصى للشخصيات في حسابك.');
+        if (state.cia_users.some((user) => lower(user.name) === lower(name))) {
+          return no(cb, 'اسم الشخصية مستخدم بالفعل.');
+        }
+
+        const direct = isLeadership(actor);
+        const character = normalizeUser({
+          id: makeId('CHAR'),
+          accountId: actor.accountId || null,
+          characterOwnerId: actor.characterOwnerId || actor.id,
+          characterType: 'secondary',
+          name,
+          secretCode: makeSecretCode(),
+          publicCode: makePublicCode('AGENT'),
+          rank: 'AGENT',
+          approved: true,
+          activeService: direct,
+          suspended: false,
+          online: false,
+          status: direct ? 'في الخدمة' : 'بانتظار اعتماد القيادة',
+          identity: null,
+          identityRequired: true,
+          hobbies: '',
+          bank: { balance: 0, salary: defaultSalaryForRank('AGENT'), lastSalaryAt: null, salaryClaimedToday: false }
+        });
+        state.cia_users.push(character);
+
+        let request = null;
+        if (!direct) {
+          request = {
+            id: makeId('CHARREQ'),
+            ownerId: actor.id,
+            accountId: actor.accountId || null,
+            characterId: character.id,
+            name: character.name,
+            requestedName: character.name,
+            characterType: character.characterType,
+            requestedAt: now(),
+            status: 'PENDING'
+          };
+          state.cia_character_queue.push(request);
+        }
+
+        addAuditLog(
+          direct ? 'إنشاء شخصية قيادية' : 'طلب شخصية',
+          actor,
+          character,
+          direct ? `تم إنشاء شخصية ${character.name} مباشرة للقائد.` : `تم تقديم طلب شخصية ${character.name}.`
+        );
+        saveState();
+        emitState();
+
+        const result = ok(cb, {
+          direct,
+          pending: !direct,
+          user: publicUser(character, actor),
+          secretCode: character.secretCode,
+          publicCode: character.publicCode
+        });
+        if (direct) socket.emit('character:request:result', result);
+        if (!direct) {
+          io.emit('character:request:new', {
+            ownerId: actor.id,
+            ownerName: actor.name,
+            requestedName: character.name
+          });
+        }
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر إنشاء الشخصية.');
+      }
+    });
+
+    socket.on('character:login', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+        const characterId = clean(payload?.characterId || payload?.id, 120);
+        const code = clean(payload?.characterCode || payload?.code, 100);
+        const target = getUserById(characterId);
+        if (!target) return no(cb, 'الشخصية غير موجودة.');
+
+        const sameOwner =
+          (target.accountId && actor.accountId && target.accountId === actor.accountId) ||
+          target.characterOwnerId === (actor.characterOwnerId || actor.id);
+        if (!sameOwner) return no(cb, 'لا تملك صلاحية الدخول إلى هذه الشخصية.');
+        if (!target.approved || target.activeService === false || target.suspended) {
+          return no(cb, 'هذه الشخصية لم تعتمد أو تم إيقافها.');
+        }
+        if (code !== target.secretCode && code !== target.publicCode) {
+          return no(cb, 'كود الشخصية غير صحيح.');
+        }
+
+        markLogout(socket);
+        markLogin(socket, target);
+        const result = ok(cb, {
+          user: publicUser(target, target),
+          needsIdentity: target.identityRequired !== false && !target.identity
+        });
+        socket.emit('auth:login:result', result);
+        emitState();
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر تسجيل الدخول إلى الشخصية.');
+      }
+    });
+
+    socket.on('character:admin:action', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor || !isChief(actor)) return no(cb, 'اعتماد الشخصيات متاح لـ CIA CHIEF فقط.');
+        const action = clean(payload?.action, 40).toLowerCase();
+        const requestId = clean(payload?.requestId || payload?.id, 120);
+        const request = state.cia_character_queue.find((item) => item.id === requestId);
+        if (!request) return no(cb, 'طلب الشخصية غير موجود.');
+        const target = getUserById(request.characterId);
+        if (!target) return no(cb, 'الشخصية المطلوبة غير موجودة.');
+
+        if (action === 'reject' || action === 'deny') {
+          target.activeService = false;
+          target.approved = false;
+          target.status = 'مرفوضة';
+          state.cia_character_queue = state.cia_character_queue.filter((item) => item.id !== request.id);
+          saveState();
+          emitState();
+          const result = ok(cb, { action: 'reject', user: publicUser(target, actor) });
+          io.emit('character:admin:result', result);
+          return result;
+        }
+        if (action !== 'approve' && action !== 'accept') return no(cb, 'إجراء الشخصية غير معروف.');
+
+        const publicCode = clean(payload?.publicCode, 100);
+        if (!publicCode || publicCode === 'PENDING') return no(cb, 'كود الظهور العام مطلوب.');
+        const duplicate = getUserByPublicCode(publicCode);
+        if (duplicate && duplicate.id !== target.id) return no(cb, 'الكود العسكري مستخدم من شخصية أخرى.');
+
+        target.publicCode = publicCode;
+        target.approved = true;
+        target.activeService = true;
+        target.suspended = false;
+        target.status = 'في الخدمة';
+        state.cia_character_queue = state.cia_character_queue.filter((item) => item.id !== request.id);
+        addAuditLog('اعتماد شخصية', actor, target, `تم اعتماد الشخصية ${target.name}.`);
+        saveState();
+        emitState();
+
+        const result = ok(cb, {
+          action: 'approve',
+          user: publicUser(target, actor),
+          secretCode: target.secretCode,
+          publicCode: target.publicCode
+        });
+        for (const socketId of sessions.get(request.ownerId) || []) {
+          const ownerSocket = io.sockets.sockets.get(socketId);
+          if (ownerSocket) ownerSocket.emit('character:approved', result);
+        }
+        io.emit('character:admin:result', result);
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر تنفيذ طلب الشخصية.');
+      }
+    });
+
+    /* =====================================================
        BANK
     ===================================================== */
+
+    socket.on('bank:setAccount', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const accountNumber = clean(payload?.accountNumber || payload?.account || '', 60);
+      if (!accountNumber) return no(cb, 'أدخل رقم الحساب البنكي.');
+      actor.bankAccount = accountNumber;
+      ensureBank(actor);
+      saveState();
+      emitState();
+      const bank = bankView(actor, actor);
+      return ok(cb, { bank, self: bank });
+    });
+
+    socket.on('bank:setBalance', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const target = getUserById(clean(payload?.memberId || payload?.userId, 120)) ||
+        getUserByPublicCode(payload?.publicCode || payload?.code);
+      const amount = parseMoney(payload?.amount);
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
+      if (!Number.isFinite(amount) || amount < 0) return no(cb, 'الرصيد غير صالح.');
+      if (target.id !== actor.id && !canManageBank(actor, target)) {
+        return no(cb, 'لا تملك صلاحية تعديل هذا الحساب.');
+      }
+      ensureBank(target);
+      target.bank.balance = amount;
+      addAuditLog('تعديل رصيد بنكي', actor, target, `تم ضبط الرصيد إلى ${amount}.`);
+      saveState();
+      emitState();
+      const bank = bankView(target, actor);
+      return ok(cb, { bank, self: target.id === actor.id ? bank : bankView(actor, actor) });
+    });
+
+    socket.on('bank:manage', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const action = clean(payload?.action, 50).toLowerCase();
+      const target = getUserByPublicCode(payload?.targetCode || payload?.publicCode || payload?.code);
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
+      if (target.id !== actor.id && !canManageBank(actor, target)) {
+        return no(cb, 'لا تملك صلاحية إدارة هذا الحساب.');
+      }
+      ensureBank(target);
+
+      if (action === 'freeze' || action === 'unfreeze') {
+        target.bank.frozen = action === 'freeze';
+      } else if (action === 'stop-account' || action === 'start-account') {
+        target.bank.enabled = action === 'start-account';
+      } else if (action === 'withdraw' || action === 'deduct') {
+        const amount = parseMoney(payload?.amount);
+        if (!Number.isFinite(amount) || amount <= 0) return no(cb, 'اكتب مبلغاً صحيحاً.');
+        if (target.bank.frozen || target.bank.enabled === false) return no(cb, 'الحساب البنكي مجمد أو موقوف.');
+        if (target.bank.balance < amount) return no(cb, 'الرصيد غير كافٍ.');
+        target.bank.balance -= amount;
+      } else {
+        return no(cb, 'إجراء البنك غير معروف.');
+      }
+
+      addAuditLog('إدارة حساب بنكي', actor, target, `الإجراء: ${action}.`);
+      saveState();
+      emitState();
+      const bank = bankView(target, actor);
+      const result = ok(cb, { bank, self: target.id === actor.id ? bank : bankView(actor, actor) });
+      socket.emit('bank:manage:result', result);
+      return result;
+    });
+
+    socket.on('bank:paySalary', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const target = getUserByPublicCode(payload?.targetCode || payload?.publicCode || payload?.code);
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
+      if (target.id !== actor.id && !canManageBank(actor, target)) {
+        return no(cb, 'لا تملك صلاحية صرف راتب هذه الشخصية.');
+      }
+      ensureBank(target);
+      if (target.bank.enabled === false || target.bank.frozen || target.bank.salaryEnabled === false) {
+        return no(cb, 'الحساب أو الراتب موقوف.');
+      }
+      const amount = Math.max(0, Math.floor(Number(target.bank.salary) || 0));
+      target.bank.balance += amount;
+      target.bank.lastSalaryAt = now();
+      target.bank.salaryClaimedToday = true;
+      addAuditLog('صرف راتب يدوي', actor, target, `تم صرف ${amount}.`);
+      saveState();
+      emitState();
+      const bank = bankView(target, actor);
+      const result = ok(cb, {
+        amount,
+        bank,
+        self: target.id === actor.id ? bank : bankView(actor, actor)
+      });
+      socket.emit('bank:paySalary:result', result);
+      return result;
+    });
 
     socket.on(
       'bank:get',
@@ -5753,13 +6139,34 @@ socket.on('member:saveIdentity', (payload, cb) => {
               100
             ),
 
-          text:
-            clean(
-              payload?.text ||
-              payload?.description ||
-              '',
-              10000
-            ),
+           text:
+             clean(
+               payload?.text ||
+               payload?.body ||
+               payload?.description ||
+               '',
+               10000
+             ),
+
+           body:
+             clean(
+               payload?.body ||
+               payload?.text ||
+               payload?.description ||
+               '',
+               10000
+             ),
+
+           img:
+             clean(
+               payload?.img ||
+               payload?.image ||
+               '',
+               8 * 1024 * 1024
+             ),
+
+           isSecret:
+             payload?.isSecret === true,
 
           status:
             clean(
@@ -5776,8 +6183,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
               actor.rank
             ),
 
+           code:
+             actor.publicCode,
+
+           author:
+             actor.name,
+
           createdAt:
             now(),
+
+           date:
+             now(),
 
           immutable:
             true
@@ -6649,6 +7065,303 @@ socket.on('member:saveIdentity', (payload, cb) => {
       }
     );
     
+    /* =====================================================
+       CLIENT COMPATIBILITY EVENTS
+    ===================================================== */
+
+    socket.on('admin:updateMember', (payload, cb) => {
+      try {
+        const actor = requireSocketUser(socket);
+        if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+        const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
+        if (!target) return no(cb, 'الشخصية غير موجودة.');
+        if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تعديل هذه الشخصية.');
+
+        let action = 'code';
+        if (payload?.rank !== undefined) {
+          const rank = normalizeRank(payload.rank);
+          if (!canChangeRank(actor, target, rank)) return no(cb, 'لا تملك صلاحية تغيير رتبة هذه الشخصية.');
+          target.rank = rank;
+          ensureBank(target).salary = defaultSalaryForRank(rank);
+          action = 'rank';
+        }
+        if (payload?.secretCode !== undefined) {
+          const secretCode = clean(payload.secretCode, 100);
+          const error = validateSecretCode(secretCode, target);
+          if (error || !canChangeSecret(actor, target)) return no(cb, error || 'لا تملك صلاحية تغيير كود هذه الشخصية.');
+          target.secretCode = secretCode;
+          action = 'code';
+        }
+        if (payload?.publicCode !== undefined) {
+          const publicCode = clean(payload.publicCode, 100);
+          const duplicate = getUserByPublicCode(publicCode);
+          if (!publicCode || publicCode === 'PENDING' || (duplicate && duplicate.id !== target.id)) {
+            return no(cb, 'الكود العسكري غير صالح أو مستخدم.');
+          }
+          if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تغيير الكود العسكري.');
+          target.publicCode = publicCode;
+          action = 'code';
+        }
+        saveState();
+        emitState();
+        const result = ok(cb, { action, user: publicUser(target, actor) });
+        socket.emit('admin:member:result', result);
+        return result;
+      } catch (error) {
+        return no(cb, error.message || 'تعذر تعديل الشخصية.');
+      }
+    });
+
+    socket.on('admin:reactivateMember', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
+      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!canManageMember(actor, target) && !isHighCommander(actor)) {
+        return no(cb, 'لا تملك صلاحية إعادة الشخصية للخدمة.');
+      }
+      target.activeService = true;
+      target.suspended = false;
+      target.status = 'في الخدمة';
+      saveState();
+      emitState();
+      const result = ok(cb, { action: 'reactivate', user: publicUser(target, actor) });
+      socket.emit('admin:member:result', result);
+      return result;
+    });
+
+    socket.on('admin:kickMember', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
+      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
+      target.activeService = false;
+      target.suspended = true;
+      target.online = false;
+      target.status = 'مفصول';
+      for (const socketId of sessions.get(target.id) || []) {
+        const targetSocket = io.sockets.sockets.get(socketId);
+        if (targetSocket) targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.' });
+      }
+      saveState();
+      emitState();
+      const result = ok(cb, { action: 'kick', user: publicUser(target, actor) });
+      socket.emit('admin:member:result', result);
+      return result;
+    });
+
+    socket.on('admin:kickUser', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      const target = getUserById(clean(payload?.userId || payload?.memberId, 120));
+      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
+      target.activeService = false;
+      target.suspended = true;
+      target.online = false;
+      target.status = 'مفصول';
+      saveState();
+      emitState();
+      return ok(cb, { action: 'kick', user: publicUser(target, actor) });
+    });
+
+    socket.on('radio:text', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const text = clean(payload?.text || payload?.message, 2000);
+      if (!text) return no(cb, 'الرسالة فارغة.');
+      const packet = {
+        id: makeId('RADIO'),
+        channel,
+        userCode: actor.publicCode,
+        fromCode: actor.publicCode,
+        fromRank: rankLabel(actor.rank),
+        text,
+        at: now()
+      };
+      emitRadioToChannel(channel, 'radio:text', packet);
+      return ok(cb, { message: packet });
+    });
+
+    socket.on('radio:code', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const packet = {
+        channel,
+        userCode: actor.publicCode,
+        userName: actor.name,
+        code: clean(payload?.code, 50),
+        meaning: clean(payload?.meaning, 200)
+      };
+      if (!packet.code) return no(cb, 'كود الراديو غير موجود.');
+      emitRadioToChannel(channel, 'radio:code', packet);
+      return ok(cb, { message: packet });
+    });
+
+    socket.on('radio:ptt:start', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      emitRadioToChannel(channel, 'radio:state', {
+        channel, userCode: actor.publicCode, ptt: true,
+        statusHtml: 'جاري البث الصوتي...'
+      });
+      return ok(cb);
+    });
+
+    socket.on('radio:ptt:stop', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      emitRadioToChannel(channel, 'radio:state', {
+        channel, userCode: actor.publicCode, ptt: false,
+        statusHtml: 'انتهى البث.'
+      });
+      return ok(cb);
+    });
+
+    socket.on('report:delete', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isLeadership(actor)) return no(cb, 'حذف التقارير متاح للقيادة فقط.');
+      const id = clean(payload?.id || payload?.reportId, 200);
+      const exists = state.cia_reports.some((report) => String(report.id) === String(id));
+      if (!exists) return no(cb, 'التقرير غير موجود.');
+      state.cia_reports = state.cia_reports.filter((report) => String(report.id) !== String(id));
+      addAuditLog('حذف تقرير', actor, null, `تم حذف التقرير ${id}.`);
+      saveState();
+      emitState();
+      return ok(cb, { id });
+    });
+
+    socket.on('duty:start', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const dayKey = now().slice(0, 10);
+      const current = (state.cia_attendance || []).find(
+        (item) => item.userId === actor.id && item.dayKey === dayKey && !item.endedAt
+      );
+      if (current) return ok(cb, { attendance: current });
+      const attendance = {
+        id: makeId('DUTY'),
+        userId: actor.id,
+        userCode: actor.publicCode,
+        userName: actor.name,
+        dayKey,
+        startedAt: now(),
+        endedAt: null,
+        salaryPaid: false
+      };
+      state.cia_attendance.unshift(attendance);
+      actor.activeService = true;
+      actor.status = 'في الخدمة';
+      saveState();
+      emitState();
+      return ok(cb, { attendance });
+    });
+
+    socket.on('duty:end', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const current = (state.cia_attendance || []).find(
+        (item) => item.userId === actor.id && !item.endedAt
+      );
+      if (!current) return no(cb, 'لا توجد مباشرة مفتوحة.');
+      current.endedAt = now();
+      actor.status = 'خارج الخدمة';
+      saveState();
+      emitState();
+      return ok(cb, { attendance: current });
+    });
+
+    socket.on('operation:updateStatus', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const id = clean(payload?.operationId || payload?.id, 200);
+      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
+      if (!operation) return no(cb, 'المهمة غير موجودة.');
+      if (!(isLeadership(actor) || isHighCommander(actor))) {
+        return no(cb, 'لا تملك صلاحية تحديث المهمة.');
+      }
+      operation.status = clean(payload?.status, 100) || operation.status;
+      operation.updatedAt = now();
+      saveState();
+      emitOperationState();
+      return ok(cb, { operation: operationSanitize(operation, actor) });
+    });
+
+    socket.on('chat:send', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const mode = payload?.mode === 'private' ? 'private' : 'global';
+      const text = clean(payload?.text || payload?.message, 4000);
+      const image = clean(payload?.image, 8 * 1024 * 1024);
+      if (!text && !image) return no(cb, 'الرسالة فارغة.');
+
+      const message = {
+        id: makeId(mode === 'private' ? 'PCHAT' : 'CHAT'),
+        senderCode: actor.publicCode,
+        senderName: actor.name,
+        fromCode: actor.publicCode,
+        fromName: actor.name,
+        targetCode: clean(payload?.targetCode, 100),
+        text,
+        image,
+        timestamp: now(),
+        at: now()
+      };
+
+      if (mode === 'private') {
+        const target = getUserByPublicCode(message.targetCode);
+        if (!target) return no(cb, 'المستخدم المستهدف غير موجود.');
+        const key = chatKey(actor.publicCode, target.publicCode);
+        state.cia_chats.private[key] = state.cia_chats.private[key] || [];
+        state.cia_chats.private[key].push(message);
+        state.cia_chats.private[key] = state.cia_chats.private[key].slice(-500);
+        const targets = new Set([...(sessions.get(actor.id) || []), ...(sessions.get(target.id) || [])]);
+        for (const socketId of targets) {
+          const targetSocket = io.sockets.sockets.get(socketId);
+          if (targetSocket) targetSocket.emit('chat:private', message);
+        }
+      } else {
+        state.cia_chats.global.push(message);
+        state.cia_chats.global = state.cia_chats.global.slice(-1000);
+        io.emit('chat:global', message);
+      }
+      saveState();
+      emitState();
+      return ok(cb, { message });
+    });
+
+    socket.on('chat:delete', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const messageId = clean(payload?.messageId || payload?.id, 200);
+      const admin = payload?.admin === true;
+      if (admin && !isLeadership(actor)) return no(cb, 'لا تملك صلاحية الحذف الإداري.');
+      let removed = false;
+      if (payload?.mode === 'private') {
+        for (const key of Object.keys(state.cia_chats.private || {})) {
+          const before = state.cia_chats.private[key].length;
+          state.cia_chats.private[key] = state.cia_chats.private[key].filter(
+            (message) => String(message.id) !== String(messageId) ||
+              (!admin && message.senderCode !== actor.publicCode)
+          );
+          removed = removed || before !== state.cia_chats.private[key].length;
+        }
+      } else {
+        const before = state.cia_chats.global.length;
+        state.cia_chats.global = state.cia_chats.global.filter(
+          (message) => String(message.id) !== String(messageId)
+        );
+        removed = before !== state.cia_chats.global.length;
+      }
+      if (!removed) return no(cb, 'الرسالة غير موجودة أو لا تملك صلاحية حذفها.');
+      saveState();
+      emitState();
+      return ok(cb, { id: messageId });
+    });
+
     /* =====================================================
        DISCONNECT
     ===================================================== */
