@@ -1,7 +1,0 @@
-node_modules/
-.private-data/
-*.data.json
-cia-data.json
-.env
-.env.*
-!.env.example
