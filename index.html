@@ -1417,7 +1417,7 @@
       ciaSocket.on('bank:setRankSalary:result', function(result){ if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
       ciaSocket.on('bank:setBalance:result', function(result){ if(result && !result.ok) return alert(result.message||'تعذر تعديل الرصيد.'); if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
       ciaSocket.on('bank:manage:result', function(result){ if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
-      ciaSocket.on('bank:withdraw:result', function(result){ if(result && !result.ok) return alert(result.message||'تعذر السحب.'); if(result&&result.ok){ currentUser={...currentUser,bank:result.self}; renderBank(); } });
+       ciaSocket.on('bank:withdraw:result', function(result){ if(result && !result.ok) return alert(result.message||'تعذر السحب.'); if(result&&result.ok){ currentUser={...currentUser,bank:result.self||result.bank||currentUser.bank}; renderBank(); } });
       ciaSocket.on('bank:paySalary:result', function(result){ if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
       ciaSocket.on('bank:claimSalary:result', function(result){ if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
 
@@ -1857,7 +1857,7 @@
         location.reload();
       };
       ciaSocket.once('auth:logout:result', done);
-      ciaSocket.emit('logout');
+       ciaSocket.emit('auth:logout');
       setTimeout(done, 1500);
     }
 
@@ -1953,7 +1953,7 @@
         const note=document.getElementById('op-notes').value.trim();
         const op=result.operation;
         const finish=()=>{ document.querySelectorAll('#operation-command-box input,#operation-command-box textarea').forEach(el=>{el.value='';}); loadTacticalOperations(); };
-        if(note&&op?.id) ciaSocket.emit('operation:addNote',{operationId:op.id,text:note},()=>finish()); else finish();
+         if(note&&op?.id) ciaSocket.emit('operation:addNote',{id:op.id,text:note},()=>finish()); else finish();
         alert('تم إنشاء المهمة بنجاح.');
       });
     }
@@ -1976,7 +1976,7 @@
 
     function setOperationStatus(operationId,status){
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('operation:updateStatus',{operationId,status:operationStatusCode(status)},function(result){
+       ciaSocket.emit('operation:update',{id:operationId,status:operationStatusCode(status)},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر تحديث حالة المهمة.');
         loadTacticalOperations();
         renderDailyAuditLogs();
@@ -1986,7 +1986,7 @@
     function addOperationUpdate(operationId){
       const text=prompt('اكتب التحديث الميداني:'); if(!text||!text.trim()) return;
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('operation:addNote',{operationId,text:text.trim()},function(result){
+       ciaSocket.emit('operation:addNote',{id:operationId,text:text.trim()},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ التحديث الميداني.');
         loadTacticalOperations();
       });
@@ -1995,7 +1995,7 @@
     function deleteTacticalOperation(operationId){
       if(!confirm('حذف المهمة نهائياً؟')) return;
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('operation:delete',{operationId},function(result){
+       ciaSocket.emit('operation:delete',{id:operationId},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر حذف المهمة.');
         loadTacticalOperations();
         renderDailyAuditLogs();
@@ -2009,7 +2009,7 @@
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('bank:withdraw',{amount},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر السحب.');
-        const b=result.self||{};
+         const b=result.self||result.bank||{};
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
         document.getElementById('bank-withdraw-amount').value='';
         renderBank();
@@ -2022,7 +2022,7 @@
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('bank:claimSalary',{},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر استلام الراتب.');
-        const b=result.self||{};
+         const b=result.self||result.bank||{};
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
         renderBank();
         loadBankDirectory();
@@ -2036,10 +2036,11 @@
       ciaSocket.emit('bank:get',{},function(result){
         if(!result||!result.ok){bankDirectory=[];return;}
         bankDirectory=Array.isArray(result.users)?result.users:[];
-        if(result.self){
-          currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:result.self.accountNumber||'',balance:result.self.balance??0,salary:result.self.salary??580,lastSalaryAt:result.self.lastSalaryAt||null,salaryClaimedToday:!!result.self.salaryClaimedToday,frozen:!!result.self.frozen,enabled:result.self.enabled!==false,salaryEnabled:result.self.salaryEnabled!==false,bankCode:result.self.bankCode||null}};
+         const selfBank=result.self||result.bank;
+         if(selfBank){
+           currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:selfBank.accountNumber||'',balance:selfBank.balance??0,salary:selfBank.salary??580,lastSalaryAt:selfBank.lastSalaryAt||null,salaryClaimedToday:!!selfBank.salaryClaimedToday,frozen:!!selfBank.frozen,enabled:selfBank.enabled!==false,salaryEnabled:selfBank.salaryEnabled!==false,bankCode:selfBank.bankCode||null}};
           const accountInput=document.getElementById('bank-account-input');
-          if(accountInput) accountInput.value=result.self.accountNumber||'';
+           if(accountInput) accountInput.value=selfBank.accountNumber||'';
         }
         renderBank();
       });
@@ -2066,6 +2067,9 @@
     function selectBankTarget(code){const input=document.getElementById('bank-target-code');if(input)input.value=code;}
 
     function saveBankAccount() {
+  if (!ciaSocket || !ciaSocket.connected) {
+    return alert('الاتصال بالسيرفر غير متاح.');
+  }
   const value =
     document.getElementById('bank-account-input').value.trim();
 
