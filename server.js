@@ -26,43 +26,20 @@ const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const PORT = Number(process.env.PORT || 3000);
-const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, '.private-data'));
-const DATA_FILE = path.join(DATA_DIR, 'cia-data.json');
-
-fs.mkdirSync(DATA_DIR, { recursive: true });
+const DATA_FILE = path.join(__dirname, 'cia-data.json');
 
 const app = express();
 const httpServer = http.createServer(app);
-const allowedOrigins = new Set([
-  `http://localhost:${PORT}`,
-  `http://127.0.0.1:${PORT}`,
-  ...String(process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-]);
-
-const socketCorsOrigin = (origin, callback) => {
-  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-  return callback(new Error('Origin not allowed'), false);
-};
-
 const io = new Server(httpServer, {
   cors: {
-    origin: socketCorsOrigin,
+    origin: true,
     credentials: true
   }
 });
 
 app.use(express.json({ limit: '8mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use((req, res, next) => {
-  if (req.path === '/cia-data.json' || req.path.startsWith('/.private-data/')) {
-    return res.sendStatus(404);
-  }
-  return next();
-});
-app.use(express.static(__dirname, { dotfiles: 'deny' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
   const candidates = ['index.html', 'index26-7.html', 'index(29).html', 'index (31).html'];
@@ -77,46 +54,13 @@ const now = () => new Date().toISOString();
 const clean = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
 const lower = (value) => clean(value, 200).toLowerCase();
 const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
-const readSecret = (name) => String(process.env[name] || '').trim();
-const hashPassword = (password) => {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  return { passwordHash: hash, passwordSalt: salt };
-};
 
 const SYSTEM = Object.freeze({
-  chiefRegistrationCode: readSecret('CIA_CHIEF_REGISTRATION_CODE'),
-  chiefSaveCode: readSecret('CIA_CHIEF_SAVE_CODE'),
-  memberRequestCode: readSecret('CIA_MEMBER_REQUEST_CODE'),
+  chiefRegistrationCode: '1531',
+  chiefSaveCode: '4139',
+  memberRequestCode: '0012',
   defaultSalary: 580
 });
-
-if (process.env.NODE_ENV === 'production' &&
-    (!SYSTEM.chiefRegistrationCode || !SYSTEM.chiefSaveCode || !SYSTEM.memberRequestCode)) {
-  throw new Error('CIA bootstrap codes are required in production environment variables.');
-}
-
-const rateLimitBuckets = new Map();
-function consumeRateLimit(socket, bucket, limit, windowMs) {
-  const address = socket.handshake.address || socket.id;
-  const key = `${bucket}:${address}`;
-  const current = rateLimitBuckets.get(key);
-  const timestamp = Date.now();
-
-  if (!current || timestamp - current.startedAt >= windowMs) {
-    rateLimitBuckets.set(key, { startedAt: timestamp, count: 1 });
-    return true;
-  }
-
-  if (current.count >= limit) return false;
-  current.count += 1;
-  return true;
-}
-
-function clearRateLimit(socket, bucket) {
-  const address = socket.handshake.address || socket.id;
-  rateLimitBuckets.delete(`${bucket}:${address}`);
-}
 
 const EMPTY_STATE = {
   cia_users: [],
@@ -861,27 +805,65 @@ function sanitizeShared(key, value) {
 }
 
 function snapshot(viewer = null) {
-  const authenticated = !!viewer;
-  const leadership = isLeadership(viewer);
-
   return {
-    cia_users: state.cia_users.map((u) => publicUser(u, viewer)),
-    cia_queue: isChief(viewer) ? state.cia_queue : [],
-    cia_character_queue: isChief(viewer) ? state.cia_character_queue : [],
+    cia_users:
+      state.cia_users.map(
+        (u) => publicUser(u, viewer)
+      ),
+
+    cia_queue:
+      isChief(viewer)
+        ? state.cia_queue
+        : [],
+
+    cia_character_queue:
+      isChief(viewer)
+        ? state.cia_character_queue
+        : [],
+
     cia_chats: {
-      global: authenticated ? (state.cia_chats.global || []) : [],
-      private: privateChatsFor(viewer)
+      global:
+        state.cia_chats.global || [],
+
+      private:
+        privateChatsFor(viewer)
     },
-    cia_sos: authenticated ? (state.cia_sos || []) : [],
-    cia_reports: leadership ? (state.cia_reports || []) : [],
-    cia_cases: leadership ? (state.cia_cases || []) : [],
-    cia_map_locations: authenticated ? (state.cia_map_locations || {}) : {},
-    cia_hq_locations: authenticated ? (state.cia_hq_locations || []) : [],
-    cia_audit_logs: leadership ? state.cia_audit_logs : [],
-    cia_attendance: leadership ? (state.cia_attendance || []) : [],
-    cia_operations: (state.cia_operations || [])
-      .map((op) => operationSanitize(op, viewer))
-      .filter(Boolean)
+
+    cia_sos:
+      state.cia_sos || [],
+
+    cia_reports:
+      state.cia_reports || [],
+
+    cia_cases:
+      state.cia_cases || [],
+
+    cia_map_locations:
+      state.cia_map_locations || {},
+
+    cia_hq_locations:
+      state.cia_hq_locations || [],
+
+    cia_audit_logs:
+      isLeadership(viewer)
+        ? state.cia_audit_logs
+        : [],
+
+    cia_attendance:
+      isLeadership(viewer)
+        ? (state.cia_attendance || [])
+        : [],
+
+    cia_operations:
+      (state.cia_operations || [])
+        .map(
+          (op) =>
+            operationSanitize(
+              op,
+              viewer
+            )
+        )
+        .filter(Boolean)
   };
 }
 
@@ -1809,10 +1791,6 @@ io.on(
               socket
             );
 
-          if (!actor || !isLeadership(actor)) {
-            return no(cb, 'تحديث البيانات المشتركة متاح للقيادة فقط.');
-          }
-
           for (
             const [key, value]
             of Object.entries(object)
@@ -1884,8 +1862,15 @@ io.on(
               socket
             );
 
-          if (!actor || !isLeadership(actor)) {
-            return no(cb, 'تحديث البيانات المشتركة متاح للقيادة فقط.');
+          if (
+            key ===
+              'cia_map_locations' &&
+            !actor
+          ) {
+            return no(
+              cb,
+              'يجب تسجيل الدخول لإدارة مواقع الخريطة.'
+            );
           }
 
           const finalValue =
@@ -2027,7 +2012,13 @@ io.on(
 
             loginName,
 
-            ...hashPassword(password),
+            passwordHash:
+              crypto
+                .createHash(
+                  'sha256'
+                )
+                .update(password)
+                .digest('hex'),
 
             createdAt:
               now(),
@@ -2076,7 +2067,7 @@ io.on(
                 true,
 
               message:
-                `تم إنشاء الحساب. استخدم ${SYSTEM.memberRequestCode || 'كود القبول المخصص'} من شاشة الدخول لإرسال طلب القبول.`
+                'تم إنشاء الحساب. استخدم 0012 من شاشة الدخول لإرسال طلب القبول.'
             }
           );
         } catch (error) {
@@ -2097,10 +2088,6 @@ io.on(
       'auth:claimChief',
       (payload, cb) => {
         try {
-          if (!consumeRateLimit(socket, 'auth:claimChief', 5, 15 * 60 * 1000)) {
-            return no(cb, 'محاولات تأسيس القيادة كثيرة. حاول لاحقًا.');
-          }
-
           if (
             state.cia_users.some(
               isChief
@@ -2359,10 +2346,6 @@ io.on(
       'auth:login',
       (payload, cb) => {
         try {
-          if (!consumeRateLimit(socket, 'auth:login', 10, 15 * 60 * 1000)) {
-            return no(cb, 'محاولات تسجيل الدخول كثيرة. حاول بعد 15 دقيقة.');
-          }
-
           const name =
             clean(
               payload?.name,
@@ -2414,7 +2397,6 @@ io.on(
             socket,
             user
           );
-          clearRateLimit(socket, 'auth:login');
 
           const salary =
             dailySalary(
