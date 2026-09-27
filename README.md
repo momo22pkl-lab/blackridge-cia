@@ -19,6 +19,18 @@ npm start
 
 في بيئة الإنتاج، يتوقف الخادم إذا لم تكن أكواد التهيئة معرفة.
 
+## إعداد Render
+
+في لوحة Render افتح الخدمة ثم Environment وأضف متغيرات البيئة التالية:
+
+- CIA_CHIEF_REGISTRATION_CODE: كود تأسيس القيادة لمرة واحدة.
+- CIA_CHIEF_SAVE_CODE: كود حماية حفظ القيادة.
+- CIA_MEMBER_REQUEST_CODE: كود إرسال طلب قبول العضو.
+- ALLOWED_ORIGINS: رابط واجهة Render المسموح به، مثل https://your-service.onrender.com.
+- DATA_DIR: مجلد خاص للبيانات. استخدم قرص Render دائمًا إذا كان التطبيق يحتاج الاحتفاظ بالبيانات بعد إعادة النشر.
+
+لا تضع هذه القيم داخل ملفات GitHub أو داخل index.html. ملف .env.example يحتوي أسماء المتغيرات فقط.
+
 ## أوامر التحقق
 
 - npm run check: فحص صياغة الخادم.
