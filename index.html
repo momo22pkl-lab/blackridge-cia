@@ -2154,6 +2154,19 @@
         .replace(/'/g, '&#39;');
     }
 
+    function safeUrl(value, allowDataImage = false) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      if (allowDataImage && /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(raw)) return esc(raw);
+      try {
+        const parsed = new URL(raw, window.location.origin);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return esc(parsed.href);
+      } catch (error) {
+        return '';
+      }
+      return '';
+    }
+
     function getRankBadge(rank) {
       if (rank === 'CIA CHIEF') return 'rank-chief';
       if (rank === 'SUPREME COMMANDER') return 'rank-supreme';
@@ -2547,7 +2560,7 @@
           </div>
           <div style="font-size:0.75rem; color:var(--cyan-glow); margin:3px 0;">المحقق: #${esc(c.code)} (${esc(c.author)}) | المركبة/السناد: ${esc(c.siad || 'غير محدد')}</div>
           <p style="font-size:0.8rem; color:var(--text-bright); line-height:1.5; margin-top:5px; white-space:pre-wrap;">${esc(c.details)}</p>
-          ${c.media ? `<a href="${esc(c.media)}" target="_blank" style="display:inline-block; margin-top:5px; font-size:0.75rem; color:var(--cyan-glow); text-decoration:underline;">🔗 عرض الدليل المرفق</a>` : ''}
+          ${c.media ? `<a href="${safeUrl(c.media)}" target="_blank" style="display:inline-block; margin-top:5px; font-size:0.75rem; color:var(--cyan-glow); text-decoration:underline;">🔗 عرض الدليل المرفق</a>` : ''}
         </div>
       `).join('');
     }
@@ -2829,7 +2842,7 @@
             <span style="color:var(--text-dim);font-size:.65rem;">${esc(m.timestamp || '')}</span>
           </div>
           ${m.text ? `<div style="margin-top:4px;color:var(--text-bright);white-space:pre-wrap;">${esc(m.text)}</div>` : ''}
-          ${m.image ? `<img src="${esc(m.image)}" style="max-width:100%;max-height:260px;border-radius:6px;margin-top:7px;border:1px solid var(--border);">` : ''}
+          ${m.image ? `<img src="${safeUrl(m.image, true)}" style="max-width:100%;max-height:260px;border-radius:6px;margin-top:7px;border:1px solid var(--border);">` : ''}
           ${activeChatMode === 'private' ? (leadership ? `<button type="button" onclick="deletePrivateChatMessageAdmin('${esc(m.id)}')" style="margin-top:6px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);padding:3px 7px;border-radius:3px;cursor:pointer;font-size:.65rem;">حذف نهائي للقيادة</button>` : `<button type="button" onclick="deletePrivateChatMessage('${esc(m.id)}')" style="margin-top:6px;background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);padding:3px 7px;border-radius:3px;cursor:pointer;font-size:.65rem;">حذف من جهتي</button>`) : ''}
           ${activeChatMode === 'global' && leadership ? `<button type="button" onclick="deleteGlobalChatMessage('${esc(m.id)}')" style="margin-top:6px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);padding:3px 7px;border-radius:3px;cursor:pointer;font-size:.65rem;">حذف الرسالة</button>` : ''}
         </div>
@@ -2853,7 +2866,7 @@
         <div class="msg-card" style="border-right:2px solid var(--red-alert);margin-bottom:6px;">
           <div style="font-size:.7rem;color:var(--primary-gold);">#${esc(m.senderCode)}${m.senderName ? ' '+esc(m.senderName) : ''} → #${esc(m.targetCode || '')}</div>
           ${m.text ? `<div style="font-size:.78rem;color:var(--text-bright);margin-top:3px;white-space:pre-wrap;">${esc(m.text)}</div>` : ''}
-          ${m.image ? `<img src="${esc(m.image)}" style="max-width:100%;max-height:260px;border-radius:6px;margin-top:6px;border:1px solid var(--border);">` : ''}
+          ${m.image ? `<img src="${safeUrl(m.image, true)}" style="max-width:100%;max-height:260px;border-radius:6px;margin-top:6px;border:1px solid var(--border);">` : ''}
           <div style="font-size:.6rem;color:var(--text-dim);margin-top:3px;">${esc(m.timestamp || '')}</div>
           <button type="button" onclick="deletePrivateChatMessageAdmin('${esc(m.id)}')" style="margin-top:5px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);padding:3px 7px;border-radius:3px;cursor:pointer;font-size:.62rem;">حذف نهائي</button>
         </div>
@@ -2918,7 +2931,7 @@
           </div>
           <div style="font-size:.75rem;color:var(--cyan-glow);margin:3px 0;">المرسل: #${esc(r.code || '')} (${esc(r.author || '')})</div>
           <p style="font-size:.8rem;color:var(--text-bright);line-height:1.5;margin-top:5px;white-space:pre-wrap;">${esc(r.body)}</p>
-          ${r.img ? `<img src="${esc(r.img)}" style="max-width:100%;max-height:200px;border-radius:6px;margin-top:8px;border:1px solid var(--border);">` : ''}
+          ${r.img ? `<img src="${safeUrl(r.img, true)}" style="max-width:100%;max-height:200px;border-radius:6px;margin-top:8px;border:1px solid var(--border);">` : ''}
           ${leadership ? `<button type="button" onclick="deleteReport('${esc(r.id)}')" style="margin-top:7px;padding:4px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);border-radius:4px;cursor:pointer;">حذف التقرير</button>` : ''}
         </div>
       `).join('');
