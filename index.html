@@ -553,6 +553,13 @@
       <button type="button" id="characters-open-btn" style="width:100%;margin-top:7px;padding:8px;background:#080c12;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;font-weight:bold;cursor:pointer;">شخصياتي</button>
       <button type="button" id="create-account-btn" style="width:100%;margin-top:7px;padding:8px;background:#080c12;color:var(--primary-gold);border:1px solid var(--primary-gold);border-radius:5px;font-weight:bold;cursor:pointer;">إنشاء حساب</button>
       <p id="auth-msg" style="margin-top: 8px; font-size: 0.75rem; color: var(--red-alert);"></p>
+      <div class="classified-shell" style="margin-top:10px;padding:9px;text-align:right;">
+        <div style="color:var(--cyan-glow);font-weight:bold;font-size:.75rem;">استفسار للقيادة</div>
+        <input id="support-name" class="input-field" placeholder="اسمك إذا لم تكن مسجلاً" autocomplete="off">
+        <textarea id="support-text" class="input-field" placeholder="للاستفسار بعد الرفض أو عن الطلب..." style="height:58px;resize:none;text-align:right;"></textarea>
+        <button type="button" class="btn-action" style="margin-top:4px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="sendSupportMessage()">إرسال إلى CIA CHIEF وSenior Commander CIA</button>
+        <div id="support-msg" style="font-size:.66rem;margin-top:5px;color:var(--text-dim);"></div>
+      </div>
     </div>
   </div>
 
@@ -697,7 +704,12 @@
       
       <div class="card" style="border-color: var(--cyan-glow);">
         <div style="font-size: 0.8rem; color: var(--cyan-glow); margin-bottom: 8px; font-weight: bold;"><i class="fa-solid fa-street-view"></i> حالتك الميدانية الحالية:</div>
+        <div id="service-status-card" style="padding:8px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:.72rem;">
+          حالة الخدمة: <strong id="service-status-label" style="color:var(--red-alert);">غير مسجل</strong>
+        </div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="status-btn status-patrol" onclick="startDuty()">تسجيل الدخول للخدمة 🟢</button>
+          <button class="status-btn status-off" onclick="endDuty()">تسجيل الخروج من الخدمة 🔴</button>
           <button class="status-btn status-patrol" onclick="setUserStatus('في دورية رسمية 🟢')">في دورية رسمية 🟢</button>
           <button class="status-btn status-siad" onclick="setUserStatus('سيارة مدنية / تخفي 🟡')">سيارة مدنية / تخفي 🟡</button>
           <button class="status-btn status-off" onclick="setUserStatus('خارج الخدمة 🔴')">خارج الخدمة 🔴</button>
@@ -859,6 +871,11 @@
         <p style="font-size:.68rem;color:var(--text-dim);margin-bottom:8px;">هذا السجل يظهر للقيادة فقط، وتبقى الرسائل محفوظة حتى بعد خروج أحد الطرفين.</p>
         <div id="leadership-secure-chat-box" class="chat-box" style="max-height:320px;overflow:auto;"></div>
       </div>
+
+      <div id="leadership-support-panel" class="card" style="display:none;margin-top:10px;border:1px solid var(--cyan-glow);">
+        <h4 style="color:var(--cyan-glow);font-size:.85rem;margin-bottom:7px;">استفسارات الاعتماد — القيادة فقط</h4>
+        <div id="support-thread-list"></div>
+      </div>
     </div>
 
     <!-- S.O.S Alerts Section -->
@@ -1016,15 +1033,36 @@
   <option value="CRITICAL">حرج</option>
         </select>
         <textarea id="op-objective" class="input-field" placeholder="الهدف والتعليمات الميدانية" style="height:80px;resize:none;"></textarea>
-        <input id="op-leader-code" class="input-field" placeholder="كود قائد الكتيبة">
-        <input id="op-members-codes" class="input-field" placeholder="أكواد المشاركين مفصولة بفواصل">
-        <input id="op-count" type="number" min="1" max="40" class="input-field" placeholder="عدد أفراد الكتيبة">
+        <input id="op-leader-code" class="input-field" placeholder="كودك العسكري كمنشئ المهمة" readonly>
+        <input id="op-agent-code" class="input-field" placeholder="اكتب الكود العسكري لـ Agent واحد فقط">
         <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
-        <button type="button" class="btn-action" onclick="createTacticalOperation()">إنشاء المهمة</button>
+        <button type="button" class="btn-action" onclick="createTacticalOperation()">إنشاء مهمة لمرة واحدة</button>
       </div>
       <div class="card"><h4 style="color:var(--primary-gold);">المهمات المسندة / المسجلة</h4><div id="operations-list"></div></div>
+    </div>
+
+    <div id="operation-map-modal" class="modal-overlay" style="display:none;">
+      <div class="auth-card" style="max-width:900px;text-align:right;">
+        <div class="classified-stamp"><i class="fa-solid fa-map-location-dot"></i> OPERATION // LOS SANTOS MAP</div>
+        <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة مناطق المهمة</h3>
+        <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
+        <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة صفراء</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('marker','#ef4444')">علامة حمراء</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #fff;" onclick="setOperationMapTool('marker','#ffffff')">علامة بيضاء</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('marker','#a855f7')">علامة بنفسجية</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #6b7280;" onclick="setOperationMapTool('draw','#111827')">رسم أسود</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('draw','#facc15')">رسم أصفر</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('draw','#ef4444')">رسم أحمر</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #fff;" onclick="setOperationMapTool('draw','#ffffff')">رسم أبيض</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('draw','#a855f7')">رسم بنفسجي</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">إنهاء الرسم</button>
+        </div>
+        <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
+        <button type="button" onclick="closeOperationMap()" style="width:100%;padding:9px;margin-top:8px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إغلاق الخريطة</button>
+      </div>
     </div>
 
     <!-- Bank -->
@@ -1157,6 +1195,16 @@
         </div>
       </div>
 
+      <div id="identity-approval-card" class="card" style="display:none;border-color:var(--cyan-glow);">
+        <h4 style="color:var(--cyan-glow);font-size:.85rem;margin-bottom:8px;">طلبات اعتماد الهوية</h4>
+        <div class="table-container">
+          <table class="table-custom">
+            <thead><tr><th>الكود العسكري</th><th>الرتبة</th><th>الهوية</th><th>الإجراء</th></tr></thead>
+            <tbody id="identity-approval-list"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div id="chief-only-characters" class="card">
         <h4 style="color:var(--primary-gold);font-size:.85rem;margin-bottom:8px;">طلبات شخصيات الأعضاء</h4>
         <div class="table-container">
@@ -1242,6 +1290,15 @@
     let operationsList = [];
     let bankDirectory = [];
     let loginMode = 'agent';
+    let supportMessages = [];
+    let identityApprovalQueue = [];
+    let lastSupportThreadId = null;
+    let operationMap = null;
+    let operationMapOperation = null;
+    let operationMapLayers = [];
+    let operationMapTool = null;
+    let operationDrawingPoints = [];
+    let operationDrawingLayer = null;
 
     document.addEventListener("DOMContentLoaded", function() {
       setTimeout(()=>setLoginMode('agent'),0);
@@ -1333,6 +1390,7 @@
           }
         }
         if (Array.isArray(state.cia_queue)) pendingQueue = state.cia_queue;
+        if (Array.isArray(state.cia_identity_queue)) identityApprovalQueue = state.cia_identity_queue;
         if (Array.isArray(state.cia_character_queue)) pendingCharacterQueue = state.cia_character_queue;
         if (state.cia_chats && typeof state.cia_chats === 'object') {
           chatMessages = state.cia_chats;
@@ -1343,12 +1401,19 @@
           sosAlerts = state.cia_sos;
           renderSOSAlerts();
         }
+        if (state.cia_map_locations && typeof state.cia_map_locations === 'object') {
+          mapLocations = state.cia_map_locations;
+          try { localStorage.setItem('cia_map_locations', JSON.stringify(mapLocations)); } catch(e) {}
+          if (gtaMap) renderAllMapMarkers();
+        }
         auditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs : [];
         attendanceLogs = Array.isArray(state.cia_attendance) ? state.cia_attendance : [];
         operationsList = Array.isArray(state.cia_operations) ? state.cia_operations : [];
+        supportMessages = Array.isArray(state.cia_support) ? state.cia_support : supportMessages;
         if (currentUser && state.cia_users) { const me=state.cia_users.find(u=>u.id===currentUser.id); if(me){ currentUser={...currentUser,...me}; } }
         if (typeof updateViews === 'function') updateViews();
         if (document.getElementById('leadership-secure-chat-panel')) renderLeadershipSecureChats();
+        renderSupportPanel();
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
       });
 
@@ -1476,6 +1541,40 @@
           alert("تم إرسال طلب القبول إلى القائد CIA CHIEF. بعد قبولك سيعطيك القائد كود الدخول الخاص بك.");
         } else if (msg) {
           msg.innerText = (result && result.message) || "تعذر إرسال الطلب.";
+        }
+      });
+
+      ciaSocket.on('join:rejected', function(result) {
+        const msg = document.getElementById('auth-msg');
+        if (msg) msg.innerText = (result && result.message) || 'تم رفض الطلب.';
+      });
+
+      ciaSocket.on('identity:rejected', function(result) {
+        currentUser = null;
+        closeIdentityModal();
+        document.getElementById('passcode-modal').style.display = 'flex';
+        const msg = document.getElementById('auth-msg');
+        if (msg) msg.innerText = (result && result.message) || 'تم رفض الهوية.';
+      });
+
+      ciaSocket.on('identity:approved', function(result) {
+        if (result && result.message) alert(result.message);
+        updateViews();
+      });
+
+      ciaSocket.on('identity:approval:new', function() {
+        if (currentUser && ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank))) {
+          playRadioBeep(700);
+          renderChiefPanel();
+        }
+      });
+
+      ciaSocket.on('support:message', function(message) {
+        if (!message) return;
+        supportMessages = [...supportMessages.filter(m => m.id !== message.id), message].slice(-500);
+        renderSupportPanel();
+        if (currentUser && ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank))) {
+          playRadioBeep(650);
         }
       });
 
@@ -1695,8 +1794,8 @@
       if (list) {
         list.innerHTML = result.characters.length ? `
           <select id="characters-select" class="input-field" style="margin-top:7px;">${result.characters.map(c => `<option value="${esc(c.id)}">${esc(c.name)} — #${esc(c.publicCode)}</option>`).join('')}</select>
-          <input type="password" id="managed-character-code" class="input-field" placeholder="الكود العسكري للشخصية المختارة" style="margin-top:7px;" autocomplete="off">
-          <button type="button" class="btn-action" style="margin-top:7px;" onclick="loginSelectedCharacter()">دخول الشخصية المختارة</button>` : '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد شخصيات معتمدة لهذا الحساب.</div>';
+          <button type="button" class="btn-action" style="margin-top:7px;" onclick="loginSelectedCharacter()">دخول الشخصية المختارة</button>
+          <div style="font-size:.66rem;color:var(--text-dim);margin-top:5px;">اختر أي شخصية معتمدة من القائمة؛ لا حاجة لإعادة كتابة الكود العسكري.</div>` : '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد شخصيات معتمدة لهذا الحساب.</div>';
       }
       const create = document.getElementById('characters-create-area');
       if (create) create.style.display = result.characters.length >= result.limit ? 'none' : 'block';
@@ -1705,12 +1804,15 @@
     }
 
     function loginSelectedCharacter() {
-      const sel=document.getElementById('characters-select'); const codeEl=document.getElementById('managed-character-code');
-      const id=sel?.value, code=codeEl?.value.trim();
+      const sel=document.getElementById('characters-select');
+      const id=sel?.value;
       const character=charactersManagerList.find(c=>c.id===id);
-      if(!character||!code) return alert('اختر الشخصية واكتب كودها العسكري.');
+      if(!character) return alert('اختر الشخصية أولاً.');
+      if(!currentUser || currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       closeCharactersManager();
-      ciaSocket.emit('character:login',{characterId:character.id,characterName:character.name,characterCode:code});
+      ciaSocket.emit('character:login',{characterId:character.id,characterName:character.name}, function(result){
+        if(!result||!result.ok) return alert((result&&result.message)||'تعذر الدخول إلى الشخصية.');
+      });
     }
 
     function loginManagedCharacter(characterId) {
@@ -1868,7 +1970,7 @@
       const leadershipNav = document.getElementById('chief-nav');
       if (leadershipNav) leadershipNav.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const opNav = document.getElementById('operations-nav');
-      if (opNav) opNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
+      if (opNav) opNav.style.display = currentUser ? 'flex' : 'none';
       const chiefSecrets = document.getElementById('chief-command-secrets');
       if (chiefSecrets) chiefSecrets.style.display = currentUser.rank === 'CIA CHIEF' ? 'block' : 'none';
       const auditNav = document.getElementById('audit-nav');
@@ -1881,15 +1983,19 @@
       renderTacticalOperations();
       syncRadioChannelUI();
       updateViews();
+      updateServiceUI();
     }
 
     function setUserStatus(newStatus) {
-      if (!currentUser) return;
+      if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
+      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       currentUser.status = newStatus;
-      let idx = registeredUsers.findIndex(u => u.publicCode === currentUser.publicCode);
-      if (idx !== -1) {
-        registeredUsers[idx].status = newStatus;
-        setStoredData('cia_users', registeredUsers);
+      if (ciaSocket && ciaSocket.connected) {
+        ciaSocket.emit('presence:ping', { status: newStatus }, function(result) {
+          if (!result || !result.ok) return alert((result && result.message) || 'تعذر تحديث الحالة.');
+          currentUser = result.user || currentUser;
+          updateViews();
+        });
       }
       updateViews();
       alert(`تم تحديث حالتك الميدانية إلى: ${newStatus}`);
@@ -1933,18 +2039,19 @@
 
     function createTacticalOperation(){
       const rank=normalizeRank(currentUser?.rank);
-      if(!currentUser||!['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(rank)) return alert('إنشاء المهمات متاح للقيادة فقط.');
+      if(!currentUser||!['CIA CHIEF','SUPREME COMMANDER'].includes(rank)) return alert('إنشاء المهمات متاح للقائد وSenior Commander CIA فقط.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       const title=document.getElementById('op-title').value.trim();
       const objective=document.getElementById('op-objective').value.trim();
-      if(!title||!objective) return alert('أكمل اسم المهمة والهدف.');
+      const agentCode=document.getElementById('op-agent-code').value.trim();
+      if(!title||!objective||!agentCode) return alert('أكمل اسم المهمة والهدف وكود Agent العسكري.');
       const payload={
         title,
         type:document.getElementById('op-type').value,
         risk:document.getElementById('op-risk').value,
         objective,
-        commanderCode:document.getElementById('op-leader-code').value.trim()||currentUser.publicCode,
-        memberCodes:document.getElementById('op-members-codes').value.split(',').map(v=>v.trim()).filter(Boolean),
+        commanderCode:currentUser.publicCode,
+        agentCode,
         startLocation:parsePoint(document.getElementById('op-start').value),
         endLocation:parsePoint(document.getElementById('op-end').value)
       };
@@ -1952,7 +2059,7 @@
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر إنشاء المهمة.');
         const note=document.getElementById('op-notes').value.trim();
         const op=result.operation;
-        const finish=()=>{ document.querySelectorAll('#operation-command-box input,#operation-command-box textarea').forEach(el=>{el.value='';}); loadTacticalOperations(); };
+        const finish=()=>{ document.querySelectorAll('#operation-command-box input:not(#op-leader-code),#operation-command-box textarea').forEach(el=>{el.value='';}); document.getElementById('op-agent-code').value=''; loadTacticalOperations(); };
          if(note&&op?.id) ciaSocket.emit('operation:addNote',{id:op.id,text:note},()=>finish()); else finish();
         alert('تم إنشاء المهمة بنجاح.');
       });
@@ -1961,8 +2068,9 @@
     function renderTacticalOperations(){
       const list=document.getElementById('operations-list'); if(!list) return;
       const rank=normalizeRank(currentUser?.rank);
-      const command=['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(rank);
+      const command=['CIA CHIEF','SUPREME COMMANDER'].includes(rank);
       const box=document.getElementById('operation-command-box'); if(box) box.style.display=command?'block':'none';
+      const leaderInput=document.getElementById('op-leader-code'); if(leaderInput) leaderInput.value=currentUser?.publicCode||'';
       const rows=Array.isArray(operationsList)?operationsList:[];
       if(!rows.length){list.innerHTML='<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد مهمات متاحة حالياً.</div>';return;}
       list.innerHTML=rows.map(op=>{
@@ -1970,8 +2078,108 @@
         const crew=Array.isArray(op.crew)?op.crew:[];
         const notes=Array.isArray(op.notes)?op.notes:[];
         const border=status==='FAILED'?'var(--red-alert)':status==='COMPLETED'?'var(--green-status)':'var(--border)';
-        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • الأفراد: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">الطاقم: ${crew.map(c=>`#${esc(c.code)}${c.name?` — ${esc(c.name)}`:''}`).join('، ')}</div>`:''}${notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(n=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(n.authorCode||'—')} — ${esc(n.text||'')}</div>`).join('')}</div>`:''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;"><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}</div></div>`;
+        const canAnnotate = command || (Array.isArray(op.crew) && op.crew.some(c => c.code === currentUser?.publicCode));
+        const commandButtons = command ? `<button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}` : '';
+        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشارك العسكري: ${crew.map(c=>`#${esc(c.code)}${c.name&&['CIA CHIEF','SUPREME COMMANDER'].includes(rank)?` — ${esc(c.name)}`:''}`).join('، ')}</div>`:''}${notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(n=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(n.authorCode||'—')} — ${esc(n.text||'')}</div>`).join('')}</div>`:''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;"><button class="btn-action" style="margin:0;padding:5px 8px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="openOperationMap('${esc(op.id)}')">عرض مناطق المهمة على خريطة لوس</button>${commandButtons}</div></div>`;
       }).join('');
+    }
+
+    function closeOperationMap(){
+      const modal=document.getElementById('operation-map-modal');
+      if(modal) modal.style.display='none';
+      operationMapTool=null;
+      operationDrawingPoints=[];
+      if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
+      operationDrawingLayer=null;
+    }
+
+    function setOperationMapTool(type,color){
+      if(!currentUser||currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      operationMapTool={type,color};
+      operationDrawingPoints=[];
+      if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
+      operationDrawingLayer=null;
+      const help=document.getElementById('operation-map-help');
+      if(help) help.innerText=type==='marker'?'اضغط على الخريطة لوضع علامة، ثم اكتب وصفها.':'اضغط عدة نقاط لرسم المسار، ثم اضغط «إنهاء الرسم».';
+    }
+
+    function finishOperationDrawing(){
+      if(!operationMapOperation||!operationDrawingPoints.length) return;
+      if(operationDrawingPoints.length<2){ operationDrawingPoints=[]; return alert('الرسم يحتاج نقطتين على الأقل.'); }
+      const points=operationDrawingPoints.map(p=>({x:p.lng,y:p.lat}));
+      const color=operationMapTool?.color||'#111827';
+      ciaSocket.emit('operation:addDrawing',{id:operationMapOperation.id,points,color},function(result){
+        if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ الرسم.');
+        operationMapOperation=result.operation||operationMapOperation;
+        operationDrawingPoints=[];
+        if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
+        operationDrawingLayer=null;
+        renderOperationMapLayers();
+      });
+    }
+
+    function renderOperationMapLayers(){
+      if(!operationMap||!operationMapOperation) return;
+      operationMapLayers.forEach(layer=>{try{operationMap.removeLayer(layer);}catch(e){}});
+      operationMapLayers=[];
+      const op=operationMapOperation;
+      [op.startLocation,op.endLocation].forEach((point,index)=>{
+        const p=parsePoint(point?.label||point);
+        if(!p) return;
+        const marker=L.marker([p.lat,p.lng]).addTo(operationMap).bindPopup(index===0?'بداية المهمة':'نهاية المهمة');
+        operationMapLayers.push(marker);
+      });
+      (op.mapMarkers||[]).forEach(markerData=>{
+        const marker=L.circleMarker([markerData.y,markerData.x],{radius:8,color:markerData.color||'#facc15',fillColor:markerData.color||'#facc15',fillOpacity:.8}).addTo(operationMap).bindPopup(`<strong>${esc(markerData.label||'علامة ميدانية')}</strong><br>الكود: #${esc(markerData.authorCode||'')}`);
+        operationMapLayers.push(marker);
+      });
+      (op.mapDrawings||[]).forEach(drawing=>{
+        const line=L.polyline((drawing.points||[]).map(p=>[p.y,p.x]),{color:drawing.color||'#facc15',weight:4}).addTo(operationMap);
+        operationMapLayers.push(line);
+      });
+    }
+
+    function openOperationMap(operationId){
+      if(!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
+      if(currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      operationMapOperation=(operationsList||[]).find(op=>String(op.id)===String(operationId));
+      if(!operationMapOperation) return alert('المهمة غير موجودة.');
+      const modal=document.getElementById('operation-map-modal');
+      if(modal) modal.style.display='flex';
+      const title=document.getElementById('operation-map-title');
+      if(title) title.innerText=`خريطة مناطق المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
+      const command=['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank));
+      const assigned=(operationMapOperation.crew||[]).some(c=>c.code===currentUser.publicCode);
+      const help=document.getElementById('operation-map-help');
+      if(help) help.innerText=(command||assigned)?'يمكنك وضع علامات أو الرسم بالألوان الخمسة على الخريطة.':'يمكنك مشاهدة مواقع المهمة فقط.';
+      document.querySelectorAll('#operation-map-tools button').forEach(button=>button.style.display=(command||assigned)?'inline-block':'none');
+      setTimeout(()=>{
+        if(!operationMap){
+          const element=document.getElementById('operation-map');
+          operationMap=L.map(element,{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5});
+          L.imageOverlay('https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg',[[0,0],[1000,1000]]).addTo(operationMap);
+          operationMap.fitBounds([[0,0],[1000,1000]]);
+          operationMap.on('click',function(event){
+            if(!operationMapTool||!operationMapOperation) return;
+            const point={lat:Math.round(event.latlng.lat),lng:Math.round(event.latlng.lng)};
+            if(operationMapTool.type==='marker'){
+              const label=prompt('وصف العلامة على المهمة:','علامة ميدانية');
+              if(label===null) return;
+              ciaSocket.emit('operation:addMarker',{id:operationMapOperation.id,x:point.lng,y:point.lat,label,color:operationMapTool.color},function(result){
+                if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ العلامة.');
+                operationMapOperation=result.operation||operationMapOperation;
+                renderOperationMapLayers();
+              });
+            }else{
+              operationDrawingPoints.push(point);
+              if(operationDrawingLayer) operationMap.removeLayer(operationDrawingLayer);
+              operationDrawingLayer=L.polyline(operationDrawingPoints.map(p=>[p.lat,p.lng]),{color:operationMapTool.color||'#111827',weight:4,dashArray:'6 4'}).addTo(operationMap);
+            }
+          });
+        }
+        operationMap.invalidateSize();
+        renderOperationMapLayers();
+      },100);
     }
 
     function setOperationStatus(operationId,status){
@@ -2054,7 +2262,7 @@
       const status=bank.enabled===false?'موقوف':bank.frozen?'مجمد':'فعال';
       const color=bank.enabled===false?'var(--red-alert)':bank.frozen?'var(--primary-gold)':'var(--green-status)';
       const salaryState = bank.salaryClaimedToday ? 'تم استلام الراتب خلال آخر 24 ساعة' : 'الراتب متاح للاستلام';
-      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
+      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:var(--text-dim);">(يُملأ تلقائياً ولا يُستبدل بكود آخر)</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
       const cmd=document.getElementById('bank-command-box'); if(cmd) cmd.style.display=canManage?'block':'none';
       const controls=document.getElementById('bank-management-controls'); if(controls) controls.style.display=canManage?'block':'none';
       const content=document.getElementById('bank-command-content'); if(!content||!canManage)return;
@@ -2076,7 +2284,8 @@
   ciaSocket.emit(
     'bank:setAccount',
     {
-      accountNumber: value
+      accountNumber: value,
+      bankCode: currentUser?.publicCode || ''
     },
     (result) => {
       if (!result || !result.ok) {
@@ -2162,6 +2371,14 @@
     }
 
     function showPane(paneId, btn) {
+      if (paneId !== 'dashboard' && !currentUser) {
+        alert('يلزم تسجيل الدخول أولاً.');
+        return;
+      }
+      if (paneId !== 'dashboard' && currentUser && currentUser.activeService !== true) {
+        alert('يلزم تسجيل الدخول للخدمة أولاً.');
+        return;
+      }
       document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
       const pane = document.getElementById(paneId);
@@ -2186,7 +2403,8 @@
       renderCasesList();
       renderBank();
       renderTacticalOperations();
-      if (currentUser && (currentUser.rank === 'CIA CHIEF' || currentUser.rank === 'SUPREME COMMANDER')) {
+      renderSupportPanel();
+      if (currentUser && (normalizeRank(currentUser.rank) === 'CIA CHIEF' || normalizeRank(currentUser.rank) === 'SUPREME COMMANDER')) {
         renderChiefPanel();
         renderDailyAuditLogs();
       }
@@ -2215,8 +2433,43 @@
       }
     }
 
-    function startDuty(){ if(!currentUser||!ciaSocket)return; ciaSocket.emit('duty:start',{},r=>{ if(!r||!r.ok)return alert((r&&r.message)||'تعذر تسجيل المباشرة.'); updateViews(); }); }
-    function endDuty(){ if(!currentUser||!ciaSocket)return; ciaSocket.emit('duty:end',{},r=>{ if(!r||!r.ok)return alert((r&&r.message)||'تعذر إنهاء المباشرة.'); updateViews(); }); }
+    function updateServiceUI() {
+      const label = document.getElementById('service-status-label');
+      if (!label) return;
+      if (!currentUser) {
+        label.innerText = 'غير مسجل';
+        label.style.color = 'var(--red-alert)';
+      } else if (currentUser.serviceApproved === false) {
+        label.innerText = 'بانتظار قبول الهوية';
+        label.style.color = 'var(--primary-gold)';
+      } else if (currentUser.activeService === true) {
+        label.innerText = 'في الخدمة';
+        label.style.color = 'var(--green-status)';
+      } else {
+        label.innerText = 'خارج الخدمة';
+        label.style.color = 'var(--red-alert)';
+      }
+    }
+    function startDuty(){
+      if(!currentUser||!ciaSocket) return alert('يلزم تسجيل الدخول أولاً.');
+      ciaSocket.emit('duty:start',{},r=>{
+        if(!r||!r.ok)return alert((r&&r.message)||'تعذر تسجيل المباشرة.');
+        currentUser = r.user || {...currentUser, activeService:true, status:'في الخدمة'};
+        updateServiceUI();
+        updateViews();
+      });
+    }
+    function endDuty(){
+      if(!currentUser||!ciaSocket) return alert('يلزم تسجيل الدخول أولاً.');
+      ciaSocket.emit('duty:end',{},r=>{
+        if(!r||!r.ok)return alert((r&&r.message)||'تعذر إنهاء المباشرة.');
+        currentUser = r.user || {...currentUser, activeService:false, status:'خارج الخدمة'};
+        radioPoweredOn = false;
+        updateRadioPowerUI();
+        updateServiceUI();
+        updateViews();
+      });
+    }
 
     function renderPresenceStats() {
       const total = registeredUsers.length;
@@ -2356,6 +2609,10 @@
       // CIA CHIEF يستطيع إضافة المقرات، وجميع الأعضاء يستطيعون تحديد مواقعهم.
       gtaMap.on('click', function(e) {
         if (!currentUser) return;
+        if (currentUser.activeService !== true) {
+          alert('يلزم تسجيل الدخول للخدمة أولاً.');
+          return;
+        }
 
         let y = Math.round(e.latlng.lat);
         let x = Math.round(e.latlng.lng);
@@ -2453,6 +2710,7 @@
 
     function setMyGTALocation(x, y) {
       if (!currentUser || !ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
+      if (currentUser.activeService !== true) { alert('يلزم تسجيل الدخول للخدمة أولاً.'); return; }
       ciaSocket.emit('map:setLocation', { x: Number(x), y: Number(y) }, function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر حفظ موقعك على الخريطة.'); return; }
         mapLocations = result.locations || {};
@@ -2464,6 +2722,7 @@
 
     function clearMyMapLocation() {
       if (!currentUser || !ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
+      if (currentUser.activeService !== true) { alert('يلزم تسجيل الدخول للخدمة أولاً.'); return; }
       ciaSocket.emit('map:removeLocation', { code: currentUser.publicCode }, function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر إزالة موقعك من الخريطة.'); return; }
         mapLocations = result.locations || {};
@@ -2481,14 +2740,14 @@
       }
       mapMarkers = {};
 
-      mapLocations = getStoredData('cia_map_locations', {});
+      mapLocations = mapLocations && typeof mapLocations === 'object' ? mapLocations : {};
       for (let code in mapLocations) {
         let loc = mapLocations[code];
         const radioUser = registeredUsers.find(u => u.publicCode === code);
         const liveRadioChannel = radioUser && radioUser.radioOnline ? (radioUser.radioChannel || loc.radioChannel || 'غير محددة') : (loc.radioOnline ? (loc.radioChannel || 'غير محددة') : 'الراديو OFF');
         let marker = L.marker([loc.y, loc.x]).addTo(gtaMap)
           .bindPopup(`<b>العميل: #${loc.name}</b><br>الرتبة: ${loc.rank}<br>موقع لوس سانتوس: (${loc.x}, ${loc.y})<br>الموجة: <span style="color:var(--cyan-glow);">${liveRadioChannel}</span>`)
-          .openPopup();
+          ;
         mapMarkers[code] = marker;
       }
     }
@@ -2554,10 +2813,14 @@
 
     /* Radio Controls Logic */
     function toggleRadioPower() {
+      if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
+      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       radioPoweredOn = !radioPoweredOn;
       updateRadioPowerUI();
       if (radioPoweredOn && ciaSocket) {
         ciaSocket.emit('radio:join', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
+      } else if (!radioPoweredOn && ciaSocket) {
+        ciaSocket.emit('radio:leave', {});
       }
     }
 
@@ -2618,14 +2881,14 @@
     }
 
     function startPTT() {
-      if (!radioPoweredOn) return;
+      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return;
       playRadioBeep(1200);
       setRadioActivity('جاري البث الصوتي...', 0);
       if (ciaSocket) ciaSocket.emit('radio:ptt:start', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
     }
 
     function stopPTT() {
-      if (!radioPoweredOn) return;
+      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return;
       playRadioBeep(600);
       setRadioActivity('انتهى البث.', 3000);
       if (ciaSocket) ciaSocket.emit('radio:ptt:stop', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
@@ -2634,7 +2897,7 @@
     function sendRadioText() {
       const input = document.getElementById('radio-text-input');
       const txt = input.value.trim();
-      if (!txt || !radioPoweredOn) return;
+      if (!txt || !radioPoweredOn || !currentUser || currentUser.activeService !== true) return alert('يلزم تشغيل الراديو بعد تسجيل الدخول للخدمة.');
 
       const msgObj = {
         channel: radioChannel,
@@ -2648,7 +2911,7 @@
     }
 
     function sendRadioCode(code, meaning) {
-      if (!radioPoweredOn) return;
+      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return alert('يلزم تشغيل الراديو بعد تسجيل الدخول للخدمة.');
       if (ciaSocket) {
         ciaSocket.emit('radio:code', {
           channel: radioChannel,
@@ -2860,6 +3123,55 @@
       `).join('') || '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد رسائل مشفرة محفوظة.</div>';
     }
 
+    function sendSupportMessage() {
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      const text = document.getElementById('support-text')?.value.trim();
+      const name = document.getElementById('support-name')?.value.trim() || currentUser?.name || '';
+      if (!text) return alert('اكتب الاستفسار أولاً.');
+      ciaSocket.emit('support:send', { name, text, threadId: lastSupportThreadId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر إرسال الاستفسار.');
+        lastSupportThreadId = result.threadId;
+        const msg = document.getElementById('support-msg');
+        if (msg) msg.innerText = 'تم إرسال الاستفسار للقيادة فقط.';
+        const input = document.getElementById('support-text');
+        if (input) input.value = '';
+      });
+    }
+
+    function replySupport(threadId) {
+      if (!ciaSocket || !ciaSocket.connected) return;
+      const text = prompt('اكتب رد القيادة:');
+      if (!text || !text.trim()) return;
+      ciaSocket.emit('support:reply', { threadId, text: text.trim() }, function(result) {
+        if (!result || !result.ok) alert((result && result.message) || 'تعذر إرسال الرد.');
+      });
+    }
+
+    function renderSupportPanel() {
+      const panel = document.getElementById('leadership-support-panel');
+      const list = document.getElementById('support-thread-list');
+      if (!panel || !list) return;
+      const leadership = currentUser && ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank));
+      if (!leadership) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = 'block';
+      const threads = {};
+      (supportMessages || []).forEach(message => {
+        threads[message.threadId] = threads[message.threadId] || [];
+        threads[message.threadId].push(message);
+      });
+      list.innerHTML = Object.values(threads).reverse().map(messages => {
+        const first = messages[0];
+        return `<div class="card" style="margin:6px 0;border-color:var(--border);">
+          <div style="font-size:.68rem;color:var(--cyan-glow);">#${esc(first.senderCode || 'غير معتمد')} — ${esc(first.senderName || '')}</div>
+          ${messages.map(m => `<div style="font-size:.72rem;margin-top:5px;color:${m.reply ? 'var(--primary-gold)' : 'var(--text-bright)'};">${m.reply ? 'رد القيادة: ' : ''}${esc(m.text)}</div>`).join('')}
+          <button type="button" class="status-btn status-patrol" style="margin-top:6px;" onclick="replySupport('${esc(first.threadId)}')">الرد على الاستفسار</button>
+        </div>`;
+      }).join('') || '<div class="identity-meta" style="padding:10px;">لا توجد استفسارات جديدة.</div>';
+    }
+
     /* Reports System */
     function handleImageUpload(input) {
       if (input.files && input.files[0]) {
@@ -3031,6 +3343,17 @@
       const charactersBox = document.getElementById('chief-only-characters');
       if (admissionsBox) admissionsBox.style.display = isChief ? 'block' : 'none';
       if (charactersBox) charactersBox.style.display = isChief ? 'block' : 'none';
+      const identityCard = document.getElementById('identity-approval-card');
+      if (identityCard) identityCard.style.display = 'block';
+      const identityList = document.getElementById('identity-approval-list');
+      if (identityList) {
+        identityList.innerHTML = identityApprovalQueue.length
+          ? identityApprovalQueue.map(user => {
+              const identity = user.identity || {};
+              return `<tr><td>#${esc(user.publicCode||'')}</td><td>${esc(getRankLabel(user.rank))}</td><td>${esc(identity.fullName||'غير مكتملة')}<br><small>${esc(identity.nationality||'')}</small></td><td><button onclick="approveIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--green-status);color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">قبول</button> <button onclick="rejectIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--red-alert);color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">رفض</button></td></tr>`;
+            }).join('')
+          : '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);">لا توجد طلبات هويات معلقة</td></tr>';
+      }
 
       // Pending Queue
       const pendingList = document.getElementById('pending-queue-list');
@@ -3130,6 +3453,21 @@
 
     function rejectMember(reqId) {
       if (ciaSocket) ciaSocket.emit('admin:action', { action: 'reject', requestId: reqId });
+    }
+
+    function approveIdentity(userId) {
+      if (!ciaSocket) return;
+      ciaSocket.emit('admin:action', { action: 'approve_identity', targetId: userId }, function(result) {
+        if (!result || !result.ok) alert((result && result.message) || 'تعذر اعتماد الهوية.');
+      });
+    }
+
+    function rejectIdentity(userId) {
+      if (!ciaSocket) return;
+      if (!confirm('رفض اعتماد هذه الهوية؟')) return;
+      ciaSocket.emit('admin:action', { action: 'reject_identity', targetId: userId }, function(result) {
+        if (!result || !result.ok) alert((result && result.message) || 'تعذر رفض الهوية.');
+      });
     }
 
     function approveCharacterReq(reqId) {
