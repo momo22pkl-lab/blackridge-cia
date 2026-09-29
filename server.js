@@ -954,7 +954,7 @@ function sessionSet(userId) {
   return sessions.get(userId);
 }
 
-function markLogin(socket, user) {
+function markLogin(socket, user, options = {}) {
   const set =
     sessionSet(user.id);
 
@@ -972,9 +972,16 @@ function markLogin(socket, user) {
   );
 
   user.online = true;
-  // Account login is deliberately separate from starting duty.
-  user.activeService = false;
-  user.status = 'خارج الخدمة';
+  // Account login is deliberately separate from starting duty. During a
+  // short Socket.IO reconnect, preserve an already active duty session.
+  const resumeService =
+    options.resumeService === true &&
+    user.serviceApproved !== false &&
+    user.activeService === true;
+  if (!resumeService) {
+    user.activeService = false;
+    user.status = 'خارج الخدمة';
+  }
   user.radioOnline = false;
 
   if (first) {
@@ -2519,7 +2526,11 @@ io.on(
 
           markLogin(
             socket,
-            user
+            user,
+            {
+              resumeService:
+                payload?.resumeService === true
+            }
           );
 
           const salary =
