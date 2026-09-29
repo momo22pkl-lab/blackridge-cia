@@ -1438,6 +1438,33 @@
           if (raw) { try { seed[key] = JSON.parse(raw); } catch(e) {} }
         });
         ciaSocket.emit('shared:data:seed', seed);
+
+        // Socket.IO may reconnect after a network or browser sleep event.
+        // Re-bind the authenticated account instead of leaving the UI logged
+        // in while the server has a fresh socket with no userId.
+        if (currentUser) {
+          let savedName = currentUser.name || '';
+          let savedCode = currentUser.secretCode || '';
+          try {
+            savedName = localStorage.getItem('cia_last_login_name') || savedName;
+            savedCode = localStorage.getItem('cia_last_login_code') || savedCode;
+          } catch (e) {}
+          if (savedName && savedCode) {
+            ciaSocket.emit('auth:login', {
+              name: savedName,
+              code: savedCode,
+              resumeService: currentUser.activeService === true
+            }, function(result) {
+              if (!result || !result.ok) return;
+              currentUser = result.user || currentUser;
+              completeLogin();
+              if (result.needsIdentity) openIdentityModal();
+            });
+          }
+        }
+      });
+      ciaSocket.on('disconnect', function() {
+        ciaSocketReady = false;
       });
       ciaSocket.on('character:list:result', function(result) {
         if (!result || !result.ok) { document.getElementById('characters-manager-msg').innerText = (result && result.message) || 'تعذر تحميل الشخصيات.'; return; }
