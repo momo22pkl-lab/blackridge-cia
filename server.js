@@ -65,6 +65,7 @@ const SYSTEM = Object.freeze({
 const EMPTY_STATE = {
   cia_users: [],
   cia_queue: [],
+  cia_support: [],
   cia_character_queue: [],
   cia_accounts: [],
   cia_chats: { global: [], private: {} },
@@ -130,6 +131,7 @@ function loadState() {
 
     for (const key of [
       'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
+      'cia_support',
       'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
       'cia_audit_logs', 'cia_attendance', 'cia_operations'
     ]) {
@@ -164,6 +166,16 @@ state = loadState();
 const sessions = new Map();
 const socketToUser = new Map();
 const radioChannels = new Map();
+const pendingRequestSockets = new Map();
+const supportThreadSockets = new Map();
+
+const MISSION_DRAWING_COLORS = new Set([
+  '#facc15',
+  '#ef4444',
+  '#111827',
+  '#ffffff',
+  '#a855f7'
+]);
 
 function normalizeRank(rank) {
   const value = clean(rank, 100).toUpperCase();
@@ -322,10 +334,9 @@ function ensureBank(user) {
   user.bank.enabled = user.bank.enabled !== false;
   user.bank.salaryEnabled = user.bank.salaryEnabled !== false;
 
-  if (!user.bank.bankCode) {
-    user.bank.bankCode =
-      `BANK-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-  }
+  // The banking identifier is the character's military code. Older records
+  // may contain a generated BANK-* value; migrate them on first read.
+  if (user.publicCode) user.bank.bankCode = user.publicCode;
 
   return user.bank;
 }
@@ -341,6 +352,9 @@ function normalizeUser(user) {
 
   user.approved = user.approved !== false;
   user.activeService = user.activeService !== false;
+  user.serviceApproved = user.serviceApproved !== false;
+  user.identityApprovalPending = user.identityApprovalPending === true;
+  user.rejectionMessage = clean(user.rejectionMessage || '', 500);
   user.suspended = user.suspended === true;
   user.online = user.online === true;
 
@@ -497,7 +511,6 @@ function findUser(name, secretCode) {
         lower(u.name) === n &&
         u.secretCode === c &&
         u.approved !== false &&
-        u.activeService !== false &&
         u.suspended !== true
     ) || null
   );
@@ -562,6 +575,17 @@ function publicUser(user, viewer = null) {
 
     activeService:
       user.activeService !== false,
+
+    serviceApproved:
+      user.serviceApproved !== false,
+
+    identityApprovalPending:
+      user.identityApprovalPending === true,
+
+    rejectionMessage:
+      self
+        ? (user.rejectionMessage || '')
+        : '',
 
     suspended:
       user.suspended === true,
@@ -812,13 +836,25 @@ function snapshot(viewer = null) {
       ),
 
     cia_queue:
-      isChief(viewer)
+      isLeadership(viewer)
         ? state.cia_queue
+        : [],
+
+    cia_identity_queue:
+      isLeadership(viewer)
+        ? state.cia_users
+            .filter((u) => u.identityApprovalPending === true)
+            .map((u) => publicUser(u, viewer))
         : [],
 
     cia_character_queue:
       isChief(viewer)
         ? state.cia_character_queue
+        : [],
+
+    cia_support:
+      isLeadership(viewer)
+        ? (state.cia_support || [])
         : [],
 
     cia_chats: {
@@ -936,8 +972,10 @@ function markLogin(socket, user) {
   );
 
   user.online = true;
-  user.activeService = true;
-  user.status = 'في الخدمة';
+  // Account login is deliberately separate from starting duty.
+  user.activeService = false;
+  user.status = 'خارج الخدمة';
+  user.radioOnline = false;
 
   if (first) {
     user.loginCount += 1;
@@ -1014,12 +1052,36 @@ function requireSocketUser(socket) {
 
   if (
     user.suspended ||
+    user.serviceApproved === false ||
     user.activeService === false
   ) {
     return null;
   }
 
   return user;
+}
+
+function requireAuthenticatedUser(socket) {
+  const user =
+    socket.userId
+      ? getUserById(socket.userId)
+      : null;
+
+  if (!user || user.suspended) return null;
+  return user;
+}
+
+function serviceError(cb, user) {
+  if (!user) {
+    return no(cb, 'يجب تسجيل الدخول أولاً.');
+  }
+  if (user.serviceApproved === false) {
+    return no(cb, 'لا يمكنك تسجيل الدخول للخدمة قبل قبول الهوية من القيادة.');
+  }
+  if (user.activeService !== true) {
+    return no(cb, 'يلزم تسجيل الدخول للخدمة أولاً.');
+  }
+  return null;
 }
 
 function canManageMember(
@@ -1607,6 +1669,14 @@ function operationSanitize(
         op.endLocation ||
         null,
 
+      mapMarkers: Array.isArray(op.mapMarkers)
+        ? op.mapMarkers.slice(-200)
+        : [],
+
+      mapDrawings: Array.isArray(op.mapDrawings)
+        ? op.mapDrawings.slice(-100)
+        : [],
+
       commanderCode: '',
       battalionLeaderCode: '',
       commanderName: '',
@@ -1656,6 +1726,14 @@ function operationSanitize(
       op.startLocation ||
       op.endLocation ||
       null,
+
+    mapMarkers: Array.isArray(op.mapMarkers)
+      ? op.mapMarkers.slice(-200)
+      : [],
+
+    mapDrawings: Array.isArray(op.mapDrawings)
+      ? op.mapDrawings.slice(-100)
+      : [],
 
     commanderCode:
       op.commanderCode ||
@@ -1724,6 +1802,30 @@ function operationSanitize(
             ''
           )
         : ''
+  };
+}
+
+function canAnnotateOperation(actor, operation) {
+  if (!actor || !operation) return false;
+  return (
+    isChief(actor) ||
+    isSenior(actor) ||
+    actor.publicCode === operation.createdByCode ||
+    actor.publicCode === operation.commanderCode ||
+    (
+      Array.isArray(operation.memberCodes) &&
+      operation.memberCodes.includes(actor.publicCode)
+    )
+  );
+}
+
+function missionPoint(value) {
+  const x = Number(value?.x ?? value?.lng);
+  const y = Number(value?.y ?? value?.lat);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x: Math.max(0, Math.min(1000, x)),
+    y: Math.max(0, Math.min(1000, y))
   };
 }
 
@@ -2042,6 +2144,19 @@ io.on(
             account
           );
 
+          const request = {
+            id: makeId('JOIN'),
+            accountId: account.id,
+            name: characterName,
+            characterName,
+            initialCode: SYSTEM.memberRequestCode,
+            requestedRank: 'AGENT',
+            requestedAt: now(),
+            status: 'PENDING'
+          };
+          state.cia_queue.push(request);
+          pendingRequestSockets.set(request.id, socket.id);
+
           addAuditLog(
             'إنشاء حساب',
             null,
@@ -2067,7 +2182,7 @@ io.on(
                 true,
 
               message:
-                'تم إنشاء الحساب. استخدم 0012 من شاشة الدخول لإرسال طلب القبول.'
+                'تم إنشاء الحساب وإرسال طلب القبول إلى القيادة.'
             }
           );
         } catch (error) {
@@ -2365,6 +2480,13 @@ io.on(
             );
 
           if (!user) {
+            const rejected =
+              state.cia_users.find(
+                (candidate) =>
+                  lower(candidate.name) === lower(name) &&
+                  candidate.secretCode === code &&
+                  candidate.rejectionMessage
+              );
             const pending =
               state.cia_accounts.some(
                 (a) =>
@@ -2375,7 +2497,9 @@ io.on(
               );
 
             const message =
-              pending
+              rejected
+                ? rejected.rejectionMessage
+                : pending
                 ? 'هذه الشخصية بانتظار قبول CIA CHIEF. كود التسجيل الأولي لا يمنح صلاحية دخول.'
                 : 'الاسم أو كود الدخول غير متطابقين.';
 
@@ -2421,7 +2545,14 @@ io.on(
 
                 needsIdentity:
                   user.identityRequired !== false &&
-                  !user.identity
+                  !user.identity,
+
+                serviceApproved:
+                  user.serviceApproved !== false,
+
+                serviceRequired:
+                  user.activeService !== true ||
+                  user.serviceApproved === false
               }
             );
 
@@ -2463,7 +2594,7 @@ io.on(
     );
 socket.on('member:saveIdentity', (payload, cb) => {
   try {
-    const actor = requireSocketUser(socket);
+    const actor = requireAuthenticatedUser(socket);
 
     if (!actor) {
       return no(cb, 'يجب تسجيل الدخول أولاً.');
@@ -2487,6 +2618,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     actor.identity = identity;
     actor.identityRequired = false;
+    if (!isLeadership(actor)) {
+      actor.identityApprovalPending = true;
+      actor.serviceApproved = false;
+      actor.activeService = false;
+      actor.status = 'بانتظار اعتماد الهوية';
+    }
 
     saveState();
 
@@ -2494,7 +2631,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
       'اعتماد الهوية',
       actor,
       actor,
-      'تم حفظ الهوية الأمنية للشخصية.'
+      isLeadership(actor)
+        ? 'تم حفظ الهوية الأمنية للشخصية القيادية.'
+        : 'تم حفظ الهوية وإرسال طلب اعتمادها إلى القيادة.'
     );
 
     const result = ok(cb, {
@@ -2504,6 +2643,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.emit('identity:result', result);
 
     emitState();
+
+    if (!isLeadership(actor)) {
+      for (const targetSocket of io.sockets.sockets.values()) {
+        const targetUser = targetSocket.userId
+          ? getUserById(targetSocket.userId)
+          : null;
+        if (targetUser && isLeadership(targetUser)) {
+          targetSocket.emit('identity:approval:new', {
+            user: publicUser(actor, targetUser)
+          });
+        }
+      }
+    }
 
   } catch (error) {
     return no(
@@ -2517,7 +2669,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       'auth:me',
       (payload, cb) => {
         const user =
-          requireSocketUser(socket);
+          requireAuthenticatedUser(socket);
 
         if (!user) {
           return no(
@@ -2748,6 +2900,73 @@ socket.on('member:saveIdentity', (payload, cb) => {
             );
 
           /* -------------------------------------------------
+             IDENTITY APPROVAL
+          ------------------------------------------------- */
+
+          if (
+            action === 'approve_identity' ||
+            action === 'accept_identity' ||
+            action === 'reject_identity' ||
+            action === 'deny_identity'
+          ) {
+            if (!isLeadership(actor)) {
+              return no(cb, 'اعتماد الهويات متاح للقائد وSenior Commander CIA فقط.');
+            }
+            if (!target) {
+              return no(cb, 'الشخصية المستهدفة غير موجودة.');
+            }
+            if (!target.identityApprovalPending) {
+              return no(cb, 'لا يوجد طلب اعتماد هوية لهذه الشخصية.');
+            }
+
+            const rejecting =
+              action === 'reject_identity' ||
+              action === 'deny_identity';
+
+            if (rejecting) {
+              target.identityApprovalPending = false;
+              target.serviceApproved = false;
+              target.approved = false;
+              target.activeService = false;
+              target.online = false;
+              target.status = 'مرفوضة';
+              target.rejectionMessage =
+                'تم رفضك. لأي استفسار قم بإرساله هنا، وسيصل إلى CIA CHIEF وSenior Commander CIA فقط.';
+              addAuditLog('رفض الهوية', actor, target, target.rejectionMessage);
+            } else {
+              target.identityApprovalPending = false;
+              target.serviceApproved = true;
+              target.approved = true;
+              target.rejectionMessage = '';
+              target.status = 'خارج الخدمة';
+              addAuditLog('اعتماد الهوية', actor, target, 'تم اعتماد الهوية من القيادة.');
+            }
+
+            saveState();
+            emitState();
+
+            for (const socketId of sessions.get(target.id) || []) {
+              const targetSocket = io.sockets.sockets.get(socketId);
+              if (targetSocket) {
+                targetSocket.emit(rejecting ? 'identity:rejected' : 'identity:approved', {
+                  ok: !rejecting,
+                  message: rejecting
+                    ? target.rejectionMessage
+                    : 'تم اعتماد هويتك. سجّل الدخول للخدمة للمتابعة.'
+                });
+              }
+            }
+
+            return ok(cb, {
+              action: rejecting ? 'reject_identity' : 'approve_identity',
+              user: publicUser(target, actor),
+              message: rejecting
+                ? target.rejectionMessage
+                : 'تم اعتماد الهوية.'
+            });
+          }
+
+          /* -------------------------------------------------
              ACCEPT JOIN
           ------------------------------------------------- */
 
@@ -2833,10 +3052,26 @@ socket.on('member:saveIdentity', (payload, cb) => {
               );
             }
 
-            const publicCode =
-              makePublicCode(
-                rank
+            const requestedPublicCode =
+              clean(
+                payload?.publicCode,
+                100
               );
+
+            const publicCode =
+              requestedPublicCode || makePublicCode(rank);
+
+            if (
+              !publicCode ||
+              publicCode === 'PENDING' ||
+              (
+                state.cia_users.some(
+                  (u) => u.publicCode === publicCode
+                )
+              )
+            ) {
+              return no(cb, 'الكود العسكري غير صالح أو مستخدم.');
+            }
 
             const newUser =
               normalizeUser({
@@ -2844,10 +3079,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   makeId('AGENT'),
 
                 accountId:
+                  request.accountId ||
                   payload?.accountId ||
                   null,
 
                 characterOwnerId:
+                  request.accountId ||
                   payload?.accountId ||
                   null,
 
@@ -2867,7 +3104,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   true,
 
                 activeService:
+                  false,
+
+                serviceApproved:
                   true,
+
+                identityApprovalPending:
+                  false,
 
                 suspended:
                   false,
@@ -2922,6 +3165,26 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   request.id
               );
 
+            const rejectionMessage =
+              'تم رفضك. لأي استفسار قم بإرساله هنا، وسيصل إلى CIA CHIEF وSenior Commander CIA فقط.';
+            const rejectedAccount = request.accountId
+              ? state.cia_accounts.find((a) => a.id === request.accountId)
+              : null;
+            if (rejectedAccount) {
+              rejectedAccount.status = 'REJECTED';
+              rejectedAccount.rejectionMessage = rejectionMessage;
+              rejectedAccount.rejectedAt = now();
+            }
+
+            const account = request.accountId
+              ? state.cia_accounts.find((a) => a.id === request.accountId)
+              : null;
+            if (account) {
+              account.status = 'APPROVED';
+              account.approvedAt = now();
+              account.characterId = newUser.id;
+            }
+
             addAuditLog(
               'قبول عضو',
               actor,
@@ -2931,6 +3194,21 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
             saveState();
             emitState();
+
+            const requesterSocketId = pendingRequestSockets.get(request.id);
+            pendingRequestSockets.delete(request.id);
+            const requesterSocket = requesterSocketId
+              ? io.sockets.sockets.get(requesterSocketId)
+              : null;
+            if (requesterSocket) {
+              requesterSocket.emit('member:approved', {
+                ok: true,
+                user: publicUser(newUser, newUser),
+                secretCode: newUser.secretCode,
+                publicCode: newUser.publicCode,
+                message: 'تم قبولك. يمكنك الآن تسجيل الدخول ثم تسجيل الدخول للخدمة.'
+              });
+            }
 
             return ok(
               cb,
@@ -3010,9 +3288,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
             saveState();
             emitState();
 
+            const requesterSocketId = pendingRequestSockets.get(request.id);
+            pendingRequestSockets.delete(request.id);
+            const requesterSocket = requesterSocketId
+              ? io.sockets.sockets.get(requesterSocketId)
+              : null;
+            if (requesterSocket) {
+              requesterSocket.emit('join:rejected', {
+                ok: false,
+                message: rejectionMessage
+              });
+            }
+
             return ok(cb, {
-              message:
-                'تم رفض الطلب.'
+              message: rejectionMessage
             });
           }
 
@@ -4153,10 +4442,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
           (target.accountId && actor.accountId && target.accountId === actor.accountId) ||
           target.characterOwnerId === (actor.characterOwnerId || actor.id);
         if (!sameOwner) return no(cb, 'لا تملك صلاحية الدخول إلى هذه الشخصية.');
-        if (!target.approved || target.activeService === false || target.suspended) {
+        if (!target.approved || target.serviceApproved === false || target.suspended) {
           return no(cb, 'هذه الشخصية لم تعتمد أو تم إيقافها.');
         }
-        if (code !== target.secretCode && code !== target.publicCode) {
+        if (
+          code &&
+          code !== target.secretCode &&
+          code !== target.publicCode
+        ) {
           return no(cb, 'كود الشخصية غير صحيح.');
         }
 
@@ -4237,6 +4530,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('bank:setAccount', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const bankCode = clean(payload?.bankCode || payload?.code || '', 100);
+      if (bankCode && bankCode !== actor.publicCode) {
+        return no(cb, 'كود البنك يجب أن يساوي الكود العسكري للشخصية الحالية.');
+      }
       const accountNumber = clean(payload?.accountNumber || payload?.account || '', 60);
       if (!accountNumber) return no(cb, 'أدخل رقم الحساب البنكي.');
       actor.bankAccount = accountNumber;
@@ -6599,16 +6896,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (
-          !(
-            isLeadership(actor) ||
-            isHighCommander(actor)
-          )
-        ) {
-          return no(
-            cb,
-            'إنشاء العمليات متاح للقيادة.'
-          );
+        if (!isLeadership(actor)) {
+          return no(cb, 'إنشاء المهمات متاح لـ CIA CHIEF وSenior Commander CIA فقط.');
+        }
+
+        const assignedCode = clean(
+          payload?.agentCode ||
+          (Array.isArray(payload?.memberCodes) ? payload.memberCodes[0] : ''),
+          100
+        );
+        const assignedAgent = assignedCode
+          ? getUserByPublicCode(assignedCode)
+          : null;
+        if (!assignedAgent || normalizeRank(assignedAgent.rank) !== 'AGENT') {
+          return no(cb, 'اكتب الكود العسكري الصحيح لـ Agent واحد لتنفيذ المهمة.');
         }
 
         const operation = {
@@ -6673,26 +6974,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
             ),
 
           commanderName:
-            isLeadership(actor)
-              ? actor.name
-              : '',
+            actor.name,
 
           memberCodes:
-            Array.isArray(
-              payload?.memberCodes
-            )
-              ? payload.memberCodes
-                  .map(
-                    (x) =>
-                      clean(
-                        x,
-                        100
-                      )
-                  )
-                  .filter(Boolean)
-              : [],
+            [assignedAgent.publicCode],
 
           notes: [],
+
+          mapMarkers: [],
+
+          mapDrawings: [],
 
           createdByCode:
             actor.publicCode,
@@ -6781,15 +7072,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (
-          !(
-            isLeadership(actor) ||
-            isHighCommander(actor)
-          )
-        ) {
+        if (!isLeadership(actor)) {
           return no(
             cb,
-            'لا تملك صلاحية تعديل العمليات.'
+            'تعديل المهمات متاح للقائد وSenior Commander CIA فقط.'
           );
         }
 
@@ -6811,6 +7097,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             cb,
             'العملية غير موجودة.'
           );
+        }
+
+        if (!canAnnotateOperation(actor, operation)) {
+          return no(cb, 'التحديثات الميدانية متاحة لمنشئ المهمة والقيادة والمشارك المحدد فقط.');
         }
 
         const fields = [
@@ -6863,16 +7153,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
             payload?.memberCodes
           )
         ) {
-          operation.memberCodes =
-            payload.memberCodes
-              .map(
-                (x) =>
-                  clean(
-                    x,
-                    100
-                  )
-              )
-              .filter(Boolean);
+          const selected = clean(payload.memberCodes[0], 100);
+          const selectedAgent = getUserByPublicCode(selected);
+          if (!selectedAgent || normalizeRank(selectedAgent.rank) !== 'AGENT') {
+            return no(cb, 'المهمة يجب أن تسند إلى Agent واحد بكوده العسكري.');
+          }
+          operation.memberCodes = [selectedAgent.publicCode];
         }
 
         operation.updatedAt =
@@ -6933,6 +7219,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             cb,
             'العملية غير موجودة.'
           );
+        }
+
+        if (!canAnnotateOperation(actor, operation)) {
+          return no(cb, 'التحديثات الميدانية متاحة لمنشئ المهمة والقيادة والمشارك المحدد فقط.');
         }
 
         const text =
@@ -7064,6 +7354,63 @@ socket.on('member:saveIdentity', (payload, cb) => {
         );
       }
     );
+
+    socket.on('operation:addMarker', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يلزم تسجيل الدخول للخدمة أولاً.');
+      const id = clean(payload?.id || payload?.operationId, 200);
+      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
+      if (!operation) return no(cb, 'المهمة غير موجودة.');
+      if (!canAnnotateOperation(actor, operation)) {
+        return no(cb, 'إضافة علامات المهمة متاحة لمنشئ المهمة والقائد وSenior Commander CIA والمشارك المحدد فقط.');
+      }
+      const point = missionPoint(payload?.point || payload);
+      if (!point) return no(cb, 'موقع العلامة غير صحيح.');
+      const marker = {
+        id: makeId('OPMARK'),
+        ...point,
+        label: clean(payload?.label || 'علامة ميدانية', 180),
+        color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
+        authorCode: actor.publicCode,
+        at: now()
+      };
+      operation.mapMarkers = Array.isArray(operation.mapMarkers) ? operation.mapMarkers : [];
+      operation.mapMarkers.push(marker);
+      operation.mapMarkers = operation.mapMarkers.slice(-200);
+      operation.updatedAt = now();
+      saveState();
+      emitOperationState();
+      return ok(cb, { marker, operation: operationSanitize(operation, actor) });
+    });
+
+    socket.on('operation:addDrawing', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يلزم تسجيل الدخول للخدمة أولاً.');
+      const id = clean(payload?.id || payload?.operationId, 200);
+      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
+      if (!operation) return no(cb, 'المهمة غير موجودة.');
+      if (!canAnnotateOperation(actor, operation)) {
+        return no(cb, 'الرسم على خريطة المهمة غير متاح لهذه الشخصية.');
+      }
+      const points = Array.isArray(payload?.points)
+        ? payload.points.map(missionPoint).filter(Boolean).slice(0, 500)
+        : [];
+      if (points.length < 2) return no(cb, 'الرسم يحتاج نقطتين على الأقل.');
+      const drawing = {
+        id: makeId('OPDRAW'),
+        points,
+        color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
+        authorCode: actor.publicCode,
+        at: now()
+      };
+      operation.mapDrawings = Array.isArray(operation.mapDrawings) ? operation.mapDrawings : [];
+      operation.mapDrawings.push(drawing);
+      operation.mapDrawings = operation.mapDrawings.slice(-100);
+      operation.updatedAt = now();
+      saveState();
+      emitOperationState();
+      return ok(cb, { drawing, operation: operationSanitize(operation, actor) });
+    });
     
     /* =====================================================
        CLIENT COMPATIBILITY EVENTS
@@ -7235,8 +7582,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('duty:start', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (actor.serviceApproved === false) {
+        return no(cb, 'لا يمكنك تسجيل الدخول للخدمة قبل قبول هويتك من القيادة.');
+      }
+      if (actor.activeService === true) {
+        return ok(cb, { attendance: null, user: publicUser(actor, actor) });
+      }
       const dayKey = now().slice(0, 10);
       const current = (state.cia_attendance || []).find(
         (item) => item.userId === actor.id && item.dayKey === dayKey && !item.endedAt
@@ -7254,24 +7607,27 @@ socket.on('member:saveIdentity', (payload, cb) => {
       };
       state.cia_attendance.unshift(attendance);
       actor.activeService = true;
+      actor.online = true;
       actor.status = 'في الخدمة';
       saveState();
       emitState();
-      return ok(cb, { attendance });
+      return ok(cb, { attendance, user: publicUser(actor, actor) });
     });
 
     socket.on('duty:end', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const current = (state.cia_attendance || []).find(
         (item) => item.userId === actor.id && !item.endedAt
       );
-      if (!current) return no(cb, 'لا توجد مباشرة مفتوحة.');
-      current.endedAt = now();
+      if (current) current.endedAt = now();
+      removeRadioMember(socket.id);
+      actor.radioOnline = false;
+      actor.activeService = false;
       actor.status = 'خارج الخدمة';
       saveState();
       emitState();
-      return ok(cb, { attendance: current });
+      return ok(cb, { attendance: current, user: publicUser(actor, actor) });
     });
 
     socket.on('operation:updateStatus', (payload, cb) => {
@@ -7280,7 +7636,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.operationId || payload?.id, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!(isLeadership(actor) || isHighCommander(actor))) {
+      if (!isLeadership(actor)) {
         return no(cb, 'لا تملك صلاحية تحديث المهمة.');
       }
       operation.status = clean(payload?.status, 100) || operation.status;
@@ -7310,7 +7666,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
         timestamp: now(),
         at: now()
       };
-
       if (mode === 'private') {
         const target = getUserByPublicCode(message.targetCode);
         if (!target) return no(cb, 'المستخدم المستهدف غير موجود.');
@@ -7360,6 +7715,68 @@ socket.on('member:saveIdentity', (payload, cb) => {
       saveState();
       emitState();
       return ok(cb, { id: messageId });
+    });
+
+    socket.on('support:send', (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      const senderName = actor
+        ? actor.name
+        : clean(payload?.name || payload?.characterName || 'شخصية غير معتمدة', 120);
+      const text = clean(payload?.text || payload?.message, 3000);
+      if (!text) return no(cb, 'اكتب الاستفسار أولاً.');
+
+      const message = {
+        id: makeId('SUPPORT'),
+        threadId: clean(payload?.threadId, 120) || makeId('THREAD'),
+        senderCode: actor?.publicCode || '',
+        senderName,
+        senderRank: actor ? rankLabel(actor.rank) : 'Agent قيد الاعتماد',
+        text,
+        at: now(),
+        reply: actor ? false : false
+      };
+      supportThreadSockets.set(message.threadId, socket.id);
+      state.cia_support.push(message);
+      state.cia_support = state.cia_support.slice(-500);
+      saveState();
+
+      for (const targetSocket of io.sockets.sockets.values()) {
+        const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
+        if (targetUser && isLeadership(targetUser)) {
+          targetSocket.emit('support:message', message);
+        }
+      }
+      return ok(cb, { message, threadId: message.threadId });
+    });
+
+    socket.on('support:reply', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor || !isLeadership(actor)) {
+        return no(cb, 'الرد على استفسارات الاعتماد متاح للقائد وSenior Commander CIA فقط.');
+      }
+      const text = clean(payload?.text || payload?.message, 3000);
+      const threadId = clean(payload?.threadId, 120);
+      if (!text || !threadId) return no(cb, 'بيانات الرد غير مكتملة.');
+      const message = {
+        id: makeId('SUPPORT'),
+        threadId,
+        senderCode: actor.publicCode,
+        senderName: actor.name,
+        senderRank: rankLabel(actor.rank),
+        text,
+        at: now(),
+        reply: true
+      };
+      state.cia_support.push(message);
+      state.cia_support = state.cia_support.slice(-500);
+      saveState();
+      for (const targetSocket of io.sockets.sockets.values()) {
+        const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
+        if (targetUser && isLeadership(targetUser)) targetSocket.emit('support:message', message);
+      }
+      const requesterSocket = io.sockets.sockets.get(supportThreadSockets.get(threadId));
+      if (requesterSocket) requesterSocket.emit('support:message', message);
+      return ok(cb, { message });
     });
 
     /* =====================================================
