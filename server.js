@@ -5438,9 +5438,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
             );
           }
 
-          removeMapLocationByCode(
+          const removed = removeMapLocationByCode(
             targetCode
           );
+
+          if (removed) {
+            io.emit('map:location:removed', { code: targetCode, byCode: actor.publicCode });
+          }
 
           saveState();
 
@@ -5458,6 +5462,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
           return ok(
             cb,
             {
+              removed,
+              removedCode:
+                removed ? targetCode : null,
               locations:
                 state.cia_map_locations
             }
