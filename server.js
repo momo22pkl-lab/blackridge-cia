@@ -5295,7 +5295,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       (payload, cb) => {
         try {
           const actor =
-            requireSocketUser(socket);
+            requireAuthenticatedUser(socket);
 
           if (!actor) {
             return no(
@@ -5405,7 +5405,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       (payload, cb) => {
         try {
           const actor =
-            requireSocketUser(socket);
+            requireAuthenticatedUser(socket);
 
           if (!actor) {
             return no(
@@ -5483,7 +5483,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       'map:listLocations',
       (payload, cb) => {
         const actor =
-          requireSocketUser(socket);
+            requireAuthenticatedUser(socket);
 
         if (!actor) {
           return no(
