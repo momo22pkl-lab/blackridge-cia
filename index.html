@@ -746,6 +746,9 @@
         <div style="display: flex; gap: 8px; margin-bottom: 8px;">
           <button onclick="clearMyMapLocation()" class="btn-action" style="margin:0; font-size: 0.8rem; flex:1; background: var(--border); color:#fff;"><i class="fa-solid fa-trash"></i> إزالة موقعي من الخريطة</button>
         </div>
+        <div id="map-location-tools" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+          <span id="map-location-status" style="font-size:.72rem;color:var(--text-dim);flex:1;min-width:180px;">اضغط على الخريطة لوضع موقعك التكتيكي. لا يلزم تفعيل الخدمة لهذه العملية.</span>
+        </div>
         <div id="gta-map" style="height: 450px; width: 100%; border-radius: 8px; border: 2px solid var(--primary-gold); background: #0fa8d7;"></div>
       </div>
     </div>
@@ -2402,7 +2405,7 @@
         alert('يلزم تسجيل الدخول أولاً.');
         return;
       }
-      if (paneId !== 'dashboard' && currentUser && currentUser.activeService !== true) {
+      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && currentUser && currentUser.activeService !== true) {
         alert('يلزم تسجيل الدخول للخدمة أولاً.');
         return;
       }
@@ -2599,7 +2602,7 @@
           L.DomEvent.disableClickPropagation(container);
 
           button.onclick = function() {
-            if (!currentUser || currentUser.rank !== "CIA CHIEF") {
+            if (!currentUser || normalizeRank(currentUser.rank) !== "CIA CHIEF") {
               alert("هذه الصلاحية متاحة فقط لـ CIA CHIEF.");
               return;
             }
@@ -2625,7 +2628,7 @@
         }
       });
 
-      if (currentUser && currentUser.rank === "CIA CHIEF") {
+      if (currentUser && normalizeRank(currentUser.rank) === "CIA CHIEF") {
         gtaMap.addControl(new HQControl());
       }
 
@@ -2636,15 +2639,10 @@
       // CIA CHIEF يستطيع إضافة المقرات، وجميع الأعضاء يستطيعون تحديد مواقعهم.
       gtaMap.on('click', function(e) {
         if (!currentUser) return;
-        if (currentUser.activeService !== true) {
-          alert('يلزم تسجيل الدخول للخدمة أولاً.');
-          return;
-        }
-
         let y = Math.round(e.latlng.lat);
         let x = Math.round(e.latlng.lng);
 
-        if (hqPlacementMode && currentUser.rank === "CIA CHIEF") {
+        if (hqPlacementMode && normalizeRank(currentUser.rank) === "CIA CHIEF") {
           let hqLocations = getStoredData('cia_hq_locations', []);
 
           if (hqPlacementMode === "main") {
@@ -2704,7 +2702,7 @@
         const isMain = loc.type === "main";
         if (!isMain) reserveNumber++;
         const title = isMain ? "المقر الرئيسي (HQ)" : `مقر احتياطي #${reserveNumber}`;
-        const deleteButton = currentUser && currentUser.rank === "CIA CHIEF"
+        const deleteButton = currentUser && normalizeRank(currentUser.rank) === "CIA CHIEF"
           ? `<br><button onclick="deleteHQMarker(${index})" style="margin-top:8px;padding:6px 10px;background:#05070a;color:#ef4444;border:1px solid #ef4444;border-radius:4px;font-weight:bold;cursor:pointer;">إزالة المقر</button>`
           : "";
 
@@ -2719,7 +2717,7 @@
     }
 
     function deleteHQMarker(index) {
-      if (!currentUser || currentUser.rank !== "CIA CHIEF") {
+      if (!currentUser || normalizeRank(currentUser.rank) !== "CIA CHIEF") {
         alert("إزالة المقرات متاحة فقط لـ CIA CHIEF.");
         return;
       }
@@ -2737,7 +2735,6 @@
 
     function setMyGTALocation(x, y) {
       if (!currentUser || !ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
-      if (currentUser.activeService !== true) { alert('يلزم تسجيل الدخول للخدمة أولاً.'); return; }
       ciaSocket.emit('map:setLocation', { x: Number(x), y: Number(y) }, function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر حفظ موقعك على الخريطة.'); return; }
         mapLocations = result.locations || {};
@@ -2749,13 +2746,31 @@
 
     function clearMyMapLocation() {
       if (!currentUser || !ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
-      if (currentUser.activeService !== true) { alert('يلزم تسجيل الدخول للخدمة أولاً.'); return; }
       ciaSocket.emit('map:removeLocation', { code: currentUser.publicCode }, function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر إزالة موقعك من الخريطة.'); return; }
         mapLocations = result.locations || {};
         try { localStorage.setItem('cia_map_locations', JSON.stringify(mapLocations)); } catch(e) {}
         renderAllMapMarkers();
         alert('تمت إزالة نقطتك من خريطة لوس سانتوس!');
+      });
+    }
+
+    function removeMemberMapLocation(code) {
+      if (!currentUser || !ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
+      if (!['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
+        alert('إزالة مواقع الأعضاء متاحة فقط للقيادات العليا الثلاث.');
+        return;
+      }
+      const targetCode = String(code || '').trim();
+      if (!targetCode || targetCode === currentUser.publicCode) return clearMyMapLocation();
+      if (!mapLocations[targetCode]) return alert('هذا العضو لا يملك موقعاً محفوظاً على الخريطة.');
+      if (!confirm('هل تريد إزالة موقع هذا العضو من الخريطة؟')) return;
+      ciaSocket.emit('map:removeLocation', { code: targetCode }, function(result) {
+        if (!result || !result.ok) { alert((result && result.message) || 'تعذر إزالة موقع العضو.'); return; }
+        mapLocations = result.locations || {};
+        try { localStorage.setItem('cia_map_locations', JSON.stringify(mapLocations)); } catch(e) {}
+        renderAllMapMarkers();
+        alert('تمت إزالة موقع العضو من الخريطة.');
       });
     }
 
@@ -2772,9 +2787,16 @@
         let loc = mapLocations[code];
         const radioUser = registeredUsers.find(u => u.publicCode === code);
         const liveRadioChannel = radioUser && radioUser.radioOnline ? (radioUser.radioChannel || loc.radioChannel || 'غير محددة') : (loc.radioOnline ? (loc.radioChannel || 'غير محددة') : 'الراديو OFF');
+        const canRemoveMemberLocation = currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) && code !== currentUser.publicCode;
+        const removeButton = canRemoveMemberLocation ? '<br><button type="button" onclick="removeMemberMapLocation(\'' + esc(code) + '\')" style="margin-top:8px;padding:6px 10px;background:#7f1d1d;color:#fff;border:1px solid #ef4444;border-radius:4px;font-weight:bold;cursor:pointer;">إزالة موقع العضو</button>' : '';
         let marker = L.marker([loc.y, loc.x]).addTo(gtaMap)
-          .bindPopup(`<b>العميل: #${loc.name}</b><br>الرتبة: ${loc.rank}<br>موقع لوس سانتوس: (${loc.x}, ${loc.y})<br>الموجة: <span style="color:var(--cyan-glow);">${liveRadioChannel}</span>`)
-          ;
+          .bindPopup(
+            '<b>العضو: ' + esc(loc.name || 'غير معروف') + '</b><br>' +
+            'الكود العسكري: #' + esc(code) + '<br>' +
+            'الرتبة: ' + esc(loc.rankLabel || loc.rank || 'Agent') + '<br>' +
+            'موقع لوس سانتوس: (' + esc(loc.x) + ', ' + esc(loc.y) + ')<br>' +
+            'الموجة: <span style="color:var(--cyan-glow);">' + esc(liveRadioChannel) + '</span>' + removeButton
+          );
         mapMarkers[code] = marker;
       }
     }
