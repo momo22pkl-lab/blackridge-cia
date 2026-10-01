@@ -1037,7 +1037,9 @@
         </select>
         <textarea id="op-objective" class="input-field" placeholder="الهدف والتعليمات الميدانية" style="height:80px;resize:none;"></textarea>
         <input id="op-leader-code" class="input-field" placeholder="كودك العسكري كمنشئ المهمة" readonly>
-        <input id="op-agent-code" class="input-field" placeholder="اكتب الكود العسكري لـ Agent واحد فقط">
+        <label for="op-agent-codes" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:4px 0;">اختَر Agents المهمة (الأسماء للقائد فقط، والأكواد للسينيور والهاي كوماندر):</label>
+        <select id="op-agent-codes" class="input-field" multiple size="5" aria-label="اختيار أعضاء المهمة" style="min-height:120px;"><option disabled>جارٍ تحميل Agents...</option></select>
+        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">استخدم Ctrl أو ⌘ لاختيار أكثر من Agent.</div>
         <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
@@ -1291,6 +1293,7 @@
     let auditLogs = [];
     let attendanceLogs = [];
     let operationsList = [];
+    let operationAgentDirectory = [];
     let bankDirectory = [];
     let loginMode = 'agent';
     let supportMessages = [];
@@ -2010,6 +2013,7 @@
       
       if (currentUser.radioChannel) radioChannel = currentUser.radioChannel;
       renderBank();
+      if (isTopThreeMissionRank(currentUser.rank)) loadOperationAgentDirectory();
       renderTacticalOperations();
       syncRadioChannelUI();
       updateViews();
@@ -2044,7 +2048,20 @@
       if(help && loginMode==='agent') help.innerText='مسار Agent: أرسل طلب الاعتماد من خلال بوابة الدخول، ثم استخدم كود الدخول الذي تمنحه القيادة بعد الاعتماد.';
     }
 
+    function isTopThreeMissionRank(rank){ return ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(rank)); }
+
     function parsePoint(value){ const m=String(value||'').split(',').map(Number); return m.length===2 && m.every(Number.isFinite)?{lat:m[0],lng:m[1],label:String(value||'').trim()}:null; }
+
+    function loadOperationAgentDirectory(){
+      if(!currentUser||!isTopThreeMissionRank(currentUser.rank)||!ciaSocket||!ciaSocket.connected) return;
+      ciaSocket.emit('operation:agents',{},function(result){
+        if(!result||!result.ok) return;
+        operationAgentDirectory=Array.isArray(result.agents)?result.agents:[];
+        const select=document.getElementById('op-agent-codes');
+        if(!select) return;
+        select.innerHTML=operationAgentDirectory.map(agent=>`<option value="${esc(agent.code)}">#${esc(agent.code)}${agent.name?` — ${esc(agent.name)}`:''}</option>`).join('')||'<option disabled>لا يوجد Agents معتمدون للاختيار.</option>';
+      });
+    }
     let operationPointMode = null;
     function pickOperationPoint(mode){ operationPointMode=mode; showPane('tactical-map-view', null); setTimeout(()=>alert('اضغط على الخريطة لتحديد '+(mode==='start'?'بداية':'نهاية')+' العملية.'),250); }
 
@@ -2069,19 +2086,19 @@
 
     function createTacticalOperation(){
       const rank=normalizeRank(currentUser?.rank);
-      if(!currentUser||!['CIA CHIEF','SUPREME COMMANDER'].includes(rank)) return alert('إنشاء المهمات متاح للقائد وSenior Commander CIA فقط.');
+      if(!currentUser||!isTopThreeMissionRank(rank)) return alert('إنشاء المهمات متاح للرتب العليا الثلاث فقط.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       const title=document.getElementById('op-title').value.trim();
       const objective=document.getElementById('op-objective').value.trim();
-      const agentCode=document.getElementById('op-agent-code').value.trim();
-      if(!title||!objective||!agentCode) return alert('أكمل اسم المهمة والهدف وكود Agent العسكري.');
+      const memberCodes=Array.from(document.getElementById('op-agent-codes')?.selectedOptions||[]).map(option=>option.value).filter(Boolean);
+      if(!title||!objective||!memberCodes.length) return alert('أكمل اسم المهمة والهدف واختر Agent واحداً على الأقل.');
       const payload={
         title,
         type:document.getElementById('op-type').value,
         risk:document.getElementById('op-risk').value,
         objective,
         commanderCode:currentUser.publicCode,
-        agentCode,
+        memberCodes,
         startLocation:parsePoint(document.getElementById('op-start').value),
         endLocation:parsePoint(document.getElementById('op-end').value)
       };
@@ -2089,28 +2106,36 @@
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر إنشاء المهمة.');
         const note=document.getElementById('op-notes').value.trim();
         const op=result.operation;
-        const finish=()=>{ document.querySelectorAll('#operation-command-box input:not(#op-leader-code),#operation-command-box textarea').forEach(el=>{el.value='';}); document.getElementById('op-agent-code').value=''; loadTacticalOperations(); };
+        const finish=()=>{ document.querySelectorAll('#operation-command-box input:not(#op-leader-code),#operation-command-box textarea').forEach(el=>{el.value='';}); const agentSelect=document.getElementById('op-agent-codes'); if(agentSelect) Array.from(agentSelect.options).forEach(option=>option.selected=false); loadTacticalOperations(); };
          if(note&&op?.id) ciaSocket.emit('operation:addNote',{id:op.id,text:note},()=>finish()); else finish();
         alert('تم إنشاء المهمة بنجاح.');
       });
     }
 
     function renderTacticalOperations(){
-      const list=document.getElementById('operations-list'); if(!list) return;
+      const list=document.getElementById('operations-list');
+      if(!list) return;
       const rank=normalizeRank(currentUser?.rank);
-      const command=['CIA CHIEF','SUPREME COMMANDER'].includes(rank);
-      const box=document.getElementById('operation-command-box'); if(box) box.style.display=command?'block':'none';
-      const leaderInput=document.getElementById('op-leader-code'); if(leaderInput) leaderInput.value=currentUser?.publicCode||'';
+      const command=isTopThreeMissionRank(rank);
+      const box=document.getElementById('operation-command-box');
+      if(box) box.style.display=command?'block':'none';
+      const leaderInput=document.getElementById('op-leader-code');
+      if(leaderInput) leaderInput.value=currentUser?.publicCode||'';
       const rows=Array.isArray(operationsList)?operationsList:[];
-      if(!rows.length){list.innerHTML='<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد مهمات متاحة حالياً.</div>';return;}
+      if(!rows.length){
+        list.innerHTML='<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد مهمات متاحة حالياً.</div>';
+        return;
+      }
       list.innerHTML=rows.map(op=>{
         const status=operationStatusCode(op.status||'PLANNED');
         const crew=Array.isArray(op.crew)?op.crew:[];
         const notes=Array.isArray(op.notes)?op.notes:[];
         const border=status==='FAILED'?'var(--red-alert)':status==='COMPLETED'?'var(--green-status)':'var(--border)';
-        const canAnnotate = command || (Array.isArray(op.crew) && op.crew.some(c => c.code === currentUser?.publicCode));
-        const commandButtons = command ? `<button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}` : '';
-        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشارك العسكري: ${crew.map(c=>`#${esc(c.code)}${c.name&&['CIA CHIEF','SUPREME COMMANDER'].includes(rank)?` — ${esc(c.name)}`:''}`).join('، ')}</div>`:''}${notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(n=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(n.authorCode||'—')} — ${esc(n.text||'')}</div>`).join('')}</div>`:''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;"><button class="btn-action" style="margin:0;padding:5px 8px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="openOperationMap('${esc(op.id)}')">عرض مناطق المهمة على خريطة لوس</button>${commandButtons}</div></div>`;
+        const commandButtons=command?`<button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}`:'';
+        const mapButton=command?`<button class="btn-action" style="margin:0;padding:5px 8px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="openOperationMap('${esc(op.id)}')">عرض مناطق المهمة على خريطة لوس</button>`:'';
+        const crewLabel=crew.map(member=>`#${esc(member.code)}${rank==='CIA CHIEF'&&member.name?` — ${esc(member.name)}`:''}`).join('، ');
+        const notesHtml=notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(note=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(note.authorCode||'—')} — ${esc(note.text||'')}</div>`).join('')}</div>`:'';
+        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشاركون: ${crewLabel}</div>`:''}${notesHtml}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${mapButton}${commandButtons}</div></div>`;
       }).join('');
     }
 
@@ -2125,6 +2150,7 @@
 
     function setOperationMapTool(type,color){
       if(!currentUser||currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض وتعديل خريطة المهمة متاح للرتب العليا الثلاث فقط.');
       operationMapTool={type,color};
       operationDrawingPoints=[];
       if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
@@ -2171,6 +2197,7 @@
 
     function openOperationMap(operationId){
       if(!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
+      if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض خريطة المهمة متاح للرتب العليا الثلاث فقط.');
       if(currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       operationMapOperation=(operationsList||[]).find(op=>String(op.id)===String(operationId));
       if(!operationMapOperation) return alert('المهمة غير موجودة.');
@@ -2178,11 +2205,10 @@
       if(modal) modal.style.display='flex';
       const title=document.getElementById('operation-map-title');
       if(title) title.innerText=`خريطة مناطق المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
-      const command=['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank));
-      const assigned=(operationMapOperation.crew||[]).some(c=>c.code===currentUser.publicCode);
+      const command=isTopThreeMissionRank(currentUser.rank);
       const help=document.getElementById('operation-map-help');
-      if(help) help.innerText=(command||assigned)?'يمكنك وضع علامات أو الرسم بالألوان الخمسة على الخريطة.':'يمكنك مشاهدة مواقع المهمة فقط.';
-      document.querySelectorAll('#operation-map-tools button').forEach(button=>button.style.display=(command||assigned)?'inline-block':'none');
+      if(help) help.innerText='يمكنك مراجعة المواقع والرسومات وإضافة الشروحات على الخريطة.';
+      document.querySelectorAll('#operation-map-tools button').forEach(button=>button.style.display=command?'inline-block':'none');
       setTimeout(()=>{
         if(!operationMap){
           const element=document.getElementById('operation-map');

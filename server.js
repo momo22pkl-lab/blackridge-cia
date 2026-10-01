@@ -307,6 +307,9 @@ const isHighCommander = (user) =>
 const isLeadership = (user) =>
   isChief(user) || isSenior(user);
 
+const canManageOperations = (user) =>
+  !!user && rankLevel(user.rank) >= 2;
+
 function ensureBank(user) {
   if (!user.bank || typeof user.bank !== 'object') {
     user.bank = {};
@@ -1609,13 +1612,11 @@ function operationSanitize(
       viewer?.rank
     );
 
-  const leadership =
-    isLeadership(viewer);
+  const chiefMissionViewer =
+    isChief(viewer);
 
   const privilegedMissionViewer =
-    leadership ||
-    normalizedViewerRank ===
-      'HIGH COMMANDER';
+    canManageOperations(viewer);
 
   const crews =
     (
@@ -1630,7 +1631,7 @@ function operationSanitize(
           code
         );
 
-      return leadership &&
+      return chiefMissionViewer &&
         member
         ? {
             code,
@@ -1664,25 +1665,17 @@ function operationSanitize(
         op.status,
 
       startLocation:
-        op.startLocation ||
         null,
 
       endLocation:
-        op.endLocation ||
         null,
 
       missionLocation:
-        op.startLocation ||
-        op.endLocation ||
         null,
 
-      mapMarkers: Array.isArray(op.mapMarkers)
-        ? op.mapMarkers.slice(-200)
-        : [],
+      mapMarkers: [],
 
-      mapDrawings: Array.isArray(op.mapDrawings)
-        ? op.mapDrawings.slice(-100)
-        : [],
+      mapDrawings: [],
 
       commanderCode: '',
       battalionLeaderCode: '',
@@ -1751,7 +1744,7 @@ function operationSanitize(
       '',
 
     commanderName:
-      leadership
+      chiefMissionViewer
         ? (
             op.commanderName ||
             ''
@@ -1780,7 +1773,7 @@ function operationSanitize(
           '',
 
         authorName:
-          leadership
+          chiefMissionViewer
             ? (
                 n.authorName ||
                 ''
@@ -1803,7 +1796,7 @@ function operationSanitize(
       '',
 
     createdByName:
-      leadership
+      chiefMissionViewer
         ? (
             op.createdByName ||
             ''
@@ -1815,8 +1808,7 @@ function operationSanitize(
 function canAnnotateOperation(actor, operation) {
   if (!actor || !operation) return false;
   return (
-    isChief(actor) ||
-    isSenior(actor) ||
+    canManageOperations(actor) ||
     actor.publicCode === operation.createdByCode ||
     actor.publicCode === operation.commanderCode ||
     (
@@ -6914,20 +6906,27 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (!isLeadership(actor)) {
-          return no(cb, 'إنشاء المهمات متاح لـ CIA CHIEF وSenior Commander CIA فقط.');
+        if (!canManageOperations(actor)) {
+          return no(cb, 'إنشاء المهمات متاح للرتب العليا الثلاث فقط.');
         }
 
-        const assignedCode = clean(
-          payload?.agentCode ||
-          (Array.isArray(payload?.memberCodes) ? payload.memberCodes[0] : ''),
-          100
-        );
-        const assignedAgent = assignedCode
-          ? getUserByPublicCode(assignedCode)
-          : null;
-        if (!assignedAgent || normalizeRank(assignedAgent.rank) !== 'AGENT') {
-          return no(cb, 'اكتب الكود العسكري الصحيح لـ Agent واحد لتنفيذ المهمة.');
+        const requestedCodes = Array.isArray(payload?.memberCodes)
+          ? payload.memberCodes
+          : [payload?.agentCode || ''];
+        const memberCodes = [...new Set(
+          requestedCodes.map((code) => clean(code, 100)).filter(Boolean)
+        )];
+        if (!memberCodes.length || memberCodes.length > 50) {
+          return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+        }
+        const assignedAgents = memberCodes.map((code) => getUserByPublicCode(code));
+        if (assignedAgents.some((member) =>
+          !member ||
+          normalizeRank(member.rank) !== 'AGENT' ||
+          member.approved === false ||
+          member.suspended
+        )) {
+          return no(cb, 'تأكد أن كل الأكواد المختارة تخص Agents معتمدين.');
         }
 
         const operation = {
@@ -6985,17 +6984,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
             null,
 
           commanderCode:
-            clean(
-              payload?.commanderCode ||
-              actor.publicCode,
-              100
-            ),
+            actor.publicCode,
 
           commanderName:
             actor.name,
 
           memberCodes:
-            [assignedAgent.publicCode],
+            assignedAgents.map((member) => member.publicCode),
 
           notes: [],
 
@@ -7077,6 +7072,25 @@ socket.on('member:saveIdentity', (payload, cb) => {
       }
     );
 
+    socket.on('operation:agents', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!canManageOperations(actor)) {
+        return no(cb, 'قائمة اختيار أعضاء المهمة متاحة للرتب العليا الثلاث فقط.');
+      }
+      const agents = state.cia_users
+        .filter((member) =>
+          normalizeRank(member.rank) === 'AGENT' &&
+          member.approved !== false &&
+          !member.suspended &&
+          member.publicCode
+        )
+        .map((member) => isChief(actor)
+          ? { code: member.publicCode, name: member.name }
+          : { code: member.publicCode });
+      return ok(cb, { agents });
+    });
+
     socket.on(
       'operation:update',
       (payload, cb) => {
@@ -7090,11 +7104,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (!isLeadership(actor)) {
-          return no(
-            cb,
-            'تعديل المهمات متاح للقائد وSenior Commander CIA فقط.'
-          );
+        if (!canManageOperations(actor)) {
+          return no(cb, 'تعديل المهمات متاح للرتب العليا الثلاث فقط.');
         }
 
         const id =
@@ -7119,6 +7130,29 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         if (!canAnnotateOperation(actor, operation)) {
           return no(cb, 'التحديثات الميدانية متاحة لمنشئ المهمة والقيادة والمشارك المحدد فقط.');
+        }
+
+        let selectedAgents = null;
+        if (Array.isArray(payload?.memberCodes)) {
+          const selectedCodes = [...new Set(
+            payload.memberCodes.map((code) => clean(code, 100)).filter(Boolean)
+          )];
+          if (!selectedCodes.length || selectedCodes.length > 50) {
+            return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+          }
+          selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
+          if (selectedAgents.some((member) =>
+            !member ||
+            normalizeRank(member.rank) !== 'AGENT' ||
+            member.approved === false ||
+            member.suspended
+          )) {
+            return no(cb, 'تأكد أن كل الأكواد المختارة تخص Agents معتمدين.');
+          }
+        }
+
+        if (selectedAgents) {
+          operation.memberCodes = selectedAgents.map((member) => member.publicCode);
         }
 
         const fields = [
@@ -7164,19 +7198,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
         ) {
           operation.endLocation =
             payload.endLocation;
-        }
-
-        if (
-          Array.isArray(
-            payload?.memberCodes
-          )
-        ) {
-          const selected = clean(payload.memberCodes[0], 100);
-          const selectedAgent = getUserByPublicCode(selected);
-          if (!selectedAgent || normalizeRank(selectedAgent.rank) !== 'AGENT') {
-            return no(cb, 'المهمة يجب أن تسند إلى Agent واحد بكوده العسكري.');
-          }
-          operation.memberCodes = [selectedAgent.publicCode];
         }
 
         operation.updatedAt =
@@ -7272,7 +7293,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             actor.publicCode,
 
           authorName:
-            isLeadership(actor)
+            isChief(actor)
               ? actor.name
               : '',
 
@@ -7379,8 +7400,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id || payload?.operationId, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!canAnnotateOperation(actor, operation)) {
-        return no(cb, 'إضافة علامات المهمة متاحة لمنشئ المهمة والقائد وSenior Commander CIA والمشارك المحدد فقط.');
+      if (!canManageOperations(actor)) {
+        return no(cb, 'مراجعة خريطة المهمة متاحة للرتب العليا الثلاث فقط.');
       }
       const point = missionPoint(payload?.point || payload);
       if (!point) return no(cb, 'موقع العلامة غير صحيح.');
@@ -7407,8 +7428,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id || payload?.operationId, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!canAnnotateOperation(actor, operation)) {
-        return no(cb, 'الرسم على خريطة المهمة غير متاح لهذه الشخصية.');
+      if (!canManageOperations(actor)) {
+        return no(cb, 'مراجعة خريطة المهمة متاحة للرتب العليا الثلاث فقط.');
       }
       const points = Array.isArray(payload?.points)
         ? payload.points.map(missionPoint).filter(Boolean).slice(0, 500)
@@ -7654,8 +7675,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.operationId || payload?.id, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!isLeadership(actor)) {
-        return no(cb, 'لا تملك صلاحية تحديث المهمة.');
+      if (!canManageOperations(actor)) {
+        return no(cb, 'تحديث المهمة متاح للرتب العليا الثلاث فقط.');
       }
       operation.status = clean(payload?.status, 100) || operation.status;
       operation.updatedAt = now();
