@@ -1612,9 +1612,6 @@ function operationSanitize(
   const leadership =
     isLeadership(viewer);
 
-  const missionNames =
-    isChief(viewer);
-
   const privilegedMissionViewer =
     leadership ||
     normalizedViewerRank ===
@@ -1633,7 +1630,7 @@ function operationSanitize(
           code
         );
 
-      return missionNames &&
+      return leadership &&
         member
         ? {
             code,
@@ -1667,17 +1664,25 @@ function operationSanitize(
         op.status,
 
       startLocation:
+        op.startLocation ||
         null,
 
       endLocation:
+        op.endLocation ||
         null,
 
       missionLocation:
+        op.startLocation ||
+        op.endLocation ||
         null,
 
-      mapMarkers: [],
+      mapMarkers: Array.isArray(op.mapMarkers)
+        ? op.mapMarkers.slice(-200)
+        : [],
 
-      mapDrawings: [],
+      mapDrawings: Array.isArray(op.mapDrawings)
+        ? op.mapDrawings.slice(-100)
+        : [],
 
       commanderCode: '',
       battalionLeaderCode: '',
@@ -1746,7 +1751,7 @@ function operationSanitize(
       '',
 
     commanderName:
-      missionNames
+      leadership
         ? (
             op.commanderName ||
             ''
@@ -1775,7 +1780,7 @@ function operationSanitize(
           '',
 
         authorName:
-          missionNames
+          leadership
             ? (
                 n.authorName ||
                 ''
@@ -1798,21 +1803,13 @@ function operationSanitize(
       '',
 
     createdByName:
-      missionNames
+      leadership
         ? (
             op.createdByName ||
             ''
           )
         : ''
   };
-}
-
-function canReviewMissionMap(actor) {
-  return !!actor && (
-    isChief(actor) ||
-    isSenior(actor) ||
-    isHighCommander(actor)
-  );
 }
 
 function canAnnotateOperation(actor, operation) {
@@ -6917,20 +6914,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (!canReviewMissionMap(actor)) {
-          return no(cb, 'إنشاء المهمات متاح للقيادات العليا الثلاث فقط.');
+        if (!isLeadership(actor)) {
+          return no(cb, 'إنشاء المهمات متاح لـ CIA CHIEF وSenior Commander CIA فقط.');
         }
 
-        const submittedCodes = Array.isArray(payload?.memberCodes)
-          ? payload.memberCodes
-          : [payload?.agentCode];
-        const selectedCodes = [...new Set(
-          submittedCodes.map((code) => clean(code, 100)).filter(Boolean)
-        )].slice(0, 30);
-        if (!selectedCodes.length) return no(cb, 'اختر Agent واحداً على الأقل لتنفيذ المهمة.');
-        const selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
-        if (selectedAgents.some((member) => !member || normalizeRank(member.rank) !== 'AGENT')) {
-          return no(cb, 'يمكن إضافة Agents فقط إلى المهمة.');
+        const assignedCode = clean(
+          payload?.agentCode ||
+          (Array.isArray(payload?.memberCodes) ? payload.memberCodes[0] : ''),
+          100
+        );
+        const assignedAgent = assignedCode
+          ? getUserByPublicCode(assignedCode)
+          : null;
+        if (!assignedAgent || normalizeRank(assignedAgent.rank) !== 'AGENT') {
+          return no(cb, 'اكتب الكود العسكري الصحيح لـ Agent واحد لتنفيذ المهمة.');
         }
 
         const operation = {
@@ -6998,7 +6995,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             actor.name,
 
           memberCodes:
-            selectedAgents.map((member) => member.publicCode),
+            [assignedAgent.publicCode],
 
           notes: [],
 
@@ -7093,10 +7090,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
-        if (!canReviewMissionMap(actor)) {
+        if (!isLeadership(actor)) {
           return no(
             cb,
-            'تعديل المهمات متاح للقيادات العليا الثلاث فقط.'
+            'تعديل المهمات متاح للقائد وSenior Commander CIA فقط.'
           );
         }
 
@@ -7169,13 +7166,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
             payload.endLocation;
         }
 
-        if (Array.isArray(payload?.memberCodes)) {
-          const selectedCodes = [...new Set(payload.memberCodes.map((code) => clean(code, 100)).filter(Boolean))].slice(0, 30);
-          const selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
-          if (!selectedAgents.length || selectedAgents.some((member) => !member || normalizeRank(member.rank) !== 'AGENT')) {
-            return no(cb, 'المهمة يجب أن تسند إلى Agents صالحين.');
+        if (
+          Array.isArray(
+            payload?.memberCodes
+          )
+        ) {
+          const selected = clean(payload.memberCodes[0], 100);
+          const selectedAgent = getUserByPublicCode(selected);
+          if (!selectedAgent || normalizeRank(selectedAgent.rank) !== 'AGENT') {
+            return no(cb, 'المهمة يجب أن تسند إلى Agent واحد بكوده العسكري.');
           }
-          operation.memberCodes = selectedAgents.map((member) => member.publicCode);
+          operation.memberCodes = [selectedAgent.publicCode];
         }
 
         operation.updatedAt =
@@ -7378,7 +7379,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id || payload?.operationId, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!canReviewMissionMap(actor)) {
+      if (!canAnnotateOperation(actor, operation)) {
         return no(cb, 'إضافة علامات المهمة متاحة لمنشئ المهمة والقائد وSenior Commander CIA والمشارك المحدد فقط.');
       }
       const point = missionPoint(payload?.point || payload);
@@ -7406,7 +7407,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id || payload?.operationId, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
-      if (!canReviewMissionMap(actor)) {
+      if (!canAnnotateOperation(actor, operation)) {
         return no(cb, 'الرسم على خريطة المهمة غير متاح لهذه الشخصية.');
       }
       const points = Array.isArray(payload?.points)
