@@ -73,6 +73,7 @@ const EMPTY_STATE = {
   cia_reports: [],
   cia_cases: [],
   cia_map_locations: {},
+  cia_morse_logs: [],
   cia_hq_locations: [],
   cia_audit_logs: [],
   cia_attendance: [],
@@ -133,7 +134,7 @@ function loadState() {
       'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
       'cia_support',
       'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-      'cia_audit_logs', 'cia_attendance', 'cia_operations'
+      'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations'
     ]) {
       if (!Array.isArray(state[key])) state[key] = [];
     }
@@ -176,6 +177,9 @@ const MISSION_DRAWING_COLORS = new Set([
   '#ffffff',
   '#a855f7'
 ]);
+
+const MORSE_CODES = Object.freeze({"0":"-----","1":".----","2":"..---","3":"...--","4":"....-","5":".....","6":"-....","7":"--...","8":"---..","9":"----.","A":".-","B":"-...","C":"-.-.","D":"-..","E":".","F":"..-.","G":"--.","H":"....","I":"..","J":".---","K":"-.-","L":".-..","M":"--","N":"-.","O":"---","P":".--.","Q":"--.-","R":".-.","S":"...","T":"-","U":"..-","V":"...-","W":".--","X":"-..-","Y":"-.--","Z":"--..",".":".-.-.-",",":"--..--","?":"..--..","'":".----.","!":"-.-.--","/":"-..-.","(":"-.--.",")":"-.--.-","&":".-...",":":"---...",";":"-.-.-.","=":"-...-","+":".-.-.","-":"-....-","\"":".-..-.","$":"...-..-","@":".--.-."});
+const MORSE_CHARACTERS = Object.fromEntries(Object.entries(MORSE_CODES).map(([character, code]) => [code, character]));
 
 function normalizeRank(rank) {
   const value = clean(rank, 100).toUpperCase();
@@ -888,6 +892,11 @@ function snapshot(viewer = null) {
     cia_map_locations:
       state.cia_map_locations || {},
 
+    cia_morse_logs:
+      isChief(viewer)
+        ? (state.cia_morse_logs || [])
+        : [],
+
     cia_hq_locations:
       state.cia_hq_locations || [],
 
@@ -1100,6 +1109,14 @@ function serviceError(cb, user) {
     return no(cb, 'يلزم تسجيل الدخول للخدمة أولاً.');
   }
   return null;
+}
+
+function socketRequirementMessage(socket) {
+  const user = requireAuthenticatedUser(socket);
+  if (!user) return 'يجب تسجيل الدخول أولاً.';
+  if (user.serviceApproved === false) return 'لا يمكنك تسجيل الدخول للخدمة قبل قبول الهوية من القيادة.';
+  if (user.activeService !== true) return 'يلزم تسجيل الدخول للخدمة أولاً.';
+  return 'تعذر ربط الجلسة بالخادم؛ أعد الاتصال ثم حاول مجددًا.';
 }
 
 function canManageMember(
@@ -5519,6 +5536,59 @@ socket.on('member:saveIdentity', (payload, cb) => {
       }
     );
 
+    socket.on('morse:translate', (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+      const direction = clean(payload?.direction, 20).toLowerCase();
+      const source = clean(payload?.text, 500);
+      const purpose = clean(payload?.purpose, 250);
+      if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
+      if (!source) return no(cb, 'اكتب النص أو شفرة مورس أولاً.');
+      if (!purpose) return no(cb, 'سبب الاستخدام أو اسم المهمة مطلوب.');
+
+      let translation;
+      if (direction === 'encode') {
+        const normalized = source.toUpperCase();
+        const unsupported = [...normalized].find(character => !/\s/.test(character) && !Object.prototype.hasOwnProperty.call(MORSE_CODES, character));
+        if (unsupported) return no(cb, 'اكتب النص باللغة الإنجليزية فقط، مع الأرقام وعلامات الترقيم المدعومة.');
+        translation = normalized.trim().split(/\s+/).map(word => [...word].map(character => MORSE_CODES[character]).join(' ')).join(' / ');
+      } else {
+        if ([...source].some(character => !['.','-','/'].includes(character) && !/\s/.test(character))) {
+          return no(cb, 'أدخل شفرة مورس باستخدام النقاط والشرطات والمسافات أو / بين الكلمات.');
+        }
+        try {
+          const words = source.trim().split(/\s*\/\s*|\s{3,}/);
+          translation = words.map(word => word.trim().split(/\s+/).map(code => {
+            const character = MORSE_CHARACTERS[code];
+            if (!character) throw new Error('رمز مورس غير معروف: ' + code);
+            return character;
+          }).join('')).join(' ');
+        } catch (error) {
+          return no(cb, error.message || 'تعذر فك شفرة مورس.');
+        }
+      }
+
+      const log = {
+        id: makeId('MORSE'),
+        userId: actor.id,
+        realName: clean(actor.identity?.fullName || actor.name, 160),
+        userName: clean(actor.name, 120),
+        publicCode: clean(actor.publicCode, 100),
+        rank: normalizeRank(actor.rank),
+        rankLabel: rankLabel(actor.rank),
+        direction,
+        source,
+        translation,
+        purpose,
+        at: now()
+      };
+      state.cia_morse_logs.unshift(log);
+      state.cia_morse_logs = state.cia_morse_logs.slice(0, 500);
+      saveState();
+      emitState();
+      return ok(cb, { translation, logId: log.id });
+    });
+
     /* =====================================================
        RADIO
     ===================================================== */
@@ -6926,7 +6996,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!actor) {
           return no(
             cb,
-            'يجب تسجيل الدخول.'
+            socketRequirementMessage(socket)
           );
         }
 
@@ -7074,7 +7144,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!actor) {
           return no(
             cb,
-            'يجب تسجيل الدخول.'
+            socketRequirementMessage(socket)
           );
         }
 
@@ -7098,7 +7168,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('operation:agents', (payload, cb) => {
       const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!actor) return no(cb, socketRequirementMessage(socket));
       if (!canManageOperations(actor)) {
         return no(cb, 'قائمة اختيار أعضاء المهمة متاحة للرتب العليا الثلاث فقط.');
       }
@@ -7124,7 +7194,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!actor) {
           return no(
             cb,
-            'يجب تسجيل الدخول.'
+            socketRequirementMessage(socket)
           );
         }
 
@@ -7260,7 +7330,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!actor) {
           return no(
             cb,
-            'يجب تسجيل الدخول.'
+            socketRequirementMessage(socket)
           );
         }
 
@@ -7358,7 +7428,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!actor) {
           return no(
             cb,
-            'يجب تسجيل الدخول.'
+            socketRequirementMessage(socket)
           );
         }
 
@@ -7695,7 +7765,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('operation:updateStatus', (payload, cb) => {
       const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!actor) return no(cb, socketRequirementMessage(socket));
       const id = clean(payload?.operationId || payload?.id, 200);
       const operation = state.cia_operations.find((item) => String(item.id) === String(id));
       if (!operation) return no(cb, 'المهمة غير موجودة.');
