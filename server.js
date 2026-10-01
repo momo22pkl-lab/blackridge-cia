@@ -344,6 +344,14 @@ function ensureBank(user) {
   return user.bank;
 }
 
+function hasLinkedMilitaryBankCode(user) {
+  if (!user) return false;
+  const bank = ensureBank(user);
+  return !!user.publicCode &&
+    user.bankAccount === user.publicCode &&
+    bank.bankCode === user.publicCode;
+}
+
 function normalizeUser(user) {
   if (!user.id) user.id = makeId('USER');
 
@@ -4538,8 +4546,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'كود البنك يجب أن يساوي الكود العسكري للشخصية الحالية.');
       }
       const accountNumber = clean(payload?.accountNumber || payload?.account || '', 60);
-      if (!accountNumber) return no(cb, 'أدخل رقم الحساب البنكي.');
-      actor.bankAccount = accountNumber;
+      if (accountNumber !== actor.publicCode) {
+        return no(cb, 'أدخل كودك العسكري نفسه لربطه بالحساب البنكي.');
+      }
+      actor.bankAccount = actor.publicCode;
       ensureBank(actor);
       saveState();
       emitState();
@@ -4610,6 +4620,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'لا تملك صلاحية صرف راتب هذه الشخصية.');
       }
       ensureBank(target);
+      if (target.id === actor.id && !hasLinkedMilitaryBankCode(target)) {
+        return no(cb, 'احفظ كودك العسكري مرة واحدة في البنك قبل تنفيذ العمليات.');
+      }
       if (target.bank.enabled === false || target.bank.frozen || target.bank.salaryEnabled === false) {
         return no(cb, 'الحساب أو الراتب موقوف.');
       }
@@ -4712,6 +4725,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             cb,
             'يجب تسجيل الدخول.'
           );
+        }
+
+        if (!hasLinkedMilitaryBankCode(actor)) {
+          return no(cb, 'احفظ كودك العسكري مرة واحدة في البنك قبل استلام الراتب.');
         }
 
         const amount =
@@ -5015,6 +5032,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
 
         ensureBank(target);
+        if (target.id === actor.id && !hasLinkedMilitaryBankCode(target)) {
+          return no(cb, 'احفظ كودك العسكري مرة واحدة في البنك قبل تنفيذ العمليات.');
+        }
 
         target.bank.balance +=
           Math.floor(
@@ -5094,6 +5114,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
 
         ensureBank(target);
+
+        if (target.id === actor.id && !hasLinkedMilitaryBankCode(target)) {
+          return no(cb, 'احفظ كودك العسكري مرة واحدة في البنك قبل تنفيذ العمليات.');
+        }
 
         if (
           target.bank.frozen
@@ -7764,15 +7788,35 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const text = clean(payload?.text || payload?.message, 3000);
       if (!text) return no(cb, 'اكتب الاستفسار أولاً.');
 
+      let threadId = clean(payload?.threadId, 120);
+      let ownerToken = clean(payload?.ownerToken, 200);
+      let original = null;
+      if (threadId) {
+        original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
+        const suppliedHash = ownerToken
+          ? crypto.createHash('sha256').update(ownerToken).digest('hex')
+          : '';
+        if (!original?.ownerTokenHash || suppliedHash !== original.ownerTokenHash) {
+          return no(cb, 'تعذر إثبات ملكية محادثة الاستفسار.');
+        }
+      } else {
+        threadId = `THREAD-${crypto.randomBytes(24).toString('hex')}`;
+        ownerToken = crypto.randomBytes(32).toString('hex');
+      }
+
       const message = {
         id: makeId('SUPPORT'),
-        threadId: clean(payload?.threadId, 120) || makeId('THREAD'),
+        threadId,
         senderCode: actor?.publicCode || '',
         senderName,
         senderRank: actor ? rankLabel(actor.rank) : 'Agent قيد الاعتماد',
         text,
         at: now(),
-        reply: actor ? false : false
+        reply: false,
+        ownerUserId: original?.ownerUserId || actor?.id || null,
+        ...(!original ? {
+          ownerTokenHash: crypto.createHash('sha256').update(ownerToken).digest('hex')
+        } : {})
       };
       supportThreadSockets.set(message.threadId, socket.id);
       state.cia_support.push(message);
@@ -7785,7 +7829,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
           targetSocket.emit('support:message', message);
         }
       }
-      return ok(cb, { message, threadId: message.threadId });
+      return ok(cb, { message, threadId: message.threadId, ownerToken });
+    });
+
+    socket.on('support:history', (payload, cb) => {
+      const threadId = clean(payload?.threadId, 120);
+      const ownerToken = clean(payload?.ownerToken, 200);
+      const original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
+      const suppliedHash = ownerToken
+        ? crypto.createHash('sha256').update(ownerToken).digest('hex')
+        : '';
+      if (!original?.ownerTokenHash || suppliedHash !== original.ownerTokenHash) {
+        return no(cb, 'تعذر إثبات ملكية محادثة الاستفسار.');
+      }
+      supportThreadSockets.set(threadId, socket.id);
+      const messages = state.cia_support.filter((item) => item.threadId === threadId);
+      return ok(cb, { threadId, messages });
     });
 
     socket.on('support:reply', (payload, cb) => {
@@ -7796,6 +7855,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const text = clean(payload?.text || payload?.message, 3000);
       const threadId = clean(payload?.threadId, 120);
       if (!text || !threadId) return no(cb, 'بيانات الرد غير مكتملة.');
+      const original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
+      if (!original) return no(cb, 'محادثة الاستفسار غير موجودة.');
       const message = {
         id: makeId('SUPPORT'),
         threadId,
@@ -7813,8 +7874,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
         if (targetUser && isLeadership(targetUser)) targetSocket.emit('support:message', message);
       }
-      const requesterSocket = io.sockets.sockets.get(supportThreadSockets.get(threadId));
-      if (requesterSocket) requesterSocket.emit('support:message', message);
+      const requesterIds = new Set();
+      if (original.ownerUserId) {
+        for (const socketId of sessions.get(original.ownerUserId) || []) requesterIds.add(socketId);
+      }
+      const activeOwnerSocket = supportThreadSockets.get(threadId);
+      if (activeOwnerSocket) requesterIds.add(activeOwnerSocket);
+      for (const socketId of requesterIds) {
+        const requesterSocket = io.sockets.sockets.get(socketId);
+        if (requesterSocket) requesterSocket.emit('support:private-reply', { threadId, message });
+      }
       return ok(cb, { message });
     });
 

@@ -559,6 +559,7 @@
         <textarea id="support-text" class="input-field" placeholder="للاستفسار بعد الرفض أو عن الطلب..." style="height:58px;resize:none;text-align:right;"></textarea>
         <button type="button" class="btn-action" style="margin-top:4px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="sendSupportMessage()">إرسال إلى CIA CHIEF وSenior Commander CIA</button>
         <div id="support-msg" style="font-size:.66rem;margin-top:5px;color:var(--text-dim);"></div>
+        <div id="support-thread-history" style="display:none;white-space:pre-wrap;background:#080b10;border:1px solid var(--border);border-radius:5px;padding:8px;margin-top:6px;font-size:.68rem;line-height:1.7;"></div>
       </div>
     </div>
   </div>
@@ -1083,7 +1084,7 @@
       <input
         id="bank-account-input"
         class="input-field"
-        placeholder="رقم الحساب البنكي"
+        placeholder="اكتب كودك العسكري لربط الحساب مرة واحدة"
       >
 
       <button
@@ -1091,7 +1092,7 @@
         class="btn-action"
         onclick="saveBankAccount()"
       >
-        حفظ الحساب البنكي
+        حفظ كود البنك العسكري
       </button>
 
       <button
@@ -1299,6 +1300,11 @@
     let supportMessages = [];
     let identityApprovalQueue = [];
     let lastSupportThreadId = null;
+    let lastSupportThreadToken = null;
+    try {
+      lastSupportThreadId = localStorage.getItem('cia_support_thread_id') || null;
+      lastSupportThreadToken = localStorage.getItem('cia_support_thread_token') || null;
+    } catch (e) {}
     let operationMap = null;
     let operationMapOperation = null;
     let operationMapLayers = [];
@@ -1444,6 +1450,7 @@
           if (raw) { try { seed[key] = JSON.parse(raw); } catch(e) {} }
         });
         ciaSocket.emit('shared:data:seed', seed);
+        loadSupportThread();
 
         // Socket.IO may reconnect after a network or browser sleep event.
         // Re-bind the authenticated account instead of leaving the UI logged
@@ -1609,6 +1616,11 @@
         if (currentUser && ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank))) {
           playRadioBeep(650);
         }
+      });
+
+      ciaSocket.on('support:private-reply', function(payload) {
+        if (!payload || payload.threadId !== lastSupportThreadId || !payload.message) return;
+        renderSupportThreadHistory([payload.message], true);
       });
 
       ciaSocket.on('admin:action:result', function(result) {
@@ -2318,7 +2330,8 @@
       const status=bank.enabled===false?'موقوف':bank.frozen?'مجمد':'فعال';
       const color=bank.enabled===false?'var(--red-alert)':bank.frozen?'var(--primary-gold)':'var(--green-status)';
       const salaryState = bank.salaryClaimedToday ? 'تم استلام الراتب خلال آخر 24 ساعة' : 'الراتب متاح للاستلام';
-      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:var(--text-dim);">(يُملأ تلقائياً ولا يُستبدل بكود آخر)</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
+      const bankLinked=bank.accountNumber===currentUser.publicCode||bank.bankAccount===currentUser.publicCode;
+      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:${bankLinked?'var(--green-status)':'var(--text-dim)'};">${bankLinked?'مرتبط':'اكتبه واحفظه مرة واحدة للربط'}</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
       const cmd=document.getElementById('bank-command-box'); if(cmd) cmd.style.display=canManage?'block':'none';
       const controls=document.getElementById('bank-management-controls'); if(controls) controls.style.display=canManage?'block':'none';
       const content=document.getElementById('bank-command-content'); if(!content||!canManage)return;
@@ -2334,8 +2347,7 @@
   if (!ciaSocket || !ciaSocket.connected) {
     return alert('الاتصال بالسيرفر غير متاح.');
   }
-  const value =
-    document.getElementById('bank-account-input').value.trim();
+  const value = document.getElementById('bank-account-input').value.trim();
 
   ciaSocket.emit(
     'bank:setAccount',
@@ -2351,7 +2363,8 @@
         );
       }
 
-      alert('تم حفظ الحساب البنكي.');
+      loadBankDirectory();
+      alert('تم ربط الحساب بكودك العسكري. لن تحتاج لإعادة إدخاله عند استلام الراتب.');
     }
   );
       }
@@ -3198,16 +3211,38 @@
       `).join('') || '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد رسائل مشفرة محفوظة.</div>';
     }
 
+    function renderSupportThreadHistory(messages,append=false) {
+      const panel=document.getElementById('support-thread-history');
+      if(!panel) return;
+      const lines=(Array.isArray(messages)?messages:[]).map(item=>`${item.reply?'رد القيادة':'استفسارك'}: ${item.text||''}`);
+      panel.style.display='block';
+      panel.textContent=append?[panel.textContent,...lines].filter(Boolean).join('\n'):lines.join('\n');
+      panel.scrollTop=panel.scrollHeight;
+    }
+
+    function loadSupportThread() {
+      if(!ciaSocket||!ciaSocket.connected||!lastSupportThreadId||!lastSupportThreadToken) return;
+      ciaSocket.emit('support:history',{threadId:lastSupportThreadId,ownerToken:lastSupportThreadToken},function(result){
+        if(result&&result.ok) renderSupportThreadHistory(result.messages,false);
+      });
+    }
+
     function sendSupportMessage() {
       if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       const text = document.getElementById('support-text')?.value.trim();
       const name = document.getElementById('support-name')?.value.trim() || currentUser?.name || '';
       if (!text) return alert('اكتب الاستفسار أولاً.');
-      ciaSocket.emit('support:send', { name, text, threadId: lastSupportThreadId }, function(result) {
+      ciaSocket.emit('support:send', { name, text, threadId: lastSupportThreadId, ownerToken:lastSupportThreadToken }, function(result) {
         if (!result || !result.ok) return alert((result && result.message) || 'تعذر إرسال الاستفسار.');
         lastSupportThreadId = result.threadId;
+        lastSupportThreadToken = result.ownerToken;
+        try {
+          localStorage.setItem('cia_support_thread_id',lastSupportThreadId);
+          localStorage.setItem('cia_support_thread_token',lastSupportThreadToken);
+        } catch(e) {}
+        renderSupportThreadHistory([result.message],true);
         const msg = document.getElementById('support-msg');
-        if (msg) msg.innerText = 'تم إرسال الاستفسار للقيادة فقط.';
+        if (msg) msg.innerText = 'تم إرسال الاستفسار للقيادة فقط؛ ستظهر الإجابة في هذه المحادثة الخاصة.';
         const input = document.getElementById('support-text');
         if (input) input.value = '';
       });
