@@ -680,8 +680,8 @@
     </div>
     <ul class="nav-list">
       <li class="nav-btn active" onclick="showPane('dashboard', this)"><i class="fa-solid fa-chart-line"></i> لوحة السيطرة</li>
-      <li class="nav-btn" onclick="showPane('tactical-map-view', this)"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس (GTA V)</li>
-      <li id="morse-nav" class="nav-btn" onclick="showPane('morse-translator-view', this)"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</li>
+      <li id="map-nav" class="nav-btn" onclick="showPane('tactical-map-view', this)"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس (GTA V)</li>
+      <li id="morse-nav" class="nav-btn" onclick="openMorseTranslator()"><i class="fa-solid fa-tower-broadcast"></i> مترجم مورس (أسفل الخريطة)</li>
       <li class="nav-btn" onclick="showPane('cases-vault', this)"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة</li>
       <li class="nav-btn" onclick="showPane('radio', this)"><i class="fa-solid fa-walkie-talkie"></i> الراديو وأكواد النداء</li>
       <li class="nav-btn" onclick="showPane('chat', this)"><i class="fa-solid fa-comments"></i> الاتصالات المشفرة</li>
@@ -780,15 +780,9 @@
         </div>
         <div id="gta-map" style="height: 450px; width: 100%; border-radius: 8px; border: 2px solid var(--primary-gold); background: #0fa8d7;"></div>
 
-      </div>
-    </div>
-    
-    <!-- Morse Translator -->
-    <div id="morse-translator-view" class="view-pane">
-      <h3 style="margin-bottom:10px;color:var(--primary-gold);font-size:1rem;"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h3>
         <section class="morse-panel" id="morse-translator-panel" aria-labelledby="morse-title">
           <h4 id="morse-title"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h4>
-          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب لتحويل النص الإنجليزي إلى شفرة مورس أو فك شفرة مورس إلى نص إنجليزي.</p>
+          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب المسجلة لتحويل النص الإنجليزي إلى شفرة مورس أو فك شفرة مورس إلى نص إنجليزي.</p>
           <div class="morse-controls">
             <select id="morse-mode" class="morse-select" onchange="updateMorseModeUI()" aria-label="اتجاه الترجمة">
               <option value="encode">تحويل نص إنجليزي إلى مورس</option>
@@ -806,8 +800,10 @@
             <div id="morse-audit-list" style="max-height:320px;overflow:auto;"></div>
           </section>
         </section>
-    </div>
 
+      </div>
+    </div>
+    
     <!-- Cases Vault -->
     <div id="cases-vault" class="view-pane">
       <h3 style="margin-bottom: 10px; color: var(--primary-gold); font-size: 1rem;"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة (Cases Vault)</h3>
@@ -2584,7 +2580,7 @@
         alert('يلزم تسجيل الدخول أولاً.');
         return;
       }
-      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && paneId !== 'morse-translator-view' && currentUser && currentUser.activeService !== true) {
+      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && currentUser && currentUser.activeService !== true) {
         alert('يلزم تسجيل الدخول للخدمة أولاً.');
         return;
       }
@@ -2669,6 +2665,12 @@
       if (resultLabel) resultLabel.textContent = mode === 'encode' ? 'شفرة مورس:' : 'النص المفكوك:';
     }
 
+    function openMorseTranslator() {
+      showPane('tactical-map-view', document.getElementById('map-nav'));
+      const panel = document.getElementById('morse-translator-panel');
+      if (panel) setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    }
+
     function showMorseSupervisorNotice(log) {
       if (!log || !currentUser || !isTopThreeMissionRank(currentUser.rank) || log.userId === currentUser.id) return;
       const host = document.getElementById('morse-live-notices');
@@ -2682,7 +2684,7 @@
       const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
       detail.textContent = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—') + ' · ' + direction + '\n' + (log.source || '') + ' → ' + (log.translation || '');
       card.append(heading, detail);
-      card.addEventListener('click', function() { showPane('morse-translator-view', document.getElementById('morse-nav')); card.remove(); });
+      card.addEventListener('click', function() { openMorseTranslator(); card.remove(); });
       host.prepend(card);
       while (host.children.length > 4) host.lastElementChild.remove();
       setTimeout(function() { card.remove(); }, 15000);
