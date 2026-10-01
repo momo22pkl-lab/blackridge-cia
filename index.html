@@ -455,11 +455,19 @@
     .session-recovery-card strong { display:block; color:var(--primary-gold); margin-bottom:7px; }
     .session-recovery-card span { color:var(--text-dim); font-size:.76rem; line-height:1.7; }
     @media(max-width:600px){ .morse-panel { padding:11px; } }
+  
+    #morse-live-notices { position:fixed; top:14px; left:14px; z-index:10002; display:grid; gap:8px; width:min(400px,calc(100vw - 28px)); pointer-events:none; }
+    .morse-live-notice { width:100%; padding:12px; border:1px solid var(--primary-gold); border-right:4px solid var(--cyan-glow); border-radius:8px; background:rgba(7,11,16,.97); color:var(--text-bright); text-align:right; cursor:pointer; box-shadow:0 10px 26px rgba(0,0,0,.45); pointer-events:auto; animation:morseNoticeIn .18s ease-out; }
+    .morse-live-notice strong { display:block; color:var(--primary-gold); font-size:.78rem; margin-bottom:4px; }
+    .morse-live-notice span { display:block; color:var(--text-dim); font-size:.68rem; line-height:1.65; overflow-wrap:anywhere; }
+    @keyframes morseNoticeIn { from { opacity:0; transform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
+  
   </style>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 </head>
 <body>
   <div id="session-recovery-overlay" aria-live="polite" aria-modal="true" role="status"><div class="session-recovery-card"><strong><i class="fa-solid fa-shield-halved"></i> استعادة الجلسة</strong><span id="session-recovery-message">جارٍ إعادة الاتصال بالنظام...</span></div></div>
+  <div id="morse-live-notices" aria-live="polite" aria-atomic="false"></div>
 
   <!-- S.O.S Alert Overlay -->
   <div id="sos-screen-banner" aria-live="assertive" aria-modal="true" role="alertdialog">
@@ -673,6 +681,7 @@
     <ul class="nav-list">
       <li class="nav-btn active" onclick="showPane('dashboard', this)"><i class="fa-solid fa-chart-line"></i> لوحة السيطرة</li>
       <li class="nav-btn" onclick="showPane('tactical-map-view', this)"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس (GTA V)</li>
+      <li id="morse-nav" class="nav-btn" onclick="showPane('morse-translator-view', this)"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</li>
       <li class="nav-btn" onclick="showPane('cases-vault', this)"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة</li>
       <li class="nav-btn" onclick="showPane('radio', this)"><i class="fa-solid fa-walkie-talkie"></i> الراديو وأكواد النداء</li>
       <li class="nav-btn" onclick="showPane('chat', this)"><i class="fa-solid fa-comments"></i> الاتصالات المشفرة</li>
@@ -770,30 +779,35 @@
           <span id="map-location-status" style="font-size:.72rem;color:var(--text-dim);flex:1;min-width:180px;">اضغط على الخريطة لوضع موقعك التكتيكي. لا يلزم تفعيل الخدمة لهذه العملية.</span>
         </div>
         <div id="gta-map" style="height: 450px; width: 100%; border-radius: 8px; border: 2px solid var(--primary-gold); background: #0fa8d7;"></div>
+
+      </div>
+    </div>
+    
+    <!-- Morse Translator -->
+    <div id="morse-translator-view" class="view-pane">
+      <h3 style="margin-bottom:10px;color:var(--primary-gold);font-size:1rem;"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h3>
         <section class="morse-panel" id="morse-translator-panel" aria-labelledby="morse-title">
           <h4 id="morse-title"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h4>
-          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب. اكتب نصًا إنجليزيًا لتحويله إلى مورس، أو أدخل شفرة مورس لفكها. سجّل سبب الاستخدام حتى يظهر في سجل القيادة.</p>
+          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب لتحويل النص الإنجليزي إلى شفرة مورس أو فك شفرة مورس إلى نص إنجليزي.</p>
           <div class="morse-controls">
             <select id="morse-mode" class="morse-select" onchange="updateMorseModeUI()" aria-label="اتجاه الترجمة">
               <option value="encode">تحويل نص إنجليزي إلى مورس</option>
               <option value="decode">فك شفرة مورس إلى نص إنجليزي</option>
             </select>
             <textarea id="morse-input" class="morse-field" dir="ltr" maxlength="500" placeholder="اكتب النص باللغة الإنجليزية فقط..."></textarea>
-            <textarea id="morse-purpose" class="morse-field" maxlength="250" placeholder="سبب الاستخدام / اسم المهمة (إلزامي)"></textarea>
             <button type="button" id="morse-submit" class="morse-action" onclick="submitMorseTranslation()"><i class="fa-solid fa-arrows-rotate"></i> تحويل النص</button>
           </div>
           <div id="morse-result" class="morse-result" aria-live="polite"><strong id="morse-result-label" style="color:var(--primary-gold);font-size:.7rem;"></strong><output id="morse-result-text" class="morse-result-text" dir="ltr"></output></div>
-          <section id="morse-chief-panel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #303b49;">
-            <h4><i class="fa-solid fa-user-shield"></i> سجل مترجم مورس — CIA CHIEF</h4>
+          <section id="morse-leadership-panel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #303b49;">
+            <h4><i class="fa-solid fa-user-shield"></i> سجل ترجمات مورس — القيادة</h4>
             <div style="font-size:.66rem;color:var(--text-dim);margin:7px 0 4px;">الأفراد الموجودون في الخدمة الآن</div>
             <div id="morse-online-personnel"></div>
-            <div style="font-size:.66rem;color:var(--text-dim);margin:12px 0 4px;">سجل من ترجموا الشفرة، النص والنتيجة وسبب الاستخدام</div>
+            <div style="font-size:.66rem;color:var(--text-dim);margin:12px 0 4px;">سجل الترجمات التي وصلت للقيادة</div>
             <div id="morse-audit-list" style="max-height:320px;overflow:auto;"></div>
           </section>
         </section>
-      </div>
     </div>
-    
+
     <!-- Cases Vault -->
     <div id="cases-vault" class="view-pane">
       <h3 style="margin-bottom: 10px; color: var(--primary-gold); font-size: 1rem;"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة (Cases Vault)</h3>
@@ -1078,9 +1092,9 @@
         </select>
         <textarea id="op-objective" class="input-field" placeholder="الهدف والتعليمات الميدانية" style="height:80px;resize:none;"></textarea>
         <input id="op-leader-code" class="input-field" placeholder="كودك العسكري كمنشئ المهمة" readonly>
-        <label for="op-agent-codes" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:4px 0;">اختَر Agents المهمة (الأسماء للقائد فقط، والأكواد للسينيور والهاي كوماندر):</label>
-        <select id="op-agent-codes" class="input-field" multiple size="5" aria-label="اختيار أعضاء المهمة" style="min-height:120px;"><option disabled>جارٍ تحميل Agents...</option></select>
-        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">استخدم Ctrl أو ⌘ لاختيار أكثر من Agent.</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;"><label for="op-agent-codes" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:0;">اختَر الأعضاء المتصلين بالخدمة للمهمة:</label><button type="button" onclick="loadOperationAgentDirectory()" style="padding:5px 9px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;font-size:.68rem;">تحديث القائمة</button></div>
+        <select id="op-agent-codes" class="input-field" multiple size="5" aria-label="اختيار أعضاء المهمة" style="min-height:120px;"><option disabled selected>اضغط تحديث القائمة لتحميل الأعضاء.</option></select>
+        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">يمكن اختيار أكثر من عضو باستخدام Ctrl أو ⌘.</div>
         <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
@@ -1611,6 +1625,7 @@
       ciaSocket.on('operation:delete:result', function(result){ if(result&&result.ok){ loadTacticalOperations(); renderDailyAuditLogs(); } });
 
       ciaSocket.on('operation:assigned', function(result){ const op=result&&result.operation?result.operation:result; playRadioBeep(1000); if(op) alert(`تم إسناد مهمة ميدانية ${op.missionNumber||op.id||''}.`); loadTacticalOperations(); });
+      ciaSocket.on('morse:activity', function(payload){ if(payload&&payload.log) showMorseSupervisorNotice(payload.log); });
       ciaSocket.on('member:kicked', function(result){ alert((result&&result.message)||'تم فصل الشخصية.'); currentUser=null; location.reload(); });
       ciaSocket.on('sos:deleted', function(){ renderSOSAlerts(); });
 
@@ -2153,14 +2168,40 @@
 
     function parsePoint(value){ const m=String(value||'').split(',').map(Number); return m.length===2 && m.every(Number.isFinite)?{lat:m[0],lng:m[1],label:String(value||'').trim()}:null; }
 
+    let operationAgentRequestId = 0;
+    function setOperationAgentStatus(select, message) {
+      if (!select) return;
+      select.innerHTML = '<option disabled selected>' + esc(message) + '</option>';
+    }
+
     function loadOperationAgentDirectory(){
-      if(!currentUser||!isTopThreeMissionRank(currentUser.rank)||!ciaSocket||!ciaSocket.connected) return;
-      ciaSocket.emit('operation:agents',{},function(result){
-        if(!result||!result.ok) return;
-        operationAgentDirectory=Array.isArray(result.agents)?result.agents:[];
-        const select=document.getElementById('op-agent-codes');
-        if(!select) return;
-        select.innerHTML=operationAgentDirectory.map(agent=>`<option value="${esc(agent.code)}">#${esc(agent.code)}${agent.name?` — ${esc(agent.name)}`:''}</option>`).join('')||'<option disabled>لا يوجد Agents معتمدون للاختيار.</option>';
+      const select = document.getElementById('op-agent-codes');
+      if (!select) return;
+      if (!currentUser || !isTopThreeMissionRank(currentUser.rank)) {
+        setOperationAgentStatus(select, 'قائمة اختيار الأعضاء متاحة للقيادة فقط.');
+        return;
+      }
+      if (!ciaSocket || !ciaSocket.connected) {
+        setOperationAgentStatus(select, 'الاتصال بالخادم غير متاح؛ حدّث القائمة بعد الاتصال.');
+        return;
+      }
+      const requestId = ++operationAgentRequestId;
+      setOperationAgentStatus(select, 'جارٍ تحميل الأعضاء الموجودين بالخدمة...');
+      const timeout = setTimeout(function(){
+        if (requestId === operationAgentRequestId && select.options.length && select.options[0].textContent.indexOf('جارٍ تحميل') === 0) {
+          setOperationAgentStatus(select, 'لم يصل رد من الخادم؛ اضغط تحديث القائمة للمحاولة مجددًا.');
+        }
+      }, 8000);
+      ciaSocket.emit('operation:agents', {}, function(result){
+        clearTimeout(timeout);
+        if (requestId !== operationAgentRequestId) return;
+        if (!result || !result.ok) {
+          operationAgentDirectory = [];
+          setOperationAgentStatus(select, (result && result.message) || 'تعذر تحميل قائمة الأعضاء؛ اضغط تحديث القائمة للمحاولة مجددًا.');
+          return;
+        }
+        operationAgentDirectory = Array.isArray(result.agents) ? result.agents : [];
+        select.innerHTML = operationAgentDirectory.map(agent => '<option value="' + esc(agent.code) + '">#' + esc(agent.code) + (agent.name ? ' — ' + esc(agent.name) : '') + '</option>').join('') || '<option disabled selected>لا يوجد أعضاء متصلون بالخدمة حاليًا.</option>';
       });
     }
     let operationPointMode = null;
@@ -2533,7 +2574,7 @@
         alert('يلزم تسجيل الدخول أولاً.');
         return;
       }
-      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && currentUser && currentUser.activeService !== true) {
+      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && paneId !== 'morse-translator-view' && currentUser && currentUser.activeService !== true) {
         alert('يلزم تسجيل الدخول للخدمة أولاً.');
         return;
       }
@@ -2547,7 +2588,7 @@
       if (paneId === 'tactical-map-view') setTimeout(function(){ initGTAMap(); }, 250);
       if (paneId === 'sos-history-map-view') setTimeout(function(){ initSOSHistoryMap(); }, 50);
       if (paneId === 'bank') setTimeout(loadBankDirectory, 50);
-      if (paneId === 'operations') setTimeout(loadTacticalOperations, 50);
+      if (paneId === 'operations') setTimeout(function(){ loadTacticalOperations(); loadOperationAgentDirectory(); }, 50);
       updateViews();
     }
 
@@ -2618,12 +2659,31 @@
       if (resultLabel) resultLabel.textContent = mode === 'encode' ? 'شفرة مورس:' : 'النص المفكوك:';
     }
 
+    function showMorseSupervisorNotice(log) {
+      if (!log || !currentUser || !isTopThreeMissionRank(currentUser.rank) || log.userId === currentUser.id) return;
+      const host = document.getElementById('morse-live-notices');
+      if (!host) return;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'morse-live-notice';
+      const heading = document.createElement('strong');
+      heading.textContent = 'ترجمة مورس جديدة';
+      const detail = document.createElement('span');
+      const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
+      detail.textContent = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—') + ' · ' + direction + '\n' + (log.source || '') + ' → ' + (log.translation || '');
+      card.append(heading, detail);
+      card.addEventListener('click', function() { showPane('morse-translator-view', document.getElementById('morse-nav')); card.remove(); });
+      host.prepend(card);
+      while (host.children.length > 4) host.lastElementChild.remove();
+      setTimeout(function() { card.remove(); }, 15000);
+    }
+
     function renderMorsePanels() {
-      const panel = document.getElementById('morse-chief-panel');
+      const panel = document.getElementById('morse-leadership-panel');
       if (!panel) return;
-      const isChief = currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
-      panel.style.display = isChief ? 'block' : 'none';
-      if (!isChief) return;
+      const canReview = currentUser && isTopThreeMissionRank(currentUser.rank);
+      panel.style.display = canReview ? 'block' : 'none';
+      if (!canReview) return;
       const personnel = document.getElementById('morse-online-personnel');
       const present = (registeredUsers || []).filter(user => user.online || user.activeService);
       if (personnel) personnel.innerHTML = present.length ? present.map(user => {
@@ -2635,7 +2695,7 @@
       list.innerHTML = (morseAuditLogs || []).length ? morseAuditLogs.slice(0,100).map(log => {
         const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
         const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
-        return '<article class="morse-audit-item"><strong>' + escapeHtml(log.realName || log.userName || 'غير معروف') + '</strong><div class="morse-audit-meta">#' + escapeHtml(log.publicCode || '') + ' · ' + escapeHtml(log.rankLabel || log.rank || '') + ' · ' + escapeHtml(direction) + ' · ' + escapeHtml(when) + '</div><div class="morse-audit-body"><b>النص المدخل:</b> ' + escapeHtml(log.source || '') + '<br><b>النتيجة:</b> ' + escapeHtml(log.translation || '') + '<br><b>سبب الاستخدام:</b> ' + escapeHtml(log.purpose || '') + '</div></article>';
+        return '<article class="morse-audit-item"><strong>' + escapeHtml(log.realName || log.userName || 'غير معروف') + '</strong><div class="morse-audit-meta">#' + escapeHtml(log.publicCode || '') + ' · ' + escapeHtml(log.rankLabel || log.rank || '') + ' · ' + escapeHtml(direction) + ' · ' + escapeHtml(when) + '</div><div class="morse-audit-body"><b>النص المدخل:</b> ' + escapeHtml(log.source || '') + '<br><b>النتيجة:</b> ' + escapeHtml(log.translation || '') + '</div></article>';
       }).join('') : '<div class="radio-empty">لا توجد عمليات ترجمة مسجلة بعد.</div>';
     }
 
@@ -2644,21 +2704,19 @@
       if (!ciaSocket || !ciaSocket.connected || !ciaSessionAuthenticated) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
       const direction = document.getElementById('morse-mode')?.value || 'encode';
       const text = document.getElementById('morse-input')?.value.trim() || '';
-      const purpose = document.getElementById('morse-purpose')?.value.trim() || '';
       const resultBox = document.getElementById('morse-result');
       const output = document.getElementById('morse-result-text');
       const button = document.getElementById('morse-submit');
       if (!text) return alert('اكتب النص أو شفرة مورس أولاً.');
-      if (!purpose) return alert('اكتب سبب الاستخدام أو اسم المهمة ليظهر في سجل القيادة.');
       if (button) button.disabled = true;
-      ciaSocket.emit('morse:translate', { direction, text, purpose }, function(result) {
+      ciaSocket.emit('morse:translate', { direction, text }, function(result) {
         if (button) button.disabled = false;
         if (!result || !result.ok) return alert((result && result.message) || 'تعذرت ترجمة الشفرة.');
         const label = document.getElementById('morse-result-label');
         if (label) label.textContent = direction === 'encode' ? 'شفرة مورس:' : 'النص المفكوك:';
         if (output) output.textContent = result.translation || '';
         if (resultBox) resultBox.style.display = 'block';
-        if (currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF') renderMorsePanels();
+        if (currentUser && isTopThreeMissionRank(currentUser.rank)) renderMorsePanels();
       });
     }
 
