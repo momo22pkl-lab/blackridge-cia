@@ -437,10 +437,29 @@
     .audit-log-item .audit-log-title { color:var(--primary-gold); font-weight:800; font-size:.76rem; }
     .audit-log-item .audit-log-meta { color:var(--text-dim); font-size:.62rem; margin-top:4px; line-height:1.6; }
     .audit-log-item .audit-log-details { color:var(--text-bright); font-size:.68rem; margin-top:5px; line-height:1.6; }
+  
+    .morse-panel { margin-top:14px; border:1px solid rgba(6,182,212,.48); border-right:3px solid var(--cyan-glow); background:linear-gradient(145deg,rgba(8,13,20,.98),rgba(4,7,11,.98)); border-radius:9px; padding:14px; }
+    .morse-panel h4 { color:var(--primary-gold); font-size:.9rem; margin-bottom:6px; }
+    .morse-controls { display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; }
+    .morse-field { width:100%; min-height:78px; resize:vertical; padding:10px; border:1px solid #344154; border-radius:6px; background:#020406; color:var(--text-bright); outline:none; font-size:.78rem; }
+    .morse-field:focus,.morse-select:focus { border-color:var(--cyan-glow); }
+    .morse-select { width:100%; padding:10px; border:1px solid #344154; border-radius:6px; background:#020406; color:var(--text-bright); }
+    .morse-action { padding:10px 14px; border:1px solid var(--primary-gold); border-radius:5px; background:#17150f; color:var(--primary-gold); font-weight:800; cursor:pointer; }
+    .morse-result { display:none; margin-top:10px; padding:10px; border:1px solid #2d3748; border-radius:6px; background:#030609; }
+    .morse-result-text { display:block; margin-top:6px; color:var(--cyan-glow); font:700 .88rem/1.8 monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .morse-audit-item { margin-top:7px; padding:9px; border:1px solid #293548; border-right:3px solid var(--primary-gold); border-radius:6px; background:#05070a; }
+    .morse-audit-meta { color:var(--text-dim); font-size:.62rem; line-height:1.7; }
+    .morse-audit-body { color:var(--text-bright); font-size:.68rem; line-height:1.65; margin-top:5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    #session-recovery-overlay { position:fixed; inset:0; z-index:10001; display:none; align-items:center; justify-content:center; padding:20px; background:rgba(2,4,8,.88); backdrop-filter:blur(6px); }
+    .session-recovery-card { width:min(360px,92vw); padding:20px; border:1px solid var(--primary-gold); border-radius:10px; background:#090d13; text-align:center; box-shadow:0 14px 40px rgba(0,0,0,.5); }
+    .session-recovery-card strong { display:block; color:var(--primary-gold); margin-bottom:7px; }
+    .session-recovery-card span { color:var(--text-dim); font-size:.76rem; line-height:1.7; }
+    @media(max-width:600px){ .morse-panel { padding:11px; } }
   </style>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 </head>
 <body>
+  <div id="session-recovery-overlay" aria-live="polite" aria-modal="true" role="status"><div class="session-recovery-card"><strong><i class="fa-solid fa-shield-halved"></i> استعادة الجلسة</strong><span id="session-recovery-message">جارٍ إعادة الاتصال بالنظام...</span></div></div>
 
   <!-- S.O.S Alert Overlay -->
   <div id="sos-screen-banner" aria-live="assertive" aria-modal="true" role="alertdialog">
@@ -751,6 +770,27 @@
           <span id="map-location-status" style="font-size:.72rem;color:var(--text-dim);flex:1;min-width:180px;">اضغط على الخريطة لوضع موقعك التكتيكي. لا يلزم تفعيل الخدمة لهذه العملية.</span>
         </div>
         <div id="gta-map" style="height: 450px; width: 100%; border-radius: 8px; border: 2px solid var(--primary-gold); background: #0fa8d7;"></div>
+        <section class="morse-panel" id="morse-translator-panel" aria-labelledby="morse-title">
+          <h4 id="morse-title"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h4>
+          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب. اكتب نصًا إنجليزيًا لتحويله إلى مورس، أو أدخل شفرة مورس لفكها. سجّل سبب الاستخدام حتى يظهر في سجل القيادة.</p>
+          <div class="morse-controls">
+            <select id="morse-mode" class="morse-select" onchange="updateMorseModeUI()" aria-label="اتجاه الترجمة">
+              <option value="encode">تحويل نص إنجليزي إلى مورس</option>
+              <option value="decode">فك شفرة مورس إلى نص إنجليزي</option>
+            </select>
+            <textarea id="morse-input" class="morse-field" dir="ltr" maxlength="500" placeholder="اكتب النص باللغة الإنجليزية فقط..."></textarea>
+            <textarea id="morse-purpose" class="morse-field" maxlength="250" placeholder="سبب الاستخدام / اسم المهمة (إلزامي)"></textarea>
+            <button type="button" id="morse-submit" class="morse-action" onclick="submitMorseTranslation()"><i class="fa-solid fa-arrows-rotate"></i> تحويل النص</button>
+          </div>
+          <div id="morse-result" class="morse-result" aria-live="polite"><strong id="morse-result-label" style="color:var(--primary-gold);font-size:.7rem;"></strong><output id="morse-result-text" class="morse-result-text" dir="ltr"></output></div>
+          <section id="morse-chief-panel" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid #303b49;">
+            <h4><i class="fa-solid fa-user-shield"></i> سجل مترجم مورس — CIA CHIEF</h4>
+            <div style="font-size:.66rem;color:var(--text-dim);margin:7px 0 4px;">الأفراد الموجودون في الخدمة الآن</div>
+            <div id="morse-online-personnel"></div>
+            <div style="font-size:.66rem;color:var(--text-dim);margin:12px 0 4px;">سجل من ترجموا الشفرة، النص والنتيجة وسبب الاستخدام</div>
+            <div id="morse-audit-list" style="max-height:320px;overflow:auto;"></div>
+          </section>
+        </section>
       </div>
     </div>
     
@@ -1273,6 +1313,7 @@
 
   <script>
     let currentUser = null;
+    let morseAuditLogs = [];
     let activeChatMode = 'global';
     let sosTimer = null;
     let sosAlarmTimer = null;
@@ -1351,6 +1392,28 @@
     const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
     const ciaSocket = typeof io === 'function' ? io() : null;
     let ciaSocketReady = false;
+    let ciaSessionAuthenticated = false;
+    let authReconnectPending = false;
+
+    function setSessionRecoveryVisible(visible, message) {
+      const overlay = document.getElementById('session-recovery-overlay');
+      const label = document.getElementById('session-recovery-message');
+      if (label && message) label.textContent = message;
+      if (overlay) overlay.style.display = visible ? 'flex' : 'none';
+    }
+
+    function completeReconnectFailure(message) {
+      ciaSessionAuthenticated = false;
+      authReconnectPending = false;
+      setSessionRecoveryVisible(false);
+      currentUser = null;
+      const modal = document.getElementById('passcode-modal');
+      if (modal) modal.style.display = 'flex';
+      const msg = document.getElementById('auth-msg');
+      if (msg) msg.innerText = message || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.';
+      updateServiceUI();
+      updateViews();
+    }
 
     function getStoredData(key, defaultVal) {
       try {
@@ -1421,9 +1484,11 @@
         auditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs : [];
         attendanceLogs = Array.isArray(state.cia_attendance) ? state.cia_attendance : [];
         operationsList = Array.isArray(state.cia_operations) ? state.cia_operations : [];
+        morseAuditLogs = Array.isArray(state.cia_morse_logs) ? state.cia_morse_logs : [];
         supportMessages = Array.isArray(state.cia_support) ? state.cia_support : supportMessages;
         if (currentUser && state.cia_users) { const me=state.cia_users.find(u=>u.id===currentUser.id); if(me){ currentUser={...currentUser,...me}; } }
         if (typeof updateViews === 'function') updateViews();
+        renderMorsePanels();
         if (document.getElementById('leadership-secure-chat-panel')) renderLeadershipSecureChats();
         renderSupportPanel();
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
@@ -1452,10 +1517,10 @@
         ciaSocket.emit('shared:data:seed', seed);
         loadSupportThread();
 
-        // Socket.IO may reconnect after a network or browser sleep event.
-        // Re-bind the authenticated account instead of leaving the UI logged
-        // in while the server has a fresh socket with no userId.
+        // Rebind after a network/browser sleep. Keep the page blocked until the server confirms the socket identity.
         if (currentUser) {
+          authReconnectPending = true;
+          setSessionRecoveryVisible(true, 'جارٍ التحقق من حسابك وإعادة ربط الجلسة...');
           let savedName = currentUser.name || '';
           let savedCode = currentUser.secretCode || '';
           try {
@@ -1468,16 +1533,29 @@
               code: savedCode,
               resumeService: currentUser.activeService === true
             }, function(result) {
-              if (!result || !result.ok) return;
+              if (!result || !result.ok) {
+                if (authReconnectPending) completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
+                return;
+              }
+              ciaSessionAuthenticated = true;
+              authReconnectPending = false;
+              setSessionRecoveryVisible(false);
               currentUser = result.user || currentUser;
               completeLogin();
               if (result.needsIdentity) openIdentityModal();
             });
+          } else {
+            completeReconnectFailure('تعذر استعادة بيانات الدخول المحفوظة؛ سجّل الدخول مجددًا.');
           }
         }
       });
       ciaSocket.on('disconnect', function() {
         ciaSocketReady = false;
+        ciaSessionAuthenticated = false;
+        if (currentUser) {
+          authReconnectPending = true;
+          setSessionRecoveryVisible(true, 'انقطع الاتصال؛ جارٍ إعادة الربط قبل تنفيذ أي إجراء...');
+        }
       });
       ciaSocket.on('character:list:result', function(result) {
         if (!result || !result.ok) { document.getElementById('characters-manager-msg').innerText = (result && result.message) || 'تعذر تحميل الشخصيات.'; return; }
@@ -1562,9 +1640,16 @@
       ciaSocket.on('auth:login:result', function(result) {
         const msg = document.getElementById('auth-msg');
         if (!result || !result.ok) {
-          if (msg) msg.innerText = (result && result.message) || "الاسم والكود غير متطابقين.";
+          if (authReconnectPending) {
+            completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
+          } else if (msg) {
+            msg.innerText = (result && result.message) || "الاسم والكود غير متطابقين.";
+          }
           return;
         }
+        ciaSessionAuthenticated = true;
+        authReconnectPending = false;
+        setSessionRecoveryVisible(false);
         currentUser = result.user;
         try {
           localStorage.setItem('cia_last_login_name', currentUser.name || '');
@@ -2009,6 +2094,9 @@
     }
 
     function completeLogin() {
+      ciaSessionAuthenticated = true;
+      authReconnectPending = false;
+      setSessionRecoveryVisible(false);
       document.getElementById('passcode-modal').style.display = 'none';
       document.getElementById('user-display-tag').innerText = `#${currentUser.publicCode} (${currentUser.rank})`;
 
@@ -2030,6 +2118,7 @@
       syncRadioChannelUI();
       updateViews();
       updateServiceUI();
+      renderMorsePanels();
     }
 
     function setUserStatus(newStatus) {
@@ -2519,6 +2608,60 @@
         label.style.color = 'var(--red-alert)';
       }
     }
+    function updateMorseModeUI() {
+      const mode = document.getElementById('morse-mode')?.value || 'encode';
+      const input = document.getElementById('morse-input');
+      if (!input) return;
+      input.placeholder = mode === 'encode' ? 'اكتب النص باللغة الإنجليزية فقط...' : 'أدخل مورس: استخدم مسافة بين الحروف و / بين الكلمات...';
+      input.dir = 'ltr';
+      const resultLabel = document.getElementById('morse-result-label');
+      if (resultLabel) resultLabel.textContent = mode === 'encode' ? 'شفرة مورس:' : 'النص المفكوك:';
+    }
+
+    function renderMorsePanels() {
+      const panel = document.getElementById('morse-chief-panel');
+      if (!panel) return;
+      const isChief = currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      panel.style.display = isChief ? 'block' : 'none';
+      if (!isChief) return;
+      const personnel = document.getElementById('morse-online-personnel');
+      const present = (registeredUsers || []).filter(user => user.online || user.activeService);
+      if (personnel) personnel.innerHTML = present.length ? present.map(user => {
+        const name = (user.identity && user.identity.fullName) || user.name || 'الاسم غير متاح';
+        return '<div class="morse-audit-item"><strong>' + escapeHtml(name) + '</strong><div class="morse-audit-meta">الكود العسكري: #' + escapeHtml(user.publicCode || '—') + ' | ' + escapeHtml(user.rankLabel || user.rank || '') + ' | ' + escapeHtml(user.status || (user.online ? 'متصل' : 'غير متصل')) + '</div></div>';
+      }).join('') : '<div class="radio-empty">لا يوجد أفراد في الخدمة حاليًا.</div>';
+      const list = document.getElementById('morse-audit-list');
+      if (!list) return;
+      list.innerHTML = (morseAuditLogs || []).length ? morseAuditLogs.slice(0,100).map(log => {
+        const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
+        return '<article class="morse-audit-item"><strong>' + escapeHtml(log.realName || log.userName || 'غير معروف') + '</strong><div class="morse-audit-meta">#' + escapeHtml(log.publicCode || '') + ' · ' + escapeHtml(log.rankLabel || log.rank || '') + ' · ' + escapeHtml(direction) + ' · ' + escapeHtml(when) + '</div><div class="morse-audit-body"><b>النص المدخل:</b> ' + escapeHtml(log.source || '') + '<br><b>النتيجة:</b> ' + escapeHtml(log.translation || '') + '<br><b>سبب الاستخدام:</b> ' + escapeHtml(log.purpose || '') + '</div></article>';
+      }).join('') : '<div class="radio-empty">لا توجد عمليات ترجمة مسجلة بعد.</div>';
+    }
+
+    function submitMorseTranslation() {
+      if (!currentUser) return alert('سجّل الدخول أولاً لاستخدام المترجم.');
+      if (!ciaSocket || !ciaSocket.connected || !ciaSessionAuthenticated) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
+      const direction = document.getElementById('morse-mode')?.value || 'encode';
+      const text = document.getElementById('morse-input')?.value.trim() || '';
+      const purpose = document.getElementById('morse-purpose')?.value.trim() || '';
+      const resultBox = document.getElementById('morse-result');
+      const output = document.getElementById('morse-result-text');
+      const button = document.getElementById('morse-submit');
+      if (!text) return alert('اكتب النص أو شفرة مورس أولاً.');
+      if (!purpose) return alert('اكتب سبب الاستخدام أو اسم المهمة ليظهر في سجل القيادة.');
+      if (button) button.disabled = true;
+      ciaSocket.emit('morse:translate', { direction, text, purpose }, function(result) {
+        if (button) button.disabled = false;
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذرت ترجمة الشفرة.');
+        const label = document.getElementById('morse-result-label');
+        if (label) label.textContent = direction === 'encode' ? 'شفرة مورس:' : 'النص المفكوك:';
+        if (output) output.textContent = result.translation || '';
+        if (resultBox) resultBox.style.display = 'block';
+        if (currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF') renderMorsePanels();
+      });
+    }
+
     function startDuty(){
       if(!currentUser||!ciaSocket) return alert('يلزم تسجيل الدخول أولاً.');
       ciaSocket.emit('duty:start',{},r=>{
