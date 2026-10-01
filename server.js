@@ -308,6 +308,9 @@ const isSenior = (user) =>
 const isHighCommander = (user) =>
   !!user && normalizeRank(user.rank) === 'HIGH COMMANDER';
 
+const isMorseSupervisor = (user) =>
+  isChief(user) || isSenior(user) || isHighCommander(user);
+
 const isLeadership = (user) =>
   isChief(user) || isSenior(user);
 
@@ -893,7 +896,7 @@ function snapshot(viewer = null) {
       state.cia_map_locations || {},
 
     cia_morse_logs:
-      isChief(viewer)
+      isMorseSupervisor(viewer)
         ? (state.cia_morse_logs || [])
         : [],
 
@@ -5541,10 +5544,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
       const direction = clean(payload?.direction, 20).toLowerCase();
       const source = clean(payload?.text, 500);
-      const purpose = clean(payload?.purpose, 250);
       if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
       if (!source) return no(cb, 'اكتب النص أو شفرة مورس أولاً.');
-      if (!purpose) return no(cb, 'سبب الاستخدام أو اسم المهمة مطلوب.');
 
       let translation;
       if (direction === 'encode') {
@@ -5579,13 +5580,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
         direction,
         source,
         translation,
-        purpose,
         at: now()
       };
       state.cia_morse_logs.unshift(log);
       state.cia_morse_logs = state.cia_morse_logs.slice(0, 500);
       saveState();
       emitState();
+      const connectedSockets = io.sockets && io.sockets.sockets;
+      const socketList = connectedSockets instanceof Map
+        ? connectedSockets.values()
+        : Object.values(connectedSockets || {});
+      for (const targetSocket of socketList) {
+        const recipient = requireAuthenticatedUser(targetSocket);
+        if (isMorseSupervisor(recipient)) targetSocket.emit('morse:activity', { log });
+      }
       return ok(cb, { translation, logId: log.id });
     });
 
@@ -7018,9 +7026,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
           !member ||
           normalizeRank(member.rank) !== 'AGENT' ||
           member.approved === false ||
-          member.suspended
+          member.suspended ||
+          member.online !== true ||
+          member.activeService !== true
         )) {
-          return no(cb, 'تأكد أن كل الأكواد المختارة تخص Agents معتمدين.');
+          return no(cb, 'تأكد أن الأعضاء المختارين Agents معتمدون ومتصلون بالخدمة الآن. حدّث قائمة الأعضاء ثم أعد المحاولة.');
         }
 
         const operation = {
@@ -7177,6 +7187,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
           normalizeRank(member.rank) === 'AGENT' &&
           member.approved !== false &&
           !member.suspended &&
+          member.online === true &&
+          member.activeService === true &&
           member.publicCode
         )
         .map((member) => isChief(actor)
