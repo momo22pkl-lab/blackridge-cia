@@ -1249,7 +1249,7 @@
         <h4 style="color:var(--primary-gold);font-size:.85rem;margin-bottom:8px;">طلبات القبول</h4>
         <div class="table-container">
           <table class="table-custom">
-            <thead><tr><th>الاسم المطلوب</th><th>الكود الظاهر</th><th>الإجراء</th></tr></thead>
+            <thead><tr><th>الاسم المطلوب</th><th>كود طلب القبول</th><th>الإجراء</th></tr></thead>
             <tbody id="pending-queue-list"></tbody>
           </table>
         </div>
@@ -1758,9 +1758,19 @@
 
       ciaSocket.on('member:approved', function(result) {
         if (!result || !result.ok) return;
-        alert(`تم قبول طلبك.\nكود الدخول الخاص بك: ${result.secretCode}\nاحفظه، فهو كودك الشخصي للدخول لاحقاً.`);
-        alert('تم الاعتماد. تم حفظ قبول الشخصية، ولن يتم إدخالك تلقائياً. استخدم الكود الذي منحته القيادة عند تسجيل الدخول.');
-        try { localStorage.setItem('cia_last_member_code', result.secretCode); } catch(e) {}
+        const name=result.user?.name||'';
+        const loginCode=result.secretCode||result.user?.secretCode||'';
+        const publicCode=result.publicCode||result.user?.publicCode||'';
+        if(name) document.getElementById('entry-name').value=name;
+        if(loginCode) document.getElementById('entry-passcode').value=loginCode;
+        try {
+          if(name) localStorage.setItem('cia_last_login_name',name);
+          if(loginCode) {
+            localStorage.setItem('cia_last_login_code',loginCode);
+            localStorage.setItem('cia_last_member_code',loginCode);
+          }
+        } catch(e) {}
+        alert(`تم قبول ${name||'طلبك'}.\nالكود العسكري العام: ${publicCode||'—'}\nكود الدخول الشخصي: ${loginCode||'—'}\nاستخدم الاسم وكود الدخول الشخصي لتسجيل الدخول؛ الكود العسكري لا يستخدم للدخول.`);
         currentUser = null;
       });
 
@@ -3673,8 +3683,8 @@
           '<tr><td colspan="3" style="text-align:center; color:var(--text-dim);">لا توجد طلبات معلقة</td></tr>' :
           pendingQueue.map(q => `
             <tr>
-              <td>${esc(q.name)}</td>
-              <td>#${esc(q.publicCode)}</td>
+              <td>${esc(q.name||q.characterName||q.requestedName||'اسم غير متوفر')}</td>
+              <td>#${esc(q.initialCode||q.publicCode||'غير محدد')}</td>
               <td>
                 <button onclick="approveMember('${esc(q.id)}')" style="padding:4px 8px; background:var(--green-status); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">قبول</button>
                 <button onclick="rejectMember('${esc(q.id)}')" style="padding:4px 8px; background:var(--red-alert); color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">رفض</button>
@@ -3758,7 +3768,12 @@
       const code = publicCode.trim();
       if (!code || code === 'PENDING') { alert('كود الظهور مطلوب.'); return; }
       ciaSocket.emit('admin:action', { action: 'approve', requestId: reqId, publicCode: code }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر قبول العضو.');
+        if (!result || !result.ok) {
+          alert((result && result.message) || 'تعذر قبول العضو.');
+          return;
+        }
+        const name=result.user?.name||'العضو';
+        alert(`تم قبول ${name}.\nالكود العسكري العام: ${result.publicCode||result.user?.publicCode||'—'}\nكود الدخول الشخصي: ${result.secretCode||'—'}\nيجب تسجيل الدخول باسم الشخصية وكود الدخول الشخصي، وليس بالكود العسكري.`);
       });
     }
 

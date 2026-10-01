@@ -855,7 +855,23 @@ function snapshot(viewer = null) {
 
     cia_queue:
       isLeadership(viewer)
-        ? state.cia_queue
+        ? state.cia_queue.map((request) => {
+            const account = request.accountId
+              ? state.cia_accounts.find((item) => item.id === request.accountId)
+              : null;
+            const displayName = [
+              request.name,
+              request.characterName,
+              request.requestedName,
+              account?.pendingPrimary?.name
+            ]
+              .map((value) => clean(value, 120))
+              .find((value) => value && !['unknown', 'غير معروف', 'unnamed'].includes(lower(value))) || '';
+            return {
+              ...request,
+              name: displayName
+            };
+          })
         : [],
 
     cia_identity_queue:
@@ -2866,6 +2882,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           state.cia_queue.push(
             request
           );
+          pendingRequestSockets.set(request.id, socket.id);
 
           addAuditLog(
             'طلب قبول',
@@ -2921,7 +2938,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
             clean(
               payload?.targetId ||
               payload?.userId ||
-              payload?.id,
+              payload?.id ||
+              payload?.requestId,
               100
             );
 
@@ -3040,12 +3058,21 @@ socket.on('member:saveIdentity', (payload, cb) => {
               );
             }
 
-            const requestedName =
-              clean(
-                request.name ||
-                request.characterName,
-                120
-              );
+            const requestAccount = request.accountId
+              ? state.cia_accounts.find((account) => account.id === request.accountId)
+              : null;
+            const requestedName = [
+              request.name,
+              request.characterName,
+              request.requestedName,
+              requestAccount?.pendingPrimary?.name,
+              payload?.name
+            ]
+              .map((value) => clean(value, 120))
+              .find((value) => value && !['unknown', 'غير معروف', 'unnamed'].includes(lower(value))) || '';
+            if (!requestedName) {
+              return no(cb, 'اسم الشخصية غير موجود في طلب القبول؛ حدّث الطلب قبل اعتماده.');
+            }
 
             const secretCode =
               clean(
