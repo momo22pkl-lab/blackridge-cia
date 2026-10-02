@@ -975,10 +975,16 @@ function ok(cb, payload = {}) {
 }
 
 function no(cb, message) {
+  const normalizedMessage = clean(message, 500);
+  const loginMessage =
+    normalizedMessage === 'يجب تسجيل الدخول.' ||
+    normalizedMessage === 'يجب تسجيل الدخول أولاً.'
+      ? 'يلزم تسجيل الدخول إلى الحساب أولاً. إذا كنت قد سجلت الدخول بالفعل، اضغط «تسجيل الدخول للخدمة» من بطاقة الحالة الميدانية؛ وإذا كانت هويتك بانتظار الاعتماد فانتظر موافقة القيادة.'
+      : normalizedMessage;
+
   return reply(cb, {
     ok: false,
-    message:
-      clean(message, 500)
+    message: loginMessage
   });
 }
 
