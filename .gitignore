@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.blackridge-data/
+cia-data.json
+cia-data.json.tmp

@@ -24,8 +24,11 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
+const { Pool } = require('pg');
+const { PostgresStateStore } = require('./state-store');
 
 const PORT = Number(process.env.PORT || 3000);
+const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const IS_RENDER_RUNTIME = process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
 const LEGACY_DATA_FILE = path.resolve(path.join(__dirname, 'cia-data.json'));
 const DEFAULT_DATA_FILE = IS_RENDER_RUNTIME
@@ -33,15 +36,16 @@ const DEFAULT_DATA_FILE = IS_RENDER_RUNTIME
   : path.join(__dirname, '.blackridge-data', 'cia-data.json');
 const DATA_FILE = path.resolve(process.env.CIA_DATA_FILE || DEFAULT_DATA_FILE);
 
-fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true, mode: 0o700 });
-if (DATA_FILE !== LEGACY_DATA_FILE && !fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
-  fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
-  console.log(`[BLACK RIDGE] Migrated existing data to ${DATA_FILE}`);
+function prepareFileStorage() {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true, mode: 0o700 });
+  if (DATA_FILE !== LEGACY_DATA_FILE && !fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
+    fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+    console.log('[BLACK RIDGE] Migrated existing data to local file storage.');
+  }
 }
-if (IS_RENDER_RUNTIME) {
-  console.log(`[BLACK RIDGE] Persistent state file: ${DATA_FILE}`);
-  console.warn('[BLACK RIDGE] Render requires a Persistent Disk mounted at the data directory to retain data across deploys and restarts.');
-}
+
+let postgresPool = null;
+let stateStore = null;
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -116,76 +120,110 @@ function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
-function loadState() {
-  if (!fs.existsSync(DATA_FILE)) return clone(EMPTY_STATE);
+function normalizePersistedState(parsed, source = 'persisted state') {
+  if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.cia_users)) {
+    throw new Error('Persisted state at ' + source + ' is missing its required cia_users data; refusing to start with an empty state.');
+  }
+  const base = clone(EMPTY_STATE);
+  const loadedState = {
+    ...base,
+    ...parsed,
+    settings: {
+      ...base.settings,
+      ...(parsed.settings || {}),
+      rankSalaries: {
+        ...(base.settings.rankSalaries || {}),
+        ...((parsed.settings && parsed.settings.rankSalaries) || {})
+      }
+    },
+    systemConfig: { ...base.systemConfig, ...(parsed.systemConfig || {}) },
+    cia_chats: {
+      global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
+      private: parsed.cia_chats?.private && typeof parsed.cia_chats.private === 'object' ? parsed.cia_chats.private : {}
+    }
+  };
+
+  if (loadedState.settings.rankSalaries && loadedState.settings.rankSalaries['Senior Commander CIA'] !== undefined) {
+    const legacySeniorSalary = Number(loadedState.settings.rankSalaries['Senior Commander CIA']);
+    if (!Number.isFinite(Number(loadedState.settings.rankSalaries['SUPREME COMMANDER'])) || Number(loadedState.settings.rankSalaries['SUPREME COMMANDER']) === SYSTEM.defaultSalary) {
+      if (Number.isFinite(legacySeniorSalary) && legacySeniorSalary >= 0) {
+        loadedState.settings.rankSalaries['SUPREME COMMANDER'] = Math.floor(legacySeniorSalary);
+      }
+    }
+    delete loadedState.settings.rankSalaries['Senior Commander CIA'];
+  }
+
+  for (const key of [
+    'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
+    'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
+    'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations'
+  ]) {
+    if (!Array.isArray(loadedState[key])) loadedState[key] = [];
+  }
+  if (!loadedState.cia_map_locations || typeof loadedState.cia_map_locations !== 'object') {
+    loadedState.cia_map_locations = {};
+  }
+
+  const previousState = state;
+  state = loadedState;
   try {
-    const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.cia_users)) {
-      throw new Error('Persisted file is missing its required cia_users data; refusing to start with an empty state.');
-    }
-    const base = clone(EMPTY_STATE);
-    const state = {
-      ...base,
-      ...parsed,
-      settings: {
-        ...base.settings,
-        ...(parsed.settings || {}),
-        rankSalaries: {
-          ...(base.settings.rankSalaries || {}),
-          ...((parsed.settings && parsed.settings.rankSalaries) || {})
-        }
-      },
-      systemConfig: { ...base.systemConfig, ...(parsed.systemConfig || {}) },
-      cia_chats: {
-        global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
-        private: parsed.cia_chats?.private && typeof parsed.cia_chats.private === 'object' ? parsed.cia_chats.private : {}
-      }
-    };
+    normalizeAllUsers(loadedState);
+  } finally {
+    state = previousState;
+  }
+  return loadedState;
+}
 
-    if (state.settings.rankSalaries && state.settings.rankSalaries['Senior Commander CIA'] !== undefined) {
-      const legacySeniorSalary = Number(state.settings.rankSalaries['Senior Commander CIA']);
-      if (!Number.isFinite(Number(state.settings.rankSalaries['SUPREME COMMANDER'])) || Number(state.settings.rankSalaries['SUPREME COMMANDER']) === SYSTEM.defaultSalary) {
-        if (Number.isFinite(legacySeniorSalary) && legacySeniorSalary >= 0) {
-          state.settings.rankSalaries['SUPREME COMMANDER'] = Math.floor(legacySeniorSalary);
-        }
-      }
-      delete state.settings.rankSalaries['Senior Commander CIA'];
+function readLegacyStateFile() {
+  const candidates = [...new Set([
+    DATA_FILE,
+    LEGACY_DATA_FILE,
+    path.join(__dirname, '.blackridge-data', 'cia-data.json'),
+    path.join('/var/data', 'cia-data.json')
+  ])];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      return { file, state: JSON.parse(fs.readFileSync(file, 'utf8')) };
+    } catch (error) {
+      throw new Error('Unable to read legacy state at ' + file + ': ' + error.message);
     }
+  }
+  return null;
+}
 
-    for (const key of [
-      'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
-      'cia_support',
-      'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-      'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations'
-    ]) {
-      if (!Array.isArray(state[key])) state[key] = [];
-    }
-
-    if (!state.cia_map_locations || typeof state.cia_map_locations !== 'object') {
-      state.cia_map_locations = {};
-    }
-
-    normalizeAllUsers(state);
-    return state;
+function loadState() {
+  if (!fs.existsSync(DATA_FILE)) return normalizePersistedState(clone(EMPTY_STATE), DATA_FILE);
+  try {
+    return normalizePersistedState(JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')), DATA_FILE);
   } catch (error) {
-    console.error(`[BLACK RIDGE] Refusing to start without saved data at ${DATA_FILE}:`, error.message);
-    throw new Error(`Unable to load persisted state at ${DATA_FILE}: ${error.message}`);
+    console.error('[BLACK RIDGE] Refusing to start without saved data at ' + DATA_FILE + ':', error.message);
+    throw new Error('Unable to load persisted state at ' + DATA_FILE + ': ' + error.message);
   }
 }
 
 function saveState() {
+  if (stateStore) {
+    const pendingWrite = stateStore.save(state);
+    pendingWrite.catch((error) => {
+      console.error('[BLACK RIDGE] Failed to persist state to PostgreSQL:', error.message);
+    });
+    return pendingWrite;
+  }
   try {
-    const tmp = `${DATA_FILE}.tmp`;
+    const tmp = DATA_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tmp, DATA_FILE);
+    return Promise.resolve();
   } catch (error) {
-    console.error(`[BLACK RIDGE] Failed to save persistent state at ${DATA_FILE}:`, error.message);
-    throw new Error(`Unable to persist application state at ${DATA_FILE}: ${error.message}`);
+    console.error('[BLACK RIDGE] Failed to save persistent state at ' + DATA_FILE + ':', error.message);
+    throw new Error('Unable to persist application state at ' + DATA_FILE + ': ' + error.message);
   }
 }
 
-let state;
-state = loadState();
+
+let state = clone(EMPTY_STATE);
 
 const sessions = new Map();
 const socketToUser = new Map();
@@ -996,6 +1034,16 @@ function snapshot(viewer = null) {
 }
 
 function emitState() {
+  if (stateStore) {
+    stateStore.flush().then(() => emitStateNow()).catch((error) => {
+      console.error('[BLACK RIDGE] State broadcast skipped because persistence failed:', error.message);
+    });
+    return;
+  }
+  return emitStateNow();
+}
+
+function emitStateNow() {
   for (
     const socket
     of io.sockets.sockets.values()
@@ -1021,10 +1069,20 @@ function reply(cb, payload) {
 }
 
 function ok(cb, payload = {}) {
-  return reply(cb, {
+  const response = {
     ok: true,
     ...payload
-  });
+  };
+  if (typeof cb === 'function' && stateStore) {
+    stateStore.flush().then(() => {
+      reply(cb, response);
+    }).catch((error) => {
+      console.error('[BLACK RIDGE] Success acknowledgement withheld; PostgreSQL write failed:', error.message);
+      reply(cb, { ok: false, message: 'تعذر تأكيد حفظ التغيير في قاعدة البيانات. أعد المحاولة بعد استقرار الاتصال.' });
+    });
+    return response;
+  }
+  return reply(cb, response);
 }
 
 function no(cb, message) {
@@ -1933,6 +1991,16 @@ function missionPoint(value) {
 }
 
 function emitOperationState() {
+  if (stateStore) {
+    stateStore.flush().then(() => emitOperationStateNow()).catch((error) => {
+      console.error('[BLACK RIDGE] Operation broadcast skipped because persistence failed:', error.message);
+    });
+    return;
+  }
+  return emitOperationStateNow();
+}
+
+function emitOperationStateNow() {
   for (
     const socket
     of io.sockets.sockets.values()
@@ -1976,6 +2044,15 @@ function emitOperationState() {
 io.on(
   'connection',
   (socket) => {
+    const originalSocketEmit = socket.emit.bind(socket);
+    socket.emit = function(event, ...args) {
+      if (!stateStore) return originalSocketEmit(event, ...args);
+      stateStore.flush().then(() => originalSocketEmit(event, ...args)).catch((error) => {
+        console.error('[BLACK RIDGE] Socket message skipped because persistence failed:', error.message);
+      });
+      return socket;
+    };
+
     socket.emit(
       'state:update',
       snapshot(null)
@@ -2025,7 +2102,7 @@ io.on(
           if (
             typeof cb === 'function'
           ) {
-            cb({ ok: true });
+            ok(cb);
           }
 
           emitState();
@@ -2105,9 +2182,7 @@ io.on(
             typeof cb ===
             'function'
           ) {
-            cb({
-              ok: true
-            });
+            ok(cb);
           }
         } catch (error) {
           no(
@@ -8098,12 +8173,115 @@ socket.on('member:saveIdentity', (payload, cb) => {
    HTTP SERVER START
 ===================================================== */
 
-httpServer.listen(PORT, () => {
-  console.log('');
-  console.log('==================================================');
-  console.log(' BLACK RIDGE CITY CIA SYSTEM');
-  console.log(` PORT: ${PORT}`);
-  console.log(' STATUS: ONLINE');
-  console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
-  console.log('==================================================');
+function installPersistenceEmitBarriers() {
+  const originalIoEmit = io.emit.bind(io);
+  io.emit = function(event, ...args) {
+    if (!stateStore) return originalIoEmit(event, ...args);
+    stateStore.flush().then(() => originalIoEmit(event, ...args)).catch((error) => {
+      console.error('[BLACK RIDGE] Broadcast skipped because persistence failed:', error.message);
+    });
+    return io;
+  };
+}
+
+async function initializePersistence() {
+  if (DATABASE_URL) {
+    postgresPool = new Pool({
+      connectionString: DATABASE_URL,
+      max: 5,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000
+    });
+    postgresPool.on('error', (error) => {
+      console.error('[BLACK RIDGE] Idle PostgreSQL connection error:', error.message);
+    });
+    await postgresPool.query('SELECT 1');
+    stateStore = new PostgresStateStore(postgresPool);
+    state = await stateStore.load({
+      initialState: EMPTY_STATE,
+      getLegacyState: () => {
+        const legacy = readLegacyStateFile();
+        if (legacy) console.log('[BLACK RIDGE] Importing legacy JSON data from ' + legacy.file);
+        return legacy ? legacy.state : null;
+      },
+      normalizeState: (value) => normalizePersistedState(value, 'PostgreSQL state')
+    });
+    installPersistenceEmitBarriers();
+    console.log('[BLACK RIDGE] PostgreSQL state store ready.');
+    return;
+  }
+
+  if (IS_RENDER_RUNTIME) {
+    throw new Error('DATABASE_URL is required on Render. Create or connect a Render PostgreSQL database and set DATABASE_URL to its Internal Database URL. File fallback is disabled on Render to avoid losing data on restart.');
+  }
+
+  prepareFileStorage();
+  state = loadState();
+  console.log('[BLACK RIDGE] Local JSON state store ready: ' + DATA_FILE);
+}
+
+let shutdownPromise = null;
+function installGracefulShutdown() {
+  const shutdown = (signal) => {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = (async () => {
+      console.log('[BLACK RIDGE] ' + signal + ' received; draining connections and saved-state writes.');
+      const forceExitTimer = setTimeout(() => {
+        console.error('[BLACK RIDGE] Shutdown timed out while draining state writes.');
+        process.exit(1);
+      }, 25000);
+      if (typeof forceExitTimer.unref === 'function') forceExitTimer.unref();
+
+      try {
+        await new Promise((resolve) => io.close(resolve));
+      } catch (error) {
+        console.error('[BLACK RIDGE] Error closing Socket.IO:', error.message);
+        process.exitCode = 1;
+      }
+      try {
+        if (stateStore) await stateStore.flush();
+      } catch (error) {
+        console.error('[BLACK RIDGE] Pending PostgreSQL writes did not finish cleanly:', error.message);
+        process.exitCode = 1;
+      }
+      try {
+        if (postgresPool) await postgresPool.end();
+      } catch (error) {
+        console.error('[BLACK RIDGE] Error closing PostgreSQL pool:', error.message);
+        process.exitCode = 1;
+      } finally {
+        clearTimeout(forceExitTimer);
+      }
+    })();
+    return shutdownPromise;
+  };
+
+  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+  process.once('SIGINT', () => { void shutdown('SIGINT'); });
+}
+
+async function startServer() {
+  await initializePersistence();
+  httpServer.listen(PORT, () => {
+    console.log('');
+    console.log('==================================================');
+    console.log(' BLACK RIDGE CITY CIA SYSTEM');
+    console.log(' PORT: ' + PORT);
+    console.log(' STATUS: ONLINE');
+    console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
+    console.log('==================================================');
+    installGracefulShutdown();
+  });
+}
+
+startServer().catch(async (error) => {
+  console.error('[BLACK RIDGE] Startup failed:', error.message);
+  if (postgresPool) {
+    try {
+      await postgresPool.end();
+    } catch (closeError) {
+      console.error('[BLACK RIDGE] Error closing PostgreSQL pool after startup failure:', closeError.message);
+    }
+  }
+  process.exitCode = 1;
 });
