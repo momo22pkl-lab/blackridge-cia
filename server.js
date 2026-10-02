@@ -334,6 +334,17 @@ const isHighCommander = (user) =>
 const isMorseSupervisor = (user) =>
   isChief(user) || isSenior(user) || isHighCommander(user);
 
+function morseLogForViewer(log, viewer) {
+  if (!log || !isMorseSupervisor(viewer)) return null;
+  const visibleLog = { ...log };
+  if (!isChief(viewer)) {
+    delete visibleLog.realName;
+    delete visibleLog.userName;
+    delete visibleLog.userId;
+  }
+  return visibleLog;
+}
+
 const isLeadership = (user) =>
   isChief(user) || isSenior(user);
 
@@ -954,6 +965,8 @@ function snapshot(viewer = null) {
     cia_morse_logs:
       isMorseSupervisor(viewer)
         ? (state.cia_morse_logs || [])
+            .map((log) => morseLogForViewer(log, viewer))
+            .filter(Boolean)
         : [],
 
     cia_hq_locations:
@@ -5682,7 +5695,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
         : Object.values(connectedSockets || {});
       for (const targetSocket of socketList) {
         const recipient = requireAuthenticatedUser(targetSocket);
-        if (isMorseSupervisor(recipient)) targetSocket.emit('morse:activity', { log });
+        if (isMorseSupervisor(recipient)) {
+          const visibleLog = morseLogForViewer(log, recipient);
+          if (visibleLog) targetSocket.emit('morse:activity', { log: visibleLog });
+        }
       }
       return ok(cb, { translation, logId: log.id });
     });
