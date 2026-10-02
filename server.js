@@ -1678,7 +1678,7 @@ function operationSanitize(
   op,
   viewer
 ) {
-  if (!op) return null;
+  if (!op || !viewer) return null;
 
   const normalizedViewerRank =
     normalizeRank(
@@ -1690,6 +1690,11 @@ function operationSanitize(
 
   const privilegedMissionViewer =
     canManageOperations(viewer);
+
+  const assignedMissionAgent =
+    normalizedViewerRank === 'AGENT' &&
+    Array.isArray(op.memberCodes) &&
+    op.memberCodes.includes(viewer.publicCode);
 
   const crews =
     (
@@ -1738,10 +1743,10 @@ function operationSanitize(
         op.status,
 
       startLocation:
-        null,
+        assignedMissionAgent ? (op.startLocation || null) : null,
 
       endLocation:
-        null,
+        assignedMissionAgent ? (op.endLocation || null) : null,
 
       missionLocation:
         null,
@@ -1879,16 +1884,7 @@ function operationSanitize(
 }
 
 function canAnnotateOperation(actor, operation) {
-  if (!actor || !operation) return false;
-  return (
-    canManageOperations(actor) ||
-    actor.publicCode === operation.createdByCode ||
-    actor.publicCode === operation.commanderCode ||
-    (
-      Array.isArray(operation.memberCodes) &&
-      operation.memberCodes.includes(actor.publicCode)
-    )
-  );
+  return !!actor && !!operation && canManageOperations(actor);
 }
 
 function missionPoint(value) {
