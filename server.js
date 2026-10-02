@@ -2539,6 +2539,7 @@ io.on(
             const pending =
               state.cia_accounts.some(
                 (a) =>
+                  (a.status === 'PENDING_APPROVAL' || !a.status) &&
                   lower(
                     a.pendingPrimary?.name
                   ) ===
@@ -2925,7 +2926,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       (payload, cb) => {
         try {
           const actor =
-            requireSocketUser(socket);
+            requireAuthenticatedUser(socket);
 
           if (!actor) {
             return no(
@@ -2989,6 +2990,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 'تم رفضك. لأي استفسار قم بإرساله هنا، وسيصل إلى CIA CHIEF وSenior Commander CIA فقط.';
               addAuditLog('رفض الهوية', actor, target, target.rejectionMessage);
             } else {
+              if (!target.secretCode) target.secretCode = makeSecretCode();
+              if (!target.publicCode) target.publicCode = makePublicCode(target.rank);
               target.identityApprovalPending = false;
               target.serviceApproved = true;
               target.approved = true;
@@ -3007,7 +3010,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   ok: !rejecting,
                   message: rejecting
                     ? target.rejectionMessage
-                    : 'تم اعتماد هويتك. سجّل الدخول للخدمة للمتابعة.'
+                    : 'تم اعتماد هويتك. سجّل الدخول للخدمة للمتابعة.',
+                  secretCode: rejecting ? null : target.secretCode,
+                  publicCode: rejecting ? null : target.publicCode
                 });
               }
             }
@@ -3017,7 +3022,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
               user: publicUser(target, actor),
               message: rejecting
                 ? target.rejectionMessage
-                : 'تم اعتماد الهوية.'
+                : 'تم اعتماد الهوية.',
+              secretCode: rejecting ? null : target.secretCode,
+              publicCode: rejecting ? null : target.publicCode
             });
           }
 
@@ -3031,7 +3038,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
             action ===
               'approve_join' ||
             action ===
-              'accept'
+              'accept' ||
+            action ===
+              'approve'
           ) {
             if (
               !isChief(actor)
@@ -3229,17 +3238,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   request.id
               );
 
-            const rejectionMessage =
-              'تم رفضك. لأي استفسار قم بإرساله هنا، وسيصل إلى CIA CHIEF وSenior Commander CIA فقط.';
-            const rejectedAccount = request.accountId
-              ? state.cia_accounts.find((a) => a.id === request.accountId)
-              : null;
-            if (rejectedAccount) {
-              rejectedAccount.status = 'REJECTED';
-              rejectedAccount.rejectionMessage = rejectionMessage;
-              rejectedAccount.rejectedAt = now();
-            }
-
             const account = request.accountId
               ? state.cia_accounts.find((a) => a.id === request.accountId)
               : null;
@@ -3247,6 +3245,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
               account.status = 'APPROVED';
               account.approvedAt = now();
               account.characterId = newUser.id;
+              account.rejectionMessage = '';
+              account.rejectedAt = null;
             }
 
             addAuditLog(
@@ -3270,7 +3270,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 user: publicUser(newUser, newUser),
                 secretCode: newUser.secretCode,
                 publicCode: newUser.publicCode,
-                message: 'تم قبولك. يمكنك الآن تسجيل الدخول ثم تسجيل الدخول للخدمة.'
+                message: 'تم قبولك. سجّل الدخول بكودك الشخصي لإكمال إنشاء هويتك.'
               });
             }
 
@@ -3341,6 +3341,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   item.id !==
                   request.id
               );
+
+            const rejectionMessage = 'تم رفض طلب الانضمام. لأي استفسار، تواصل مع القيادة.';
+            const rejectedAccount = request.accountId
+              ? state.cia_accounts.find((account) => account.id === request.accountId)
+              : null;
+            if (rejectedAccount) {
+              rejectedAccount.status = 'REJECTED';
+              rejectedAccount.rejectionMessage = rejectionMessage;
+              rejectedAccount.rejectedAt = now();
+            }
 
             addAuditLog(
               'رفض عضو',
