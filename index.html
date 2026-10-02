@@ -1694,7 +1694,12 @@
       });
 
       ciaSocket.on('identity:approved', function(result) {
-        if (result && result.message) alert(result.message);
+        if (result && result.message) {
+          const codes = result.secretCode || result.publicCode
+            ? `\nكود الدخول الشخصي: ${result.secretCode || '—'}\nالكود العسكري: ${result.publicCode || '—'}`
+            : '';
+          alert(result.message + codes);
+        }
         updateViews();
       });
 
@@ -1778,7 +1783,7 @@
         }
         currentUser = result.user;
         closeIdentityModal();
-        alert('تم اعتماد الهوية وحفظها. يمكنك الآن استخدام النظام.');
+        alert('تم إرسال هويتك إلى القيادة للمراجعة. انتظر الموافقة قبل تسجيل الدخول للخدمة.');
         updateViews();
       });
 
@@ -3764,29 +3769,32 @@
     }
 
     function approveMember(reqId) {
-      if (!ciaSocket || !currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
-      const publicCode = prompt('حدد كود الظهور العام لهذا العضو (يظهر للجميع):');
-      if (publicCode === null) return;
-      const code = publicCode.trim();
-      if (!code || code === 'PENDING') { alert('كود الظهور مطلوب.'); return; }
-      ciaSocket.emit('admin:action', { action: 'approve', requestId: reqId, publicCode: code }, function(result) {
+      if (!ciaSocket || !ciaSocket.connected || !currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      ciaSocket.emit('admin:action', { action: 'accept_join', targetId: reqId }, function(result) {
         if (!result || !result.ok) {
           alert((result && result.message) || 'تعذر قبول العضو.');
           return;
         }
-        const name=result.user?.name||'العضو';
-        alert(`تم قبول ${name}.\nالكود العسكري العام: ${result.publicCode||result.user?.publicCode||'—'}\nكود الدخول الشخصي: ${result.secretCode||'—'}\nيجب تسجيل الدخول باسم الشخصية وكود الدخول الشخصي، وليس بالكود العسكري.`);
+        const name = result.user?.name || 'العضو';
+        alert(`تم قبول ${name}.\nكود الدخول الشخصي: ${result.secretCode || '—'}\nالكود العسكري: ${result.publicCode || result.user?.publicCode || '—'}\nيُستخدم كود الدخول لتسجيل الحساب، والكود العسكري للتعريف بالشخصية.`);
       });
     }
 
     function rejectMember(reqId) {
-      if (ciaSocket) ciaSocket.emit('admin:action', { action: 'reject', requestId: reqId });
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      ciaSocket.emit('admin:action', { action: 'reject_join', targetId: reqId }, function(result) {
+        if (!result || !result.ok) alert((result && result.message) || 'تعذر رفض الطلب.');
+      });
     }
 
     function approveIdentity(userId) {
-      if (!ciaSocket) return;
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('admin:action', { action: 'approve_identity', targetId: userId }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر اعتماد الهوية.');
+        if (!result || !result.ok) {
+          alert((result && result.message) || 'تعذر اعتماد الهوية.');
+          return;
+        }
+        alert(`تم اعتماد الهوية.\nكود الدخول الشخصي: ${result.secretCode || '—'}\nالكود العسكري: ${result.publicCode || result.user?.publicCode || '—'}`);
       });
     }
 
