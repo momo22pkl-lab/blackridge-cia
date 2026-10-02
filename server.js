@@ -7665,9 +7665,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('admin:kickMember', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       target.activeService = false;
       target.suspended = true;
@@ -7685,9 +7686,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('admin:kickUser', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.userId || payload?.memberId, 120));
-      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       target.activeService = false;
       target.suspended = true;
