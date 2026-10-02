@@ -26,7 +26,22 @@ const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const PORT = Number(process.env.PORT || 3000);
-const DATA_FILE = path.join(__dirname, 'cia-data.json');
+const IS_RENDER_RUNTIME = process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
+const LEGACY_DATA_FILE = path.resolve(path.join(__dirname, 'cia-data.json'));
+const DEFAULT_DATA_FILE = IS_RENDER_RUNTIME
+  ? path.join('/var/data', 'cia-data.json')
+  : path.join(__dirname, '.blackridge-data', 'cia-data.json');
+const DATA_FILE = path.resolve(process.env.CIA_DATA_FILE || DEFAULT_DATA_FILE);
+
+fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true, mode: 0o700 });
+if (DATA_FILE !== LEGACY_DATA_FILE && !fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
+  fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+  console.log(`[BLACK RIDGE] Migrated existing data to ${DATA_FILE}`);
+}
+if (IS_RENDER_RUNTIME) {
+  console.log(`[BLACK RIDGE] Persistent state file: ${DATA_FILE}`);
+  console.warn('[BLACK RIDGE] Render requires a Persistent Disk mounted at the data directory to retain data across deploys and restarts.');
+}
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -39,6 +54,10 @@ const io = new Server(httpServer, {
 
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
+  next();
+});
 app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
@@ -101,6 +120,9 @@ function loadState() {
   if (!fs.existsSync(DATA_FILE)) return clone(EMPTY_STATE);
   try {
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.cia_users)) {
+      throw new Error('Persisted file is missing its required cia_users data; refusing to start with an empty state.');
+    }
     const base = clone(EMPTY_STATE);
     const state = {
       ...base,
@@ -146,18 +168,19 @@ function loadState() {
     normalizeAllUsers(state);
     return state;
   } catch (error) {
-    console.error('[BLACK RIDGE] Failed to load cia-data.json:', error.message);
-    return clone(EMPTY_STATE);
+    console.error(`[BLACK RIDGE] Refusing to start without saved data at ${DATA_FILE}:`, error.message);
+    throw new Error(`Unable to load persisted state at ${DATA_FILE}: ${error.message}`);
   }
 }
 
 function saveState() {
   try {
     const tmp = `${DATA_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(tmp, DATA_FILE);
   } catch (error) {
-    console.error('[BLACK RIDGE] Failed to save state:', error.message);
+    console.error(`[BLACK RIDGE] Failed to save persistent state at ${DATA_FILE}:`, error.message);
+    throw new Error(`Unable to persist application state at ${DATA_FILE}: ${error.message}`);
   }
 }
 
