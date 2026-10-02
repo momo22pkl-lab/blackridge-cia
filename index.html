@@ -2682,7 +2682,8 @@
     }
 
     function showMorseSupervisorNotice(log) {
-      if (!log || !currentUser || !isTopThreeMissionRank(currentUser.rank) || log.userId === currentUser.id) return;
+      if (!log || !currentUser || !isTopThreeMissionRank(currentUser.rank)) return;
+      if (log.publicCode && currentUser.publicCode && log.publicCode === currentUser.publicCode) return;
       const host = document.getElementById('morse-live-notices');
       if (!host) return;
       const card = document.createElement('button');
@@ -2692,7 +2693,11 @@
       heading.textContent = 'ترجمة مورس جديدة';
       const detail = document.createElement('span');
       const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
-      detail.textContent = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—') + ' · ' + direction + '\n' + (log.source || '') + ' → ' + (log.translation || '');
+      const canSeeNames = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      const identity = canSeeNames
+        ? (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—')
+        : '#' + (log.publicCode || '—');
+      detail.textContent = identity + ' · ' + direction + '\n' + (log.source || '') + ' → ' + (log.translation || '');
       card.append(heading, detail);
       card.addEventListener('click', function() { openMorseTranslator(); card.remove(); });
       host.prepend(card);
@@ -2700,28 +2705,39 @@
       setTimeout(function() { card.remove(); }, 15000);
     }
 
-    function renderMorsePanels() {
+        function renderMorsePanels() {
       const panel = document.getElementById('morse-leadership-panel');
       if (!panel) return;
       const canReview = currentUser && isTopThreeMissionRank(currentUser.rank);
       panel.style.display = canReview ? 'block' : 'none';
       if (!canReview) return;
+      const canSeeNames = normalizeRank(currentUser.rank) === 'CIA CHIEF';
       const personnel = document.getElementById('morse-online-personnel');
       const present = (registeredUsers || []).filter(user => user.online || user.activeService);
       if (personnel) personnel.innerHTML = present.length ? present.map(user => {
+        const code = user.publicCode || '—';
         const name = (user.identity && user.identity.fullName) || user.name || 'الاسم غير متاح';
-        return '<div class="morse-audit-item"><strong>' + escapeHtml(name) + '</strong><div class="morse-audit-meta">الكود العسكري: #' + escapeHtml(user.publicCode || '—') + ' | ' + escapeHtml(user.rankLabel || user.rank || '') + ' | ' + escapeHtml(user.status || (user.online ? 'متصل' : 'غير متصل')) + '</div></div>';
+        const identity = canSeeNames ? name : '#' + code;
+        const details = [
+          canSeeNames ? 'الكود العسكري: #' + code : '',
+          user.rankLabel || user.rank || '',
+          user.status || (user.online ? 'متصل' : 'غير متصل')
+        ].filter(Boolean).join(' | ');
+        return '<div class="morse-audit-item"><strong>' + escapeHtml(identity) + '</strong><div class="morse-audit-meta">' + escapeHtml(details) + '</div></div>';
       }).join('') : '<div class="radio-empty">لا يوجد أفراد في الخدمة حاليًا.</div>';
       const list = document.getElementById('morse-audit-list');
       if (!list) return;
       list.innerHTML = (morseAuditLogs || []).length ? morseAuditLogs.slice(0,100).map(log => {
         const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
         const direction = log.direction === 'encode' ? 'إنجليزي ← مورس' : 'مورس ← إنجليزي';
-        return '<article class="morse-audit-item"><strong>' + escapeHtml(log.realName || log.userName || 'غير معروف') + '</strong><div class="morse-audit-meta">#' + escapeHtml(log.publicCode || '') + ' · ' + escapeHtml(log.rankLabel || log.rank || '') + ' · ' + escapeHtml(direction) + ' · ' + escapeHtml(when) + '</div><div class="morse-audit-body"><b>النص المدخل:</b> ' + escapeHtml(log.source || '') + '<br><b>النتيجة:</b> ' + escapeHtml(log.translation || '') + '</div></article>';
+        const code = log.publicCode || '—';
+        const identity = canSeeNames ? (log.realName || log.userName || 'غير معروف') : '#' + code;
+        const codeLabel = canSeeNames ? '#' + code + ' · ' : '';
+        return '<article class="morse-audit-item"><strong>' + escapeHtml(identity) + '</strong><div class="morse-audit-meta">' + escapeHtml(codeLabel + (log.rankLabel || log.rank || '') + ' · ' + direction + ' · ' + when) + '</div><div class="morse-audit-body"><b>النص المدخل:</b> ' + escapeHtml(log.source || '') + '<br><b>النتيجة:</b> ' + escapeHtml(log.translation || '') + '</div></article>';
       }).join('') : '<div class="radio-empty">لا توجد عمليات ترجمة مسجلة بعد.</div>';
     }
 
-    function submitMorseTranslation() {
+        function submitMorseTranslation() {
       if (!currentUser) return alert('سجّل الدخول أولاً لاستخدام المترجم.');
       if (!ciaSocket || !ciaSocket.connected || !ciaSessionAuthenticated) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
       const direction = document.getElementById('morse-mode')?.value || 'encode';
