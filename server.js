@@ -30,6 +30,12 @@ const { PostgresStateStore } = require('./state-store');
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const IS_RENDER_RUNTIME = process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
+const ALLOWED_SOCKET_ORIGINS = new Set(
+  String(process.env.CIA_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 const LEGACY_DATA_FILE = path.resolve(path.join(__dirname, 'cia-data.json'));
 const DEFAULT_DATA_FILE = IS_RENDER_RUNTIME
   ? path.join('/var/data', 'cia-data.json')
@@ -50,9 +56,22 @@ let stateStore = null;
 const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
-  cors: {
-    origin: true,
-    credentials: true
+  allowRequest: (request, callback) => {
+    const origin = request.headers.origin;
+    if (!origin) return callback(null, true);
+
+    let originHost;
+    try {
+      originHost = new URL(origin).host.toLowerCase();
+    } catch {
+      return callback(null, false);
+    }
+
+    const requestHost = String(request.headers.host || '').toLowerCase();
+    callback(
+      null,
+      originHost === requestHost || ALLOWED_SOCKET_ORIGINS.has(origin)
+    );
   }
 });
 
@@ -62,28 +81,42 @@ app.use((req, res, next) => {
   if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
-app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
-  const candidates = ['index.html', 'index26-7.html', 'index(29).html', 'index (31).html'];
-  for (const file of candidates) {
-    const full = path.join(__dirname, file);
-    if (fs.existsSync(full)) return res.sendFile(full);
+  const entryPoint = path.join(__dirname, 'index.html');
+  if (!fs.existsSync(entryPoint)) {
+    return res.status(404).send('BLACK RIDGE CIA: index.html not found.');
   }
-  res.status(404).send('BLACK RIDGE CIA: index.html not found.');
+  return res.sendFile(entryPoint);
 });
 
 const now = () => new Date().toISOString();
 const clean = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
 const lower = (value) => clean(value, 200).toLowerCase();
 const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
+const safeExternalUrl = (value) => {
+  const candidate = clean(value, 2048);
+  if (!candidate) return '';
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'https:' ? parsed.href : '';
+  } catch {
+    return '';
+  }
+};
 
 const SYSTEM = Object.freeze({
-  chiefRegistrationCode: '1531',
-  chiefSaveCode: '4139',
+  chiefRegistrationCode: clean(process.env.CIA_CHIEF_REGISTRATION_CODE || '', 100),
+  chiefSaveCode: clean(process.env.CIA_CHIEF_SAVE_CODE || '', 100),
   memberRequestCode: '0012',
   defaultSalary: 580
 });
+
+function chiefBootstrapCodesAreConfigured() {
+  return SYSTEM.chiefRegistrationCode.length >= 24 &&
+    SYSTEM.chiefSaveCode.length >= 24 &&
+    SYSTEM.chiefRegistrationCode !== SYSTEM.chiefSaveCode;
+}
 
 const EMPTY_STATE = {
   cia_users: [],
@@ -110,10 +143,7 @@ const EMPTY_STATE = {
       'CIA CHIEF': SYSTEM.defaultSalary
     }
   },
-  systemConfig: {
-    chiefRegistrationCode: SYSTEM.chiefRegistrationCode,
-    chiefSaveCode: SYSTEM.chiefSaveCode
-  }
+  systemConfig: {}
 };
 
 function clone(obj) {
@@ -126,6 +156,11 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     throw new Error('Persisted state at ' + source + ' is missing its required cia_users data; refusing to start with an empty state.');
   }
   const base = clone(EMPTY_STATE);
+  const systemConfig = {
+    ...(parsed.systemConfig || {})
+  };
+  delete systemConfig.chiefRegistrationCode;
+  delete systemConfig.chiefSaveCode;
   const loadedState = {
     ...base,
     ...parsed,
@@ -137,7 +172,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
         ...((parsed.settings && parsed.settings.rankSalaries) || {})
       }
     },
-    systemConfig: { ...base.systemConfig, ...(parsed.systemConfig || {}) },
+    systemConfig,
     cia_chats: {
       global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
       private: parsed.cia_chats?.private && typeof parsed.cia_chats.private === 'object' ? parsed.cia_chats.private : {}
@@ -515,7 +550,7 @@ function makePublicCode(rank) {
 
   do {
     value =
-      `${prefix}-${Math.floor(100 + Math.random() * 900)}`;
+      `${prefix}-${crypto.randomInt(100, 1000)}`;
   } while (
     state.cia_users.some(
       (u) => u.publicCode === value
@@ -530,7 +565,7 @@ function makeSecretCode() {
 
   do {
     value =
-      String(Math.floor(1000 + Math.random() * 9000));
+      String(crypto.randomInt(10000000, 100000000));
   } while (
     state.cia_users.some(
       (u) => u.secretCode === value
@@ -546,8 +581,8 @@ function makeSecretCode() {
 function validateSecretCode(value, target = null) {
   const code = clean(value, 100);
 
-  if (code.length < 4) {
-    return 'الكود يجب أن يكون 4 أحرف/أرقام على الأقل.';
+  if (code.length < 8) {
+    return 'كود الدخول يجب أن يكون 8 أحرف/أرقام على الأقل.';
   }
 
   if (code === SYSTEM.memberRequestCode) {
@@ -620,7 +655,7 @@ function findUser(name, secretCode) {
   );
 }
 
-function publicUser(user, viewer = null) {
+function publicUser(user, viewer = null, includeSecretCode = true) {
   if (!user) return null;
 
   const leadership = isLeadership(viewer);
@@ -735,10 +770,11 @@ function publicUser(user, viewer = null) {
       !!user.radioOnline
   };
 
-  if (self) {
+  if (self && includeSecretCode) {
     result.secretCode =
       user.secretCode;
-
+  }
+  if (self) {
     result.hobbies =
       user.hobbies || '';
   } else if (leadership) {
@@ -880,9 +916,25 @@ function sanitizeShared(key, value) {
   }
 
   if (key === 'cia_hq_locations') {
-    return Array.isArray(value)
-      ? value.slice(-20)
-      : [];
+    if (!Array.isArray(value)) return [];
+    const locations = value
+      .filter((location) =>
+        location &&
+        typeof location === 'object' &&
+        ['main', 'reserve'].includes(location.type) &&
+        Number.isFinite(Number(location.x)) &&
+        Number.isFinite(Number(location.y))
+      )
+      .slice(-20)
+      .map((location) => ({
+        type: location.type,
+        x: Number(location.x),
+        y: Number(location.y)
+      }));
+    const mainIndex = locations.findIndex((location) => location.type === 'main');
+    return mainIndex < 0
+      ? locations
+      : [locations[mainIndex], ...locations.filter((_, index) => index !== mainIndex)];
   }
 
   if (key === 'cia_reports') {
@@ -936,11 +988,12 @@ function sanitizeShared(key, value) {
 }
 
 function snapshot(viewer = null) {
+  const authenticatedViewer = !!viewer && viewer.suspended !== true;
   return {
     cia_users:
-      state.cia_users.map(
-        (u) => publicUser(u, viewer)
-      ),
+      authenticatedViewer
+        ? state.cia_users.map((u) => publicUser(u, viewer, false))
+        : state.cia_users.map((u) => ({ rank: normalizeRank(u.rank) })),
 
     cia_queue:
       isLeadership(viewer)
@@ -982,23 +1035,35 @@ function snapshot(viewer = null) {
 
     cia_chats: {
       global:
-        state.cia_chats.global || [],
+        authenticatedViewer
+          ? (state.cia_chats.global || [])
+          : [],
 
       private:
-        privateChatsFor(viewer)
+        authenticatedViewer
+          ? privateChatsFor(viewer)
+          : {}
     },
 
     cia_sos:
-      state.cia_sos || [],
+      authenticatedViewer
+        ? (state.cia_sos || [])
+        : [],
 
     cia_reports:
-      state.cia_reports || [],
+      authenticatedViewer
+        ? (state.cia_reports || [])
+        : [],
 
     cia_cases:
-      state.cia_cases || [],
+      authenticatedViewer
+        ? (state.cia_cases || [])
+        : [],
 
     cia_map_locations:
-      state.cia_map_locations || {},
+      authenticatedViewer
+        ? (state.cia_map_locations || {})
+        : {},
 
     cia_morse_logs:
       isMorseSupervisor(viewer)
@@ -1008,7 +1073,9 @@ function snapshot(viewer = null) {
         : [],
 
     cia_hq_locations:
-      state.cia_hq_locations || [],
+      authenticatedViewer
+        ? (state.cia_hq_locations || [])
+        : [],
 
     cia_audit_logs:
       isLeadership(viewer)
@@ -1021,15 +1088,17 @@ function snapshot(viewer = null) {
         : [],
 
     cia_operations:
-      (state.cia_operations || [])
-        .map(
-          (op) =>
-            operationSanitize(
-              op,
-              viewer
+      authenticatedViewer
+        ? (state.cia_operations || [])
+            .map(
+              (op) =>
+                operationSanitize(
+                  op,
+                  viewer
+                )
             )
-        )
-        .filter(Boolean)
+            .filter(Boolean)
+        : []
   };
 }
 
@@ -1057,6 +1126,15 @@ function emitStateNow() {
       'state:update',
       snapshot(user)
     );
+  }
+}
+
+function emitToAuthenticated(event, payload, predicate = () => true) {
+  for (const socket of io.sockets.sockets.values()) {
+    const recipient = requireAuthenticatedUser(socket);
+    if (recipient && predicate(recipient)) {
+      socket.emit(event, payload);
+    }
   }
 }
 
@@ -2060,60 +2138,10 @@ io.on(
 
     socket.on(
       'shared:data:seed',
-      (seed, cb) => {
-        try {
-          const object =
-            seed &&
-            typeof seed === 'object'
-              ? seed
-              : {};
-
-          const actor =
-            requireSocketUser(
-              socket
-            );
-
-          for (
-            const [key, value]
-            of Object.entries(object)
-          ) {
-            const safe =
-              sanitizeShared(
-                key,
-                value
-              );
-
-            if (safe === null) {
-              continue;
-            }
-
-            state[key] =
-              key ===
-              'cia_map_locations'
-                ? sanitizeMapLocationsForActor(
-                    actor,
-                    safe
-                  )
-                : safe;
-          }
-
-          saveState();
-
-          if (
-            typeof cb === 'function'
-          ) {
-            ok(cb);
-          }
-
-          emitState();
-        } catch (error) {
-          no(
-            cb,
-            error.message ||
-              'تعذر حفظ البيانات المشتركة.'
-          );
-        }
-      }
+      (_seed, cb) => no(
+        cb,
+        'تم تعطيل استيراد البيانات من المتصفح؛ مصدر البيانات المعتمد هو قاعدة بيانات الخادم.'
+      )
     );
 
     socket.on(
@@ -2125,6 +2153,28 @@ io.on(
               payload?.key,
               100
             );
+
+          const actor =
+            requireSocketUser(
+              socket
+            );
+
+          if (!actor) {
+            return no(
+              cb,
+              'يجب تسجيل الدخول لإدارة البيانات المشتركة.'
+            );
+          }
+
+          if (
+            key !== 'cia_hq_locations' ||
+            !isChief(actor)
+          ) {
+            return no(
+              cb,
+              'هذا النوع من البيانات لا يمكن تعديله عبر التخزين العام؛ مواقع المقر متاحة فقط للقائد.'
+            );
+          }
 
           const safe =
             sanitizeShared(
@@ -2139,44 +2189,10 @@ io.on(
             );
           }
 
-          const actor =
-            requireSocketUser(
-              socket
-            );
-
-          if (
-            key ===
-              'cia_map_locations' &&
-            !actor
-          ) {
-            return no(
-              cb,
-              'يجب تسجيل الدخول لإدارة مواقع الخريطة.'
-            );
-          }
-
-          const finalValue =
-            key ===
-              'cia_map_locations'
-              ? sanitizeMapLocationsForActor(
-                  actor,
-                  safe
-                )
-              : safe;
-
-          state[key] =
-            finalValue;
+          state[key] = safe;
 
           saveState();
-
-          io.emit(
-            'shared:data:update',
-            {
-              key,
-              value:
-                finalValue
-            }
-          );
+          emitState();
 
           if (
             typeof cb ===
@@ -2228,13 +2244,13 @@ io.on(
 
           if (
             !loginName ||
-            password.length < 4 ||
+            password.length < 12 ||
             !characterName ||
             !characterCode
           ) {
             return no(
               cb,
-              'أكمل بيانات إنشاء الحساب.'
+              'أكمل البيانات، واستخدم كلمة مرور من 12 حرفاً على الأقل.'
             );
           }
 
@@ -2287,18 +2303,15 @@ io.on(
             );
           }
 
+          const passwordSalt = crypto.randomBytes(16);
           const account = {
             id: makeId('ACCT'),
 
             loginName,
 
-            passwordHash:
-              crypto
-                .createHash(
-                  'sha256'
-                )
-                .update(password)
-                .digest('hex'),
+            passwordHashScheme: 'scrypt-v1',
+            passwordSalt: passwordSalt.toString('hex'),
+            passwordHash: crypto.scryptSync(password, passwordSalt, 64).toString('hex'),
 
             createdAt:
               now(),
@@ -2447,6 +2460,16 @@ io.on(
               result
             );
 
+            return;
+          }
+
+          if (!chiefBootstrapCodesAreConfigured()) {
+            const result =
+              no(
+                cb,
+                'تأسيس القيادة معطل؛ اضبط متغيري CIA_CHIEF_REGISTRATION_CODE وCIA_CHIEF_SAVE_CODE بقيمتين عشوائيتين مختلفتين لا تقل كل منهما عن 24 حرفاً.'
+              );
+            socket.emit('auth:chief:result', result);
             return;
           }
 
@@ -4620,11 +4643,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
         });
         if (direct) socket.emit('character:request:result', result);
         if (!direct) {
-          io.emit('character:request:new', {
+          emitToAuthenticated('character:request:new', {
             ownerId: actor.id,
             ownerName: actor.name,
             requestedName: character.name
-          });
+          }, isChief);
         }
         return result;
       } catch (error) {
@@ -4689,7 +4712,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           saveState();
           emitState();
           const result = ok(cb, { action: 'reject', user: publicUser(target, actor) });
-          io.emit('character:admin:result', result);
+          socket.emit('character:admin:result', result);
           return result;
         }
         if (action !== 'approve' && action !== 'accept') return no(cb, 'إجراء الشخصية غير معروف.');
@@ -4719,7 +4742,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           const ownerSocket = io.sockets.sockets.get(socketId);
           if (ownerSocket) ownerSocket.emit('character:approved', result);
         }
-        io.emit('character:admin:result', result);
+        socket.emit('character:admin:result', result);
         return result;
       } catch (error) {
         return no(cb, error.message || 'تعذر تنفيذ طلب الشخصية.');
@@ -5580,17 +5603,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           };
 
           saveState();
-
-          io.emit(
-            'shared:data:update',
-            {
-              key:
-                'cia_map_locations',
-
-              value:
-                state.cia_map_locations
-            }
-          );
+          emitState();
 
           return ok(
             cb,
@@ -5657,21 +5670,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
 
           if (removed) {
-            io.emit('map:location:removed', { code: targetCode, byCode: actor.publicCode });
+            emitToAuthenticated('map:location:removed', { code: targetCode, byCode: actor.publicCode });
           }
 
           saveState();
-
-          io.emit(
-            'shared:data:update',
-            {
-              key:
-                'cia_map_locations',
-
-              value:
-                state.cia_map_locations
-            }
-          );
+          emitState();
 
           return ok(
             cb,
@@ -6265,10 +6268,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
           saveState();
 
-          io.emit(
-            'sos:alert',
-            alert
-          );
+          emitToAuthenticated('sos:alert', alert);
 
           emitState();
 
@@ -6363,12 +6363,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
           saveState();
 
-          io.emit(
-            'sos:deleted',
-            {
-              id
-            }
-          );
+          emitToAuthenticated('sos:deleted', { id });
 
           emitState();
 
@@ -6464,10 +6459,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'sos:updated',
-          alert
-        );
+        emitToAuthenticated('sos:updated', alert);
 
         emitState();
 
@@ -6540,10 +6532,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'chat:global',
-          message
-        );
+        emitToAuthenticated('chat:global', message);
 
         return ok(
           cb,
@@ -6815,10 +6804,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'report:new',
-          report
-        );
+        emitToAuthenticated('report:new', report);
 
         emitState();
 
@@ -6911,10 +6897,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'report:update',
-          report
-        );
+        emitToAuthenticated('report:update', report);
 
         emitState();
 
@@ -6954,6 +6937,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const description =
           clean(
             payload?.description ||
+            payload?.details ||
             payload?.text ||
             '',
             10000
@@ -6969,27 +6953,18 @@ socket.on('member:saveIdentity', (payload, cb) => {
           title,
 
           description,
+          details: description,
+          siad: clean(payload?.siad, 100),
+          media: safeExternalUrl(payload?.media),
+          author: actor.name,
+          code: actor.publicCode,
+          date: now(),
 
-          status:
-            clean(
-              payload?.status ||
-              'OPEN',
-              100
-            ),
+          status: 'OPEN',
 
-          classification:
-            clean(
-              payload?.classification ||
-              'CONFIDENTIAL',
-              100
-            ),
+          classification: 'CONFIDENTIAL',
 
-          assignedCode:
-            clean(
-              payload?.assignedCode ||
-              '',
-              100
-            ),
+          assignedCode: '',
 
           createdByCode:
             actor.publicCode,
@@ -7025,10 +7000,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'case:new',
-          caseItem
-        );
+        emitToAuthenticated('case:new', caseItem);
 
         emitState();
 
@@ -7155,10 +7127,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
-        io.emit(
-          'case:update',
-          caseItem
-        );
+        emitToAuthenticated('case:update', caseItem);
 
         emitState();
 
@@ -8009,7 +7978,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       } else {
         state.cia_chats.global.push(message);
         state.cia_chats.global = state.cia_chats.global.slice(-1000);
-        io.emit('chat:global', message);
+        emitToAuthenticated('chat:global', message);
       }
       saveState();
       emitState();
