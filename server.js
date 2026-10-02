@@ -367,8 +367,21 @@ function ensureBank(user) {
   user.bank.enabled = user.bank.enabled !== false;
   user.bank.salaryEnabled = user.bank.salaryEnabled !== false;
 
-  // The banking identifier is the character's military code. Older records
-  // may contain a generated BANK-* value; migrate them on first read.
+  // Older records may have stored a BANK-* identifier or already saved a
+  // military code. Migrate those existing bindings without allowing a second link.
+  const hadLegacyBankBinding =
+    /^BANK-/i.test(user.bankAccount) ||
+    /^BANK-/i.test(clean(user.bank.bankCode || '', 60));
+  const hadExistingBinding =
+    user.bank.militaryCodeLinked === true ||
+    !!user.bankAccount ||
+    hadLegacyBankBinding;
+  if (user.publicCode && hadExistingBinding) {
+    user.bankAccount = user.publicCode;
+    user.bank.militaryCodeLinked = true;
+  } else {
+    user.bank.militaryCodeLinked = user.bank.militaryCodeLinked === true;
+  }
   if (user.publicCode) user.bank.bankCode = user.publicCode;
 
   return user.bank;
@@ -377,7 +390,8 @@ function ensureBank(user) {
 function hasLinkedMilitaryBankCode(user) {
   if (!user) return false;
   const bank = ensureBank(user);
-  return !!user.publicCode &&
+  return bank.militaryCodeLinked === true &&
+    !!user.publicCode &&
     user.bankAccount === user.publicCode &&
     bank.bankCode === user.publicCode;
 }
@@ -657,7 +671,10 @@ function publicUser(user, viewer = null) {
 
             bankCode:
               ensureBank(user).bankCode ||
-              null
+              null,
+
+            militaryCodeLinked:
+              ensureBank(user).militaryCodeLinked === true
           }
         : null,
 
@@ -1623,6 +1640,11 @@ function bankView(
             user.bank.bankCode ||
             null
           )
+        : null,
+
+    militaryCodeLinked:
+      visible
+        ? user.bank.militaryCodeLinked === true
         : null
   };
 }
@@ -4623,6 +4645,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('bank:setAccount', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const accountBank = ensureBank(actor);
+      if (accountBank.militaryCodeLinked === true) {
+        return no(cb, 'تم ربط الكود العسكري مسبقاً ولا يمكن إعادة ربطه.');
+      }
       const bankCode = clean(payload?.bankCode || payload?.code || '', 100);
       if (bankCode && bankCode !== actor.publicCode) {
         return no(cb, 'كود البنك يجب أن يساوي الكود العسكري للشخصية الحالية.');
@@ -4632,7 +4658,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'أدخل كودك العسكري نفسه لربطه بالحساب البنكي.');
       }
       actor.bankAccount = actor.publicCode;
-      ensureBank(actor);
+      accountBank.bankCode = actor.publicCode;
+      accountBank.militaryCodeLinked = true;
+      accountBank.militaryCodeLinkedAt = now();
       saveState();
       emitState();
       const bank = bankView(actor, actor);
