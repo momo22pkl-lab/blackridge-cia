@@ -1138,6 +1138,7 @@
       >
 
       <button
+        id="bank-link-button"
         type="button"
         class="btn-action"
         onclick="saveBankAccount()"
@@ -1605,7 +1606,7 @@
         renderChiefPanel();
       });
 
-      ciaSocket.on('bank:setAccount:result', function(result){ if(result && result.ok){ const b=result.self||{}; currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||'',balance:b.balance??0,salary:b.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||null}}; renderBank(); } else if(result) alert(result.message||'تعذر حفظ الحساب البنكي.'); });
+      ciaSocket.on('bank:setAccount:result', function(result){ if(result && result.ok){ const b=result.self||{}; currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||'',balance:b.balance??0,salary:b.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||null,militaryCodeLinked:b.militaryCodeLinked===true}}; renderBank(); } else if(result) alert(result.message||'تعذر حفظ الحساب البنكي.'); });
       ciaSocket.on('bank:setSalary:result', function(result){ if(result && !result.ok) return alert(result.message||'تعذر تعديل الراتب.'); if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
       ciaSocket.on('bank:setRankSalary:result', function(result){ if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
       ciaSocket.on('bank:setBalance:result', function(result){ if(result && !result.ok) return alert(result.message||'تعذر تعديل الرصيد.'); if(result&&result.ok){ loadBankDirectory(); renderDailyAuditLogs(); } });
@@ -2471,7 +2472,11 @@
       const status=bank.enabled===false?'موقوف':bank.frozen?'مجمد':'فعال';
       const color=bank.enabled===false?'var(--red-alert)':bank.frozen?'var(--primary-gold)':'var(--green-status)';
       const salaryState = bank.salaryClaimedToday ? 'تم استلام الراتب خلال آخر 24 ساعة' : 'الراتب متاح للاستلام';
-      const bankLinked=bank.accountNumber===currentUser.publicCode||bank.bankAccount===currentUser.publicCode;
+      const bankLinked=bank.militaryCodeLinked===true||bank.accountNumber===currentUser.publicCode||bank.bankAccount===currentUser.publicCode;
+      const bankLinkInput=document.getElementById('bank-account-input');
+      const bankLinkButton=document.getElementById('bank-link-button');
+      if(bankLinkInput){bankLinkInput.disabled=bankLinked;if(bankLinked)bankLinkInput.value=currentUser.publicCode||'';}
+      if(bankLinkButton)bankLinkButton.disabled=bankLinked;
       box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:${bankLinked?'var(--green-status)':'var(--text-dim)'};">${bankLinked?'مرتبط':'اكتبه واحفظه مرة واحدة للربط'}</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
       const cmd=document.getElementById('bank-command-box'); if(cmd) cmd.style.display=canManage?'block':'none';
       const controls=document.getElementById('bank-management-controls'); if(controls) controls.style.display=canManage?'block':'none';
