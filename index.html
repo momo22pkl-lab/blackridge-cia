@@ -605,10 +605,10 @@
     <div class="auth-card identity-modal-card" style="max-width:560px;">
       <div class="classified-stamp"><i class="fa-solid fa-user-plus"></i> ACCOUNT // REGISTRATION</div>
       <h2 style="margin-top:10px;">إنشاء حساب</h2>
-      <p style="font-size:.7rem;color:var(--text-dim);line-height:1.6;">أنشئ الحساب والشخصية الأولى، ثم أرسل طلب الاعتماد من بوابة الدخول. بعد موافقة القيادة يمنحك النظام كود الدخول والكود العسكري.</p>
+      <p style="font-size:.7rem;color:var(--text-dim);line-height:1.6;">أنشئ الحساب والشخصية الأولى بكلمة مرور من 12 حرفاً على الأقل، ثم أرسل طلب الاعتماد من بوابة الدخول. بعد موافقة القيادة يمنحك النظام كود الدخول والكود العسكري.</p>
       <input type="text" id="account-login-name" class="input-field" placeholder="اسم تسجيل الدخول للحساب" autocomplete="username">
-      <input type="password" id="account-password" class="input-field" placeholder="كلمة مرور الحساب" autocomplete="new-password">
-      <input type="password" id="account-password-confirm" class="input-field" placeholder="تأكيد كلمة مرور الحساب" autocomplete="new-password">
+      <input type="password" id="account-password" class="input-field" placeholder="كلمة مرور الحساب" autocomplete="new-password" minlength="12">
+      <input type="password" id="account-password-confirm" class="input-field" placeholder="تأكيد كلمة مرور الحساب" autocomplete="new-password" minlength="12">
       <div class="classified-shell" style="margin:8px 0;padding:8px;">
         <div style="color:var(--primary-gold);font-weight:bold;margin-bottom:5px;">الشخصية الأولى</div>
         <input type="text" id="account-character-name" class="input-field" placeholder="اسم الشخصية الأولى" autocomplete="off">
@@ -1403,27 +1403,18 @@
       const passcodeEl = document.getElementById('entry-passcode');
       if (passcodeEl) {
         passcodeEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleLogin(); });
-        passcodeEl.addEventListener('input', function() {
-          const code = this.value.trim();
-          const hasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
-          if (!hasChief && code === '1531') showChiefBootstrap();
-          else if (!bootstrapMode) hideChiefBootstrap();
-        });
       }
 
       try {
         const savedName = localStorage.getItem('cia_last_login_name');
-        const savedCode = localStorage.getItem('cia_last_login_code');
         if (savedName) document.getElementById('entry-name').value = savedName;
-        if (savedCode) {
-          document.getElementById('entry-passcode').value = savedCode;
-          if (savedCode === '1531') showChiefBootstrap();
-        }
+        localStorage.removeItem('cia_last_login_code');
+        localStorage.removeItem('cia_last_member_code');
       } catch(e) {}
       updateRadioPowerUI();
     });
 
-    const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
+    const SHARED_STORAGE_KEYS = ['cia_hq_locations'];
     const ciaSocket = typeof io === 'function' ? io() : null;
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
@@ -1456,18 +1447,41 @@
       } catch (e) { return defaultVal; }
     }
 
+    function safeUserDirectory(users) {
+      if (!Array.isArray(users)) return [];
+      return users.map(user => {
+        const safe = { ...user };
+        delete safe.secretCode;
+        delete safe.passwordHash;
+        delete safe.identity;
+        delete safe.bank;
+        delete safe.bankAccount;
+        return safe;
+      });
+    }
+
+    function cacheUserDirectory(users) {
+      try {
+        localStorage.setItem('cia_users', JSON.stringify(safeUserDirectory(users)));
+      } catch (e) {}
+    }
+
     function setStoredData(key, val) {
-      try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+      if (key === 'cia_users') cacheUserDirectory(val);
+      else {
+        try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+      }
       if (ciaSocket && SHARED_STORAGE_KEYS.includes(key)) {
         ciaSocket.emit('shared:data:set', { key, value: val });
       }
     }
 
     function applySharedData(key, value) {
-      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
       if (key === 'cia_users') {
         registeredUsers = value || [];
+        cacheUserDirectory(registeredUsers);
         serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
+        if (loginMode === 'chief') setLoginMode('chief');
         if (serverHasChief && bootstrapMode && !document.getElementById('entry-official-code').value) {
           hideChiefBootstrap();
         }
@@ -1475,6 +1489,8 @@
           const self = registeredUsers.find(u => u.id === currentUser.id);
           if (self) currentUser = { ...currentUser, ...self };
         }
+      } else {
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
       }
       if (key === 'cia_queue') { pendingQueue = value || []; if (currentUser && currentUser.rank === 'CIA CHIEF') renderChiefPanel(); }
       if (key === 'cia_character_queue') { pendingCharacterQueue = value || []; if (currentUser && currentUser.rank === 'CIA CHIEF') renderChiefPanel(); }
@@ -1491,8 +1507,9 @@
         if (!state) return;
         if (Array.isArray(state.cia_users)) {
           registeredUsers = state.cia_users;
-          try { localStorage.setItem('cia_users', JSON.stringify(registeredUsers)); } catch(e) {}
+          cacheUserDirectory(registeredUsers);
           serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
+          if (loginMode === 'chief') setLoginMode('chief');
           if (currentUser) {
             const self = registeredUsers.find(u => u.id === currentUser.id);
             if (self) currentUser = { ...currentUser, ...self };
@@ -1506,6 +1523,7 @@
           try { localStorage.setItem('cia_chats', JSON.stringify(chatMessages)); } catch(e) {}
         }
         if (Array.isArray(state.cia_reports)) { reportsList = state.cia_reports; try { localStorage.setItem('cia_reports', JSON.stringify(reportsList)); } catch(e) {} renderReportsList(); }
+        if (Array.isArray(state.cia_cases)) { casesList = state.cia_cases; try { localStorage.setItem('cia_cases', JSON.stringify(casesList)); } catch(e) {} renderCasesList(); }
         if (Array.isArray(state.cia_sos)) {
           sosAlerts = state.cia_sos;
           renderSOSAlerts();
@@ -1514,6 +1532,10 @@
           mapLocations = state.cia_map_locations;
           try { localStorage.setItem('cia_map_locations', JSON.stringify(mapLocations)); } catch(e) {}
           if (gtaMap) renderAllMapMarkers();
+        }
+        if (Array.isArray(state.cia_hq_locations)) {
+          try { localStorage.setItem('cia_hq_locations', JSON.stringify(state.cia_hq_locations)); } catch(e) {}
+          if (gtaMap) renderHQMarkers();
         }
         auditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs : [];
         attendanceLogs = Array.isArray(state.cia_attendance) ? state.cia_attendance : [];
@@ -1542,13 +1564,6 @@
 
       ciaSocket.on('connect', function() {
         ciaSocketReady = true;
-        const seed = {};
-        SHARED_STORAGE_KEYS.forEach(key => {
-          if (key === 'cia_users') return;
-          const raw = localStorage.getItem(key);
-          if (raw) { try { seed[key] = JSON.parse(raw); } catch(e) {} }
-        });
-        ciaSocket.emit('shared:data:seed', seed);
         loadSupportThread();
 
         // Rebind after a network/browser sleep. Keep the page blocked until the server confirms the socket identity.
@@ -1556,10 +1571,9 @@
           authReconnectPending = true;
           setSessionRecoveryVisible(true, 'جارٍ التحقق من حسابك وإعادة ربط الجلسة...');
           let savedName = currentUser.name || '';
-          let savedCode = currentUser.secretCode || '';
+          const savedCode = currentUser.secretCode || '';
           try {
             savedName = localStorage.getItem('cia_last_login_name') || savedName;
-            savedCode = localStorage.getItem('cia_last_login_code') || savedCode;
           } catch (e) {}
           if (savedName && savedCode) {
             ciaSocket.emit('auth:login', {
@@ -1688,7 +1702,6 @@
         currentUser = result.user;
         try {
           localStorage.setItem('cia_last_login_name', currentUser.name || '');
-          localStorage.setItem('cia_last_login_code', currentUser.secretCode || '');
         } catch(e) {}
         completeLogin();
         if (result.needsIdentity) openIdentityModal();
@@ -1769,7 +1782,6 @@
       ciaSocket.on('admin:chief-secret:result', function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر تغيير رمز القائد.'); return; }
         currentUser = result.user;
-        try { localStorage.setItem('cia_last_login_code', currentUser.secretCode || ''); } catch(e) {}
         const secretEl = document.getElementById('chief-current-secret');
         if (secretEl) secretEl.innerText = currentUser.secretCode;
         alert('تم تغيير رمز دخول القائد وحفظه على السيرفر.');
@@ -1790,10 +1802,6 @@
         if(loginCode) document.getElementById('entry-passcode').value=loginCode;
         try {
           if(name) localStorage.setItem('cia_last_login_name',name);
-          if(loginCode) {
-            localStorage.setItem('cia_last_login_code',loginCode);
-            localStorage.setItem('cia_last_member_code',loginCode);
-          }
         } catch(e) {}
         alert(`تم قبول ${name||'طلبك'}.\nالكود العسكري العام: ${publicCode||'—'}\nكود الدخول الشخصي: ${loginCode||'—'}\nاستخدم الاسم وكود الدخول الشخصي لتسجيل الدخول؛ الكود العسكري لا يستخدم للدخول.`);
         currentUser = null;
@@ -1859,10 +1867,11 @@
       ciaSocket.on('sos:deleted', function() { renderSOSAlerts(); });
     }
 
-    let registeredUsers = getStoredData('cia_users', []);
+    let registeredUsers = safeUserDirectory(getStoredData('cia_users', []));
+    cacheUserDirectory(registeredUsers);
 
     // تنظيف الحساب القيادي المكرر/الملغى من النسخ القديمة
-    const cleanedRegisteredUsers = registeredUsers.filter(u => !(u.rank === 'CIA CHIEF' && (u.publicCode === 'CHIEF-02' || u.name === 'ذهول الأربعة' || u.secretCode === '1345')));
+    const cleanedRegisteredUsers = registeredUsers.filter(u => !(u.rank === 'CIA CHIEF' && (u.publicCode === 'CHIEF-02' || u.name === 'ذهول الأربعة')));
     if (cleanedRegisteredUsers.length !== registeredUsers.length) setStoredData('cia_users', cleanedRegisteredUsers);
     registeredUsers = cleanedRegisteredUsers;
     let pendingQueue = getStoredData('cia_queue', []);
@@ -2051,7 +2060,7 @@
       if (!ciaSocket || !ciaSocket.connected) { msg.innerText = 'الاتصال بالسيرفر غير جاهز.'; return; }
       if (!loginName || !password || !characterName || !characterCode) { msg.innerText = 'أكمل جميع البيانات.'; return; }
       if (password !== confirm) { msg.innerText = 'كلمتا المرور غير متطابقتين.'; return; }
-      if (password.length < 4) { msg.innerText = 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.'; return; }
+      if (password.length < 12) { msg.innerText = 'كلمة المرور يجب أن تكون 12 حرفاً على الأقل.'; return; }
       ciaSocket.emit('account:create', { loginName, password, characterName, characterCode }, function(result) {
         if (!result || !result.ok) { msg.innerText = (result && (result.error || result.message)) || 'تعذر إنشاء الحساب.'; return; }
         msg.style.color = 'var(--primary-gold)';
@@ -3300,29 +3309,37 @@
         return;
       }
 
-      const newCase = {
-        id: Date.now(),
-        title,
-        siad,
-        details,
-        media,
-        author: currentUser ? currentUser.name : 'مجهول',
-        code: currentUser ? currentUser.publicCode : '00',
-        date: new Date().toLocaleString('ar-EG')
-      };
+      if (!currentUser || !ciaSocket || !ciaSocket.connected) {
+        alert('يجب تسجيل الدخول والاتصال بالخادم لحفظ القضية.');
+        return;
+      }
 
-      casesList.unshift(newCase);
-      setStoredData('cia_cases', casesList);
+      ciaSocket.emit('case:create', { title, siad, details, media }, function(result) {
+        if (!result || !result.ok) {
+          alert((result && result.message) || 'تعذر حفظ القضية.');
+          return;
+        }
+        document.getElementById('case-title').value = '';
+        document.getElementById('case-siad-num').value = '';
+        document.getElementById('case-details').value = '';
+        document.getElementById('case-media-url').value = '';
+        if (result.case) {
+          casesList = [result.case, ...casesList.filter(item => item.id !== result.case.id)];
+          renderCasesList();
+        }
+        renderBank();
+        renderTacticalOperations();
+        alert('تم حفظ القضية بالأرشيف بنجاح.');
+      });
+    }
 
-      document.getElementById('case-title').value = '';
-      document.getElementById('case-siad-num').value = '';
-      document.getElementById('case-details').value = '';
-      document.getElementById('case-media-url').value = '';
-
-      renderCasesList();
-      renderBank();
-      renderTacticalOperations();
-      alert('تم حفظ القضية بالأرشيف بنجاح.');
+    function safeEvidenceUrl(value) {
+      try {
+        const url = new URL(String(value || '').trim());
+        return url.protocol === 'https:' ? url.href : '';
+      } catch (e) {
+        return '';
+      }
     }
 
     function renderCasesList() {
@@ -3338,11 +3355,11 @@
         <div class="card" style="margin-bottom:8px; border-color:var(--border);">
           <div style="display:flex; justify-content:space-between; color:var(--primary-gold); font-weight:bold; font-size:0.85rem;">
             <span>${esc(c.title)}</span>
-            <span style="color:var(--text-dim); font-size:0.7rem;">${esc(c.date)}</span>
+            <span style="color:var(--text-dim); font-size:0.7rem;">${esc(c.date || c.createdAt || '')}</span>
           </div>
-          <div style="font-size:0.75rem; color:var(--cyan-glow); margin:3px 0;">المحقق: #${esc(c.code)} (${esc(c.author)}) | المركبة/السناد: ${esc(c.siad || 'غير محدد')}</div>
-          <p style="font-size:0.8rem; color:var(--text-bright); line-height:1.5; margin-top:5px; white-space:pre-wrap;">${esc(c.details)}</p>
-          ${c.media ? `<a href="${esc(c.media)}" target="_blank" style="display:inline-block; margin-top:5px; font-size:0.75rem; color:var(--cyan-glow); text-decoration:underline;">🔗 عرض الدليل المرفق</a>` : ''}
+          <div style="font-size:0.75rem; color:var(--cyan-glow); margin:3px 0;">المحقق: #${esc(c.code || c.createdByCode || '')} (${esc(c.author || c.createdByName || '')}) | المركبة/السناد: ${esc(c.siad || 'غير محدد')}</div>
+          <p style="font-size:0.8rem; color:var(--text-bright); line-height:1.5; margin-top:5px; white-space:pre-wrap;">${esc(c.details || c.description || '')}</p>
+          ${safeEvidenceUrl(c.media) ? `<a href="${esc(safeEvidenceUrl(c.media))}" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:5px; font-size:0.75rem; color:var(--cyan-glow); text-decoration:underline;">🔗 عرض الدليل المرفق</a>` : ''}
         </div>
       `).join('');
     }
@@ -4108,7 +4125,7 @@
       const newCode = prompt(`أدخل كود الدخول الجديد لـ ${member.name}:`);
       if (!newCode) return;
       const code = newCode.trim();
-      if (code.length < 4) { alert('الكود يجب أن يكون 4 أحرف/أرقام على الأقل.'); return; }
+      if (code.length < 8) { alert('الكود يجب أن يكون 8 أحرف/أرقام على الأقل.'); return; }
       ciaSocket.emit('admin:updateMember', { memberId: member.id, secretCode: code }, function(result) {
         if (!result || !result.ok) alert((result && result.message) || 'تعذر تغيير كود الدخول.');
       });
@@ -4170,11 +4187,11 @@
 
     function changeOwnSecretCode() {
       const newCode = prompt('أدخل كود الدخول الشخصي الجديد:');
-      if (newCode && newCode.trim().length >= 4) {
+      if (newCode && newCode.trim().length >= 8) {
         ciaSocket.emit('admin:updateSelf', { secretCode: newCode.trim() }, function(result) {
           if (!result || !result.ok) alert((result && result.message) || 'تعذر تغيير كود الدخول.');
         });
-      } else if (newCode) alert('الكود يجب أن يكون 4 أحرف/أرقام على الأقل.');
+      } else if (newCode) alert('الكود يجب أن يكون 8 أحرف/أرقام على الأقل.');
     }
 
     function changeOwnPublicCode() {
