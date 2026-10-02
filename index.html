@@ -3902,15 +3902,23 @@
       if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
       const member = registeredUsers[index];
       if (!member || normalizeRank(member.rank) === 'CIA CHIEF') return;
-      if (!confirm(`هل أنت متأكد من فصل ${member.name}؟\n\nلن تُحذف بياناته أو شخصياته؛ سيتم وضعه في حالة «مفصول» وإيقاف دخوله فقط.`)) return;
+      if (!confirm(`هل أنت متأكد من فصل ${member.name}؟\n\nستبقى بياناته وشخصياته محفوظة، وسيُوقف دخوله فقط.`)) return;
       if (!ciaSocket || !ciaSocket.connected) { alert('الاتصال بالسيرفر غير متاح.'); return; }
-      ciaSocket.emit('admin:kickMember', { memberId: member.id });
+      ciaSocket.emit('admin:kickMember', { memberId: member.id }, function(result) {
+        if (!result || !result.ok) alert((result && result.message) || 'تعذر فصل العضو.');
+      });
     }
 
     function kickUser(userId) {
-      if (confirm('هل أنت تأكد من طرد هذا الحساب وإنهاء صلاحياته؟')) {
-        if (ciaSocket) ciaSocket.emit('admin:kickUser', { userId });
-      }
+      if (!confirm('هل تريد فصل هذه الشخصية مع الاحتفاظ ببياناتها؟')) return;
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      ciaSocket.emit('admin:kickUser', { userId }, function(result) {
+        if (!result || !result.ok) {
+          alert((result && result.message) || 'تعذر فصل الشخصية.');
+          return;
+        }
+        alert('تم فصل الشخصية مع الاحتفاظ ببياناتها.');
+      });
     }
 
     function changeOwnSecretCode() {
