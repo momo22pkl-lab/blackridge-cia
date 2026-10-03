@@ -1135,16 +1135,13 @@
         <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة مناطق المهمة</h3>
         <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
         <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة صفراء</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('marker','#ef4444')">علامة حمراء</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #fff;" onclick="setOperationMapTool('marker','#ffffff')">علامة بيضاء</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('marker','#a855f7')">علامة بنفسجية</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #6b7280;" onclick="setOperationMapTool('draw','#111827')">رسم أسود</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('draw','#facc15')">رسم أصفر</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('draw','#ef4444')">رسم أحمر</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#fff;border:1px solid #fff;" onclick="setOperationMapTool('draw','#ffffff')">رسم أبيض</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('draw','#a855f7')">رسم بنفسجي</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">إنهاء الرسم</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة عامة</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal','#ef4444')">مجرمون</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people','#38bdf8')">عدد الأشخاص</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand','#facc15')">خط حر — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle','#ef4444')">دائرة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle','#a855f7')">منطقة مستطيلة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">حفظ الرسم الحالي</button>
         </div>
         <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
         <button type="button" onclick="closeOperationMap()" style="width:100%;padding:9px;margin-top:8px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إغلاق الخريطة</button>
@@ -1417,6 +1414,9 @@
     let operationMapTool = null;
     let operationDrawingPoints = [];
     let operationDrawingLayer = null;
+    let operationDrawingPointerId = null;
+    let operationDrawingStart = null;
+    let operationDrawingShape = 'freehand';
 
     document.addEventListener("DOMContentLoaded", function() {
       setTimeout(()=>setLoginMode('agent'),0);
@@ -1683,7 +1683,13 @@
 
       ciaSocket.on('operation:assigned', function(result){ const op=result&&result.operation?result.operation:result; playRadioBeep(1000); if(op) alert(`تم إسناد مهمة ميدانية ${op.missionNumber||op.id||''}.`); loadTacticalOperations(); });
       ciaSocket.on('morse:activity', function(payload){ if(payload&&payload.log) showMorseSupervisorNotice(payload.log); });
-      ciaSocket.on('member:kicked', function(result){ alert((result&&result.message)||'تم فصل الشخصية.'); currentUser=null; location.reload(); });
+      ciaSocket.on('member:kicked', function(result){
+        const message=(result&&result.message)||'تم فصل الشخصية.';
+        const reason=result&&result.reason?'\nسبب الفصل: '+result.reason:'';
+        alert(message+reason);
+        currentUser=null;
+        location.reload();
+      });
       ciaSocket.on('sos:deleted', function(){ renderSOSAlerts(); });
 
       ciaSocket.on('leader:handover:result', function(result) {
@@ -2397,6 +2403,10 @@
       if(modal) modal.style.display='none';
       operationMapTool=null;
       operationDrawingPoints=[];
+      operationDrawingPointerId=null;
+      operationDrawingStart=null;
+      if(operationMap&&operationMap.dragging) operationMap.dragging.enable();
+      if(operationMap) operationMap.getContainer().style.touchAction='';
       if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
       operationDrawingLayer=null;
     }
@@ -2404,20 +2414,74 @@
     function setOperationMapTool(type,color){
       if(!currentUser||!ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
       if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض وتعديل خريطة المهمة متاح للرتب العليا الثلاث فقط.');
+      if(operationMap&&operationMap.dragging) operationMap.dragging.enable();
+      operationDrawingPointerId=null;
+      operationDrawingStart=null;
       operationMapTool={type,color};
+      operationDrawingShape=type;
       operationDrawingPoints=[];
+      if(operationMap) operationMap.getContainer().style.touchAction=['freehand','circle','rectangle'].includes(type)?'none':'';
       if(operationDrawingLayer&&operationMap){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
       operationDrawingLayer=null;
       const help=document.getElementById('operation-map-help');
-      if(help) help.innerText=type==='marker'?'اضغط على الخريطة لوضع علامة، ثم اكتب وصفها.':'اضغط عدة نقاط لرسم المسار، ثم اضغط «إنهاء الرسم».';
+      const helpText={
+        marker:'اضغط نقطة لإضافة علامة عامة.',
+        criminal:'اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
+        people:'اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
+        freehand:'اسحب على الخريطة لرسم مسار حر؛ يُحفظ عند رفع إصبعك أو زر الفأرة.',
+        circle:'اسحب من مركز الدائرة إلى حافتها؛ تُحفظ تلقائياً عند رفع إصبعك.',
+        rectangle:'اسحب لرسم حدود المنطقة؛ تُحفظ تلقائياً عند رفع إصبعك.'
+      };
+      if(help) help.innerText=helpText[type]||'اختر أداة ثم استخدمها على الخريطة.';
+    }
+
+    function operationDrawingGeometry(){
+      const points=operationDrawingPoints;
+      if(operationDrawingShape==='circle'&&points.length>=2){
+        const center=points[0];
+        const edge=points[points.length-1];
+        const radius=Math.hypot(edge.lat-center.lat,edge.lng-center.lng);
+        if(radius<1) return [];
+        return Array.from({length:48},(_,index)=>{
+          const angle=(index/48)*Math.PI*2;
+          return {lat:center.lat+Math.sin(angle)*radius,lng:center.lng+Math.cos(angle)*radius};
+        });
+      }
+      if(operationDrawingShape==='rectangle'&&points.length>=2){
+        const first=points[0];
+        const last=points[points.length-1];
+        return [
+          {lat:first.lat,lng:first.lng},
+          {lat:first.lat,lng:last.lng},
+          {lat:last.lat,lng:last.lng},
+          {lat:last.lat,lng:first.lng}
+        ];
+      }
+      return points.slice();
+    }
+
+    function renderOperationDrawingPreview(){
+      if(!operationMap) return;
+      if(operationDrawingLayer){ try{operationMap.removeLayer(operationDrawingLayer);}catch(e){} }
+      operationDrawingLayer=null;
+      const geometry=operationDrawingGeometry();
+      if(geometry.length<2) return;
+      const latlngs=geometry.map(point=>[point.lat,point.lng]);
+      const style={color:operationMapTool?.color||'#facc15',weight:4,fillColor:operationMapTool?.color||'#facc15',fillOpacity:.2,dashArray:'6 4'};
+      operationDrawingLayer=['circle','rectangle'].includes(operationDrawingShape)
+        ? L.polygon(latlngs,style).addTo(operationMap)
+        : L.polyline(latlngs,style).addTo(operationMap);
     }
 
     function finishOperationDrawing(){
       if(!operationMapOperation||!operationDrawingPoints.length) return;
-      if(operationDrawingPoints.length<2){ operationDrawingPoints=[]; return alert('الرسم يحتاج نقطتين على الأقل.'); }
-      const points=operationDrawingPoints.map(p=>({x:p.lng,y:p.lat}));
+      const geometry=operationDrawingGeometry();
+      if(geometry.length<2){ operationDrawingPoints=[]; return alert('اسحب مسافة أطول قليلاً لإكمال الرسم.'); }
+      const points=geometry.map(p=>({x:p.lng,y:p.lat}));
+      const shape=['freehand','circle','rectangle'].includes(operationDrawingShape)?operationDrawingShape:'freehand';
       const color=operationMapTool?.color||'#111827';
-      ciaSocket.emit('operation:addDrawing',{id:operationMapOperation.id,points,color},function(result){
+      if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      ciaSocket.emit('operation:addDrawing',{id:operationMapOperation.id,points,color,shape},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ الرسم.');
         operationMapOperation=result.operation||operationMapOperation;
         operationDrawingPoints=[];
@@ -2439,13 +2503,93 @@
         operationMapLayers.push(marker);
       });
       (op.mapMarkers||[]).forEach(markerData=>{
-        const marker=L.circleMarker([markerData.y,markerData.x],{radius:8,color:markerData.color||'#facc15',fillColor:markerData.color||'#facc15',fillOpacity:.8}).addTo(operationMap).bindPopup(`<strong>${esc(markerData.label||'علامة ميدانية')}</strong><br>الكود: #${esc(markerData.authorCode||'')}`);
+        const kind=markerData.kind||'point';
+        const markerColor=/^#[0-9a-f]{6}$/i.test(markerData.color||'')?markerData.color:'#facc15';
+        const glyph=kind==='criminal'?'!':kind==='people'?String(markerData.count||'👥'):'•';
+        const kindLabel=kind==='criminal'?'مجرمون / مشتبه بهم':kind==='people'?'عدد الأشخاص':'علامة ميدانية';
+        const icon=L.divIcon({className:'',html:`<div style="width:24px;height:24px;border:2px solid #fff;border-radius:50%;background:${markerColor};color:#05070a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;box-shadow:0 0 8px ${markerColor};">${esc(glyph)}</div>`,iconSize:[24,24],iconAnchor:[12,12]});
+        const countLine=Number.isFinite(Number(markerData.count))?`<br>العدد: ${esc(markerData.count)}`:'';
+        const marker=L.marker([markerData.y,markerData.x],{icon}).addTo(operationMap).bindPopup(`<strong>${esc(kindLabel)}</strong><br>${esc(markerData.label||'علامة ميدانية')}${countLine}<br>الكود: #${esc(markerData.authorCode||'')}`);
         operationMapLayers.push(marker);
       });
       (op.mapDrawings||[]).forEach(drawing=>{
-        const line=L.polyline((drawing.points||[]).map(p=>[p.y,p.x]),{color:drawing.color||'#facc15',weight:4}).addTo(operationMap);
-        operationMapLayers.push(line);
+        const shape=drawing.shape||'line';
+        const latlngs=(drawing.points||[]).map(p=>[p.y,p.x]);
+        if(latlngs.length<2) return;
+        const style={color:drawing.color||'#facc15',weight:4,fillColor:drawing.color||'#facc15',fillOpacity:.2};
+        const layer=['circle','rectangle','polygon'].includes(shape)
+          ? L.polygon(latlngs,style).addTo(operationMap)
+          : L.polyline(latlngs,style).addTo(operationMap);
+        operationMapLayers.push(layer);
       });
+    }
+
+    function operationPointFromPointer(event){
+      const point=operationMap.mouseEventToLatLng(event);
+      return {lat:Math.max(0,Math.min(1000,Math.round(point.lat))),lng:Math.max(0,Math.min(1000,Math.round(point.lng)))};
+    }
+
+    function beginOperationDrawing(event){
+      if(!operationMapTool||!operationMapOperation||!['freehand','circle','rectangle'].includes(operationMapTool.type)) return;
+      if(event.button!==undefined&&event.button!==0) return;
+      if(event.isPrimary===false) return;
+      event.preventDefault();
+      event.stopPropagation();
+      operationDrawingPointerId=event.pointerId;
+      operationDrawingShape=operationMapTool.type;
+      operationDrawingStart=operationPointFromPointer(event);
+      operationDrawingPoints=operationDrawingShape==='freehand'?[operationDrawingStart]:[operationDrawingStart,operationDrawingStart];
+      if(operationMap.dragging) operationMap.dragging.disable();
+      operationMap.getContainer().style.touchAction='none';
+      try{operationMap.getContainer().setPointerCapture(event.pointerId);}catch(error){}
+      renderOperationDrawingPreview();
+    }
+
+    function moveOperationDrawing(event){
+      if(operationDrawingPointerId===null||event.pointerId!==operationDrawingPointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const point=operationPointFromPointer(event);
+      if(operationDrawingShape==='freehand'){
+        const previous=operationDrawingPoints[operationDrawingPoints.length-1];
+        if(Math.hypot(point.lat-previous.lat,point.lng-previous.lng)>=3) operationDrawingPoints.push(point);
+      }else{
+        operationDrawingPoints=[operationDrawingStart,point];
+      }
+      renderOperationDrawingPreview();
+    }
+
+    function endOperationDrawing(event){
+      if(operationDrawingPointerId===null||event.pointerId!==operationDrawingPointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      moveOperationDrawing(event);
+      operationDrawingPointerId=null;
+      if(operationMap.dragging) operationMap.dragging.enable();
+      operationMap.getContainer().style.touchAction='';
+      try{operationMap.getContainer().releasePointerCapture(event.pointerId);}catch(error){}
+      finishOperationDrawing();
+    }
+
+    function cancelOperationDrawing(event){
+      if(operationDrawingPointerId===null||event.pointerId!==operationDrawingPointerId) return;
+      operationDrawingPointerId=null;
+      operationDrawingStart=null;
+      operationDrawingPoints=[];
+      if(operationMap.dragging) operationMap.dragging.enable();
+      operationMap.getContainer().style.touchAction='';
+      if(operationDrawingLayer){try{operationMap.removeLayer(operationDrawingLayer);}catch(error){}}
+      operationDrawingLayer=null;
+    }
+
+    function attachOperationDrawingPointerHandlers(){
+      const container=operationMap&&operationMap.getContainer();
+      if(!container||container.__operationDrawingHandlersAttached) return;
+      container.__operationDrawingHandlersAttached=true;
+      container.addEventListener('pointerdown',beginOperationDrawing,true);
+      container.addEventListener('pointermove',moveOperationDrawing,true);
+      container.addEventListener('pointerup',endOperationDrawing,true);
+      container.addEventListener('pointercancel',cancelOperationDrawing,true);
     }
 
     function openOperationMap(operationId){
@@ -2469,22 +2613,34 @@
           operationMap=L.map(element,{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5,zoomDelta:.5,scrollWheelZoom:false,touchZoom:false,boxZoom:false,doubleClickZoom:false,inertia:false,bounceAtZoomLimits:false,maxBounds:operationMapBounds,maxBoundsViscosity:1,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false});
           L.imageOverlay(GTA_MAP_IMAGE_URLS[0],operationMapBounds).addTo(operationMap);
           operationMap.fitBounds(operationMapBounds);
+          attachOperationDrawingPointerHandlers();
           operationMap.on('click',function(event){
             if(!operationMapTool||!operationMapOperation) return;
+            if(['freehand','circle','rectangle'].includes(operationMapTool.type)) return;
             const point={lat:Math.round(event.latlng.lat),lng:Math.round(event.latlng.lng)};
-            if(operationMapTool.type==='marker'){
-              const label=prompt('وصف العلامة على المهمة:','علامة ميدانية');
+            let kind='point';
+            let count=null;
+            let label='';
+            if(operationMapTool.type==='criminal'||operationMapTool.type==='people'){
+              const criminal=operationMapTool.type==='criminal';
+              const rawCount=prompt(criminal?'كم عدد المجرمين أو المشتبه بهم؟':'كم عدد الأشخاص في هذا الموقع؟','1');
+              if(rawCount===null) return;
+              count=Number(rawCount);
+              if(!Number.isInteger(count)||count<1||count>1000) return alert('أدخل عدداً صحيحاً من 1 إلى 1000.');
+              kind=operationMapTool.type;
+              label=criminal?`مجرمون / مشتبه بهم (${count})`:`أشخاص (${count})`;
+            }else{
+              label=prompt('وصف العلامة على المهمة:','علامة ميدانية');
               if(label===null) return;
-              ciaSocket.emit('operation:addMarker',{id:operationMapOperation.id,x:point.lng,y:point.lat,label,color:operationMapTool.color},function(result){
+              label=label.trim();
+              if(!label) return alert('اكتب وصفاً للعلامة.');
+            }
+            if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+            ciaSocket.emit('operation:addMarker',{id:operationMapOperation.id,x:point.lng,y:point.lat,label,color:operationMapTool.color,kind,count},function(result){
                 if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ العلامة.');
                 operationMapOperation=result.operation||operationMapOperation;
                 renderOperationMapLayers();
               });
-            }else{
-              operationDrawingPoints.push(point);
-              if(operationDrawingLayer) operationMap.removeLayer(operationDrawingLayer);
-              operationDrawingLayer=L.polyline(operationDrawingPoints.map(p=>[p.lat,p.lng]),{color:operationMapTool.color||'#111827',weight:4,dashArray:'6 4'}).addTo(operationMap);
-            }
           });
         }
         operationMap.invalidateSize();
@@ -3253,7 +3409,7 @@
           return;
         }
 
-        if (sosLocationPickerEnabled || !myMapLocationPickerEnabled) return;
+        if (!myMapLocationPickerEnabled) return;
         myMapLocationPickerEnabled = false;
         updateMyMapLocationPickerButton();
         console.log("إحداثياتك الحالية - Y:", y, "X:", x);
@@ -4330,27 +4486,35 @@
       const targetRank = normalizeRank(member.rank);
       const canManageTarget = actorRank === 'CIA CHIEF' || (actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(targetRank)) || (actorRank === 'HIGH COMMANDER' && targetRank === 'AGENT');
       if (!canManageTarget) return alert('لا تملك صلاحية فصل عضو بهذه الرتبة.');
-      if (!confirm('هل أنت متأكد من فصل ' + member.name + '؟\n\nستبقى بياناته وشخصياته محفوظة، وسيُوقف دخوله حتى تعيده القيادة المخولة للخدمة.')) return;
+      const enteredReason = prompt('اكتب سبب فصل ' + member.name + ' (إلزامي):');
+      if (enteredReason === null) return;
+      const reason = enteredReason.trim();
+      if (!reason) return alert('سبب الفصل إلزامي ولا يمكن تركه فارغاً.');
+      if (!confirm('هل أنت متأكد من فصل ' + member.name + '؟\n\nالسبب: ' + reason + '\n\nستبقى بياناته محفوظة.')) return;
       if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('admin:kickMember', { memberId: member.id }, function(result) {
+      ciaSocket.emit('admin:kickMember', { memberId: member.id, reason }, function(result) {
         if (!result || !result.ok) {
           alert((result && result.message) || 'تعذر فصل العضو.');
           return;
         }
         renderChiefPanel();
-        alert('تم فصل ' + member.name + ' من الخدمة مع حفظ بياناته لإمكانية إعادته لاحقاً.');
+        alert('تم فصل ' + member.name + ' من الخدمة مع حفظ بياناته لإمكانية إعادته لاحقاً.\nالسبب: ' + reason);
       });
     }
 
     function kickUser(userId) {
-      if (!confirm('هل تريد فصل هذه الشخصية مع الاحتفاظ ببياناتها؟')) return;
+      const enteredReason = prompt('اكتب سبب فصل هذه الشخصية (إلزامي):');
+      if (enteredReason === null) return;
+      const reason = enteredReason.trim();
+      if (!reason) return alert('سبب الفصل إلزامي ولا يمكن تركه فارغاً.');
+      if (!confirm('هل تريد فصل هذه الشخصية مع الاحتفاظ ببياناتها؟\nالسبب: ' + reason)) return;
       if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('admin:kickUser', { userId }, function(result) {
+      ciaSocket.emit('admin:kickUser', { userId, reason }, function(result) {
         if (!result || !result.ok) {
           alert((result && result.message) || 'تعذر فصل الشخصية.');
           return;
         }
-        alert('تم فصل الشخصية مع الاحتفاظ ببياناتها.');
+        alert('تم فصل الشخصية مع الاحتفاظ ببياناتها.\nالسبب: ' + reason);
       });
     }
 
@@ -4597,6 +4761,9 @@
       message: note,
       crewCount: Number.isFinite(crewCount) ? crewCount : null,
       membersCount: Number.isFinite(crewCount) ? crewCount : null,
+      locationCoords: selectedSOSLocation
+        ? { x: selectedSOSLocation.lng, y: selectedSOSLocation.lat }
+        : null,
       location: selectedSOSLocation
         ? {
             lat: selectedSOSLocation.lat,
@@ -4618,6 +4785,20 @@
       }
 
       const sentAlert = result.alert || {};
+      if (sentAlert.id) {
+        sosHistoryDateFilter = '';
+        const dateInput = document.getElementById('sos-history-date');
+        if (dateInput) dateInput.value = '';
+        const currentState = getCIAState();
+        const currentAlerts = Array.isArray(currentState.cia_sos) ? currentState.cia_sos : [];
+        const nextState = {
+          ...currentState,
+          cia_sos: [sentAlert, ...currentAlerts.filter(alert => String(alert.id) !== String(sentAlert.id))].slice(0, 500)
+        };
+        window.ciaState = nextState;
+        if (typeof appState !== 'undefined' && appState) appState.cia_sos = nextState.cia_sos;
+        renderSOSHistoryMarkers();
+      }
       if (gtaMap && gtaMap.__sosMarker) {
         const rankText = sentAlert.fromRank || sentAlert.rankLabel || sentAlert.rank || (currentUser && getRankLabel(currentUser.rank)) || 'غير محددة';
         const countText = Number.isFinite(Number(sentAlert.crewCount)) ? `${Number(sentAlert.crewCount)} فرد` : 'غير محدد';
@@ -4639,7 +4820,10 @@
 
       // البلاغ الجديد يبقى دائمًا في خريطة الاستغاثة، أما خريطة لوس فالنقطة مؤقتة 30 ثانية.
       setTimeout(function () {
-        if (sosHistoryMap) renderSOSHistoryMarkers();
+        if (sosHistoryMap) {
+          sosHistoryMap.invalidateSize();
+          renderSOSHistoryMarkers();
+        }
       }, 150);
 
       selectedSOSLocation = null;
@@ -4678,7 +4862,11 @@
     let markerCount = 0;
 
     visibleAlerts.forEach(function (alert) {
-      const coords = alert.locationCoords || (alert.location && typeof alert.location === 'object' ? { x: alert.location.lng, y: alert.location.lat } : null);
+      const location = alert.location && typeof alert.location === 'object' ? alert.location : null;
+      const coords = alert.locationCoords || (location ? {
+        x: location.x ?? location.lng,
+        y: location.y ?? location.lat
+      } : null);
       if (!coords) return;
       const x = Number(coords.x);
       const y = Number(coords.y);
