@@ -3194,12 +3194,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             action ===
               'approve'
           ) {
-            if (
-              !isChief(actor)
-            ) {
+            if (!isLeadership(actor)) {
               return no(
                 cb,
-                'قبول أعضاء جدد متاح لـ CIA CHIEF فقط.'
+                'قبول أعضاء جدد متاح لـ CIA CHIEF وSenior Commander CIA فقط.'
               );
             }
 
@@ -3456,12 +3454,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             action ===
               'reject'
           ) {
-            if (
-              !isChief(actor)
-            ) {
+            if (!isLeadership(actor)) {
               return no(
                 cb,
-                'رفض طلبات القبول متاح لـ CIA CHIEF فقط.'
+                'رفض طلبات القبول متاح لـ CIA CHIEF وSenior Commander CIA فقط.'
               );
             }
 
@@ -4058,7 +4054,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('admin:updateSelf', (payload, cb) => {
       try {
-        const actor = requireSocketUser(socket);
+        const actor = requireAuthenticatedUser(socket);
         if (!actor) return no(cb, 'يجب تسجيل الدخول.');
 
         if (payload?.secretCode !== undefined) {
@@ -4073,6 +4069,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           const duplicate = getUserByPublicCode(publicCode);
           if (duplicate && duplicate.id !== actor.id) return no(cb, 'الكود العسكري مستخدم من شخصية أخرى.');
           actor.publicCode = publicCode;
+          ensureBank(actor);
         }
 
         saveState();
@@ -4087,7 +4084,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('admin:updateChiefProfile', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       if (!actor || !isChief(actor)) return no(cb, 'هذه العملية متاحة لـ CIA CHIEF فقط.');
       actor.hobbies = clean(payload?.hobbies, 1000);
       saveState();
@@ -4098,7 +4095,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('leader:updateProfile', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       if (!actor || !isLeadership(actor)) return no(cb, 'تعديل بيانات القيادة متاح للقيادة فقط.');
       const name = clean(payload?.name, 120);
       if (!name) return no(cb, 'اسم القائد لا يمكن أن يكون فارغاً.');
@@ -4116,7 +4113,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('leadership:handover', (payload, cb) => {
       try {
-        const actor = requireSocketUser(socket);
+        const actor = requireAuthenticatedUser(socket);
         if (!actor || !isChief(actor)) return no(cb, 'تسليم القيادة متاح لـ CIA CHIEF فقط.');
         const targetCode = clean(payload?.targetCode || payload?.publicCode, 100);
         const target = getUserByPublicCode(targetCode);
@@ -4695,7 +4692,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('character:admin:action', (payload, cb) => {
       try {
-        const actor = requireSocketUser(socket);
+        const actor = requireAuthenticatedUser(socket);
         if (!actor || !isChief(actor)) return no(cb, 'اعتماد الشخصيات متاح لـ CIA CHIEF فقط.');
         const action = clean(payload?.action, 40).toLowerCase();
         const requestId = clean(payload?.requestId || payload?.id, 120);
@@ -4723,6 +4720,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (duplicate && duplicate.id !== target.id) return no(cb, 'الكود العسكري مستخدم من شخصية أخرى.');
 
         target.publicCode = publicCode;
+        ensureBank(target);
         target.approved = true;
         target.activeService = true;
         target.suspended = false;
@@ -7713,7 +7711,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('admin:updateMember', (payload, cb) => {
       try {
-        const actor = requireSocketUser(socket);
+        const actor = requireAuthenticatedUser(socket);
         if (!actor) return no(cb, 'يجب تسجيل الدخول.');
         const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
         if (!target) return no(cb, 'الشخصية غير موجودة.');
@@ -7742,6 +7740,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           }
           if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تغيير الكود العسكري.');
           target.publicCode = publicCode;
+          ensureBank(target);
           action = 'code';
         }
         saveState();
@@ -7755,9 +7754,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
     });
 
     socket.on('admin:reactivateMember', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+      const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-      if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
+      if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
+      if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target) && !isHighCommander(actor)) {
         return no(cb, 'لا تملك صلاحية إعادة الشخصية للخدمة.');
       }
