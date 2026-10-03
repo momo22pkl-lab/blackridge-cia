@@ -1146,8 +1146,8 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;"><label for="op-agent-picker-trigger" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:0;">أفراد القطاع — جميع الرتب</label><button type="button" onclick="loadOperationAgentDirectory()" style="padding:6px 10px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:7px;cursor:pointer;font-size:.68rem;">تحديث الأفراد</button></div>
         <div class="operation-picker" id="op-agent-picker" data-picker-key="create"><button type="button" id="op-agent-picker-trigger" class="operation-picker-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleOperationAgentPicker(this)"><span class="operation-picker-summary">اضغط تحديث الأفراد لتحميل القائمة</span><span class="operation-picker-arrow">⌄</span></button><div class="operation-picker-selected"></div><div class="operation-picker-panel" hidden><input type="search" class="operation-picker-search" placeholder="ابحث بالكود العسكري أو الرتبة" oninput="filterOperationAgentPicker(this)"><div class="operation-picker-options" role="listbox" aria-multiselectable="true"></div></div></div>
         <div style="font-size:.64rem;color:var(--text-dim);margin:-3px 0 7px;">اختر عدة أفراد من القائمة؛ يظهر الاسم الحقيقي والكود والرتبة للقيادة.</div>
-        <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
-        <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
+        <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من خريطة المهمة</button></div>
+        <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من خريطة المهمة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
         <button type="button" class="btn-action" onclick="createTacticalOperation()">إنشاء مهمة لمرة واحدة</button>
       </div>
@@ -1157,7 +1157,7 @@
     <div id="operation-map-modal" class="modal-overlay" style="display:none;">
       <div class="auth-card" style="max-width:900px;text-align:right;">
         <div class="classified-stamp"><i class="fa-solid fa-map-location-dot"></i> OPERATION // LOS SANTOS MAP</div>
-        <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة مناطق المهمة</h3>
+        <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
         <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
         <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
           <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة عامة</button>
@@ -1170,6 +1170,20 @@
         </div>
         <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
         <button type="button" onclick="closeOperationMap()" style="width:100%;padding:9px;margin-top:8px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إغلاق الخريطة</button>
+      </div>
+    </div>
+
+    <div id="operation-point-modal" class="modal-overlay" style="display:none;z-index:10001;">
+      <div class="auth-card" style="max-width:900px;text-align:right;">
+        <div class="classified-stamp"><i class="fa-solid fa-crosshairs"></i> MISSION LOCATION</div>
+        <h3 id="operation-point-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
+        <p id="operation-point-help" style="font-size:.74rem;color:var(--text-dim);line-height:1.6;margin-bottom:8px;">اضغط على خريطة المهمة لتحديد الموقع؛ سيظهر دبوس المعاينة قبل اعتماد النقطة.</p>
+        <div id="operation-point-map" role="application" aria-label="خريطة المهمة لاختيار نقطة البداية أو النهاية" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <span id="operation-point-status" style="flex:1;min-width:190px;color:var(--text-dim);font-size:.72rem;">اختر نقطة على الخريطة.</span>
+          <button id="operation-point-confirm" type="button" class="btn-action" disabled onclick="confirmOperationPointSelection()" style="margin:0;background:var(--green-status);color:#07110a;">اعتماد الموقع</button>
+          <button type="button" onclick="closeOperationPointPicker()" style="padding:9px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إلغاء</button>
+        </div>
       </div>
     </div>
 
@@ -2288,7 +2302,15 @@
 
     function isTopThreeMissionRank(rank){ return ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(rank)); }
 
-    function parsePoint(value){ const m=String(value||'').split(',').map(Number); return m.length===2 && m.every(Number.isFinite)?{lat:m[0],lng:m[1],label:String(value||'').trim()}:null; }
+    function parsePoint(value){
+      if(value&&typeof value==='object'){
+        if(value.label) value=value.label;
+        else if(Number.isFinite(Number(value.x))&&Number.isFinite(Number(value.y))) return {lat:Number(value.y),lng:Number(value.x),label:String(value.x)+','+String(value.y)};
+        else if(Number.isFinite(Number(value.lat))&&Number.isFinite(Number(value.lng))) return {lat:Number(value.lat),lng:Number(value.lng),label:String(value.lng)+','+String(value.lat)};
+      }
+      const raw=String(value||'').trim(); const parts=raw.split(',').map(Number);
+      return parts.length===2&&parts.every(Number.isFinite)?{lat:parts[1],lng:parts[0],label:raw}:null;
+    }
 
     let operationAgentRequestId = 0;
     let operationAgentSelections = { create: [] };
@@ -2483,7 +2505,39 @@
     }
 
     let operationPointMode = null;
-    function pickOperationPoint(mode){ operationPointMode=mode; showPane('tactical-map-view', null); setTimeout(()=>alert('اضغط على الخريطة لتحديد '+(mode==='start'?'بداية':'نهاية')+' العملية.'),250); }
+    let operationPointDraft = null;
+    let operationPointPickerMap = null;
+    let operationPointPreviewMarker = null;
+
+    function renderOperationPointPreview() {
+      if(!operationPointPickerMap||!operationPointDraft||!operationPointMode) return;
+      if(operationPointPreviewMarker){try{operationPointPickerMap.removeLayer(operationPointPreviewMarker);}catch(error){}}
+      const isStart=operationPointMode==='start'; const label=isStart?'بداية المهمة':'نهاية المهمة'; const color=isStart?'#22c55e':'#ef4444';
+      const icon=L.divIcon({className:'',html:'<div style="min-width:96px;padding:5px 8px;border:2px solid #fff;border-radius:7px;background:'+color+';color:#05070a;text-align:center;font-weight:900;box-shadow:0 0 12px '+color+';">'+esc(label)+'</div>',iconSize:[112,34],iconAnchor:[56,34]});
+      operationPointPreviewMarker=L.marker([operationPointDraft.lat,operationPointDraft.lng],{icon:icon}).addTo(operationPointPickerMap).bindPopup(label).openPopup(); operationPointPickerMap.panTo([operationPointDraft.lat,operationPointDraft.lng]);
+    }
+
+    function openOperationPointPicker(mode) {
+      if(!currentUser||!isTopThreeMissionRank(currentUser.rank)) return alert('تحديد مواقع المهمة متاح للرتب العليا الثلاث فقط.');
+      operationPointMode=mode==='end'?'end':'start'; const title=document.getElementById('operation-point-title'); const help=document.getElementById('operation-point-help'); const status=document.getElementById('operation-point-status'); const confirmButton=document.getElementById('operation-point-confirm'); const input=document.getElementById(operationPointMode==='start'?'op-start':'op-end'); const label=operationPointMode==='start'?'البداية':'النهاية';
+      if(title) title.innerText='خريطة المهمة — تحديد '+label; if(help) help.innerText='اختر '+label+' المهمة على خريطة المهمة. سيظهر الدبوس في موضعه قبل الضغط على «اعتماد الموقع».';
+      operationPointDraft=parsePoint(input&&input.value); if(status) status.textContent=operationPointDraft?'الموقع الحالي: '+operationPointDraft.lng+','+operationPointDraft.lat+' — يمكنك تعديله أو اعتماده.':'اضغط على الخريطة لوضع دبوس '+label+'.'; if(confirmButton) confirmButton.disabled=!operationPointDraft;
+      const modal=document.getElementById('operation-point-modal'); if(modal) modal.style.display='flex';
+      setTimeout(function(){
+        if(typeof L==='undefined') return alert('تعذر تحميل الخريطة؛ أعد تحميل الصفحة ثم حاول مجددًا.'); const bounds=[[0,0],[1000,1000]];
+        if(!operationPointPickerMap){
+          operationPointPickerMap=L.map('operation-point-map',{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5,zoomDelta:.5,scrollWheelZoom:false,touchZoom:false,boxZoom:false,doubleClickZoom:false,inertia:false,bounceAtZoomLimits:false,maxBounds:bounds,maxBoundsViscosity:1,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}); L.imageOverlay(GTA_MAP_IMAGE_URLS[0],bounds).addTo(operationPointPickerMap); operationPointPickerMap.fitBounds(bounds);
+          operationPointPickerMap.on('click',function(event){if(!operationPointMode) return; operationPointDraft={lat:Math.max(0,Math.min(1000,Math.round(event.latlng.lat))),lng:Math.max(0,Math.min(1000,Math.round(event.latlng.lng)))}; const x=operationPointDraft.lng,y=operationPointDraft.lat; const target=document.getElementById('operation-point-status'); const confirm=document.getElementById('operation-point-confirm'); if(target) target.textContent='معاينة '+(operationPointMode==='start'?'بداية':'نهاية')+' المهمة عند X: '+x+'، Y: '+y+' — اضغط اعتماد الموقع للحفظ.'; if(confirm) confirm.disabled=false; renderOperationPointPreview();});
+        }
+        operationPointPickerMap.invalidateSize(); if(operationPointDraft) renderOperationPointPreview();
+      },100);
+    }
+
+    function closeOperationPointPicker() {const modal=document.getElementById('operation-point-modal');if(modal) modal.style.display='none';operationPointMode=null;operationPointDraft=null;if(operationPointPreviewMarker&&operationPointPickerMap){try{operationPointPickerMap.removeLayer(operationPointPreviewMarker);}catch(error){}}operationPointPreviewMarker=null;}
+
+    function confirmOperationPointSelection() {if(!operationPointMode||!operationPointDraft) return alert('اختر نقطة على الخريطة أولاً.');const selectedMode=operationPointMode;const input=document.getElementById(selectedMode==='start'?'op-start':'op-end');if(input) input.value=String(operationPointDraft.lng)+','+String(operationPointDraft.lat);closeOperationPointPicker();alert('تم حفظ '+(selectedMode==='start'?'بداية':'نهاية')+' المهمة على خريطة المهمة.');}
+
+    function pickOperationPoint(mode) {openOperationPointPicker(mode);}
 
     function loadTacticalOperations(){
       if(!ciaSocket || !currentUser) return;
@@ -2772,7 +2826,7 @@
       const modal=document.getElementById('operation-map-modal');
       if(modal) modal.style.display='flex';
       const title=document.getElementById('operation-map-title');
-      if(title) title.innerText=`خريطة مناطق المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
+      if(title) title.innerText=`خريطة المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
       const command=isTopThreeMissionRank(currentUser.rank);
       const help=document.getElementById('operation-map-help');
       if(help) help.innerText='يمكنك مراجعة المواقع والرسومات وإضافة الشروحات على الخريطة.';
@@ -3568,16 +3622,6 @@
               ? "تم إضافة المقر الرئيسي بنجاح."
               : "تم إضافة المقر الاحتياطي بنجاح."
           );
-          return;
-        }
-
-        if(operationPointMode && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))){
-          if(myMapLocationPickerEnabled){myMapLocationPickerEnabled=false;updateMyMapLocationPickerButton();}
-          const targetInput=document.getElementById(operationPointMode==='start'?'op-start':'op-end');
-          if(targetInput) targetInput.value = `${x},${y}`;
-          const selected=operationPointMode; operationPointMode=null;
-          alert(`تم تحديد ${selected==='start'?'بداية':'نهاية'} العملية: ${x},${y}`);
-          showPane('operations', null);
           return;
         }
 
