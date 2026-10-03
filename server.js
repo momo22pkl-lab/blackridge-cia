@@ -1788,8 +1788,8 @@ function operationSanitize(
       viewer?.rank
     );
 
-  const chiefMissionViewer =
-    isChief(viewer);
+  const leadershipMissionViewer =
+    isLeadership(viewer);
 
   const privilegedMissionViewer =
     canManageOperations(viewer);
@@ -1812,15 +1812,18 @@ function operationSanitize(
           code
         );
 
-      return chiefMissionViewer &&
-        member
-        ? {
-            code,
-            name: member.name
-          }
-        : {
-            code
-          };
+      if (leadershipMissionViewer && member) {
+        return {
+          code,
+          name: member.identity?.fullName || member.name,
+          online: !!member.online,
+          activeService: member.activeService === true
+        };
+      }
+      if (normalizedViewerRank === 'AGENT' && viewer?.publicCode === code) {
+        return { code, assignedToSelf: true };
+      }
+      return { code };
     });
 
   if (
@@ -1862,9 +1865,9 @@ function operationSanitize(
       battalionLeaderCode: '',
       commanderName: '',
 
-      crew: [],
+      crew: assignedMissionAgent ? [{ code: viewer.publicCode, assignedToSelf: true }] : [],
 
-      battalionCount: 0,
+      battalionCount: assignedMissionAgent ? 1 : 0,
 
       notes: [],
 
@@ -1925,7 +1928,7 @@ function operationSanitize(
       '',
 
     commanderName:
-      chiefMissionViewer
+      leadershipMissionViewer
         ? (
             op.commanderName ||
             ''
@@ -1954,7 +1957,7 @@ function operationSanitize(
           '',
 
         authorName:
-          chiefMissionViewer
+          leadershipMissionViewer
             ? (
                 n.authorName ||
                 ''
@@ -1977,7 +1980,7 @@ function operationSanitize(
       '',
 
     createdByName:
-      chiefMissionViewer
+      leadershipMissionViewer
         ? (
             op.createdByName ||
             ''
@@ -5234,20 +5237,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
             amount
           );
 
-        state.settings.rankSalaries[
-          normalizeRank(
-            target.rank
-          )
-        ] =
-          Math.floor(
-            amount
-          );
-
         addAuditLog(
           'تعديل راتب شخصية',
           actor,
           target,
-          `تم تحديد الراتب إلى ${Math.floor(amount)}.`
+          `تم تحديد راتب هذه الشخصية فقط إلى ${Math.floor(amount)} دون تغيير راتب رتبتها.`
         );
 
         saveState();
@@ -7300,11 +7294,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
           !member ||
           normalizeRank(member.rank) !== 'AGENT' ||
           member.approved === false ||
-          member.suspended ||
-          member.online !== true ||
-          member.activeService !== true
+          member.suspended
         )) {
-          return no(cb, 'تأكد أن الأعضاء المختارين Agents معتمدون ومتصلون بالخدمة الآن. حدّث قائمة الأعضاء ثم أعد المحاولة.');
+          return no(cb, 'تأكد أن كل الأعضاء المختارين Agents معتمدون. يمكن إسناد المهمة حتى لمن هو غير متصل بالخدمة.');
         }
 
         const operation = {
@@ -7461,12 +7453,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
           normalizeRank(member.rank) === 'AGENT' &&
           member.approved !== false &&
           !member.suspended &&
-          member.online === true &&
-          member.activeService === true &&
           member.publicCode
         )
-        .map((member) => isChief(actor)
-          ? { code: member.publicCode, name: member.name }
+        .map((member) => isLeadership(actor)
+          ? { code: member.publicCode, name: member.identity?.fullName || member.name, online: !!member.online, activeService: member.activeService === true }
           : { code: member.publicCode });
       return ok(cb, { agents });
     });
