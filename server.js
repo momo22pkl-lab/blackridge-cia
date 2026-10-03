@@ -1211,16 +1211,12 @@ function requireSocketUser(socket) {
       ? getUserById(socket.userId)
       : null;
 
-  if (!user) return null;
-
-  if (
-    user.suspended ||
-    user.serviceApproved === false ||
-    user.activeService === false
-  ) {
+  if (!user || user.suspended || user.serviceApproved === false) {
     return null;
   }
 
+  // A signed-in account remains authorized for ordinary and leadership actions
+  // while off duty. Duty-only access is checked explicitly by its feature.
   return user;
 }
 
@@ -1249,9 +1245,8 @@ function serviceError(cb, user) {
 
 function socketRequirementMessage(socket) {
   const user = requireAuthenticatedUser(socket);
-  if (!user) return 'يجب تسجيل الدخول أولاً.';
-  if (user.serviceApproved === false) return 'لا يمكنك تسجيل الدخول للخدمة قبل قبول الهوية من القيادة.';
-  if (user.activeService !== true) return 'يلزم تسجيل الدخول للخدمة أولاً.';
+  if (!user) return 'سجّل الدخول إلى حسابك أولاً.';
+  if (user.serviceApproved === false) return 'هويتك بانتظار اعتماد القيادة؛ أكمل اعتمادها قبل استخدام النظام.';
   return 'تعذر ربط الجلسة بالخادم؛ أعد الاتصال ثم حاول مجددًا.';
 }
 
@@ -2727,8 +2722,8 @@ io.on(
                   ),
 
                 needsIdentity:
-                  user.identityRequired !== false &&
-                  !user.identity,
+                  !user.identity &&
+                  (user.identityRequired !== false || isChief(user)),
 
                 serviceApproved:
                   user.serviceApproved !== false,
@@ -2885,12 +2880,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
 
         user.online = true;
-        user.activeService = true;
+        // Presence does not start duty; only duty:start changes activeService.
         user.status =
           clean(
             payload?.status ||
               user.status ||
-              'في الخدمة',
+              (user.activeService === true ? 'في الخدمة' : 'خارج الخدمة'),
             100
           );
 
@@ -5719,7 +5714,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on('morse:translate', (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
-      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+      if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لاستخدام مورس.');
+      if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
+      if (actor.activeService !== true) return no(cb, 'سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.');
       const direction = clean(payload?.direction, 20).toLowerCase();
       const source = clean(payload?.text, 500);
       if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
