@@ -464,6 +464,8 @@ function normalizeUser(user) {
 
   user.identity = user.identity || null;
   user.identityRequired = user.identityRequired !== false;
+  user.identityApproved = user.identityApproved === true || (user.serviceApproved !== false && !!user.identity && user.identityApprovalPending !== true);
+  user.serviceApprovalPending = user.serviceApprovalPending === true;
 
   user.loginCount = Number(user.loginCount || 0);
   user.lastLoginAt = user.lastLoginAt || null;
@@ -685,6 +687,12 @@ function publicUser(user, viewer = null) {
 
     identityApprovalPending:
       user.identityApprovalPending === true,
+
+    identityApproved:
+      self || leadership ? user.identityApproved === true : false,
+
+    serviceApprovalPending:
+      self || isChief(viewer) ? user.serviceApprovalPending === true : false,
 
     rejectionMessage:
       self
@@ -967,6 +975,13 @@ function snapshot(viewer = null) {
       isLeadership(viewer)
         ? state.cia_users
             .filter((u) => u.identityApprovalPending === true)
+            .map((u) => publicUser(u, viewer))
+        : [],
+
+    cia_service_queue:
+      isChief(viewer)
+        ? state.cia_users
+            .filter((u) => u.serviceApprovalPending === true)
             .map((u) => publicUser(u, viewer))
         : [],
 
@@ -2797,7 +2812,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
     actor.identity = identity;
     actor.identityRequired = false;
     if (!isLeadership(actor)) {
+      actor.identityApproved = false;
       actor.identityApprovalPending = true;
+      actor.serviceApprovalPending = false;
       actor.serviceApproved = false;
       actor.activeService = false;
       actor.status = 'بانتظار اعتماد الهوية';
@@ -2842,7 +2859,33 @@ socket.on('member:saveIdentity', (payload, cb) => {
     );
   }
 });
-    
+
+    socket.on('service:request', (payload, cb) => {
+      try {
+        const actor = requireAuthenticatedUser(socket);
+        if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+        if (actor.suspended || actor.approved === false) return no(cb, 'لا يمكن إرسال طلب الخدمة لهذا الحساب.');
+        if (actor.identityApprovalPending || actor.identityApproved !== true) {
+          return no(cb, 'يجب اعتماد هويتك أولاً قبل طلب دخول الخدمة.');
+        }
+        if (actor.serviceApproved === true) return no(cb, 'تم اعتماد دخولك للخدمة بالفعل.');
+        if (actor.serviceApprovalPending === true) return no(cb, 'طلب دخول الخدمة قيد المراجعة بالفعل.');
+        actor.serviceApprovalPending = true;
+        actor.activeService = false;
+        actor.status = 'بانتظار موافقة القائد على دخول الخدمة';
+        addAuditLog('طلب دخول الخدمة', actor, actor, 'تم إرسال طلب دخول الخدمة بعد اعتماد الهوية.');
+        saveState();
+        emitState();
+        for (const targetSocket of io.sockets.sockets.values()) {
+          const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
+          if (targetUser && isChief(targetUser)) targetSocket.emit('service:approval:new', { userId: actor.id });
+        }
+        return ok(cb, { pending: true, user: publicUser(actor, actor) });
+      } catch (error) {
+        return no(cb, error.message || 'تعذر إرسال طلب دخول الخدمة.');
+      }
+    });
+
     socket.on(
       'auth:me',
       (payload, cb) => {
@@ -3105,6 +3148,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
             if (rejecting) {
               target.identityApprovalPending = false;
+              target.identityApproved = false;
+              target.serviceApprovalPending = false;
               target.serviceApproved = false;
               target.approved = false;
               target.activeService = false;
@@ -3114,13 +3159,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 'تم رفضك. لأي استفسار قم بإرساله هنا، وسيصل إلى CIA CHIEF وSenior Commander CIA فقط.';
               addAuditLog('رفض الهوية', actor, target, target.rejectionMessage);
             } else {
-              if (!target.secretCode) target.secretCode = makeSecretCode();
-              if (!target.publicCode) target.publicCode = makePublicCode(target.rank);
               target.identityApprovalPending = false;
-              target.serviceApproved = true;
+              target.identityApproved = true;
+              target.serviceApprovalPending = false;
+              target.serviceApproved = false;
+              target.activeService = false;
               target.approved = true;
               target.rejectionMessage = '';
-              target.status = 'خارج الخدمة';
+              target.status = 'بانتظار طلب دخول الخدمة';
               addAuditLog('اعتماد الهوية', actor, target, 'تم اعتماد الهوية من القيادة.');
             }
 
@@ -3134,9 +3180,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   ok: !rejecting,
                   message: rejecting
                     ? target.rejectionMessage
-                    : 'تم اعتماد هويتك. سجّل الدخول للخدمة للمتابعة.',
-                  secretCode: rejecting ? null : target.secretCode,
-                  publicCode: rejecting ? null : target.publicCode
+                    : 'تم اعتماد هويتك. أرسل طلب دخول الخدمة من لوحة الحالة للمتابعة.',
+                  secretCode: null,
+                  publicCode: null
                 });
               }
             }
@@ -3146,9 +3192,55 @@ socket.on('member:saveIdentity', (payload, cb) => {
               user: publicUser(target, actor),
               message: rejecting
                 ? target.rejectionMessage
-                : 'تم اعتماد الهوية.',
-              secretCode: rejecting ? null : target.secretCode,
-              publicCode: rejecting ? null : target.publicCode
+                : 'تم اعتماد الهوية؛ بانتظار طلب دخول الخدمة.',
+              secretCode: null,
+              publicCode: null
+            });
+          }
+
+          /* -------------------------------------------------
+             FINAL SERVICE APPROVAL
+          ------------------------------------------------- */
+
+          if (action === 'approve_service' || action === 'reject_service') {
+            if (!isChief(actor)) return no(cb, 'اعتماد دخول الخدمة متاح لـ CIA CHIEF فقط.');
+            if (!target) return no(cb, 'الشخصية المستهدفة غير موجودة.');
+            if (target.identityApproved !== true || target.identityApprovalPending === true) {
+              return no(cb, 'اعتماد الهوية مطلوب قبل مراجعة طلب دخول الخدمة.');
+            }
+            if (target.serviceApproved === true) return no(cb, 'تم اعتماد دخول هذه الشخصية للخدمة بالفعل.');
+            if (target.serviceApprovalPending !== true) return no(cb, 'لا يوجد طلب دخول خدمة معلق لهذه الشخصية.');
+
+            const rejecting = action === 'reject_service';
+            target.serviceApprovalPending = false;
+            target.activeService = false;
+            if (rejecting) {
+              target.serviceApproved = false;
+              target.status = 'تم رفض طلب دخول الخدمة';
+              addAuditLog('رفض طلب دخول الخدمة', actor, target, 'يمكن للشخصية إرسال طلب جديد لاحقاً.');
+            } else {
+              if (!target.publicCode) target.publicCode = makePublicCode(target.rank);
+              target.serviceApproved = true;
+              target.approved = true;
+              target.status = 'خارج الخدمة';
+              addAuditLog('اعتماد دخول الخدمة', actor, target, `تم اعتماد ${target.name} وإصدار الكود العسكري ${target.publicCode}.`);
+            }
+
+            saveState();
+            emitState();
+            for (const socketId of sessions.get(target.id) || []) {
+              const targetSocket = io.sockets.sockets.get(socketId);
+              if (targetSocket) targetSocket.emit('member:service:reviewed', {
+                ok: !rejecting,
+                message: rejecting ? 'تم رفض طلب دخول الخدمة؛ يمكنك إرسال طلب جديد بعد مراجعة السبب مع القيادة.' : 'تم اعتماد طلبك ودخولك للخدمة.',
+                publicCode: rejecting ? null : target.publicCode
+              });
+            }
+            return ok(cb, {
+              action,
+              user: publicUser(target, actor),
+              publicCode: rejecting ? null : target.publicCode,
+              message: rejecting ? 'تم رفض طلب دخول الخدمة.' : 'تم اعتماد دخول الخدمة وإصدار الكود العسكري.'
             });
           }
 
@@ -3249,27 +3341,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
               );
             }
 
-            const requestedPublicCode =
-              clean(
-                payload?.publicCode,
-                100
-              );
-
-            const publicCode =
-              requestedPublicCode || makePublicCode(rank);
-
-            if (
-              !publicCode ||
-              publicCode === 'PENDING' ||
-              (
-                state.cia_users.some(
-                  (u) => u.publicCode === publicCode
-                )
-              )
-            ) {
-              return no(cb, 'الكود العسكري غير صالح أو مستخدم.');
-            }
-
             const newUser =
               normalizeUser({
                 id:
@@ -3293,7 +3364,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
                 secretCode,
 
-                publicCode,
+                publicCode: '',
 
                 rank,
 
@@ -3304,7 +3375,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   false,
 
                 serviceApproved:
-                  true,
+                  false,
+
+                identityApproved:
+                  false,
+
+                serviceApprovalPending:
+                  false,
 
                 identityApprovalPending:
                   false,
@@ -3316,7 +3393,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   false,
 
                 status:
-                  'في الخدمة',
+                  'بانتظار إكمال الهوية',
 
                 identity:
                   null,
@@ -4094,8 +4171,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const target = getUserByPublicCode(targetCode);
         if (!target) return no(cb, 'الشخصية المستهدفة غير موجودة.');
         if (target.id === actor.id) return no(cb, 'لا يمكنك تسليم القيادة لنفسك.');
-        if (target.suspended || target.activeService === false || target.approved === false) {
-          return no(cb, 'لا يمكن تسليم القيادة لشخصية موقوفة أو غير معتمدة.');
+        if (target.suspended || target.serviceApproved === false || target.approved === false || target.identityApprovalPending === true) {
+          return no(cb, 'لا يمكن تسليم القيادة لشخصية موقوفة أو لم تعتمد دخول الخدمة بعد.');
         }
 
         target.rank = 'CIA CHIEF';
@@ -4210,17 +4287,24 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 makeSecretCode(),
 
               publicCode:
-                makePublicCode(
-                  'AGENT'
-                ),
+                '',
 
               rank:
                 'AGENT',
 
               approved:
-                true,
+                false,
 
               activeService:
+                false,
+
+              serviceApproved:
+                false,
+
+              identityApproved:
+                false,
+
+              serviceApprovalPending:
                 false,
 
               suspended:
@@ -4230,7 +4314,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 false,
 
               status:
-                'غير مفعلة',
+                'بانتظار اعتماد الشخصية',
 
               identity:
                 null,
@@ -4308,10 +4392,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 ),
 
               secretCode:
-                character.secretCode,
+                null,
 
               publicCode:
-                character.publicCode,
+                null,
 
               pending:
                 true
@@ -4377,6 +4461,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
               cb,
               'لا تملك صلاحية تفعيل هذه الشخصية.'
             );
+          }
+          if (target.serviceApproved !== true || (!isLeadership(target) && !target.publicCode)) {
+            return no(cb, 'اعتماد الشخصية والهوية وطلب دخول الخدمة مع إصدار الكود العسكري مطلوب قبل التفعيل.');
           }
 
           target.activeService =
@@ -4567,13 +4654,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
           characterType: 'secondary',
           name,
           secretCode: makeSecretCode(),
-          publicCode: makePublicCode('AGENT'),
+          publicCode: direct ? makePublicCode('AGENT') : '',
           rank: 'AGENT',
-          approved: true,
+          approved: direct,
           activeService: direct,
+          serviceApproved: direct,
+          identityApproved: direct,
+          serviceApprovalPending: false,
           suspended: false,
           online: false,
-          status: direct ? 'في الخدمة' : 'بانتظار اعتماد القيادة',
+          status: direct ? 'في الخدمة' : 'بانتظار اعتماد الشخصية',
           identity: null,
           identityRequired: true,
           hobbies: '',
@@ -4610,8 +4700,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
           direct,
           pending: !direct,
           user: publicUser(character, actor),
-          secretCode: character.secretCode,
-          publicCode: character.publicCode
+          secretCode: direct ? character.secretCode : null,
+          publicCode: direct ? character.publicCode : null
         });
         if (direct) socket.emit('character:request:result', result);
         if (!direct) {
@@ -4640,7 +4730,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           (target.accountId && actor.accountId && target.accountId === actor.accountId) ||
           target.characterOwnerId === (actor.characterOwnerId || actor.id);
         if (!sameOwner) return no(cb, 'لا تملك صلاحية الدخول إلى هذه الشخصية.');
-        if (!target.approved || target.serviceApproved === false || target.suspended) {
+        if (!target.approved || target.suspended) {
           return no(cb, 'هذه الشخصية لم تعتمد أو تم إيقافها.');
         }
         if (
@@ -4678,27 +4768,34 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         if (action === 'reject' || action === 'deny') {
           target.activeService = false;
+          target.serviceApproved = false;
+          target.identityApproved = false;
+          target.serviceApprovalPending = false;
           target.approved = false;
           target.status = 'مرفوضة';
           state.cia_character_queue = state.cia_character_queue.filter((item) => item.id !== request.id);
           saveState();
           emitState();
           const result = ok(cb, { action: 'reject', user: publicUser(target, actor) });
-          io.emit('character:admin:result', result);
+          for (const socketId of sessions.get(request.ownerId) || []) {
+            const ownerSocket = io.sockets.sockets.get(socketId);
+            if (ownerSocket) ownerSocket.emit('character:rejected', { message: `تم رفض طلب الشخصية ${target.name}.` });
+          }
           return result;
         }
         if (action !== 'approve' && action !== 'accept') return no(cb, 'إجراء الشخصية غير معروف.');
 
-        const publicCode = clean(payload?.publicCode, 100);
-        if (!publicCode || publicCode === 'PENDING') return no(cb, 'كود الظهور العام مطلوب.');
-        const duplicate = getUserByPublicCode(publicCode);
-        if (duplicate && duplicate.id !== target.id) return no(cb, 'الكود العسكري مستخدم من شخصية أخرى.');
-
-        target.publicCode = publicCode;
+        if (!target.secretCode) target.secretCode = makeSecretCode();
+        target.publicCode = '';
         target.approved = true;
-        target.activeService = true;
+        target.activeService = false;
+        target.serviceApproved = false;
+        target.identityApproved = false;
+        target.serviceApprovalPending = false;
+        target.identityApprovalPending = false;
+        target.identityRequired = true;
         target.suspended = false;
-        target.status = 'في الخدمة';
+        target.status = 'بانتظار إكمال الهوية';
         state.cia_character_queue = state.cia_character_queue.filter((item) => item.id !== request.id);
         addAuditLog('اعتماد شخصية', actor, target, `تم اعتماد الشخصية ${target.name}.`);
         saveState();
@@ -4708,13 +4805,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
           action: 'approve',
           user: publicUser(target, actor),
           secretCode: target.secretCode,
-          publicCode: target.publicCode
+          publicCode: null
         });
         for (const socketId of sessions.get(request.ownerId) || []) {
           const ownerSocket = io.sockets.sockets.get(socketId);
           if (ownerSocket) ownerSocket.emit('character:approved', result);
         }
-        io.emit('character:admin:result', result);
         return result;
       } catch (error) {
         return no(cb, error.message || 'تعذر تنفيذ طلب الشخصية.');
@@ -7769,6 +7865,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             return no(cb, 'الكود العسكري غير صالح أو مستخدم.');
           }
           if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تغيير الكود العسكري.');
+          if (target.serviceApproved !== true) return no(cb, 'لا يمكن إصدار أو تغيير الكود العسكري قبل موافقة دخول الخدمة.');
           target.publicCode = publicCode;
           action = 'code';
         }
@@ -7786,8 +7883,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
       if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
-      if (!canManageMember(actor, target) && !isHighCommander(actor)) {
-        return no(cb, 'لا تملك صلاحية إعادة الشخصية للخدمة.');
+      if (!canManageMember(actor, target)) {
+        return no(cb, 'لا تملك صلاحية إعادة هذه الشخصية للخدمة.');
       }
       target.activeService = true;
       target.suspended = false;
@@ -7909,8 +8006,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('duty:start', (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
-      if (actor.serviceApproved === false) {
-        return no(cb, 'لا يمكنك تسجيل الدخول للخدمة قبل قبول هويتك من القيادة.');
+      if (actor.serviceApproved !== true) {
+        return no(cb, 'يلزم قبول الشخصية واعتماد الهوية وطلب دخول الخدمة قبل مباشرة الخدمة.');
+      }
+      if (!actor.publicCode && !isLeadership(actor)) {
+        return no(cb, 'لم يصدر الكود العسكري بعد؛ اطلب من CIA CHIEF إكمال اعتماد دخول الخدمة.');
       }
       if (actor.activeService === true) {
         return ok(cb, { attendance: null, user: publicUser(actor, actor) });
