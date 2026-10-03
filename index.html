@@ -735,7 +735,7 @@
         <strong style="color:var(--primary-gold);">أدوات القيادة الشخصية</strong>
         <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" onclick="changeOwnLeaderData()" style="padding:7px 10px;background:#111827;color:#fff;border:1px solid var(--primary-gold);border-radius:4px;cursor:pointer;">تعديل بياناتي</button>
-          <button type="button" onclick="openChiefHandover()" style="padding:7px 10px;background:#111827;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">تسليم القيادة</button>
+          <button id="chief-handover-button" type="button" onclick="openChiefHandover()" style="padding:7px 10px;background:#111827;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">تسليم القيادة</button>
           <button type="button" onclick="editMyIdentity()" style="padding:7px 10px;background:#111827;color:#fff;border:1px solid var(--cyan-glow);border-radius:4px;cursor:pointer;">تعديل هويتي</button>
         </div>
       </div>
@@ -744,6 +744,9 @@
         <div style="font-size: 0.8rem; color: var(--cyan-glow); margin-bottom: 8px; font-weight: bold;"><i class="fa-solid fa-street-view"></i> حالتك الميدانية الحالية:</div>
         <div id="service-status-card" style="padding:8px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:.72rem;">
           حالة الخدمة: <strong id="service-status-label" style="color:var(--red-alert);">غير مسجل</strong>
+          <div style="margin-top:6px;font-size:.67rem;line-height:1.6;">اعتماد الشخصية ثم الهوية مطلوبان قبل إرسال طلب الخدمة. يصدر الكود العسكري بعد موافقة القائد.</div>
+          <button id="service-request-button" type="button" onclick="requestServiceEntry()" style="display:none;margin-top:8px;padding:7px 11px;background:var(--primary-gold);color:#000;border:0;border-radius:5px;font-weight:bold;cursor:pointer;">إرسال طلب دخول الخدمة للقائد</button>
+          <span id="service-request-pending" style="display:none;margin-right:8px;color:var(--primary-gold);">طلبك قيد مراجعة CIA CHIEF.</span>
         </div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
           <button class="status-btn status-patrol" onclick="startDuty()">تسجيل الدخول للخدمة 🟢</button>
@@ -795,7 +798,7 @@
           </div>
         </div>
         <div id="gta-map" role="application" aria-label="خريطة لوس سانتوس التفاعلية" style="width:100%;height:500px;margin-top:12px;border:2px solid var(--red-alert);border-radius:8px;background:#0fa8d7;"></div>
-        <small style="display:block;margin-top:5px;color:var(--text-dim);font-size:.6rem;">خريطة GTA V المرجعية من GTA5.info.</small>
+        <small style="display:block;margin-top:5px;color:var(--text-dim);font-size:.6rem;">خريطة لوس سانتوس التفاعلية — نفس خلفية خريطة الاستغاثة.</small>
       </div>
 
     </div>
@@ -1269,7 +1272,7 @@
       </div>
 
       <div id="chief-only-admissions" class="card">
-        <h4 style="color:var(--primary-gold);font-size:.85rem;margin-bottom:8px;">طلبات القبول</h4>
+        <h4 style="color:var(--primary-gold);font-size:.85rem;margin-bottom:8px;">المرحلة الأولى: قبول الشخصية</h4>
         <div class="table-container">
           <table class="table-custom">
             <thead><tr><th>الاسم المطلوب</th><th>كود طلب القبول</th><th>الإجراء</th></tr></thead>
@@ -1282,8 +1285,19 @@
         <h4 style="color:var(--cyan-glow);font-size:.85rem;margin-bottom:8px;">طلبات اعتماد الهوية</h4>
         <div class="table-container">
           <table class="table-custom">
-            <thead><tr><th>الكود العسكري</th><th>الرتبة</th><th>الهوية</th><th>الإجراء</th></tr></thead>
+            <thead><tr><th>الشخصية</th><th>الرتبة</th><th>الهوية المقدمة</th><th>الإجراء</th></tr></thead>
             <tbody id="identity-approval-list"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="service-approval-card" class="card" style="display:none;border-color:var(--primary-gold);">
+        <h4 style="color:var(--primary-gold);font-size:.85rem;margin-bottom:6px;">المرحلة الثالثة: طلب دخول الخدمة وإصدار الكود العسكري</h4>
+        <div style="font-size:.68rem;color:var(--text-dim);margin-bottom:7px;">لا يظهر الطلب هنا إلا بعد اعتماد الشخصية والهوية. موافقة CIA CHIEF تفتح الخدمة وتصدر الكود العسكري.</div>
+        <div class="table-container">
+          <table class="table-custom">
+            <thead><tr><th>الشخصية</th><th>الهوية</th><th>الإجراء</th></tr></thead>
+            <tbody id="service-approval-list"></tbody>
           </table>
         </div>
       </div>
@@ -1378,6 +1392,7 @@
     let loginMode = 'agent';
     let supportMessages = [];
     let identityApprovalQueue = [];
+    let serviceApprovalQueue = [];
     let lastSupportThreadId = null;
     let lastSupportThreadToken = null;
     try {
@@ -1480,7 +1495,7 @@
           if (self) currentUser = { ...currentUser, ...self };
         }
       }
-      if (key === 'cia_queue') { pendingQueue = value || []; if (currentUser && currentUser.rank === 'CIA CHIEF') renderChiefPanel(); }
+      if (key === 'cia_queue') { pendingQueue = value || []; if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) renderChiefPanel(); }
       if (key === 'cia_character_queue') { pendingCharacterQueue = value || []; if (currentUser && currentUser.rank === 'CIA CHIEF') renderChiefPanel(); }
       if (key === 'cia_chats') chatMessages = value || { global: [] };
       if (key === 'cia_reports') reportsList = value || [];
@@ -1504,6 +1519,7 @@
         }
         if (Array.isArray(state.cia_queue)) pendingQueue = state.cia_queue;
         if (Array.isArray(state.cia_identity_queue)) identityApprovalQueue = state.cia_identity_queue;
+        if (Array.isArray(state.cia_service_queue)) serviceApprovalQueue = state.cia_service_queue;
         if (Array.isArray(state.cia_character_queue)) pendingCharacterQueue = state.cia_character_queue;
         if (state.cia_chats && typeof state.cia_chats === 'object') {
           chatMessages = state.cia_chats;
@@ -1614,9 +1630,14 @@
 
       ciaSocket.on('character:approved', function(result) {
         if (!result || !result.ok) return;
-        alert(`تمت الموافقة على شخصيتك الجديدة.\nالاسم: ${result.user.name}\nكود الدخول: ${result.secretCode}\nيجب إكمال الهوية عند أول دخول.`);
+        alert(`تمت الموافقة على شخصيتك الجديدة.\nالاسم: ${result.user.name}\nكود الدخول لإكمال الهوية: ${result.secretCode}\nبعد اعتماد الهوية أرسل طلب دخول الخدمة، ثم يصدر الكود العسكري.`);
         document.getElementById('new-character-name').value = '';
         if (document.getElementById('characters-modal').style.display !== 'none') loadCharactersManager();
+      });
+
+      ciaSocket.on('character:rejected', function(result) {
+        alert((result && result.message) || 'تم رفض طلب الشخصية.');
+        if (document.getElementById('characters-modal')?.style.display !== 'none') loadCharactersManager();
       });
 
       ciaSocket.on('character:request:new', function(req) {
@@ -1732,10 +1753,25 @@
       });
 
       ciaSocket.on('identity:approval:new', function() {
-        if (currentUser && ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank))) {
+        if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
           playRadioBeep(700);
           renderChiefPanel();
         }
+      });
+
+      ciaSocket.on('service:approval:new', function() {
+        if (currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF') {
+          playRadioBeep(740);
+          renderChiefPanel();
+        }
+      });
+
+      ciaSocket.on('member:service:reviewed', function(result) {
+        if (!result) return;
+        if (result.ok) alert((result.message || 'تم اعتماد دخولك للخدمة.') + (result.publicCode ? `\nالكود العسكري: ${result.publicCode}` : ''));
+        else alert(result.message || 'تم رفض طلب دخول الخدمة.');
+        updateServiceUI();
+        updateViews();
       });
 
       ciaSocket.on('support:message', function(message) {
@@ -1789,7 +1825,6 @@
         if (!result || !result.ok) return;
         const name=result.user?.name||'';
         const loginCode=result.secretCode||result.user?.secretCode||'';
-        const publicCode=result.publicCode||result.user?.publicCode||'';
         if(name) document.getElementById('entry-name').value=name;
         if(loginCode) document.getElementById('entry-passcode').value=loginCode;
         try {
@@ -1799,7 +1834,7 @@
             localStorage.setItem('cia_last_member_code',loginCode);
           }
         } catch(e) {}
-        alert(`تم قبول ${name||'طلبك'}.\nالكود العسكري العام: ${publicCode||'—'}\nكود الدخول الشخصي: ${loginCode||'—'}\nاستخدم الاسم وكود الدخول الشخصي لتسجيل الدخول؛ الكود العسكري لا يستخدم للدخول.`);
+        alert(`تم قبول شخصيتك: ${name||'—'}.\nكود الدخول الشخصي: ${loginCode||'—'}\nسجّل الدخول لإكمال هويتك، ثم انتظر اعتمادها وقدّم طلب دخول الخدمة. سيصدر الكود العسكري بعد الموافقة النهائية.`);
         currentUser = null;
       });
 
@@ -1912,6 +1947,7 @@
     let charactersManagerList = [];
 
     function openCharactersManager() {
+      if (currentUser && currentUser.serviceApproved === false) return alert('إدارة الشخصيات متاحة بعد اكتمال موافقات الخدمة.');
       const modal = document.getElementById('characters-modal');
       if (!modal) return;
       modal.style.display = 'flex';
@@ -2152,18 +2188,20 @@
       authReconnectPending = false;
       setSessionRecoveryVisible(false);
       document.getElementById('passcode-modal').style.display = 'none';
-      document.getElementById('user-display-tag').innerText = `#${currentUser.publicCode} (${currentUser.rank})`;
+      document.getElementById('user-display-tag').innerText = `${currentUser.publicCode ? '#'+currentUser.publicCode : 'بانتظار الكود العسكري'} (${currentUser.rank})`;
 
       const leadershipNav = document.getElementById('chief-nav');
-      if (leadershipNav) leadershipNav.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
+      if (leadershipNav) leadershipNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const opNav = document.getElementById('operations-nav');
-      if (opNav) opNav.style.display = currentUser ? 'flex' : 'none';
+      if (opNav) opNav.style.display = currentUser && currentUser.serviceApproved === true ? 'flex' : 'none';
       const chiefSecrets = document.getElementById('chief-command-secrets');
       if (chiefSecrets) chiefSecrets.style.display = currentUser.rank === 'CIA CHIEF' ? 'block' : 'none';
       const auditNav = document.getElementById('audit-nav');
       if (auditNav) auditNav.style.display = (currentUser.rank === 'CIA CHIEF' || currentUser.rank === 'SUPREME COMMANDER') ? 'flex' : 'none';
       const leaderTools = document.getElementById('leader-self-tools');
       if (leaderTools) leaderTools.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'block' : 'none';
+      const handoverButton = document.getElementById('chief-handover-button');
+      if (handoverButton) handoverButton.style.display = normalizeRank(currentUser.rank) === 'CIA CHIEF' ? 'inline-block' : 'none';
       
       if (currentUser.radioChannel) radioChannel = currentUser.radioChannel;
       renderBank();
@@ -2393,7 +2431,7 @@
         if(!operationMap){
           const element=document.getElementById('operation-map');
           operationMap=L.map(element,{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5});
-          L.imageOverlay('https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg',[[0,0],[1000,1000]]).addTo(operationMap);
+          L.imageOverlay(GTA_MAP_IMAGE_URLS[0],[[0,0],[1000,1000]]).addTo(operationMap);
           operationMap.fitBounds([[0,0],[1000,1000]]);
           operationMap.on('click',function(event){
             if(!operationMapTool||!operationMapOperation) return;
@@ -2616,6 +2654,10 @@
         alert('سجّل الدخول إلى حسابك أولاً.');
         return;
       }
+      if (currentUser && currentUser.serviceApproved === false && !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) && paneId !== 'dashboard') {
+        alert('أكمل الموافقات الثلاث من لوحة الحالة قبل دخول أقسام الخدمة.');
+        return;
+      }
       if (paneId === 'morse-translator-view' && currentUser && currentUser.serviceApproved === false) {
         alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
         return;
@@ -2640,6 +2682,7 @@
 
     /* Views Update Logic */
     function updateViews() {
+      updateServiceUI();
       renderPresenceStats();
       renderAgentsDirectory();
       renderPublicIdentityDirectory();
@@ -2649,7 +2692,7 @@
       renderBank();
       renderTacticalOperations();
       renderSupportPanel();
-      if (currentUser && (normalizeRank(currentUser.rank) === 'CIA CHIEF' || normalizeRank(currentUser.rank) === 'SUPREME COMMANDER')) {
+      if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
         renderChiefPanel();
         renderDailyAuditLogs();
       }
@@ -2681,11 +2724,19 @@
     function updateServiceUI() {
       const label = document.getElementById('service-status-label');
       if (!label) return;
+      const requestButton = document.getElementById('service-request-button');
+      const pendingNote = document.getElementById('service-request-pending');
+      const servicePending = !!(currentUser && currentUser.serviceApprovalPending === true);
+      if (requestButton) requestButton.style.display = currentUser && currentUser.identityApproved === true && currentUser.serviceApproved !== true && !servicePending && !currentUser.suspended ? 'inline-block' : 'none';
+      if (pendingNote) pendingNote.style.display = servicePending ? 'inline' : 'none';
       if (!currentUser) {
         label.innerText = 'غير مسجل';
         label.style.color = 'var(--red-alert)';
-      } else if (currentUser.serviceApproved === false) {
-        label.innerText = 'بانتظار قبول الهوية';
+      } else if (currentUser.serviceApproved !== true) {
+        if (currentUser.identityApprovalPending === true) label.innerText = 'بانتظار اعتماد الهوية';
+        else if (currentUser.identityApproved !== true) label.innerText = 'أكمل هويتك بعد قبول الشخصية';
+        else if (servicePending) label.innerText = 'بانتظار موافقة القائد على دخول الخدمة';
+        else label.innerText = 'الهوية معتمدة — أرسل طلب دخول الخدمة';
         label.style.color = 'var(--primary-gold)';
       } else if (currentUser.activeService === true) {
         label.innerText = 'في الخدمة';
@@ -2877,8 +2928,38 @@
       });
     }
 
+    function requestServiceEntry() {
+      if (!currentUser || !ciaSocket || !ciaSocket.connected) return alert('يلزم تسجيل الدخول واتصال الخدمة لإرسال الطلب.');
+      if (currentUser.identityApproved !== true) return alert('لا يمكنك طلب دخول الخدمة قبل اعتماد هويتك.');
+      if (currentUser.serviceApproved === true) return alert('دخولك للخدمة معتمد بالفعل.');
+      if (currentUser.serviceApprovalPending === true) return alert('طلبك قيد مراجعة القائد بالفعل.');
+      if (!confirm('سيتم إرسال طلبك إلى CIA CHIEF. لن يصدر الكود العسكري ولن تتمكن من مباشرة الخدمة قبل الموافقة.')) return;
+      ciaSocket.emit('service:request', {}, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر إرسال طلب دخول الخدمة.');
+        currentUser = result.user || { ...currentUser, serviceApprovalPending:true };
+        updateServiceUI();
+        alert('تم إرسال طلب دخول الخدمة إلى CIA CHIEF.');
+      });
+    }
+
+    function reviewServiceRequest(userId, action) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return alert('اعتماد دخول الخدمة متاح لـ CIA CHIEF فقط.');
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      const approving = action === 'approve_service';
+      const message = approving ? 'سيُفتح دخول الخدمة ويصدر الكود العسكري لهذه الشخصية.' : 'سيُرفض طلب دخول الخدمة ويمكن للشخصية تقديم طلب جديد لاحقاً.';
+      if (!confirm(message + '\n\nهل تريد المتابعة؟')) return;
+      ciaSocket.emit('admin:action', { action, targetId:userId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر مراجعة طلب الخدمة.');
+        if (approving) alert(`تم اعتماد دخول ${result.user?.name || 'الشخصية'} للخدمة.\nالكود العسكري: ${result.publicCode || result.user?.publicCode || '—'}`);
+        else alert('تم رفض طلب دخول الخدمة.');
+        updateViews();
+        renderChiefPanel();
+      });
+    }
+
     function startDuty(){
       if(!currentUser||!ciaSocket) return alert('يلزم تسجيل الدخول أولاً.');
+      if(currentUser.serviceApproved !== true) return alert('أكمل موافقات الشخصية والهوية وطلب دخول الخدمة أولاً.');
       ciaSocket.emit('duty:start',{},r=>{
         if(!r||!r.ok)return alert((r&&r.message)||'تعذر تسجيل المباشرة.');
         currentUser = r.user || {...currentUser, activeService:true, status:'في الخدمة'};
@@ -2938,8 +3019,8 @@
       const list = document.getElementById('public-identity-list');
       if (!list) return;
 
-      list.innerHTML = registeredUsers.map(u => {
-        const hasId = u.identity && u.identity.fullName;
+      list.innerHTML = registeredUsers.filter(u => u.serviceApproved === true && !u.suspended).map(u => {
+        const hasId = u.identityApproved === true && u.identity && u.identity.fullName;
         return `
           <div class="identity-card">
             <div class="identity-code">#${esc(u.publicCode)} — ${esc(u.rank)}</div>
@@ -2953,7 +3034,7 @@
     }
 
     const GTA_MAP_IMAGE_URLS = [
-      'https://www.gta5.info/p/files/grand-theft-auto5-map.jpg',
+      'https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg',
       'https://www.gta5.info/p/files/gta5-satellite-map.jpg'
     ];
 
@@ -3903,21 +3984,33 @@
     /* Chief Panel Admin Functions */
     function renderChiefPanel() {
       if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
-      const isChief = currentUser.rank === 'CIA CHIEF';
+      const isChief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
       const admissionsBox = document.getElementById('chief-only-admissions');
       const charactersBox = document.getElementById('chief-only-characters');
       if (admissionsBox) admissionsBox.style.display = isChief ? 'block' : 'none';
       if (charactersBox) charactersBox.style.display = isChief ? 'block' : 'none';
       const identityCard = document.getElementById('identity-approval-card');
       if (identityCard) identityCard.style.display = 'block';
+      const serviceApprovalCard = document.getElementById('service-approval-card');
+      if (serviceApprovalCard) serviceApprovalCard.style.display = isChief ? 'block' : 'none';
       const identityList = document.getElementById('identity-approval-list');
       if (identityList) {
         identityList.innerHTML = identityApprovalQueue.length
           ? identityApprovalQueue.map(user => {
               const identity = user.identity || {};
-              return `<tr><td>#${esc(user.publicCode||'')}</td><td>${esc(getRankLabel(user.rank))}</td><td>${esc(identity.fullName||'غير مكتملة')}<br><small>${esc(identity.nationality||'')}</small></td><td><button onclick="approveIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--green-status);color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">قبول</button> <button onclick="rejectIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--red-alert);color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">رفض</button></td></tr>`;
+              return `<tr><td>${esc(user.name||'اسم الشخصية')}</td><td>${esc(getRankLabel(user.rank))}</td><td>${esc(identity.fullName||'غير مكتملة')}<br><small>${esc(identity.nationality||'')}</small></td><td><button onclick="approveIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--green-status);color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">اعتماد الهوية</button> <button onclick="rejectIdentity('${esc(user.id)}')" style="padding:4px 8px;background:var(--red-alert);color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">رفض</button></td></tr>`;
             }).join('')
           : '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);">لا توجد طلبات هويات معلقة</td></tr>';
+      }
+
+      const serviceList = document.getElementById('service-approval-list');
+      if (serviceList) {
+        serviceList.innerHTML = !isChief ? '' : serviceApprovalQueue.length
+          ? serviceApprovalQueue.map(user => {
+              const identity = user.identity || {};
+              return `<tr><td>${esc(user.name||'اسم الشخصية')}<br><small>${esc(getRankLabel(user.rank))}</small></td><td>${esc(identity.fullName||'غير مكتملة')}<br><small>${esc(identity.nationality||'')}</small></td><td><button onclick="reviewServiceRequest('${esc(user.id)}','approve_service')" style="padding:4px 8px;background:var(--green-status);color:#000;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">قبول وإصدار الكود</button> <button onclick="reviewServiceRequest('${esc(user.id)}','reject_service')" style="padding:4px 8px;background:var(--red-alert);color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">رفض</button></td></tr>`;
+            }).join('')
+          : '<tr><td colspan="3" style="text-align:center;color:var(--text-dim);">لا توجد طلبات دخول خدمة معلقة</td></tr>';
       }
 
       // Pending Queue
@@ -3961,15 +4054,16 @@
           if (u.rank === 'CIA CHIEF') return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">#' + esc(u.publicCode) + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank rank-chief">CIA CHIEF</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>—</td></tr>';
           const normalizedRank = normalizeRank(u.rank);
           const actorRank = normalizeRank(currentUser && currentUser.rank);
-          const canEditPublic = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(actorRank);
+          const canEditPublic = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(actorRank) && u.serviceApproved === true;
           const canEditSecret = ['CIA CHIEF','SUPREME COMMANDER'].includes(actorRank);
           const editCodeBtn = (canEditSecret || canEditPublic) && normalizedRank !== 'CIA CHIEF' ? (canEditSecret ? '<button type="button" onclick="editLoginCode(' + index + ')" style="padding:3px 6px;background:var(--primary-gold);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">كود الدخول</button>' : '') + (canEditPublic ? '<button type="button" onclick="editPublicCode(' + index + ')" style="padding:3px 6px;background:#111827;color:var(--primary-gold);font-weight:bold;border:1px solid var(--primary-gold);cursor:pointer;border-radius:3px;margin-right:3px;">الكود العسكري</button>' : '') : '';
           const canManageTarget = u.id !== (currentUser && currentUser.id) && (actorRank === 'CIA CHIEF' || (actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(normalizedRank)) || (actorRank === 'HIGH COMMANDER' && normalizedRank === 'AGENT'));
           const canChangeTargetRank = u.id !== (currentUser && currentUser.id) && (actorRank === 'CIA CHIEF' && normalizedRank !== 'CIA CHIEF' || actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(normalizedRank));
           const rankButton = canChangeTargetRank ? '<button type="button" onclick="manageRank(' + index + ')" style="padding:3px 6px;background:var(--cyan-glow);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">ترقية / تنزيل</button>' : '';
-          const kickButton = canManageTarget ? '<button type="button" onclick="kickMember(' + index + ')" title="فصل العضو مع الاحتفاظ ببياناته" style="padding:3px 6px;background:var(--red-alert);color:#fff;border:none;cursor:pointer;border-radius:3px;">فصل</button>' : '';
-          const serviceButton = u.status === 'مفصول' ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">إعادة للخدمة</button>' : rankButton + ' ' + kickButton;
-          return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">#' + esc(u.publicCode) + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank ' + getRankBadge(normalizedRank) + '">' + esc(getRankLabel(normalizedRank)) + '</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>' + editCodeBtn + ' ' + serviceButton + '</td></tr>';
+          const kickButton = canManageTarget ? '<button type="button" onclick="kickMember(' + index + ')" title="فصل العضو مع الاحتفاظ ببياناته" style="padding:3px 6px;background:var(--red-alert);color:#fff;border:none;cursor:pointer;border-radius:3px;">فصل من الخدمة</button>' : '';
+          const serviceButton = u.status === 'مفصول' ? (canManageTarget ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">إعادة للخدمة</button>' : '') : rankButton + ' ' + kickButton;
+          const codeCell = u.publicCode ? '#' + esc(u.publicCode) : '<span style="color:var(--primary-gold);">بانتظار اعتماد الخدمة</span>';
+          return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">' + codeCell + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank ' + getRankBadge(normalizedRank) + '">' + esc(getRankLabel(normalizedRank)) + '</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>' + editCodeBtn + ' ' + serviceButton + '</td></tr>';
         }).join('');
       }
 
@@ -4021,7 +4115,7 @@
           return;
         }
         const name = result.user?.name || 'العضو';
-        alert(`تم قبول ${name}.\nكود الدخول الشخصي: ${result.secretCode || '—'}\nالكود العسكري: ${result.publicCode || result.user?.publicCode || '—'}\nيُستخدم كود الدخول لتسجيل الحساب، والكود العسكري للتعريف بالشخصية.`);
+        alert(`تم قبول الشخصية ${name}.\nكود الدخول الشخصي لإكمال الهوية: ${result.secretCode || '—'}\nلن يصدر الكود العسكري إلا بعد اعتماد الهوية وموافقة طلب دخول الخدمة.`);
       });
     }
 
@@ -4039,7 +4133,7 @@
           alert((result && result.message) || 'تعذر اعتماد الهوية.');
           return;
         }
-        alert(`تم اعتماد الهوية.\nكود الدخول الشخصي: ${result.secretCode || '—'}\nالكود العسكري: ${result.publicCode || result.user?.publicCode || '—'}`);
+        alert('تم اعتماد الهوية. يستطيع العضو الآن إرسال طلب دخول الخدمة؛ الكود العسكري يصدر بعد موافقة القائد على ذلك الطلب.');
       });
     }
 
@@ -4053,12 +4147,10 @@
 
     function approveCharacterReq(reqId) {
       if (!ciaSocket || !currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
-      const publicCode = prompt('حدد كود الظهور العام لهذه الشخصية:');
-      if (publicCode === null) return;
-      const code = publicCode.trim();
-      if (!code || code === 'PENDING') { alert('كود الظهور مطلوب.'); return; }
-      ciaSocket.emit('character:admin:action', { action: 'approve', requestId: reqId, publicCode: code }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر قبول الشخصية.');
+      ciaSocket.emit('character:admin:action', { action: 'approve', requestId: reqId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر قبول الشخصية.');
+        alert(`تم اعتماد الشخصية ${result.user?.name || ''}.\nكود الدخول لإكمال الهوية: ${result.secretCode || '—'}\nلا يصدر الكود العسكري إلا بعد موافقة الخدمة النهائية.`);
+        renderChiefPanel();
       });
     }
 
@@ -4151,7 +4243,7 @@
       const targetRank = normalizeRank(member.rank);
       const canManageTarget = actorRank === 'CIA CHIEF' || (actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(targetRank)) || (actorRank === 'HIGH COMMANDER' && targetRank === 'AGENT');
       if (!canManageTarget) return alert('لا تملك صلاحية فصل عضو بهذه الرتبة.');
-      if (!confirm('هل أنت متأكد من فصل ' + member.name + '؟\n\nستبقى بياناته وشخصياته محفوظة، وسيُوقف دخوله فقط ويمكن للقائد إعادته للخدمة.')) return;
+      if (!confirm('هل أنت متأكد من فصل ' + member.name + '؟\n\nستبقى بياناته وشخصياته محفوظة، وسيُوقف دخوله حتى تعيده القيادة المخولة للخدمة.')) return;
       if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('admin:kickMember', { memberId: member.id }, function(result) {
         if (!result || !result.ok) {
@@ -4159,7 +4251,7 @@
           return;
         }
         renderChiefPanel();
-        alert('تم فصل ' + member.name + ' بنجاح. بياناته وشخصياته محفوظة ويمكن إعادته للخدمة لاحقاً.');
+        alert('تم فصل ' + member.name + ' من الخدمة مع حفظ بياناته لإمكانية إعادته لاحقاً.');
       });
     }
 
@@ -4194,7 +4286,7 @@
     }
 
     function openChiefHandover(){
-      if(normalizeRank(currentUser?.rank)!=='CIA CHIEF') return alert('هذه العملية متاحة لـ CIA CHIEF فقط.');
+      if(!currentUser || normalizeRank(currentUser.rank)!=='CIA CHIEF') return alert('هذه العملية متاحة لـ CIA CHIEF فقط.');
       const targetCode=prompt('أدخل الكود العسكري للشخص الذي تريد تسليمه القيادة:');
       if(targetCode===null) return;
       const code=String(targetCode).trim();
@@ -4547,7 +4639,7 @@
 
     const bounds = [[0, 0], [1000, 1000]];
     sosHistoryMap = L.map(element, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 3, zoomSnap: 0.5 });
-    L.imageOverlay('https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg', bounds).addTo(sosHistoryMap);
+    L.imageOverlay(GTA_MAP_IMAGE_URLS[0], bounds).addTo(sosHistoryMap);
     sosHistoryMap.fitBounds(bounds);
 
     setTimeout(function () {
