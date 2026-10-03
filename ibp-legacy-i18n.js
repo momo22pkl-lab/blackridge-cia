@@ -149,8 +149,6 @@
   Object.entries(arToEn).forEach(([ar, en]) => {
     if (!enToAr[en]) enToAr[en] = ar;
   });
-  const phrases = Object.entries(arToEn).sort((a, b) => b[0].length - a[0].length);
-  const reversePhrases = Object.entries(enToAr).sort((a, b) => b[0].length - a[0].length);
   const textState = new WeakMap();
   const attributeState = new WeakMap();
   let observer = null;
@@ -168,18 +166,10 @@
     const trailing = source.match(/\s*$/)[0];
     if (lang === "en") {
       if (Object.prototype.hasOwnProperty.call(arToEn, trimmed)) return leading + arToEn[trimmed] + trailing;
-      let result = source;
-      for (const [ar, en] of phrases) {
-        if (result.includes(ar)) result = result.split(ar).join(en);
-      }
-      return result;
+      return source;
     }
     if (Object.prototype.hasOwnProperty.call(enToAr, trimmed)) return leading + enToAr[trimmed] + trailing;
-    let result = source;
-    for (const [en, ar] of reversePhrases) {
-      if (result.includes(en)) result = result.split(en).join(ar);
-    }
-    return result;
+    return source;
   }
 
   function activePane() {
