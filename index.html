@@ -777,10 +777,10 @@
 
     <!-- GTA V Map View -->
     <div id="tactical-map-view" class="view-pane">
-      <h3 style="margin-bottom: 5px; color: var(--primary-gold); font-size: 1rem;"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس التفاعلية (Los Santos GTA V)</h3>
+      <h3 style="margin-bottom: 5px; color: var(--red-alert); font-size: 1rem;"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس التفاعلية (Los Santos GTA V)</h3>
       <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 10px;">اضغط على أي موقع بالخريطة لتحديد موقعك أو إرسال الإحداثيات للعملاء.</p>
       
-      <div class="card">
+      <div class="card" style="border-color:rgba(239,68,68,.55);">
         <div style="display:flex;gap:8px;margin-bottom:8px;">
           <button type="button" onclick="clearMyMapLocation()" class="btn-action" style="margin:0;font-size:.8rem;flex:1;background:var(--border);color:#fff;"><i class="fa-solid fa-trash"></i> إزالة موقعي من الخريطة</button>
         </div>
@@ -794,14 +794,19 @@
             </div>
           </div>
         </div>
-        <div id="gta-map" role="application" aria-label="خريطة لوس سانتوس التفاعلية" style="height:450px;width:100%;border-radius:8px;border:2px solid var(--primary-gold);background:#0fa8d7;"></div>
+        <div id="gta-map" role="application" aria-label="خريطة لوس سانتوس التفاعلية" style="width:100%;height:500px;margin-top:12px;border:2px solid var(--red-alert);border-radius:8px;background:#0fa8d7;"></div>
         <small style="display:block;margin-top:5px;color:var(--text-dim);font-size:.6rem;">خريطة GTA V المرجعية من GTA5.info.</small>
       </div>
-      <details id="morse-translator-dropdown" class="morse-dropdown">
-        <summary><span><i class="fa-solid fa-tower-broadcast"></i> أدوات شفرة مورس</span><small>مترجم · نسخ · تشغيل صوتي</small></summary>
+
+    </div>
+    
+    <!-- Cases Vault -->
+    <div id="morse-translator-view" class="view-pane">
+      <h3 style="margin-bottom:10px;color:var(--primary-gold);font-size:1rem;"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h3>
+      <div class="card">
         <section class="morse-panel" id="morse-translator-panel" aria-labelledby="morse-title">
           <h4 id="morse-title"><i class="fa-solid fa-tower-broadcast"></i> مترجم شفرة مورس</h4>
-          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح لجميع الرتب المسجلة لتحويل النص الإنجليزي إلى شفرة مورس أو فك شفرة مورس إلى نص إنجليزي.</p>
+          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.7;">متاح للرتب المعتمدة بعد تسجيل الدخول للخدمة. استخدمه لتحويل النص الإنجليزي إلى شفرة مورس أو فك الشفرة إلى نص.</p>
           <div class="morse-controls">
             <select id="morse-mode" class="morse-select" onchange="updateMorseModeUI()" aria-label="اتجاه الترجمة">
               <option value="encode">تحويل نص إنجليزي إلى مورس</option>
@@ -823,10 +828,9 @@
             <div id="morse-audit-list" style="max-height:320px;overflow:auto;"></div>
           </section>
         </section>
-      </details>
+      </div>
     </div>
-    
-    <!-- Cases Vault -->
+
     <div id="cases-vault" class="view-pane">
       <h3 style="margin-bottom: 10px; color: var(--primary-gold); font-size: 1rem;"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة (Cases Vault)</h3>
       
@@ -1988,7 +1992,7 @@
       const id=sel?.value;
       const character=charactersManagerList.find(c=>c.id===id);
       if(!character) return alert('اختر الشخصية أولاً.');
-      if(!currentUser || currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if(!currentUser || !ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
       closeCharactersManager();
       ciaSocket.emit('character:login',{characterId:character.id,characterName:character.name}, function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر الدخول إلى الشخصية.');
@@ -2173,7 +2177,6 @@
 
     function setUserStatus(newStatus) {
       if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
-      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       currentUser.status = newStatus;
       if (ciaSocket && ciaSocket.connected) {
         ciaSocket.emit('presence:ping', { status: newStatus }, function(result) {
@@ -2326,7 +2329,7 @@
     }
 
     function setOperationMapTool(type,color){
-      if(!currentUser||currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if(!currentUser||!ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
       if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض وتعديل خريطة المهمة متاح للرتب العليا الثلاث فقط.');
       operationMapTool={type,color};
       operationDrawingPoints=[];
@@ -2375,7 +2378,7 @@
     function openOperationMap(operationId){
       if(!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
       if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض خريطة المهمة متاح للرتب العليا الثلاث فقط.');
-      if(currentUser.activeService!==true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      
       operationMapOperation=(operationsList||[]).find(op=>String(op.id)===String(operationId));
       if(!operationMapOperation) return alert('المهمة غير موجودة.');
       const modal=document.getElementById('operation-map-modal');
@@ -2609,12 +2612,16 @@
     }
 
     function showPane(paneId, btn) {
-      if (paneId !== 'dashboard' && !currentUser) {
-        alert('يلزم تسجيل الدخول أولاً.');
+      if (paneId !== 'dashboard' && (!currentUser || !ciaSessionAuthenticated)) {
+        alert('سجّل الدخول إلى حسابك أولاً.');
         return;
       }
-      if (paneId !== 'dashboard' && paneId !== 'tactical-map-view' && currentUser && currentUser.activeService !== true) {
-        alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if (paneId === 'morse-translator-view' && currentUser && currentUser.serviceApproved === false) {
+        alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
+        return;
+      }
+      if (paneId === 'morse-translator-view' && currentUser && currentUser.activeService !== true) {
+        alert('سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.');
         return;
       }
       document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
@@ -2787,10 +2794,8 @@
     }
 
     function openMorseTranslator() {
-      showPane('tactical-map-view', document.getElementById('map-nav'));
-      const dropdown = document.getElementById('morse-translator-dropdown');
-      if (dropdown) dropdown.open = true;
-      if (dropdown) setTimeout(function() { dropdown.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+      showPane('morse-translator-view', document.getElementById('morse-nav'));
+      renderMorsePanels();
     }
 
     function showMorseSupervisorNotice(log) {
@@ -2850,8 +2855,10 @@
     }
 
         function submitMorseTranslation() {
-      if (!currentUser) return alert('سجّل الدخول أولاً لاستخدام المترجم.');
-      if (!ciaSocket || !ciaSocket.connected || !ciaSessionAuthenticated) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
+      if (!currentUser || !ciaSessionAuthenticated) return alert('سجّل الدخول إلى حسابك أولاً لاستخدام المترجم.');
+      if (!ciaSocket || !ciaSocket.connected) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
+      if (currentUser.serviceApproved === false) return alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
+      if (currentUser.activeService !== true) return alert('سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.');
       const direction = document.getElementById('morse-mode')?.value || 'encode';
       const text = document.getElementById('morse-input')?.value.trim() || '';
       const resultBox = document.getElementById('morse-result');
@@ -3417,14 +3424,14 @@
     }
 
     function startPTT() {
-      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return;
+      if (!radioPoweredOn || !currentUser) return;
       playRadioBeep(1200);
       setRadioActivity('جاري البث الصوتي...', 0);
       if (ciaSocket) ciaSocket.emit('radio:ptt:start', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
     }
 
     function stopPTT() {
-      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return;
+      if (!radioPoweredOn || !currentUser) return;
       playRadioBeep(600);
       setRadioActivity('انتهى البث.', 3000);
       if (ciaSocket) ciaSocket.emit('radio:ptt:stop', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
@@ -3433,7 +3440,7 @@
     function sendRadioText() {
       const input = document.getElementById('radio-text-input');
       const txt = input.value.trim();
-      if (!txt || !radioPoweredOn || !currentUser || currentUser.activeService !== true) return alert('يلزم تشغيل الراديو بعد تسجيل الدخول للخدمة.');
+      if (!txt || !radioPoweredOn || !currentUser) return alert('سجّل الدخول وشغّل الراديو أولاً.');
 
       const msgObj = {
         channel: radioChannel,
@@ -3447,7 +3454,7 @@
     }
 
     function sendRadioCode(code, meaning) {
-      if (!radioPoweredOn || !currentUser || currentUser.activeService !== true) return alert('يلزم تشغيل الراديو بعد تسجيل الدخول للخدمة.');
+      if (!radioPoweredOn || !currentUser) return alert('سجّل الدخول وشغّل الراديو أولاً.');
       if (ciaSocket) {
         ciaSocket.emit('radio:code', {
           channel: radioChannel,
