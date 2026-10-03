@@ -238,6 +238,7 @@ const MISSION_DRAWING_COLORS = new Set([
   '#ffffff',
   '#a855f7'
 ]);
+const MISSION_DRAWING_SHAPES = new Set(['freehand', 'circle', 'rectangle', 'line', 'polygon']);
 
 const MORSE_CODES = Object.freeze({"0":"-----","1":".----","2":"..---","3":"...--","4":"....-","5":".....","6":"-....","7":"--...","8":"---..","9":"----.","A":".-","B":"-...","C":"-.-.","D":"-..","E":".","F":"..-.","G":"--.","H":"....","I":"..","J":".---","K":"-.-","L":".-..","M":"--","N":"-.","O":"---","P":".--.","Q":"--.-","R":".-.","S":"...","T":"-","U":"..-","V":"...-","W":".--","X":"-..-","Y":"-.--","Z":"--..",".":".-.-.-",",":"--..--","?":"..--..","'":".----.","!":"-.-.--","/":"-..-.","(":"-.--.",")":"-.--.-","&":".-...",":":"---...",";":"-.-.-.","=":"-...-","+":".-.-.","-":"-....-","\"":".-..-.","$":"...-..-","@":".--.-."});
 const MORSE_CHARACTERS = Object.fromEntries(Object.entries(MORSE_CODES).map(([character, code]) => [code, character]));
@@ -459,6 +460,7 @@ function normalizeUser(user) {
   user.serviceApproved = user.serviceApproved !== false;
   user.identityApprovalPending = user.identityApprovalPending === true;
   user.rejectionMessage = clean(user.rejectionMessage || '', 500);
+  user.suspensionReason = clean(user.suspensionReason || '', 1000);
   user.suspended = user.suspended === true;
   user.online = user.online === true;
 
@@ -2671,6 +2673,13 @@ io.on(
             );
 
           if (!user) {
+            const suspended =
+              state.cia_users.find(
+                (candidate) =>
+                  lower(candidate.name) === lower(name) &&
+                  candidate.secretCode === code &&
+                  candidate.suspended === true
+              );
             const rejected =
               state.cia_users.find(
                 (candidate) =>
@@ -2689,7 +2698,9 @@ io.on(
               );
 
             const message =
-              rejected
+              suspended
+                ? `تم فصل هذه الشخصية من الخدمة. ${suspended.suspensionReason ? `سبب الفصل: ${suspended.suspensionReason}` : 'راجع القيادة لمعرفة سبب الفصل.'}`
+                : rejected
                 ? rejected.rejectionMessage
                 : pending
                 ? 'هذه الشخصية بانتظار قبول CIA CHIEF. كود التسجيل الأولي لا يمنح صلاحية دخول.'
@@ -3746,11 +3757,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
             action ===
               'ban'
           ) {
+            const suspensionReason = clean(payload?.reason, 1000);
             if (!target) {
               return no(
                 cb,
                 'الشخصية غير موجودة.'
               );
+            }
+            if (!suspensionReason) {
+              return no(cb, 'سبب الفصل إلزامي.');
             }
 
             if (
@@ -3767,6 +3782,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
             target.suspended =
               true;
+            target.suspensionReason =
+              suspensionReason;
 
             target.activeService =
               false;
@@ -3795,13 +3812,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
                   );
 
                 if (s) {
-                  s.emit(
-                    'auth:forcedLogout',
-                    {
-                      reason:
-                        'تم إيقاف الشخصية من الإدارة.'
-                    }
-                  );
+                  s.emit('member:kicked', {
+                    message: 'تم فصل الشخصية من الخدمة.',
+                    reason: suspensionReason
+                  });
 
                   s.disconnect(
                     true
@@ -3815,10 +3829,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
             }
 
             addAuditLog(
-              'إيقاف شخصية',
+              'فصل من الخدمة',
               actor,
               target,
-              'تم إيقاف الشخصية.'
+              `سبب الفصل: ${suspensionReason}`
             );
 
             saveState();
@@ -7779,6 +7793,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
         id: makeId('OPMARK'),
         ...point,
         label: clean(payload?.label || 'علامة ميدانية', 180),
+        kind: ['criminal', 'people'].includes(payload?.kind) ? payload.kind : 'point',
+        count: Number.isInteger(Number(payload?.count)) && Number(payload?.count) >= 1 && Number(payload?.count) <= 1000
+          ? Number(payload.count)
+          : null,
         color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
         authorCode: actor.publicCode,
         at: now()
@@ -7805,9 +7823,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
         ? payload.points.map(missionPoint).filter(Boolean).slice(0, 500)
         : [];
       if (points.length < 2) return no(cb, 'الرسم يحتاج نقطتين على الأقل.');
+      const shape = MISSION_DRAWING_SHAPES.has(payload?.shape) ? payload.shape : 'freehand';
       const drawing = {
         id: makeId('OPDRAW'),
         points,
+        shape,
         color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
         authorCode: actor.publicCode,
         at: now()
@@ -7889,17 +7909,23 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('admin:kickMember', (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
+      const reason = clean(payload?.reason, 1000);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
+      if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
       target.suspended = true;
+      target.suspensionReason = reason;
       target.online = false;
       target.status = 'مفصول';
       for (const socketId of sessions.get(target.id) || []) {
         const targetSocket = io.sockets.sockets.get(socketId);
-        if (targetSocket) targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.' });
+        if (targetSocket) {
+          targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.', reason });
+        }
       }
+      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${reason}`);
       saveState();
       emitState();
       const result = ok(cb, { action: 'kick', user: publicUser(target, actor) });
@@ -7910,13 +7936,23 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('admin:kickUser', (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.userId || payload?.memberId, 120));
+      const reason = clean(payload?.reason, 1000);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
+      if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
       target.suspended = true;
+      target.suspensionReason = reason;
       target.online = false;
       target.status = 'مفصول';
+      for (const socketId of sessions.get(target.id) || []) {
+        const targetSocket = io.sockets.sockets.get(socketId);
+        if (targetSocket) {
+          targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.', reason });
+        }
+      }
+      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${reason}`);
       saveState();
       emitState();
       return ok(cb, { action: 'kick', user: publicUser(target, actor) });
