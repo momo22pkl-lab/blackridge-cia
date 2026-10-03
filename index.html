@@ -1160,13 +1160,13 @@
         <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
         <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
         <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
-          <label style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;font-size:.68rem;cursor:pointer;">لون الرسم <input type="color" id="operation-map-color" value="#facc15" aria-label="اختر لون الرسم" oninput="setOperationMapColor(this.value)" style="width:30px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;"></label>
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة عامة</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal','#ef4444')">مجرمون</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people','#38bdf8')">عدد الأشخاص</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand',getOperationDrawingColor())">خط حر — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle',getOperationDrawingColor())">دائرة — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle',getOperationDrawingColor())">منطقة مستطيلة — اسحب</button>
+          <label style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;font-size:.68rem;cursor:pointer;">لون الرسم والعلامات <input type="color" id="operation-map-color" value="#facc15" aria-label="اختر لون الرسم" oninput="setOperationMapColor(this.value)" style="width:30px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;"></label>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker',getOperationMapColor())">علامة عامة</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal',getOperationMapColor())">مجرمون</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people',getOperationMapColor())">عدد الأشخاص</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand',getOperationMapColor())">خط حر — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle',getOperationMapColor())">دائرة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle',getOperationMapColor())">منطقة مستطيلة — اسحب</button>
           <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">حفظ الرسم الحالي</button>
         </div>
         <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
@@ -2637,7 +2637,7 @@
       operationDrawingLayer=null;
     }
 
-    function getOperationDrawingColor(){
+    function getOperationMapColor(){
       const input=document.getElementById('operation-map-color');
       const value=(input&&input.value||'').trim();
       return /^#[0-9a-f]{6}$/i.test(value)?value:'#facc15';
@@ -2645,10 +2645,9 @@
 
     function setOperationMapColor(color){
       if(!/^#[0-9a-f]{6}$/i.test(color||'')) return;
-      if(operationMapTool&&['freehand','circle','rectangle'].includes(operationMapTool.type)){
-        operationMapTool.color=color;
-        renderOperationDrawingPreview();
-      }
+      if(!operationMapTool) return;
+      operationMapTool.color=color;
+      if(['freehand','circle','rectangle'].includes(operationMapTool.type)) renderOperationDrawingPreview();
     }
 
     function setOperationMapTool(type,color){
@@ -2657,8 +2656,7 @@
       if(operationMap&&operationMap.dragging) operationMap.dragging.enable();
       operationDrawingPointerId=null;
       operationDrawingStart=null;
-      const isDrawing=['freehand','circle','rectangle'].includes(type);
-      operationMapTool={type,color:isDrawing?getOperationDrawingColor():(color||'#facc15')};
+      operationMapTool={type,color:getOperationMapColor()};
       operationDrawingShape=type;
       operationDrawingPoints=[];
       if(operationMap) operationMap.getContainer().style.touchAction=['freehand','circle','rectangle'].includes(type)?'none':'';
@@ -2666,9 +2664,9 @@
       operationDrawingLayer=null;
       const help=document.getElementById('operation-map-help');
       const helpText={
-        marker:'اضغط نقطة لإضافة علامة عامة.',
-        criminal:'اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
-        people:'اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
+        marker:'اختر اللون ثم اضغط نقطة لإضافة علامة عامة.',
+        criminal:'اختر اللون ثم اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
+        people:'اختر اللون ثم اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
         freehand:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم المسار؛ يُحفظ بلونه عند رفع إصبعك أو زر الفأرة.',
         circle:'اختر اللون من منتقي لون الرسم، ثم اسحب من مركز الدائرة إلى حافتها.',
         rectangle:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم حدود المنطقة.'
