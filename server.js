@@ -24,7 +24,6 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
-const { Pool } = require('pg');
 const { PostgresStateStore } = require('./state-store');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -32,15 +31,22 @@ const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const IS_RENDER_RUNTIME = process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
 const LEGACY_DATA_FILE = path.resolve(path.join(__dirname, 'cia-data.json'));
 const DEFAULT_DATA_FILE = IS_RENDER_RUNTIME
-  ? path.join('/var/data', 'cia-data.json')
+  ? path.join('/tmp', 'cia-data.json')
   : path.join(__dirname, '.blackridge-data', 'cia-data.json');
-const DATA_FILE = path.resolve(process.env.CIA_DATA_FILE || DEFAULT_DATA_FILE);
+const DATA_FILE = path.resolve(
+  IS_RENDER_RUNTIME && !DATABASE_URL
+    ? path.join('/tmp', 'cia-data.json')
+    : (process.env.CIA_DATA_FILE || DEFAULT_DATA_FILE)
+);
 
 function prepareFileStorage() {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true, mode: 0o700 });
-  if (DATA_FILE !== LEGACY_DATA_FILE && !fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
-    fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
-    console.log('[BLACK RIDGE] Migrated existing data to local file storage.');
+  if (!fs.existsSync(DATA_FILE)) {
+    const legacy = readLegacyStateFile();
+    if (legacy && legacy.file !== DATA_FILE) {
+      fs.copyFileSync(legacy.file, DATA_FILE);
+      console.log('[BLACK RIDGE] Migrated existing data from ' + legacy.file + ' to ' + DATA_FILE);
+    }
   }
 }
 
@@ -1799,7 +1805,7 @@ function operationSanitize(
     );
 
   const leadershipMissionViewer =
-    isChief(viewer);
+    canManageOperations(viewer);
 
   const privilegedMissionViewer =
     canManageOperations(viewer);
@@ -1830,6 +1836,8 @@ function operationSanitize(
         return {
           code,
           name: member.identity?.fullName || member.name,
+          rank: normalizeRank(member.rank),
+          rankLabel: rankLabel(member.rank),
           online: !!member.online,
           activeService: member.activeService === true
         };
@@ -7317,16 +7325,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
           requestedCodes.map((code) => clean(code, 100)).filter(Boolean)
         )];
         if (!memberCodes.length || memberCodes.length > 50) {
-          return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+          return no(cb, 'اختر من فرد واحد إلى 50 فردًا للمهمة.');
         }
         const assignedAgents = memberCodes.map((code) => getUserByPublicCode(code));
         if (assignedAgents.some((member) =>
           !member ||
-          normalizeRank(member.rank) !== 'AGENT' ||
           member.approved === false ||
           member.suspended
         )) {
-          return no(cb, 'تأكد أن كل الأعضاء المختارين Agents معتمدون. يمكن إسناد المهمة حتى لمن هو غير متصل بالخدمة.');
+          return no(cb, 'تأكد أن جميع الأفراد المختارين معتمدون وغير موقوفين. يمكن إسناد المهمة حتى لمن هو غير متصل بالخدمة.');
         }
 
         const operation = {
@@ -7481,17 +7488,25 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!canManageOperations(actor)) {
         return no(cb, 'قائمة اختيار أعضاء المهمة متاحة للرتب العليا الثلاث فقط.');
       }
-      const agents = state.cia_users
+      const members = state.cia_users
         .filter((member) =>
-          normalizeRank(member.rank) === 'AGENT' &&
           member.approved !== false &&
           !member.suspended &&
           member.publicCode
         )
-        .map((member) => isChief(actor)
-          ? { code: member.publicCode, name: member.identity?.fullName || member.name, online: !!member.online, activeService: member.activeService === true }
-          : { code: member.publicCode });
-      return ok(cb, { agents });
+        .sort((left, right) =>
+          rankLevel(right.rank) - rankLevel(left.rank) ||
+          clean(left.identity?.fullName || left.name, 120).localeCompare(clean(right.identity?.fullName || right.name, 120))
+        )
+        .map((member) => ({
+          code: member.publicCode,
+          name: member.identity?.fullName || member.name,
+          rank: normalizeRank(member.rank),
+          rankLabel: rankLabel(member.rank),
+          online: !!member.online,
+          activeService: member.activeService === true
+        }));
+      return ok(cb, { agents: members });
     });
 
     socket.on(
@@ -7541,16 +7556,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
             payload.memberCodes.map((code) => clean(code, 100)).filter(Boolean)
           )];
           if (!selectedCodes.length || selectedCodes.length > 50) {
-            return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+            return no(cb, 'اختر من فرد واحد إلى 50 فردًا للمهمة.');
           }
           selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
           if (selectedAgents.some((member) =>
             !member ||
-            normalizeRank(member.rank) !== 'AGENT' ||
             member.approved === false ||
             member.suspended
           )) {
-            return no(cb, 'تأكد أن كل الأكواد المختارة تخص Agents معتمدين.');
+            return no(cb, 'تأكد أن الأكواد المختارة تخص أفرادًا معتمدين وغير موقوفين.');
           }
         }
 
@@ -8328,6 +8342,7 @@ function installPersistenceEmitBarriers() {
 
 async function initializePersistence() {
   if (DATABASE_URL) {
+    const { Pool } = require('pg');
     postgresPool = new Pool({
       connectionString: DATABASE_URL,
       max: 5,
@@ -8354,12 +8369,12 @@ async function initializePersistence() {
   }
 
   if (IS_RENDER_RUNTIME) {
-    throw new Error('DATABASE_URL is required on Render. Create or connect a Render PostgreSQL database and set DATABASE_URL to its Internal Database URL. File fallback is disabled on Render to avoid losing data on restart.');
+    console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
   }
 
   prepareFileStorage();
   state = loadState();
-  console.log('[BLACK RIDGE] Local JSON state store ready: ' + DATA_FILE);
+  console.log((IS_RENDER_RUNTIME ? '[BLACK RIDGE] Render temporary JSON state store ready: ' : '[BLACK RIDGE] Local JSON state store ready: ') + DATA_FILE);
 }
 
 let shutdownPromise = null;
