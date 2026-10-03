@@ -628,6 +628,7 @@ function publicUser(user, viewer = null) {
   if (!user) return null;
 
   const leadership = isLeadership(viewer);
+  const canSeeOtherNames = isChief(viewer);
   const self =
     !!viewer &&
     viewer.id === user.id;
@@ -637,9 +638,11 @@ function publicUser(user, viewer = null) {
     publicCode: user.publicCode,
 
     name:
-      self || leadership
+      self
         ? user.name
-        : null,
+        : canSeeOtherNames
+          ? (user.identity?.fullName || user.name)
+          : null,
 
     rank: normalizeRank(user.rank),
     rankLabel: rankLabel(user.rank),
@@ -660,7 +663,7 @@ function publicUser(user, viewer = null) {
       user.lastLogoutAt || null,
 
     identity:
-      self || leadership
+      self || canSeeOtherNames
         ? (user.identity || null)
         : null,
 
@@ -677,7 +680,7 @@ function publicUser(user, viewer = null) {
       'main',
 
     accountId:
-      self || leadership
+      self || canSeeOtherNames
         ? user.accountId || null
         : null,
 
@@ -705,7 +708,7 @@ function publicUser(user, viewer = null) {
       user.suspended === true,
 
     bank:
-      self || leadership
+      self || canSeeOtherNames
         ? {
             accountNumber:
               user.bankAccount || '',
@@ -1650,6 +1653,9 @@ function bankView(
   const chiefViewer =
     isChief(viewer);
 
+  const financeDirectoryViewer =
+    isChief(viewer) || isSenior(viewer) || isHighCommander(viewer);
+
   const self =
     !!viewer &&
     viewer.id === user.id;
@@ -1662,7 +1668,7 @@ function bankView(
 
   const visible =
     self ||
-    chiefViewer ||
+    financeDirectoryViewer ||
     managerAccess;
 
   const showName =
@@ -1680,7 +1686,7 @@ function bankView(
 
     name:
       showName
-        ? user.name
+        ? (user.identity?.fullName || user.name)
         : '',
 
     rank:
@@ -1697,6 +1703,8 @@ function bankView(
       visible
         ? user.bank.salary
         : null,
+
+    canManage: managerAccess,
 
     online:
       !!user.online,
@@ -1791,15 +1799,19 @@ function operationSanitize(
     );
 
   const leadershipMissionViewer =
-    isLeadership(viewer);
+    isChief(viewer);
 
   const privilegedMissionViewer =
     canManageOperations(viewer);
 
+  const viewerPublicCode = clean(viewer.publicCode, 100).toUpperCase();
+  const matchesViewerCode = (code) =>
+    !!viewerPublicCode && clean(code, 100).toUpperCase() === viewerPublicCode;
+
   const assignedMissionAgent =
     normalizedViewerRank === 'AGENT' &&
     Array.isArray(op.memberCodes) &&
-    op.memberCodes.includes(viewer.publicCode);
+    op.memberCodes.some(matchesViewerCode);
 
   const crews =
     (
@@ -1809,10 +1821,10 @@ function operationSanitize(
         ? op.memberCodes
         : []
     ).map((code) => {
+      const normalizedMemberCode = clean(code, 100).toUpperCase();
       const member =
-        getUserByPublicCode(
-          code
-        );
+        getUserByPublicCode(code) ||
+        state.cia_users.find((candidate) => clean(candidate.publicCode, 100).toUpperCase() === normalizedMemberCode);
 
       if (leadershipMissionViewer && member) {
         return {
@@ -1822,7 +1834,7 @@ function operationSanitize(
           activeService: member.activeService === true
         };
       }
-      if (normalizedViewerRank === 'AGENT' && viewer?.publicCode === code) {
+      if (normalizedViewerRank === 'AGENT' && matchesViewerCode(code)) {
         return { code, assignedToSelf: true };
       }
       return { code };
@@ -5004,6 +5016,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 actor
               ),
 
+            rankSalaries: Object.fromEntries(
+              ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER', 'CIA CHIEF']
+                .map((rank) => [rank, defaultSalaryForRank(rank)])
+            ),
+
             users:
               isLeadership(actor) ||
               isHighCommander(actor)
@@ -5820,7 +5837,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لاستخدام مورس.');
       if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
-      if (actor.activeService !== true) return no(cb, 'سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.');
       const direction = clean(payload?.direction, 20).toLowerCase();
       const source = clean(payload?.text, 500);
       if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
@@ -7429,13 +7445,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
       'operation:list',
       (payload, cb) => {
         const actor =
-          requireSocketUser(socket);
+          requireAuthenticatedUser(socket);
 
         if (!actor) {
           return no(
             cb,
             socketRequirementMessage(socket)
           );
+        }
+        if (actor.serviceApproved === false && normalizeRank(actor.rank) !== 'AGENT') {
+          return no(cb, 'عرض المهمات متاح للقيادة بعد اعتماد دخول الخدمة.');
         }
 
         return ok(
@@ -7469,7 +7488,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           !member.suspended &&
           member.publicCode
         )
-        .map((member) => isLeadership(actor)
+        .map((member) => isChief(actor)
           ? { code: member.publicCode, name: member.identity?.fullName || member.name, online: !!member.online, activeService: member.activeService === true }
           : { code: member.publicCode });
       return ok(cb, { agents });
