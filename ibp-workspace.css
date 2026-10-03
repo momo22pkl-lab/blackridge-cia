@@ -787,3 +787,33 @@
     flex-basis: 100%;
   }
 }
+
+/* Language selector shown while navigating legacy IBP panels. */
+.ibp-return-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-inline: 10px;
+  padding: 5px 8px;
+  border: 1px solid rgba(193, 162, 90, 0.32);
+  border-radius: 4px;
+  background: rgba(9, 16, 23, 0.78);
+  color: #d6cba9;
+  font-size: 10px;
+}
+.ibp-return-language select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ibp-return-language option { background: #101820; color: #eee8d8; }
+.ibp-module-english { text-align: left; }
+.ibp-module-english .table-custom,
+.ibp-module-english .classified-shell { direction: ltr; }
+@media (max-width: 680px) {
+  #ibp-return-bar { flex-wrap: wrap; gap: 6px; }
+  .ibp-return-language { margin-inline: 0; }
+}
