@@ -781,11 +781,12 @@
     <!-- GTA V Map View -->
     <div id="tactical-map-view" class="view-pane">
       <h3 style="margin-bottom: 5px; color: var(--red-alert); font-size: 1rem;"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس التفاعلية (Los Santos GTA V)</h3>
-      <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 10px;">اضغط على أي موقع بالخريطة لتحديد موقعك أو إرسال الإحداثيات للعملاء.</p>
+      <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 10px;">اضغط زر «تحديد موقعي» ثم اختر نقطة واحدة على الخريطة؛ استخدم زر الإزالة لمسح موقعك. حركة الخريطة محدودة لتجنب الانزلاق والتكبير العرضي.</p>
       
       <div class="card" style="border-color:rgba(239,68,68,.55);">
         <div style="display:flex;gap:8px;margin-bottom:8px;">
           <button type="button" onclick="clearMyMapLocation()" class="btn-action" style="margin:0;font-size:.8rem;flex:1;background:var(--border);color:#fff;"><i class="fa-solid fa-trash"></i> إزالة موقعي من الخريطة</button>
+          <button id="map-location-picker-button" type="button" onclick="enableMyMapLocationPicker()" class="btn-action" style="margin:0;font-size:.8rem;flex:1;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);"><i class="fa-solid fa-location-crosshairs"></i> تحديد موقعي بالضغط على الخريطة</button>
         </div>
         <div id="map-location-tools" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <span id="map-location-status" role="status" aria-live="polite" style="font-size:.72rem;color:var(--text-dim);flex:1;min-width:180px;">جارٍ تجهيز الخريطة التفاعلية...</span>
@@ -1118,8 +1119,8 @@
         <textarea id="op-objective" class="input-field" placeholder="الهدف والتعليمات الميدانية" style="height:80px;resize:none;"></textarea>
         <input id="op-leader-code" class="input-field" placeholder="كودك العسكري كمنشئ المهمة" readonly>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;"><label for="op-agent-codes" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:0;">اختَر الأعضاء المتصلين بالخدمة للمهمة:</label><button type="button" onclick="loadOperationAgentDirectory()" style="padding:5px 9px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;font-size:.68rem;">تحديث القائمة</button></div>
-        <select id="op-agent-codes" class="input-field" multiple size="5" aria-label="اختيار أعضاء المهمة" style="min-height:120px;"><option disabled selected>اضغط تحديث القائمة لتحميل الأعضاء.</option></select>
-        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">يمكن اختيار أكثر من عضو باستخدام Ctrl أو ⌘.</div>
+        <select id="op-agent-codes" class="input-field" multiple size="7" aria-label="اختيار أعضاء المهمة" style="min-height:150px;"><option disabled selected>اضغط تحديث القائمة لتحميل جميع أفراد Agent المعتمدين.</option></select>
+        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">يمكن اختيار أكثر من عضو باستخدام Ctrl أو ⌘. تظهر حالة الاتصال للقيادة؛ التكليف يبقى محفوظاً ويظهر للمشارك عند عودته حتى لو كان غير متصل الآن.</div>
         <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
@@ -1229,6 +1230,16 @@
         min="1"
         placeholder="مبلغ الخصم"
       >
+
+      <input
+        id="bank-individual-salary"
+        class="input-field"
+        type="number"
+        min="0"
+        placeholder="راتب هذه الشخصية فقط"
+      >
+
+      <button type="button" class="btn-action" onclick="setIndividualSalary()">حفظ راتب الشخص فقط</button>
 
       <button
         type="button"
@@ -1372,6 +1383,7 @@
     let chatImageBase64 = "";
     let audioCtx = null;
     let gtaMap = null;
+    let myMapLocationPickerEnabled = false;
     let gtaMapImageOverlay = null;
     let mapMarkers = {};
     let hqMarkers = [];
@@ -2250,6 +2262,12 @@
       select.innerHTML = '<option disabled selected>' + esc(message) + '</option>';
     }
 
+    function operationAgentOptionLabel(agent){
+      if(!agent.name) return '#' + esc(agent.code);
+      const connection=agent.online&&agent.activeService===true?'متصل بالخدمة':'غير متصل بالخدمة — سيظهر التكليف عند عودته';
+      return '#' + esc(agent.code) + ' — ' + esc(agent.name) + ' · ' + connection;
+    }
+
     function loadOperationAgentDirectory(){
       const select = document.getElementById('op-agent-codes');
       if (!select) return;
@@ -2262,7 +2280,7 @@
         return;
       }
       const requestId = ++operationAgentRequestId;
-      setOperationAgentStatus(select, 'جارٍ تحميل الأعضاء الموجودين بالخدمة...');
+      setOperationAgentStatus(select, 'جارٍ تحميل جميع أفراد Agent المعتمدين، بمن فيهم غير المتصلين...');
       const timeout = setTimeout(function(){
         if (requestId === operationAgentRequestId && select.options.length && select.options[0].textContent.indexOf('جارٍ تحميل') === 0) {
           setOperationAgentStatus(select, 'لم يصل رد من الخادم؛ اضغط تحديث القائمة للمحاولة مجددًا.');
@@ -2277,9 +2295,23 @@
           return;
         }
         operationAgentDirectory = Array.isArray(result.agents) ? result.agents : [];
-        select.innerHTML = operationAgentDirectory.map(agent => '<option value="' + esc(agent.code) + '">#' + esc(agent.code) + (agent.name ? ' — ' + esc(agent.name) : '') + '</option>').join('') || '<option disabled selected>لا يوجد أعضاء متصلون بالخدمة حاليًا.</option>';
+        select.innerHTML = operationAgentDirectory.map(agent => '<option value="' + esc(agent.code) + '">' + operationAgentOptionLabel(agent) + '</option>').join('') || '<option disabled selected>لا يوجد أفراد Agent معتمدون حاليًا.</option>';
+        renderTacticalOperations();
       });
     }
+    function saveOperationAssigneesById(operationId){
+      const select=document.getElementById('mission-assignees-'+operationId);
+      const memberCodes=Array.from(select?.selectedOptions||[]).map(option=>option.value).filter(Boolean);
+      if(!memberCodes.length) return alert('اختر Agent واحداً على الأقل.');
+      if(memberCodes.length>50) return alert('يمكن إسناد المهمة إلى 50 Agent كحد أقصى.');
+      if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      ciaSocket.emit('operation:update',{id:operationId,memberCodes},function(result){
+        if(!result||!result.ok) return alert((result&&result.message)||'تعذر تحديث المكلّفين.');
+        loadTacticalOperations();
+        alert('تم حفظ التكليف. سيظهر للمشاركين عند عودتهم إلى الخدمة.');
+      });
+    }
+
     let operationPointMode = null;
     function pickOperationPoint(mode){ operationPointMode=mode; showPane('tactical-map-view', null); setTimeout(()=>alert('اضغط على الخريطة لتحديد '+(mode==='start'?'بداية':'نهاية')+' العملية.'),250); }
 
@@ -2351,9 +2383,12 @@
         const border=status==='FAILED'?'var(--red-alert)':status==='COMPLETED'?'var(--green-status)':'var(--border)';
         const commandButtons=command?`<button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}`:'';
         const mapButton=command?`<button class="btn-action" style="margin:0;padding:5px 8px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="openOperationMap('${esc(op.id)}')">عرض مناطق المهمة على خريطة لوس</button>`:'';
-        const crewLabel=crew.map(member=>`#${esc(member.code)}${rank==='CIA CHIEF'&&member.name?` — ${esc(member.name)}`:''}`).join('، ');
+        const leadershipView=['CIA CHIEF','SUPREME COMMANDER'].includes(rank);
+        const crewLabel=crew.map(member=>{const name=leadershipView&&member.name?` — ${esc(member.name)}`:'';const presence=leadershipView?` · ${member.online&&member.activeService===true?'متصل بالخدمة':'غير متصل بالخدمة — يظهر له التكليف عند عودته'}`:'';const assigned=member.assignedToSelf?' — هذا التكليف مسند إليك':'';return `#${esc(member.code)}${name}${presence}${assigned}`;}).join('، ');
         const notesHtml=notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(note=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(note.authorCode||'—')} — ${esc(note.text||'')}</div>`).join('')}</div>`:'';
-        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشاركون: ${crewLabel}</div>`:''}${notesHtml}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${mapButton}${commandButtons}</div></div>`;
+        const assignedCodes=crew.map(member=>String(member.code));
+        const assignmentEditor=command?(operationAgentDirectory.length?'<div style="margin-top:7px;padding:7px;border:1px solid var(--border);border-radius:5px;"><div style="font-size:.65rem;color:var(--text-dim);margin-bottom:4px;">تعديل المكلّفين — يشمل غير المتصلين</div><select id="mission-assignees-'+esc(op.id)+'" class="input-field" multiple size=4 style="margin:0;min-height:90px;">'+operationAgentDirectory.map(agent=>'<option value="'+esc(agent.code)+'" '+(assignedCodes.includes(String(agent.code))?'selected':'')+'>'+operationAgentOptionLabel(agent)+'</option>').join('')+'</select><button type="button" class="btn-action" style="margin:5px 0 0;padding:5px 8px;" data-operation-id="'+esc(op.id)+'" onclick="saveOperationAssigneesById(this.dataset.operationId)">حفظ المكلّفين</button></div>':'<button type="button" class="btn-action" style="margin:7px 0 0;padding:5px 8px;" onclick="loadOperationAgentDirectory()">تحميل قائمة الأفراد لتعديل التكليف</button>'):'';
+        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشاركون: ${crewLabel}</div>`:''}${notesHtml}${assignmentEditor}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${mapButton}${commandButtons}</div></div>`;
       }).join('');
     }
 
@@ -2430,9 +2465,10 @@
       setTimeout(()=>{
         if(!operationMap){
           const element=document.getElementById('operation-map');
-          operationMap=L.map(element,{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5});
-          L.imageOverlay(GTA_MAP_IMAGE_URLS[0],[[0,0],[1000,1000]]).addTo(operationMap);
-          operationMap.fitBounds([[0,0],[1000,1000]]);
+          const operationMapBounds=[[0,0],[1000,1000]];
+          operationMap=L.map(element,{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5,zoomDelta:.5,scrollWheelZoom:false,touchZoom:false,boxZoom:false,doubleClickZoom:false,inertia:false,bounceAtZoomLimits:false,maxBounds:operationMapBounds,maxBoundsViscosity:1,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false});
+          L.imageOverlay(GTA_MAP_IMAGE_URLS[0],operationMapBounds).addTo(operationMap);
+          operationMap.fitBounds(operationMapBounds);
           operationMap.on('click',function(event){
             if(!operationMapTool||!operationMapOperation) return;
             const point={lat:Math.round(event.latlng.lat),lng:Math.round(event.latlng.lng)};
@@ -2552,6 +2588,21 @@
     }
 
     function selectBankTarget(code){const input=document.getElementById('bank-target-code');if(input)input.value=code;}
+
+    function setIndividualSalary(){
+      const publicCode=document.getElementById('bank-target-code')?.value.trim();
+      const salary=Number(document.getElementById('bank-individual-salary')?.value);
+      if(!publicCode) return alert('اختر الشخص أولاً.');
+      if(!Number.isFinite(salary)||salary<0) return alert('اكتب راتباً صحيحاً.');
+      if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      ciaSocket.emit('bank:setSalary',{publicCode,salary},function(result){
+        if(!result||!result.ok) return alert((result&&result.message)||'تعذر تعديل راتب الشخص.');
+        const input=document.getElementById('bank-individual-salary'); if(input) input.value='';
+        loadBankDirectory();
+        renderDailyAuditLogs();
+        alert('تم تعديل راتب هذه الشخصية فقط، ولم يتغير راتب رتبتها.');
+      });
+    }
 
     function saveBankAccount() {
   if (!ciaSocket || !ciaSocket.connected) {
@@ -3055,7 +3106,7 @@
       gtaMapImageOverlay = overlay;
       overlay.once('load', function() {
         if (gtaMapImageOverlay !== overlay) return;
-        setMapLocationStatus('الخريطة جاهزة — اضغط عليها لوضع موقعك. للقيادات، اختر عضواً لإزالة موقعه.', 'ready');
+        setMapLocationStatus('الخريطة جاهزة — فعّل زر تحديد الموقع ثم اختر نقطة. للقيادات، اختر عضواً لإزالة موقعه.', 'ready');
         window.setTimeout(function() { if (gtaMap) gtaMap.invalidateSize(); }, 50);
       });
       overlay.once('error', function() {
@@ -3085,7 +3136,19 @@
         crs: L.CRS.Simple,
         minZoom: -2,
         maxZoom: 3,
-        zoomSnap: 0.5
+        zoomSnap: 0.5,
+        zoomDelta: 0.5,
+        scrollWheelZoom: false,
+        touchZoom: false,
+        boxZoom: false,
+        doubleClickZoom: false,
+        inertia: false,
+        bounceAtZoomLimits: false,
+        maxBounds: bounds,
+        maxBoundsViscosity: 1,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false
       });
       addGTAMapBackground(bounds, 0);
       gtaMap.fitBounds(bounds);
@@ -3154,6 +3217,7 @@
         let x = Math.round(e.latlng.lng);
 
         if (hqPlacementMode && normalizeRank(currentUser.rank) === "CIA CHIEF") {
+          if(myMapLocationPickerEnabled){myMapLocationPickerEnabled=false;updateMyMapLocationPickerButton();}
           let hqLocations = getStoredData('cia_hq_locations', []);
 
           if (hqPlacementMode === "main") {
@@ -3180,6 +3244,7 @@
         }
 
         if(operationPointMode && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))){
+          if(myMapLocationPickerEnabled){myMapLocationPickerEnabled=false;updateMyMapLocationPickerButton();}
           const targetInput=document.getElementById(operationPointMode==='start'?'op-start':'op-end');
           if(targetInput) targetInput.value = `${x},${y}`;
           const selected=operationPointMode; operationPointMode=null;
@@ -3188,8 +3253,9 @@
           return;
         }
 
-        if (sosLocationPickerEnabled) return;
-
+        if (sosLocationPickerEnabled || !myMapLocationPickerEnabled) return;
+        myMapLocationPickerEnabled = false;
+        updateMyMapLocationPickerButton();
         console.log("إحداثياتك الحالية - Y:", y, "X:", x);
         setMyGTALocation(x, y);
       });
@@ -3244,6 +3310,25 @@
       renderHQMarkers();
     }
 
+    function enableMyMapLocationPicker() {
+      if (!currentUser || !ciaSessionAuthenticated) {
+        setMapLocationStatus('سجّل الدخول إلى الحساب أولاً لتحديد موقعك.', 'error');
+        return;
+      }
+      myMapLocationPickerEnabled = !myMapLocationPickerEnabled;
+      if(myMapLocationPickerEnabled){hqPlacementMode=null;operationPointMode=null;}
+      updateMyMapLocationPickerButton();
+      setMapLocationStatus(myMapLocationPickerEnabled ? 'وضع تحديد الموقع فعال — اضغط نقطة واحدة على الخريطة.' : 'تم إلغاء تحديد الموقع.', 'ready');
+    }
+
+    function updateMyMapLocationPickerButton() {
+      const button=document.getElementById('map-location-picker-button');
+      if(!button) return;
+      button.innerHTML=myMapLocationPickerEnabled ? '<i class="fa-solid fa-location-dot"></i> وضع التحديد فعال — اضغط الخريطة' : '<i class="fa-solid fa-location-crosshairs"></i> تحديد موقعي بالضغط على الخريطة';
+      button.style.color=myMapLocationPickerEnabled?'#fff':'var(--cyan-glow)';
+      button.style.background=myMapLocationPickerEnabled?'#075985':'#111827';
+    }
+
     function setMyGTALocation(x, y) {
       if (!currentUser || !ciaSocket || !ciaSocket.connected) {
         setMapLocationStatus('تعذر حفظ موقعك: تحقق من تسجيل الدخول والاتصال بالسيرفر.', 'error');
@@ -3271,6 +3356,8 @@
     }
 
     function clearMyMapLocation() {
+      myMapLocationPickerEnabled = false;
+      updateMyMapLocationPickerButton();
       if (!currentUser || !ciaSocket || !ciaSocket.connected) {
         setMapLocationStatus('تعذر إزالة موقعك: تحقق من تسجيل الدخول والاتصال بالسيرفر.', 'error');
         return;
@@ -4638,7 +4725,7 @@
     if (!element || typeof L === 'undefined') return;
 
     const bounds = [[0, 0], [1000, 1000]];
-    sosHistoryMap = L.map(element, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 3, zoomSnap: 0.5 });
+    sosHistoryMap = L.map(element, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 3, zoomSnap: 0.5, zoomDelta: 0.5, scrollWheelZoom: false, touchZoom: false, boxZoom: false, doubleClickZoom: false, inertia: false, bounceAtZoomLimits: false, maxBounds: bounds, maxBoundsViscosity: 1, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
     L.imageOverlay(GTA_MAP_IMAGE_URLS[0], bounds).addTo(sosHistoryMap);
     sosHistoryMap.fitBounds(bounds);
 
