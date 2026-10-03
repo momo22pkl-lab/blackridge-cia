@@ -1810,6 +1810,8 @@ function operationSanitize(
   const privilegedMissionViewer =
     canManageOperations(viewer);
 
+  const chiefMissionViewer = isChief(viewer);
+
   const viewerPublicCode = clean(viewer.publicCode, 100).toUpperCase();
   const matchesViewerCode = (code) =>
     !!viewerPublicCode && clean(code, 100).toUpperCase() === viewerPublicCode;
@@ -1833,14 +1835,17 @@ function operationSanitize(
         state.cia_users.find((candidate) => clean(candidate.publicCode, 100).toUpperCase() === normalizedMemberCode);
 
       if (leadershipMissionViewer && member) {
-        return {
+        const safeMember = {
           code,
-          name: member.identity?.fullName || member.name,
           rank: normalizeRank(member.rank),
           rankLabel: rankLabel(member.rank),
           online: !!member.online,
           activeService: member.activeService === true
         };
+        if (chiefMissionViewer) {
+          safeMember.name = member.identity?.fullName || member.name;
+        }
+        return safeMember;
       }
       if (normalizedViewerRank === 'AGENT' && matchesViewerCode(code)) {
         return { code, assignedToSelf: true };
@@ -1892,6 +1897,7 @@ function operationSanitize(
       battalionCount: assignedMissionAgent ? 1 : 0,
 
       notes: [],
+      statusHistory: [],
 
       createdAt:
         op.createdAt,
@@ -1950,7 +1956,7 @@ function operationSanitize(
       '',
 
     commanderName:
-      leadershipMissionViewer
+      chiefMissionViewer
         ? (
             op.commanderName ||
             ''
@@ -1979,7 +1985,7 @@ function operationSanitize(
           '',
 
         authorName:
-          leadershipMissionViewer
+          chiefMissionViewer
             ? (
                 n.authorName ||
                 ''
@@ -1990,6 +1996,17 @@ function operationSanitize(
           n.text ||
           ''
       })),
+
+    statusHistory:
+      chiefMissionViewer
+        ? (Array.isArray(op.statusHistory) ? op.statusHistory.slice(-50).map((entry) => ({
+            at: entry.at || '',
+            status: entry.status || '',
+            actorCode: entry.actorCode || '',
+            actorName: entry.actorName || '',
+            actorRank: entry.actorRank || ''
+          })) : [])
+        : [],
 
     createdAt:
       op.createdAt,
@@ -2002,7 +2019,7 @@ function operationSanitize(
       '',
 
     createdByName:
-      leadershipMissionViewer
+      chiefMissionViewer
         ? (
             op.createdByName ||
             ''
@@ -2013,6 +2030,21 @@ function operationSanitize(
 
 function canAnnotateOperation(actor, operation) {
   return !!actor && !!operation && canManageOperations(actor);
+}
+
+function addOperationStatusHistory(operation, actor, previousStatus) {
+  const status = clean(operation?.status, 100).toUpperCase();
+  const previous = clean(previousStatus, 100).toUpperCase();
+  if (!['COMPLETED', 'FAILED'].includes(status) || status === previous) return;
+  operation.statusHistory = Array.isArray(operation.statusHistory) ? operation.statusHistory : [];
+  operation.statusHistory.push({
+    at: now(),
+    status,
+    actorCode: clean(actor?.publicCode, 100),
+    actorName: clean(actor?.identity?.fullName || actor?.name, 120),
+    actorRank: rankLabel(actor?.rank)
+  });
+  operation.statusHistory = operation.statusHistory.slice(-100);
 }
 
 function missionPoint(value) {
@@ -7496,16 +7528,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
         )
         .sort((left, right) =>
           rankLevel(right.rank) - rankLevel(left.rank) ||
-          clean(left.identity?.fullName || left.name, 120).localeCompare(clean(right.identity?.fullName || right.name, 120))
+          clean(left.publicCode, 100).localeCompare(clean(right.publicCode, 100))
         )
-        .map((member) => ({
-          code: member.publicCode,
-          name: member.identity?.fullName || member.name,
-          rank: normalizeRank(member.rank),
-          rankLabel: rankLabel(member.rank),
-          online: !!member.online,
-          activeService: member.activeService === true
-        }));
+        .map((member) => {
+          const safeMember = {
+            code: member.publicCode,
+            rank: normalizeRank(member.rank),
+            rankLabel: rankLabel(member.rank),
+            online: !!member.online,
+            activeService: member.activeService === true
+          };
+          if (isChief(actor)) safeMember.name = member.identity?.fullName || member.name;
+          return safeMember;
+        });
       return ok(cb, { agents: members });
     });
 
@@ -7572,6 +7607,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           operation.memberCodes = selectedAgents.map((member) => member.publicCode);
         }
 
+        const previousStatus = operation.status;
         const fields = [
           'missionNumber',
           'title',
@@ -7600,6 +7636,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
               );
           }
         }
+
+        addOperationStatusHistory(operation, actor, previousStatus);
 
         if (
           payload?.startLocation !==
@@ -8123,7 +8161,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!canManageOperations(actor)) {
         return no(cb, 'تحديث المهمة متاح للرتب العليا الثلاث فقط.');
       }
+      const previousStatus = operation.status;
       operation.status = clean(payload?.status, 100) || operation.status;
+      addOperationStatusHistory(operation, actor, previousStatus);
       operation.updatedAt = now();
       saveState();
       emitOperationState();
