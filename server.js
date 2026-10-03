@@ -237,13 +237,10 @@ const radioChannels = new Map();
 const pendingRequestSockets = new Map();
 const supportThreadSockets = new Map();
 
-const MISSION_DRAWING_COLORS = new Set([
-  '#facc15',
-  '#ef4444',
-  '#111827',
-  '#ffffff',
-  '#a855f7'
-]);
+function missionMapColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#facc15';
+}
 const MISSION_DRAWING_SHAPES = new Set(['freehand', 'circle', 'rectangle', 'line', 'polygon']);
 
 const MORSE_CODES = Object.freeze({"0":"-----","1":".----","2":"..---","3":"...--","4":"....-","5":".....","6":"-....","7":"--...","8":"---..","9":"----.","A":".-","B":"-...","C":"-.-.","D":"-..","E":".","F":"..-.","G":"--.","H":"....","I":"..","J":".---","K":"-.-","L":".-..","M":"--","N":"-.","O":"---","P":".--.","Q":"--.-","R":".-.","S":"...","T":"-","U":"..-","V":"...-","W":".--","X":"-..-","Y":"-.--","Z":"--..",".":".-.-.-",",":"--..--","?":"..--..","'":".----.","!":"-.-.--","/":"-..-.","(":"-.--.",")":"-.--.-","&":".-...",":":"---...",";":"-.-.-.","=":"-...-","+":".-.-.","-":"-....-","\"":".-..-.","$":"...-..-","@":".--.-."});
@@ -7868,7 +7865,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         count: Number.isInteger(Number(payload?.count)) && Number(payload?.count) >= 1 && Number(payload?.count) <= 1000
           ? Number(payload.count)
           : null,
-        color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
+        color: missionMapColor(payload?.color),
         authorCode: actor.publicCode,
         at: now()
       };
@@ -7899,7 +7896,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         id: makeId('OPDRAW'),
         points,
         shape,
-        color: MISSION_DRAWING_COLORS.has(payload?.color) ? payload.color : '#facc15',
+        color: missionMapColor(payload?.color),
         authorCode: actor.publicCode,
         at: now()
       };
