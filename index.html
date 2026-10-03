@@ -1160,12 +1160,13 @@
         <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
         <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
         <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
+          <label style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;font-size:.68rem;cursor:pointer;">لون الرسم <input type="color" id="operation-map-color" value="#facc15" aria-label="اختر لون الرسم" oninput="setOperationMapColor(this.value)" style="width:30px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;"></label>
           <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة عامة</button>
           <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal','#ef4444')">مجرمون</button>
           <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people','#38bdf8')">عدد الأشخاص</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand','#facc15')">خط حر — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle','#ef4444')">دائرة — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle','#a855f7')">منطقة مستطيلة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand',getOperationDrawingColor())">خط حر — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle',getOperationDrawingColor())">دائرة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle',getOperationDrawingColor())">منطقة مستطيلة — اسحب</button>
           <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">حفظ الرسم الحالي</button>
         </div>
         <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
@@ -2636,13 +2637,28 @@
       operationDrawingLayer=null;
     }
 
+    function getOperationDrawingColor(){
+      const input=document.getElementById('operation-map-color');
+      const value=(input&&input.value||'').trim();
+      return /^#[0-9a-f]{6}$/i.test(value)?value:'#facc15';
+    }
+
+    function setOperationMapColor(color){
+      if(!/^#[0-9a-f]{6}$/i.test(color||'')) return;
+      if(operationMapTool&&['freehand','circle','rectangle'].includes(operationMapTool.type)){
+        operationMapTool.color=color;
+        renderOperationDrawingPreview();
+      }
+    }
+
     function setOperationMapTool(type,color){
       if(!currentUser||!ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
       if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض وتعديل خريطة المهمة متاح للرتب العليا الثلاث فقط.');
       if(operationMap&&operationMap.dragging) operationMap.dragging.enable();
       operationDrawingPointerId=null;
       operationDrawingStart=null;
-      operationMapTool={type,color};
+      const isDrawing=['freehand','circle','rectangle'].includes(type);
+      operationMapTool={type,color:isDrawing?getOperationDrawingColor():(color||'#facc15')};
       operationDrawingShape=type;
       operationDrawingPoints=[];
       if(operationMap) operationMap.getContainer().style.touchAction=['freehand','circle','rectangle'].includes(type)?'none':'';
@@ -2653,9 +2669,9 @@
         marker:'اضغط نقطة لإضافة علامة عامة.',
         criminal:'اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
         people:'اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
-        freehand:'اسحب على الخريطة لرسم مسار حر؛ يُحفظ عند رفع إصبعك أو زر الفأرة.',
-        circle:'اسحب من مركز الدائرة إلى حافتها؛ تُحفظ تلقائياً عند رفع إصبعك.',
-        rectangle:'اسحب لرسم حدود المنطقة؛ تُحفظ تلقائياً عند رفع إصبعك.'
+        freehand:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم المسار؛ يُحفظ بلونه عند رفع إصبعك أو زر الفأرة.',
+        circle:'اختر اللون من منتقي لون الرسم، ثم اسحب من مركز الدائرة إلى حافتها.',
+        rectangle:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم حدود المنطقة.'
       };
       if(help) help.innerText=helpText[type]||'اختر أداة ثم استخدمها على الخريطة.';
     }
@@ -2704,7 +2720,7 @@
       if(geometry.length<2){ operationDrawingPoints=[]; return alert('اسحب مسافة أطول قليلاً لإكمال الرسم.'); }
       const points=geometry.map(p=>({x:p.lng,y:p.lat}));
       const shape=['freehand','circle','rectangle'].includes(operationDrawingShape)?operationDrawingShape:'freehand';
-      const color=operationMapTool?.color||'#111827';
+      const color=operationMapTool?.color||'#facc15';
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('operation:addDrawing',{id:operationMapOperation.id,points,color,shape},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ الرسم.');
