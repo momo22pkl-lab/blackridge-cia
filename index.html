@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="/notifications.css" rel="stylesheet">
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -2351,6 +2352,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
     const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
     const ciaSocket = typeof io === 'function' ? io() : null;
+    window.blackRidgeSocket = ciaSocket;
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
     let authReconnectPending = false;
@@ -2492,7 +2494,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
             ciaSocket.emit('auth:login', {
               name: savedName,
               code: savedCode,
-              resumeService: currentUser.activeService === true
+              resumeService: currentUser.activeService === true,
+              resumeSession: true
             }, function(result) {
               if (!result || !result.ok) {
                 if (authReconnectPending) completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
@@ -3089,6 +3092,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
       const done = () => {
         currentUser = null;
+        window.dispatchEvent(new Event('blackridge:logout'));
         location.reload();
       };
       ciaSocket.once('auth:logout:result', done);
@@ -7482,5 +7486,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
   }
 })();
 </script>
+  <script src="/notifications-client.js"></script>
 </body>
 </html>
