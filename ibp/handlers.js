@@ -93,10 +93,17 @@ function registerIBPSocket(socket, ctx) {
   }
   function clearance(person) { return ctx.isChief(person) ? 4 : ctx.isSenior(person) ? 3 : Math.min(2, rank(person)); }
   function classificationAllowed(person, value) { return (CLASSIFICATION_LEVEL[String(value || 'INTERNAL').toUpperCase()] ?? 1) <= clearance(person); }
-  function persist(actor, action, details, target) {
+  function persist(actor, action, details, target, cb, payload = {}) {
     ctx.addAuditLog(action, actor, target || null, details || '');
-    ctx.saveState();
-    ctx.emitState();
+    let pending;
+    try { pending = ctx.saveState(); } catch (error) { pending = Promise.reject(error); }
+    return Promise.resolve(pending).then(() => {
+      ctx.emitState();
+      return reply(cb, { ok: true, ...payload });
+    }).catch((error) => {
+      console.error('[IBP] State persistence failed:', error && error.message || error);
+      return fail(cb, 'تعذر حفظ التغيير. تحقق من الاتصال ثم أعد المحاولة.');
+    });
   }
   function gate(cb) { const actor = user(); return actor ? actor : (fail(cb, 'يجب تسجيل الدخول إلى IBP أولاً.'), null); }
   function pruneSessions() { const now = Date.now(); for (const [token, entry] of sessions) if (entry.expiresAt <= now) sessions.delete(token); }
@@ -113,8 +120,7 @@ function registerIBPSocket(socket, ctx) {
     const token = clean(payload && payload.token, 128); const entry = sessions.get(token);
     const actor = entry && state().cia_users.find((person) => person.id === entry.userId);
     if (!actor || actor.suspended || actor.serviceApproved === false) { sessions.delete(token); return fail(cb, 'انتهت جلسة IBP. سجّل الدخول مجدداً.'); }
-    socket.userId = actor.id;
-    if (ctx.socketToUser && typeof ctx.socketToUser.set === 'function') ctx.socketToUser.set(socket.id, actor.id);
+    ctx.markLogin(socket, actor, { resumeService: true });
     entry.expiresAt = Date.now() + SESSION_TTL;
     return reply(cb, { ok: true, user: ctx.publicUser(actor, actor), ibpSessionToken: token });
   });
@@ -134,7 +140,7 @@ function registerIBPSocket(socket, ctx) {
   socket.on('ibp:map:get', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
     const visibleUnits = scopedUnits(actor); const visibleOps = scopedOperations(actor).filter((op) => op.status !== 'ARCHIVED'); const deployments = visibleDeployments(actor).filter((d) => d.status !== 'ARCHIVED');
-    return reply(cb, { ok: true, battalions: visibleUnits.map((unit) => safeUnit(unit, actor)), deployments: deployments.map((item) => safeDeployment(item, actor)), operations: visibleOps.map((item) => safeOperation(item, actor)), canManage: leader(actor), permissions: { map: true, place: leader(actor) } });
+    return reply(cb, { ok: true, battalions: visibleUnits.map((unit) => safeUnit(unit, actor)), deployments: deployments.map((item) => safeDeployment(item, actor)), operations: visibleOps.map((item) => safeOperation(item, actor)), canManage: visibleUnits.some((unit) => canManageUnit(actor,unit)), permissions: { map: true, place: visibleUnits.some((unit) => canManageUnit(actor,unit)) } });
   });
   socket.on('ibp:command:get', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -214,16 +220,14 @@ function registerIBPSocket(socket, ctx) {
     from.memberCodes = (from.memberCodes || []).filter((c) => clean(c,100).toUpperCase() !== code(member));
     to.memberCodes = [...new Set([...(to.memberCodes || []), member.publicCode])];
     const at = ctx.now(); from.updatedAt = at; to.updatedAt = at;
-    persist(actor,'نقل فرد بين الكتائب',member.publicCode+' من '+(from.code||from.id)+' إلى '+(to.code||to.id),member);
-    return reply(cb,{ok:true});
+    return persist(actor,'نقل فرد بين الكتائب',member.publicCode+' من '+(from.code||from.id)+' إلى '+(to.code||to.id),member,cb);
   });
   socket.on('ibp:battalion:archive', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
     const unit = units().find((item) => String(item.id) === String(payload && payload.id));
     if (!unit || !ctx.canManageIBPBattalions(actor) || !canManageUnit(actor,unit)) return fail(cb,'لا تملك صلاحية أرشفة هذه الكتيبة.');
     unit.status='ARCHIVED'; unit.archivedAt=ctx.now(); unit.updatedAt=unit.archivedAt;
-    persist(actor,'أرشفة كتيبة',(unit.code||unit.id)+' · ARCHIVED');
-    return reply(cb,{ok:true});
+    return persist(actor,'أرشفة كتيبة',(unit.code||unit.id)+' · ARCHIVED',null,cb);
   });
   socket.on('ibp:battalion:position', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -232,8 +236,7 @@ function registerIBPSocket(socket, ctx) {
     if (!unit || !leader(actor) || !canManageUnit(actor,unit)) return fail(cb,'لا تملك صلاحية تعديل موقع هذه الكتيبة.');
     if (!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>1000||y<0||y>700) return fail(cb,'إحداثيات الخريطة غير صالحة.');
     unit.mapPosition={x:Math.round(x),y:Math.round(y)}; unit.updatedAt=ctx.now();
-    persist(actor,'تحديث موقع كتيبة',(unit.code||unit.id)+' · '+x+','+y);
-    return reply(cb,{ok:true,battalion:safeUnit(unit,actor)});
+    return persist(actor,'تحديث موقع كتيبة',(unit.code||unit.id)+' · '+x+','+y,null,cb,{battalion:safeUnit(unit,actor)});
   });
   socket.on('ibp:deployment:save', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -246,8 +249,7 @@ function registerIBPSocket(socket, ctx) {
     const allowedCodes=new Set(unitCodes(unit)); const assignedCodes=[...new Set((Array.isArray(payload && payload.assignedCodes)?payload.assignedCodes:[]).map((c)=>ctx.ibpResolveCode(c)).filter((p)=>p&&allowedCodes.has(code(p))).map((p)=>p.publicCode))];
     const record={...(row||{}),id:row?row.id:ctx.makeId('DEP'),battalionId:unit.id,title,type:clean(payload && payload.type,80),status:STATUSES.has(payload && payload.status)?payload.status:'ACTIVE',position:Number.isFinite(x)&&Number.isFinite(y)?{x:Math.round(x),y:Math.round(y)}:null,assignedCodes,notes:clean(payload && payload.notes,1000),createdAt:row && row.createdAt||ctx.now(),updatedAt:ctx.now(),createdByCode:row && row.createdByCode||actor.publicCode};
     const list=records('ibp_deployments'); if(row)list[list.indexOf(row)]=record;else list.unshift(record);
-    persist(actor,row?'تحديث انتشار':'إنشاء انتشار',record.title+' · '+(unit.code||unit.id));
-    return reply(cb,{ok:true,deployment:safeDeployment(record,actor)});
+    return persist(actor,row?'تحديث انتشار':'إنشاء انتشار',record.title+' · '+(unit.code||unit.id),null,cb,{deployment:safeDeployment(record,actor)});
   });
   socket.on('ibp:operation:save', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -261,8 +263,7 @@ function registerIBPSocket(socket, ctx) {
     const x=Number(payload && payload.x),y=Number(payload && payload.y); if((payload && payload.x!==''||payload && payload.y!=='')&&(!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>1000||y<0||y>700))return fail(cb,'إحداثيات العملية غير صالحة.');
     const record={...(row||{}),id:row?row.id:ctx.makeId('OP'),operationCode:row && row.operationCode||ctx.makeId('IBP-OP'),name,battalionId:unit.id,commanderCode:commander&&commander.publicCode||'',memberCodes:members,status,priority,startAt:clean(payload && payload.startAt,40),endAt:clean(payload && payload.endAt,40),position:Number.isFinite(x)&&Number.isFinite(y)?{x:Math.round(x),y:Math.round(y)}:null,notes:clean(payload && payload.notes,2000),createdAt:row&&row.createdAt||ctx.now(),updatedAt:ctx.now(),createdByCode:row&&row.createdByCode||actor.publicCode};
     const list=records('ibp_operations'); if(row)list[list.indexOf(row)]=record;else list.unshift(record);
-    persist(actor,row?'تحديث عملية':'إنشاء عملية',record.name+' · '+(unit.code||unit.id));
-    return reply(cb,{ok:true,operation:safeOperation(record,actor)});
+    return persist(actor,row?'تحديث عملية':'إنشاء عملية',record.name+' · '+(unit.code||unit.id),null,cb,{operation:safeOperation(record,actor)});
   });
   socket.on('ibp:report:create', (payload, cb) => {
     const actor=gate(cb);if(!actor)return;const title=clean(payload&&payload.title,140), text=clean(payload&&payload.text,5000), summary=clean(payload&&payload.summary,500);
@@ -271,16 +272,14 @@ function registerIBPSocket(socket, ctx) {
     if(payload&&payload.battalionId&&(!unit||!inUnitScope(actor,unit)))return fail(cb,'لا تملك صلاحية ربط التقرير بهذه الكتيبة.');
     const classification=String(payload&&payload.classification||'INTERNAL').toUpperCase();if(!(classification in CLASSIFICATION_LEVEL)||!classificationAllowed(actor,classification))return fail(cb,'لا تملك صلاحية استخدام هذا التصنيف.');
     const report={id:ctx.makeId('RPT'),title,type:clean(payload&&payload.type,50)||'SECTOR',battalionId:unit&&unit.id||'',battalionCode:unit&&unit.code||'',classification,summary,text,status:'SUBMITTED',authorCode:actor.publicCode,createdAt:ctx.now()};
-    records('ibp_reports').unshift(report);records('ibp_reports').splice(500);persist(actor,'إنشاء تقرير',title);
-    return reply(cb,{ok:true,report});
+    records('ibp_reports').unshift(report);records('ibp_reports').splice(500);return persist(actor,'إنشاء تقرير',title,null,cb,{report});
   });
   socket.on('ibp:intelligence:create', (payload, cb) => {
     const actor=gate(cb);if(!actor)return;if(!leader(actor))return fail(cb,'نشر الموجزات متاح للقيادات فقط.');
     const title=clean(payload&&payload.title,140),summary=clean(payload&&payload.summary,1800);if(!title||!summary)return fail(cb,'أدخل عنوان الموجز وملخصه.');
     const unit=payload&&payload.battalionId?units().find((u)=>String(u.id)===String(payload.battalionId)):null;if(payload&&payload.battalionId&&(!unit||!canManageUnit(actor,unit)))return fail(cb,'لا تملك صلاحية ربط الموجز بهذه الكتيبة.');
     const classification=String(payload&&payload.classification||'INTERNAL').toUpperCase();if(!(classification in CLASSIFICATION_LEVEL)||!classificationAllowed(actor,classification))return fail(cb,'لا تملك صلاحية هذا التصنيف.');
-    const item={id:ctx.makeId('INT'),title,type:clean(payload&&payload.type,80)||'INTELLIGENCE',classification,battalionId:unit&&unit.id||'',battalionCode:unit&&unit.code||'',summary,authorCode:actor.publicCode,createdAt:ctx.now(),at:ctx.now()};records('ibp_intelligence').unshift(item);records('ibp_intelligence').splice(500);persist(actor,'نشر موجز استخباراتي',title);
-    return reply(cb,{ok:true,item});
+    const item={id:ctx.makeId('INT'),title,type:clean(payload&&payload.type,80)||'INTELLIGENCE',classification,battalionId:unit&&unit.id||'',battalionCode:unit&&unit.code||'',summary,authorCode:actor.publicCode,createdAt:ctx.now(),at:ctx.now()};records('ibp_intelligence').unshift(item);records('ibp_intelligence').splice(500);return persist(actor,'نشر موجز استخباراتي',title,null,cb,{item});
   });
 }
 module.exports = { registerIBPSocket, SESSION_TTL, CLASSIFICATION_LEVEL };
