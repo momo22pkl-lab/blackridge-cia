@@ -390,6 +390,13 @@ const isLeadership = (user) =>
 const canManageOperations = (user) =>
   !!user && rankLevel(user.rank) >= 2;
 
+const canAssignOperationMember = (member) =>
+  !!member &&
+  !!member.publicCode &&
+  member.approved !== false &&
+  member.serviceApproved !== false &&
+  member.suspended !== true;
+
 function ensureBank(user) {
   if (!user.bank || typeof user.bank !== 'object') {
     user.bank = {};
@@ -1790,8 +1797,8 @@ function operationSanitize(
       viewer?.rank
     );
 
-  const leadershipMissionViewer =
-    isLeadership(viewer);
+  const chiefIdentityViewer =
+    isChief(viewer);
 
   const privilegedMissionViewer =
     canManageOperations(viewer);
@@ -1814,18 +1821,19 @@ function operationSanitize(
           code
         );
 
-      if (leadershipMissionViewer && member) {
-        return {
-          code,
-          name: member.identity?.fullName || member.name,
-          online: !!member.online,
-          activeService: member.activeService === true
-        };
+      const sanitizedMember = {
+        code,
+        rank: member ? rankLabel(member.rank) : 'رتبة غير محددة'
+      };
+      if (chiefIdentityViewer && member) {
+        sanitizedMember.name = member.identity?.fullName || member.name;
+        sanitizedMember.online = !!member.online;
+        sanitizedMember.activeService = member.activeService === true;
       }
       if (normalizedViewerRank === 'AGENT' && viewer?.publicCode === code) {
-        return { code, assignedToSelf: true };
+        return { ...sanitizedMember, assignedToSelf: true };
       }
-      return { code };
+      return sanitizedMember;
     });
 
   if (
@@ -1867,9 +1875,11 @@ function operationSanitize(
       battalionLeaderCode: '',
       commanderName: '',
 
-      crew: assignedMissionAgent ? [{ code: viewer.publicCode, assignedToSelf: true }] : [],
+      crew: assignedMissionAgent ? crews : [],
 
-      battalionCount: assignedMissionAgent ? 1 : 0,
+      battalionCount: assignedMissionAgent
+        ? (Array.isArray(op.memberCodes) ? op.memberCodes.length : 0)
+        : 0,
 
       notes: [],
 
@@ -1930,7 +1940,7 @@ function operationSanitize(
       '',
 
     commanderName:
-      leadershipMissionViewer
+      chiefIdentityViewer
         ? (
             op.commanderName ||
             ''
@@ -1959,7 +1969,7 @@ function operationSanitize(
           '',
 
         authorName:
-          leadershipMissionViewer
+          chiefIdentityViewer
             ? (
                 n.authorName ||
                 ''
@@ -1982,7 +1992,7 @@ function operationSanitize(
       '',
 
     createdByName:
-      leadershipMissionViewer
+      chiefIdentityViewer
         ? (
             op.createdByName ||
             ''
@@ -7301,16 +7311,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
           requestedCodes.map((code) => clean(code, 100)).filter(Boolean)
         )];
         if (!memberCodes.length || memberCodes.length > 50) {
-          return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+          return no(cb, 'اختر من فرد واحد إلى 50 فرداً للمهمة.');
         }
-        const assignedAgents = memberCodes.map((code) => getUserByPublicCode(code));
-        if (assignedAgents.some((member) =>
-          !member ||
-          normalizeRank(member.rank) !== 'AGENT' ||
-          member.approved === false ||
-          member.suspended
-        )) {
-          return no(cb, 'تأكد أن كل الأعضاء المختارين Agents معتمدون. يمكن إسناد المهمة حتى لمن هو غير متصل بالخدمة.');
+        const assignedMembers = memberCodes.map((code) => getUserByPublicCode(code));
+        if (assignedMembers.some((member) => !canAssignOperationMember(member))) {
+          return no(cb, 'تأكد أن كل الأفراد المختارين معتمدون ولديهم كود عسكري. يمكن إسناد المهمة حتى لمن هو غير متصل بالخدمة.');
         }
 
         const operation = {
@@ -7374,7 +7379,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             actor.name,
 
           memberCodes:
-            assignedAgents.map((member) => member.publicCode),
+            assignedMembers.map((member) => member.publicCode),
 
           notes: [],
 
@@ -7463,15 +7468,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'قائمة اختيار أعضاء المهمة متاحة للرتب العليا الثلاث فقط.');
       }
       const agents = state.cia_users
-        .filter((member) =>
-          normalizeRank(member.rank) === 'AGENT' &&
-          member.approved !== false &&
-          !member.suspended &&
-          member.publicCode
-        )
-        .map((member) => isLeadership(actor)
-          ? { code: member.publicCode, name: member.identity?.fullName || member.name, online: !!member.online, activeService: member.activeService === true }
-          : { code: member.publicCode });
+        .filter(canAssignOperationMember)
+        .map((member) => {
+          const person = {
+            code: member.publicCode,
+            rank: rankLabel(member.rank)
+          };
+          if (isChief(actor)) {
+            person.name = member.identity?.fullName || member.name;
+            person.online = !!member.online;
+            person.activeService = member.activeService === true;
+          }
+          return person;
+        });
       return ok(cb, { agents });
     });
 
@@ -7516,27 +7525,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
           return no(cb, 'التحديثات الميدانية متاحة لمنشئ المهمة والقيادة والمشارك المحدد فقط.');
         }
 
-        let selectedAgents = null;
+        let selectedMembers = null;
         if (Array.isArray(payload?.memberCodes)) {
           const selectedCodes = [...new Set(
             payload.memberCodes.map((code) => clean(code, 100)).filter(Boolean)
           )];
           if (!selectedCodes.length || selectedCodes.length > 50) {
-            return no(cb, 'اختر من Agent واحد إلى 50 Agent للمهمة.');
+            return no(cb, 'اختر من فرد واحد إلى 50 فرداً للمهمة.');
           }
-          selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
-          if (selectedAgents.some((member) =>
-            !member ||
-            normalizeRank(member.rank) !== 'AGENT' ||
-            member.approved === false ||
-            member.suspended
-          )) {
-            return no(cb, 'تأكد أن كل الأكواد المختارة تخص Agents معتمدين.');
+          selectedMembers = selectedCodes.map((code) => getUserByPublicCode(code));
+          if (selectedMembers.some((member) => !canAssignOperationMember(member))) {
+            return no(cb, 'تأكد أن كل الأكواد المختارة تخص أفراداً معتمدين ولديهم كود عسكري.');
           }
         }
 
-        if (selectedAgents) {
-          operation.memberCodes = selectedAgents.map((member) => member.publicCode);
+        if (selectedMembers) {
+          operation.memberCodes = selectedMembers.map((member) => member.publicCode);
         }
 
         const fields = [
