@@ -25,6 +25,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
+const { createOsdRouter } = require('./osd/server');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -68,6 +69,14 @@ app.use((req, res, next) => {
   if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
+const osdRouter = createOsdRouter({ getPool: () => postgresPool });
+const osdPublicFiles = new Set(['/', '/index.html', '/styles.css', '/app.js']);
+const osdStatic = express.static(path.join(__dirname, 'osd'), { index: 'index.html' });
+app.use('/osd', (req, res, next) => {
+  if (!osdPublicFiles.has(req.path)) return res.sendStatus(404);
+  return osdStatic(req, res, next);
+});
+app.use('/api/osd', osdRouter);
 app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
@@ -8571,6 +8580,11 @@ function installGracefulShutdown() {
 
 async function startServer() {
   await initializePersistence();
+  try {
+    await osdRouter.initialize();
+  } catch (error) {
+    console.error('[OSD] Schema initialization failed; the API will retry on its next request:', error.message);
+  }
   httpServer.listen(PORT, () => {
     console.log('');
     console.log('==================================================');

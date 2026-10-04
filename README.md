@@ -13,3 +13,8 @@ Never put DATABASE_URL in source control or paste it into chat. Configure it as 
 
 Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
 Run npm test to check the PostgreSQL state-store adapter.
+
+
+## Official Sector Documents (OSD)
+
+OSD is a separate document system at `/osd/`, with independent tables and accounts; it does not combine records with the CIA dashboard or map. It requires the PostgreSQL `DATABASE_URL` and server-side `OSD_BOOTSTRAP_CODE` (at least 24 random characters) and `OSD_SIGNING_SECRET` (at least 32 random bytes). See [the OSD setup and scope notes](osd/README.md). Never commit either secret.
