@@ -25,6 +25,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
+const { registerPages } = require('./ibp/pages');
+const { registerIBPSocket } = require('./ibp/handlers');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -79,6 +81,8 @@ app.get('/', (req, res) => {
   res.status(404).send('BLACK RIDGE CIA: index.html not found.');
 });
 
+registerPages(app);
+
 const now = () => new Date().toISOString();
 const clean = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
 const lower = (value) => clean(value, 200).toLowerCase();
@@ -108,6 +112,10 @@ const EMPTY_STATE = {
   cia_attendance: [],
   cia_operations: [],
   cia_battalions: [],
+  ibp_deployments: [],
+  ibp_operations: [],
+  ibp_intelligence: [],
+  ibp_reports: [],
   settings: {
     publicSalary: SYSTEM.defaultSalary,
     rankSalaries: {
@@ -164,7 +172,8 @@ function normalizePersistedState(parsed, source = 'persisted state') {
   for (const key of [
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-    'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations', 'cia_battalions'
+    'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations', 'cia_battalions',
+    'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
@@ -963,27 +972,33 @@ function ibpResolveCode(value) {
 }
 function ibpBattalionForViewer(record, viewer) {
   if (!record || !viewer) return null;
-  const codes = [...new Set((Array.isArray(record.memberCodes) ? record.memberCodes : []).map((code) => clean(code, 100)).filter(Boolean))];
-  const commanderCode = clean(record.commanderCode, 100);
-  if (commanderCode && !codes.some((code) => code.toUpperCase() === commanderCode.toUpperCase())) codes.unshift(commanderCode);
-  const viewerCode = clean(viewer.publicCode, 100).toUpperCase();
-  const isMember = !!viewerCode && codes.some((code) => code.toUpperCase() === viewerCode);
-  if (!canManageOperations(viewer) && !isMember) return null;
-  const commander = ibpResolveCode(commanderCode);
-  const members = codes.map((code) => {
-    const user = ibpResolveCode(code);
-    if (!user) return null;
-    const item = { publicCode: user.publicCode, rank: normalizeRank(user.rank), rankLabel: rankLabel(user.rank), online: !!user.online, status: user.status || 'في الخدمة', activeService: user.activeService === true };
-    if (isChief(viewer)) item.name = user.identity?.fullName || user.name || '';
+  const memberCodes = [...new Set((Array.isArray(record.memberCodes) ? record.memberCodes : []).map((value) => clean(value,100).toUpperCase()).filter(Boolean))];
+  const commanderCode = clean(record.commanderCode,100).toUpperCase();
+  const deputyCode = clean(record.deputyCode,100).toUpperCase();
+  const seniorCommanderCode = clean(record.seniorCommanderCode,100).toUpperCase();
+  const viewerCode = clean(viewer.publicCode,100).toUpperCase();
+  const isMember = !!viewerCode && (memberCodes.includes(viewerCode) || commanderCode === viewerCode || deputyCode === viewerCode);
+  const isLinkedCommander = rankLevel(viewer.rank) >= 2 && [commanderCode, seniorCommanderCode].includes(viewerCode);
+  if (!isLeadership(viewer) && !isMember && !isLinkedCommander) return null;
+  const commander = ibpResolveCode(record.commanderCode);
+  const members = memberCodes.map((memberCode) => ibpResolveCode(memberCode)).filter((person) => person && !person.suspended && person.approved !== false && person.serviceApproved !== false).map((person) => {
+    const item = { publicCode: person.publicCode, rank: normalizeRank(person.rank), rankLabel: rankLabel(person.rank), online: !!person.online, status: person.status || 'في الخدمة', activeService: person.activeService === true };
+    if (isChief(viewer)) item.name = person.identity?.fullName || person.name || '';
     return item;
-  }).filter(Boolean);
+  });
+  const deployments = Array.isArray(state.ibp_deployments) ? state.ibp_deployments : [];
+  const history = canManageIBPBattalions(viewer) && Array.isArray(record.history) ? record.history.slice(-40) : [];
+  const mapPosition = record.mapPosition && Number.isFinite(Number(record.mapPosition.x)) && Number.isFinite(Number(record.mapPosition.y)) ? { x: Number(record.mapPosition.x), y: Number(record.mapPosition.y) } : null;
   return {
-    id: clean(record.id, 120), nameAr: clean(record.nameAr || record.name, 100), nameEn: clean(record.nameEn || record.name, 100),
-    sector: clean(record.sector, 100), status: ['ACTIVE','ALERT','STANDBY','ARCHIVED'].includes(record.status) ? record.status : 'ACTIVE',
-    color: /^#[0-9a-fA-F]{6}$/.test(record.color || '') ? record.color : '#c7a25a', symbol: clean(record.symbol, 16),
-    commanderCode: commander?.publicCode || commanderCode, commanderRank: commander ? normalizeRank(commander.rank) : '',
-    commanderName: isChief(viewer) && commander ? (commander.identity?.fullName || commander.name || '') : '', members, memberCount: members.length,
-    createdAt: record.createdAt || null, updatedAt: record.updatedAt || null
+    id: clean(record.id,120), code: clean(record.code || record.id,32), name: clean(record.nameAr || record.nameEn || record.name,100), nameAr: clean(record.nameAr || record.name,100), nameEn: clean(record.nameEn || record.name,100),
+    sector: clean(record.sector,100), status: ['ACTIVE','ALERT','STANDBY','ARCHIVED'].includes(record.status) ? record.status : 'ACTIVE',
+    color: /^#[0-9a-fA-F]{6}$/.test(record.color || '') ? record.color : '#c7a25a', symbol: clean(record.symbol,16), emblem: clean(record.emblem || record.symbol,32),
+    commanderCode: commander?.publicCode || clean(record.commanderCode,100), commanderRank: commander ? normalizeRank(commander.rank) : '',
+    commanderName: isChief(viewer) && commander ? (commander.identity?.fullName || commander.name || '') : '',
+    deputyCode: clean(record.deputyCode,100), seniorCommanderCode: clean(record.seniorCommanderCode,100), members, memberCodes: members.map((person) => person.publicCode), memberCount: members.length,
+    notes: canManageIBPBattalions(viewer) ? clean(record.notes,1000) : '', history,
+    mapPosition, canManage: canManageIBPBattalions(viewer), deploymentCount: deployments.filter((item) => String(item.battalionId) === String(record.id) && item.status !== 'ARCHIVED').length,
+    createdAt: record.createdAt || null, updatedAt: record.updatedAt || null, archivedAt: record.archivedAt || null
   };
 }
 function emitIBPBattalionState() {
@@ -7387,14 +7402,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('ibp:battalions:list', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول للخدمة أولاً.');
-      const battalions = (state.cia_battalions || []).map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
+      const battalions = (state.cia_battalions || []).filter((item) => item.status !== 'ARCHIVED').map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
       const canManage = canManageIBPBattalions(actor);
       const assignablePersonnel = canManage ? state.cia_users.filter((user) => user.publicCode && user.approved !== false && user.suspended !== true).map((user) => {
         const item = { publicCode: user.publicCode, rank: normalizeRank(user.rank), rankLabel: rankLabel(user.rank), online: !!user.online };
         if (isChief(actor)) item.name = user.identity?.fullName || user.name || '';
         return item;
       }) : [];
-      return ok(cb, { battalions, assignablePersonnel, canManage });
+      return ok(cb, { battalions, assignablePersonnel, canManage, canCreate: canManage, canTransfer: canManage, permissions: { leadership: canManageOperations(actor), admin: canManage } });
     });
     socket.on('ibp:battalion:save', (payload, cb) => {
       const actor = requireSocketUser(socket);
@@ -7403,42 +7418,63 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id, 120);
       const existing = id ? (state.cia_battalions || []).find((item) => String(item.id) === id) : null;
       if (id && !existing) return no(cb, 'الكتيبة المطلوبة غير موجودة.');
-      const nameAr = clean(payload?.nameAr, 100);
-      const nameEn = clean(payload?.nameEn, 100);
+      const code = clean(payload?.code || existing?.code, 32).toUpperCase().replace(/\s+/g, '-');
+      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) return no(cb, 'أدخل رمز كتيبة فريداً من حرفين إلى 32 حرفاً أو رقماً.');
+      const duplicateCode = (state.cia_battalions || []).find((item) => String(item.id) !== String(existing?.id || '') && String(item.code || '').toUpperCase() === code);
+      if (duplicateCode) return no(cb, 'رمز الكتيبة مستخدم بالفعل.');
+      const nameAr = clean(payload?.nameAr || existing?.nameAr, 100);
+      const nameEn = clean(payload?.nameEn || existing?.nameEn, 100);
       if (!nameAr && !nameEn) return no(cb, 'أدخل اسم الكتيبة بالعربية أو الإنجليزية.');
       const sector = clean(payload?.sector, 100);
-      const status = ['ACTIVE','ALERT','STANDBY','ARCHIVED'].includes(payload?.status) ? payload.status : 'ACTIVE';
-      const color = /^#[0-9a-fA-F]{6}$/.test(payload?.color || '') ? payload.color : '#c7a25a';
-      const symbol = clean(payload?.symbol || 'UNIT', 16).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() || 'UNIT';
-      const commanderCode = clean(payload?.commanderCode, 100);
-      const commander = commanderCode ? ibpResolveCode(commanderCode) : null;
-      if (commanderCode && (!commander || commander.approved === false || commander.suspended === true)) return no(cb, 'رمز قائد الكتيبة غير صالح.');
-      if (commander && rankLevel(commander.rank) < 2) return no(cb, 'يجب أن يكون قائد الكتيبة من الرتب القيادية.');
-      const requested = Array.isArray(payload?.memberCodes) ? payload.memberCodes.slice(0, 150) : [];
+      const status = ['ACTIVE','ALERT','STANDBY'].includes(payload?.status) ? payload.status : 'ACTIVE';
+      const color = /^#[0-9a-fA-F]{6}$/.test(payload?.color || '') ? payload.color : (existing?.color || '#c7a25a');
+      const symbol = clean(payload?.symbol || existing?.symbol || 'UNIT', 16).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() || 'UNIT';
+      const emblem = clean(payload?.emblem || existing?.emblem || symbol, 32);
+      const resolveRole = (value, minRank, label) => {
+        const roleCode = clean(value, 100);
+        const person = roleCode ? ibpResolveCode(roleCode) : null;
+        if (roleCode && (!person || person.approved === false || person.suspended === true || person.serviceApproved === false)) throw new Error('رمز ' + label + ' غير صالح.');
+        if (person && rankLevel(person.rank) < minRank) throw new Error('يجب أن يكون ' + label + ' من الرتبة القيادية المطلوبة.');
+        return person;
+      };
+      let commander, deputy, seniorCommander;
+      try {
+        commander = resolveRole(payload?.commanderCode ?? existing?.commanderCode, 2, 'قائد الكتيبة');
+        deputy = resolveRole(payload?.deputyCode ?? existing?.deputyCode, 2, 'نائب قائد الكتيبة');
+        seniorCommander = resolveRole(payload?.seniorCommanderCode ?? existing?.seniorCommanderCode, 3, 'القائد الأعلى');
+      } catch (error) { return no(cb, error.message); }
+      if (commander && deputy && clean(commander.publicCode,100).toUpperCase() === clean(deputy.publicCode,100).toUpperCase()) return no(cb, 'يجب أن يكون القائد والنائب شخصين مختلفين.');
+      const requested = Array.isArray(payload?.memberCodes) ? payload.memberCodes.slice(0, 150) : (existing?.memberCodes || []);
       const memberMap = new Map();
       for (const value of requested) {
-        const code = clean(value, 100);
-        if (!code) continue;
-        const person = ibpResolveCode(code);
-        if (!person || person.approved === false || person.suspended === true) return no(cb, 'تعذر التحقق من أحد أكواد الأفراد المختارين.');
+        const memberCode = clean(value, 100);
+        if (!memberCode) continue;
+        const person = ibpResolveCode(memberCode);
+        if (!person || person.approved === false || person.suspended === true || person.serviceApproved === false) return no(cb, 'تعذر التحقق من أحد أكواد الأفراد المختارين.');
         memberMap.set(clean(person.publicCode, 100).toUpperCase(), person.publicCode);
       }
-      if (commander) memberMap.set(clean(commander.publicCode, 100).toUpperCase(), commander.publicCode);
+      for (const person of [commander, deputy]) if (person) memberMap.set(clean(person.publicCode,100).toUpperCase(), person.publicCode);
       const memberCodes = [...memberMap.values()];
-      const wanted = new Set(memberCodes.map((code) => clean(code, 100).toUpperCase()));
-      const conflict = (state.cia_battalions || []).find((unit) => String(unit.id) !== String(existing?.id || '') && unit.status !== 'ARCHIVED' && [...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []), unit.commanderCode || ''].some((code) => wanted.has(clean(code, 100).toUpperCase())));
-      if (conflict) return no(cb, 'أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.');
+      const wanted = new Set(memberCodes.map((memberCode) => clean(memberCode, 100).toUpperCase()));
+      const conflict = (state.cia_battalions || []).find((unit) => String(unit.id) !== String(existing?.id || '') && unit.status !== 'ARCHIVED' && [...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []), unit.commanderCode || '', unit.deputyCode || ''].some((memberCode) => wanted.has(clean(memberCode, 100).toUpperCase())));
+      if (conflict) return no(cb, 'أحد الأفراد المحددّين معيّن بالفعل ضمن كتيبة أخرى نشطة.');
       const nowValue = now();
+      const action = existing ? 'تعديل بيانات كتيبة' : 'إنشاء كتيبة';
+      const detail = 'تم حفظ الكتيبة ' + code + ' وربط ' + memberCodes.length + ' من الأفراد.';
+      const history = Array.isArray(existing?.history) ? existing.history.slice(-99) : [];
+      history.push({ action, actorCode: actor.publicCode || '', at: nowValue, detail });
       const record = {
-        id: existing ? existing.id : makeId('BAT'), name: nameAr || nameEn, nameAr, nameEn, sector,
-        status, color, symbol, commanderCode: commander ? commander.publicCode : '', memberCodes,
+        ...(existing || {}), id: existing ? existing.id : makeId('BAT'), code, name: nameAr || nameEn, nameAr, nameEn, sector,
+        status, color, symbol, emblem, commanderCode: commander ? commander.publicCode : '', deputyCode: deputy ? deputy.publicCode : '',
+        seniorCommanderCode: seniorCommander ? seniorCommander.publicCode : '', memberCodes,
+        notes: clean(payload?.notes ?? existing?.notes, 1000), mapPosition: existing?.mapPosition || null, history,
         createdAt: existing?.createdAt || nowValue, createdByCode: existing?.createdByCode || actor.publicCode,
         updatedAt: nowValue, updatedByCode: actor.publicCode
       };
       if (!Array.isArray(state.cia_battalions)) state.cia_battalions = [];
       if (existing) state.cia_battalions = state.cia_battalions.map((item) => String(item.id) === String(existing.id) ? record : item);
       else state.cia_battalions.unshift(record);
-      addAuditLog(existing ? 'تعديل بيانات كتيبة' : 'إنشاء كتيبة', actor, null, 'تم حفظ الكتيبة ' + (nameAr || nameEn) + ' وربط ' + memberCodes.length + ' من الأفراد.');
+      addAuditLog(action, actor, null, detail);
       saveState();
       const result = ok(cb, { battalion: ibpBattalionForViewer(record, actor) });
       emitIBPBattalionState();
@@ -8476,6 +8512,32 @@ socket.on('member:saveIdentity', (payload, cb) => {
     );
   }
 );
+
+io.on('connection', (socket) => {
+  registerIBPSocket(socket, {
+    getState: () => state,
+    requireSocketUser,
+    clean,
+    rankLevel,
+    normalizeRank,
+    rankLabel,
+    isChief,
+    isSenior,
+    isLeadership,
+    canManageIBPBattalions,
+    ibpResolveCode,
+    ibpBattalionForViewer,
+    publicUser,
+    now,
+    makeId,
+    addAuditLog,
+    saveState,
+    emitState,
+    markLogin,
+    markLogout,
+    socketToUser
+  });
+});
 
 /* =====================================================
    HTTP SERVER START
