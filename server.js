@@ -7402,7 +7402,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('ibp:battalions:list', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول للخدمة أولاً.');
-      const battalions = (state.cia_battalions || []).filter((item) => item.status !== 'ARCHIVED').map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
+      const includeArchived = payload?.includeArchived === true;
+      const battalions = (state.cia_battalions || []).filter((item) => includeArchived || item.status !== 'ARCHIVED').map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
       const canManage = canManageIBPBattalions(actor);
       const assignablePersonnel = canManage ? state.cia_users.filter((user) => user.publicCode && user.approved !== false && user.suspended !== true).map((user) => {
         const item = { publicCode: user.publicCode, rank: normalizeRank(user.rank), rankLabel: rankLabel(user.rank), online: !!user.online };
@@ -7418,6 +7419,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id, 120);
       const existing = id ? (state.cia_battalions || []).find((item) => String(item.id) === id) : null;
       if (id && !existing) return no(cb, 'الكتيبة المطلوبة غير موجودة.');
+      if (existing?.status === 'ARCHIVED') return no(cb, 'السجل المؤرشف للقراءة فقط.');
       const code = clean(payload?.code || existing?.code, 32).toUpperCase().replace(/\s+/g, '-');
       if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) return no(cb, 'أدخل رمز كتيبة فريداً من حرفين إلى 32 حرفاً أو رقماً.');
       const duplicateCode = (state.cia_battalions || []).find((item) => String(item.id) !== String(existing?.id || '') && String(item.code || '').toUpperCase() === code);
