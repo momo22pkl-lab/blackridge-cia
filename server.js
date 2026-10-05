@@ -72,15 +72,14 @@ app.use((req, res, next) => {
   if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, { index: false }));
 
 app.get('/', (req, res) => {
-  const candidates = ['index.html', 'index26-7.html', 'index(29).html', 'index (31).html'];
-  for (const file of candidates) {
-    const full = path.join(__dirname, file);
-    if (fs.existsSync(full)) return res.sendFile(full);
-  }
-  res.status(404).send('BLACK RIDGE CIA: index.html not found.');
+  // Always serve the current SPA entry; do not fall back to retired standalone pages.
+  const entry = path.join(__dirname, 'index.html');
+  if (!fs.existsSync(entry)) return res.status(404).send('BLACK RIDGE WORLD COMMAND: index.html not found.');
+  res.set('Cache-Control', 'no-store');
+  return res.sendFile(entry);
 });
 
 registerPages(app);
