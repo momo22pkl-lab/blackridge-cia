@@ -26,6 +26,7 @@ const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { NotificationsStore } = require('./notifications-store');
+const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 
@@ -87,6 +88,9 @@ registerPages(app);
 
 const now = () => new Date().toISOString();
 const clean = (value, max = 1000) => String(value ?? '').trim().slice(0, max);
+const redactSecurityReason = (value) => clean(value, 300)
+  .replace(/\b(password|passcode|secret(?:\s+code)?|api[\s-]*key|access[\s-]*token|token)\s*(?::|=|\bis\b)\s*[^\s,;]+/giu, '$1=[REDACTED]')
+  .replace(/(كلمة المرور|كلمه المرور|رمز الدخول|الكود السري)\s*(?::|=|هو)?\s*[^\s,;]+/gu, '$1=[محجوب]');
 const lower = (value) => clean(value, 200).toLowerCase();
 const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
 
@@ -111,6 +115,7 @@ const EMPTY_STATE = {
   cia_morse_logs: [],
   cia_hq_locations: [],
   cia_audit_logs: [],
+  cia_security_incidents: [],
   cia_attendance: [],
   cia_operations: [],
   cia_notifications: [],
@@ -175,7 +180,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
   for (const key of [
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-    'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations', 'cia_battalions',
+    'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
     'cia_notifications', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
@@ -251,10 +256,11 @@ const pendingRequestSockets = new Map();
 const supportThreadSockets = new Map();
 
 function notificationCanReach(user, details) {
-  if (!user || user.suspended || user.approved === false || user.serviceApproved === false) return false;
+  if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false || user.serviceApproved === false) return false;
   const targetUserId = details.targetUserId ? String(details.targetUserId) : '';
   const sourceUserId = details.sourceUserId ? String(details.sourceUserId) : '';
-  if (['SECURITY', 'SYSTEM'].includes(details.type) && details.leadershipOnly === true) return isLeadership(user);
+  if (details.type === 'SECURITY' && details.leadershipOnly === true) return isSecuritySupervisor(user);
+  if (details.type === 'SYSTEM' && details.leadershipOnly === true) return isLeadership(user);
   if (details.type === 'MESSAGE' || details.type === 'SALARY' || details.type === 'TRANSACTION' || details.type === 'FINANCE') {
     return !!targetUserId && user.id === targetUserId;
   }
@@ -495,6 +501,9 @@ const isHighCommander = (user) =>
 const isMorseSupervisor = (user) =>
   isChief(user) || isSenior(user) || isHighCommander(user);
 
+const isSecuritySupervisor = (user) =>
+  isChief(user) || isSenior(user) || isHighCommander(user);
+
 function morseLogForViewer(log, viewer) {
   if (!log || !isMorseSupervisor(viewer)) return null;
   const visibleLog = { ...log };
@@ -584,6 +593,11 @@ function normalizeUser(user) {
   user.rejectionMessage = clean(user.rejectionMessage || '', 500);
   user.suspensionReason = clean(user.suspensionReason || '', 1000);
   user.suspended = user.suspended === true;
+  user.securityStatus = ['ACTIVE', 'SECURITY_RESTRICTED', 'SUSPENDED'].includes(user.securityStatus)
+    ? user.securityStatus
+    : (user.suspended ? 'SUSPENDED' : 'ACTIVE');
+  if (user.suspended) user.securityStatus = 'SUSPENDED';
+  user.securityViolationCount = Math.max(0, Math.floor(Number(user.securityViolationCount) || 0));
   user.online = user.online === true;
 
   user.identity = user.identity || null;
@@ -744,7 +758,8 @@ function findUser(name, secretCode) {
         lower(u.name) === n &&
         u.secretCode === c &&
         u.approved !== false &&
-        u.suspended !== true
+        u.suspended !== true &&
+        u.securityStatus === 'ACTIVE'
     ) || null
   );
 }
@@ -831,6 +846,11 @@ function publicUser(user, viewer = null) {
 
     suspended:
       user.suspended === true,
+
+    securityStatus:
+      self || isSecuritySupervisor(viewer)
+        ? (user.suspended ? 'SUSPENDED' : (user.securityStatus || 'ACTIVE'))
+        : null,
 
     bank:
       self || canSeeOtherNames
@@ -928,6 +948,177 @@ function addAuditLog(
 
   state.cia_audit_logs =
     state.cia_audit_logs.slice(0, 500);
+}
+
+function recordSecurityEvent({
+  actor = null,
+  target = null,
+  action,
+  type = 'SECURITY',
+  level = 1,
+  reason = '',
+  status = 'REVIEW_REQUIRED',
+  relatedId = null,
+  notificationCount = null
+}) {
+  const timestamp = now();
+  const incident = {
+    id: makeId('SEC'),
+    userId: target?.id || actor?.id || null,
+    userName: clean(target?.identity?.fullName || target?.name || actor?.name || '', 120),
+    publicCode: clean(target?.publicCode || actor?.publicCode || '', 100),
+    rank: normalizeRank(target?.rank || actor?.rank || 'AGENT'),
+    timestamp,
+    at: timestamp,
+    type: clean(type, 80).toUpperCase(),
+    level: `LEVEL ${Math.max(1, Math.min(4, Number(level) || 1))}`,
+    severity: `LEVEL ${Math.max(1, Math.min(4, Number(level) || 1))}`,
+    action: clean(action, 80).toUpperCase(),
+    reason: redactSecurityReason(reason),
+    status: clean(status, 40).toUpperCase(),
+    ...(relatedId ? { relatedId: clean(relatedId, 200) } : {}),
+    ...(Number.isFinite(notificationCount) ? { notificationCount } : {})
+  };
+  state.cia_security_incidents.unshift(incident);
+  state.cia_security_incidents = state.cia_security_incidents.slice(0, 2000);
+  addAuditLog(
+    `SECURITY_${incident.action}`,
+    actor,
+    target,
+    `${incident.type} // ${incident.level} // ${incident.reason} // ${incident.status}`
+  );
+  saveState();
+  for (const targetSocket of io.sockets.sockets.values()) {
+    const viewer = targetSocket.userId ? getUserById(targetSocket.userId) : null;
+    if (viewer && isSecuritySupervisor(viewer)) {
+      targetSocket.emit('security:incident', securityEventForViewer(incident, viewer));
+    }
+  }
+  return incident;
+}
+
+function securityEventForViewer(incident, viewer) {
+  const result = {
+    id: incident.id,
+    publicCode: incident.publicCode,
+    rank: incident.rank,
+    timestamp: incident.timestamp || incident.at,
+    type: incident.type,
+    level: incident.level,
+    severity: incident.severity,
+    action: incident.action,
+    status: incident.status,
+    relatedId: incident.relatedId || null
+  };
+  if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
+  if (isChief(viewer)) {
+    result.userId = incident.userId;
+    result.userName = incident.userName;
+    result.reason = incident.reason;
+  }
+  return result;
+}
+
+async function notifySecurityLeadership(incident) {
+  const priority = incident.level === 'LEVEL 4' || incident.level === 'LEVEL 3'
+    ? 'CRITICAL'
+    : incident.level === 'LEVEL 2' ? 'HIGH' : 'NOTICE';
+  const notifications = await publishNotifications(state.cia_users, {
+    type: 'SECURITY',
+    title: 'SECURITY ALERT',
+    message: `${incident.publicCode ? `#${incident.publicCode}` : 'عضو'} — ${incident.type} — ${incident.level} — ${incident.action}`,
+    priority,
+    sourceUserId: incident.userId,
+    sourceCode: incident.publicCode,
+    relatedId: incident.id,
+    leadershipOnly: true,
+    metadata: {
+      incidentId: incident.id,
+      publicCode: incident.publicCode,
+      rank: incident.rank,
+      type: incident.type,
+      level: incident.level,
+      action: incident.action,
+      status: incident.status
+    }
+  });
+  if (notifications.length) {
+    recordSecurityEvent({
+      actor: null,
+      target: state.cia_users.find((user) => user.id === incident.userId) || null,
+      action: 'NOTIFICATION_CREATED',
+      type: 'SECURITY_NOTIFICATION',
+      level: Number(incident.level.replace('LEVEL ', '')) || 1,
+      reason: `Security alert delivered to ${notifications.length} leadership account(s).`,
+      status: 'DELIVERED',
+      relatedId: incident.id,
+      notificationCount: notifications.length
+    });
+  }
+  return notifications;
+}
+
+function endRestrictedSessions(user, reason) {
+  for (const socketId of [...(sessions.get(user.id) || [])]) {
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (!targetSocket) continue;
+    targetSocket.emit('security:restricted', {
+      status: user.securityStatus,
+      reason: clean(reason, 300)
+    });
+    targetSocket.disconnect(true);
+  }
+}
+
+async function recordModerationViolation(actor, detection, channel) {
+  actor.securityViolationCount = (Number(actor.securityViolationCount) || 0) + 1;
+  let level = detection.level;
+  if (level < 2 && actor.securityViolationCount >= 2) level = 2;
+  const status = level >= 3 ? 'SUSPENDED' : level === 2 ? 'SECURITY_RESTRICTED' : 'REVIEW_REQUIRED';
+  if (level >= 2) {
+    actor.securityStatus = status;
+    actor.suspended = level >= 3;
+    actor.activeService = false;
+    actor.radioOnline = false;
+    actor.status = level >= 3 ? 'موقوف أمنياً' : 'مقيّد أمنياً';
+    actor.suspensionReason = clean(detection.reason, 1000);
+  }
+  const incident = recordSecurityEvent({
+    actor,
+    target: actor,
+    action: 'MESSAGE_BLOCKED',
+    type: detection.type,
+    level,
+    reason: `${detection.reason} // CHANNEL_${clean(channel, 40).toUpperCase()}`,
+    status: level >= 2 ? status : 'REVIEW_REQUIRED'
+  });
+  if (level >= 2) endRestrictedSessions(actor, 'تم تقييد الحساب أمنيًا. راجع القيادة.');
+  await notifySecurityLeadership(incident);
+  saveState();
+  emitState();
+  return incident;
+}
+
+async function moderateOutgoingText(actor, text, channel) {
+  const detection = inspectMessage(text, process.env.CIA_SECURITY_BLOCKED_TERMS || '');
+  if (!detection) return false;
+  if (actor) {
+    await recordModerationViolation(actor, detection, channel);
+  } else {
+    const incident = recordSecurityEvent({
+      actor: null,
+      target: null,
+      action: 'MESSAGE_BLOCKED',
+      type: detection.type,
+      level: detection.level,
+      reason: `${detection.reason} // CHANNEL_${clean(channel, 40).toUpperCase()}`,
+      status: 'REVIEW_REQUIRED'
+    });
+    await notifySecurityLeadership(incident);
+    saveState();
+    emitState();
+  }
+  return true;
 }
 
 function chatKey(a, b) {
@@ -1413,7 +1604,7 @@ function requireSocketUser(socket) {
       ? getUserById(socket.userId)
       : null;
 
-  if (!user || user.suspended || user.approved === false || user.serviceApproved === false) {
+  if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false || user.serviceApproved === false) {
     return null;
   }
 
@@ -1428,7 +1619,7 @@ function requireAuthenticatedUser(socket) {
       ? getUserById(socket.userId)
       : null;
 
-  if (!user || user.suspended || user.approved === false) return null;
+  if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false) return null;
   return user;
 }
 
@@ -2382,6 +2573,18 @@ io.on(
       try {
         const notification = await notificationsStore.markRead(actor.id, clean(payload?.id, 200));
         if (!notification) return no(cb, 'الإشعار غير موجود أو لا تملك صلاحية عرضه.');
+        if (notification.type === 'SECURITY') {
+          recordSecurityEvent({
+            actor,
+            target: actor,
+            action: 'NOTIFICATION_READ',
+            type: 'SECURITY_NOTIFICATION',
+            level: 1,
+            reason: 'SECURITY_NOTIFICATION_READ',
+            status: 'READ',
+            relatedId: notification.id
+          });
+        }
         const result = { ok: true, notification };
         socket.emit('notification:read:result', result);
         await sendNotificationCounts(actor.id);
@@ -2396,7 +2599,19 @@ io.on(
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       try {
+        const before = await notificationsStore.countsForUser(actor.id);
         const changed = await notificationsStore.markAllRead(actor.id);
+        if (before.unreadSecurity > 0) {
+          recordSecurityEvent({
+            actor,
+            target: actor,
+            action: 'NOTIFICATIONS_MARKED_READ',
+            type: 'SECURITY_NOTIFICATION',
+            level: 1,
+            reason: `SECURITY_NOTIFICATIONS_READ_${before.unreadSecurity}`,
+            status: 'READ'
+          });
+        }
         const result = { ok: true, changed };
         socket.emit('notification:markAllRead:result', result);
         await sendNotificationCounts(actor.id);
@@ -2413,6 +2628,18 @@ io.on(
       try {
         const notification = await notificationsStore.acknowledge(actor.id, clean(payload?.id, 200));
         if (!notification) return no(cb, 'يمكن تأكيد الإشعارات الحرجة الخاصة بحسابك فقط.');
+        if (notification.type === 'SECURITY') {
+          recordSecurityEvent({
+            actor,
+            target: actor,
+            action: 'NOTIFICATION_ACKNOWLEDGED',
+            type: 'SECURITY_NOTIFICATION',
+            level: 1,
+            reason: 'SECURITY_NOTIFICATION_ACKNOWLEDGED',
+            status: 'ACKNOWLEDGED',
+            relatedId: notification.id
+          });
+        }
         const result = { ok: true, notification };
         socket.emit('notification:acknowledged', result);
         await sendNotificationCounts(actor.id);
@@ -2421,6 +2648,127 @@ io.on(
         console.error('[BLACK RIDGE] Critical acknowledgement failed:', error.message);
         return no(cb, 'تعذر تأكيد التنبيه الحرج.');
       }
+    });
+
+    socket.on('security:getLogs', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isSecuritySupervisor(actor)) {
+        const incident = recordSecurityEvent({
+          actor,
+          target: actor,
+          action: 'SECURITY_CENTER_ACCESS_DENIED',
+          type: 'ACCESS_CONTROL',
+          level: 2,
+          reason: 'UNAUTHORIZED_SECURITY_CENTER_ACCESS',
+          status: 'BLOCKED'
+        });
+        await notifySecurityLeadership(incident);
+        return no(cb, 'مركز الأمن متاح للقيادة الأمنية فقط.');
+      }
+      try {
+        const counts = await notificationsStore.countsForUser(actor.id);
+        const response = {
+          ok: true,
+          incidents: state.cia_security_incidents.slice(0, 300)
+            .map((incident) => securityEventForViewer(incident, actor)),
+          unreadSecurityNotifications: counts.unreadSecurity || 0
+        };
+        socket.emit('security:logs:result', response);
+        return ok(cb, response);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Security center read failed:', error.message);
+        return no(cb, 'تعذر تحميل سجل الأمن.');
+      }
+    });
+
+    socket.on('security:suspendMember', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) {
+        const incident = recordSecurityEvent({
+          actor,
+          target: actor,
+          action: 'UNAUTHORIZED_SUSPENSION_ATTEMPT',
+          type: 'ACCESS_CONTROL',
+          level: 3,
+          reason: 'ONLY_CIA_CHIEF_CAN_SUSPEND_MEMBERS',
+          status: 'BLOCKED'
+        });
+        await notifySecurityLeadership(incident);
+        return no(cb, 'إيقاف العضو أمنيًا متاح لـ CIA CHIEF فقط.');
+      }
+      const target = getUserById(clean(payload?.userId, 120));
+      const reason = redactSecurityReason(payload?.reason);
+      if (!target || target.id === actor.id) return no(cb, 'اختر عضوًا آخر لإيقافه.');
+      if (!reason) return no(cb, 'سبب الإيقاف مطلوب.');
+      if (target.securityStatus !== 'ACTIVE') return no(cb, 'العضو مقيّد أو موقوف بالفعل.');
+
+      target.securityStatus = 'SUSPENDED';
+      target.suspended = true;
+      target.suspensionReason = reason;
+      target.activeService = false;
+      target.online = false;
+      target.radioOnline = false;
+      target.status = 'موقوف أمنياً';
+      const incident = recordSecurityEvent({
+        actor,
+        target,
+        action: 'MEMBER_SUSPENDED',
+        type: 'MANUAL_REVIEW',
+        level: 2,
+        reason,
+        status: 'SUSPENDED'
+      });
+      endRestrictedSessions(target, 'تم إيقاف الحساب أمنيًا. راجع القيادة.');
+      await notifySecurityLeadership(incident);
+      saveState();
+      emitState();
+      return ok(cb, { action: 'suspend', user: publicUser(target, actor) });
+    });
+
+    socket.on('security:restoreMember', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const target = getUserById(clean(payload?.userId, 120));
+      if (!canRestoreSecurityMember(actor)) {
+        const incident = recordSecurityEvent({
+          actor,
+          target: actor,
+          action: 'UNAUTHORIZED_RESTORE_ATTEMPT',
+          type: 'ACCESS_CONTROL',
+          level: 3,
+          reason: 'ONLY_CIA_CHIEF_CAN_RESTORE_SECURITY_RESTRICTED_MEMBERS',
+          status: 'BLOCKED'
+        });
+        await notifySecurityLeadership(incident);
+        return no(cb, 'إعادة العضو من الإيقاف الأمني متاحة لـ CIA CHIEF فقط.');
+      }
+      if (!target || target.id === actor.id) return no(cb, 'لا يمكن استعادة هذا الحساب.');
+      if (target.securityStatus === 'ACTIVE' && !target.suspended) {
+        return no(cb, 'الحساب غير موقوف أو مقيّد أمنيًا.');
+      }
+
+      target.securityStatus = 'ACTIVE';
+      target.suspended = false;
+      target.suspensionReason = '';
+      target.activeService = false;
+      target.online = false;
+      target.radioOnline = false;
+      target.status = 'خارج الخدمة';
+      const incident = recordSecurityEvent({
+        actor,
+        target,
+        action: 'MEMBER_RESTORED',
+        type: 'MANUAL_REVIEW',
+        level: 1,
+        reason: 'RESTORED_BY_CIA_CHIEF',
+        status: 'RESTORED'
+      });
+      await notifySecurityLeadership(incident);
+      saveState();
+      emitState();
+      return ok(cb, { action: 'restore', user: publicUser(target, actor) });
     });
 
     socket.on(
@@ -3028,7 +3376,7 @@ io.on(
                 (candidate) =>
                   lower(candidate.name) === lower(name) &&
                   candidate.secretCode === code &&
-                  candidate.suspended === true
+                   (candidate.suspended === true || candidate.securityStatus !== 'ACTIVE')
               );
             const rejected =
               state.cia_users.find(
@@ -3049,7 +3397,7 @@ io.on(
 
             const message =
               suspended
-                ? `تم فصل هذه الشخصية من الخدمة. ${suspended.suspensionReason ? `سبب الفصل: ${suspended.suspensionReason}` : 'راجع القيادة لمعرفة سبب الفصل.'}`
+                ? `تم تقييد هذه الشخصية أمنيًا. ${suspended.suspensionReason ? `سبب الإجراء: ${suspended.suspensionReason}` : 'راجع القيادة لمعرفة الإجراء.'}`
                 : rejected
                 ? rejected.rejectionMessage
                 : pending
@@ -5209,7 +5557,6 @@ socket.on('member:saveIdentity', (payload, cb) => {
         target.serviceApprovalPending = false;
         target.identityApprovalPending = false;
         target.identityRequired = true;
-        target.suspended = false;
         target.status = 'بانتظار إكمال الهوية';
         state.cia_character_queue = state.cia_character_queue.filter((item) => item.id !== request.id);
         addAuditLog('اعتماد شخصية', actor, target, `تم اعتماد الشخصية ${target.name}.`);
@@ -6264,7 +6611,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       }
     );
 
-    socket.on('morse:translate', (payload, cb) => {
+    socket.on('morse:translate', async (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لاستخدام مورس.');
       if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
@@ -6272,6 +6619,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const source = clean(payload?.text, 500);
       if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
       if (!source) return no(cb, 'اكتب النص أو شفرة مورس أولاً.');
+      if (await moderateOutgoingText(actor, source, 'MORSE')) {
+        return no(cb, 'تم حظر النص بواسطة مركز الأمن.');
+      }
 
       let translation;
       if (direction === 'encode') {
@@ -8542,16 +8892,42 @@ socket.on('member:saveIdentity', (payload, cb) => {
       }
     });
 
-    socket.on('admin:reactivateMember', (payload, cb) => {
-      const actor = requireSocketUser(socket);
+    socket.on('admin:reactivateMember', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
       if (!actor || !target) return no(cb, 'الشخصية غير موجودة.');
-      if (!canManageMember(actor, target)) {
+      if (!canRestoreSecurityMember(actor)) {
+        const incident = recordSecurityEvent({
+          actor,
+          target: actor,
+          action: 'UNAUTHORIZED_RESTORE_ATTEMPT',
+          type: 'ACCESS_CONTROL',
+          level: 3,
+          reason: 'ONLY_CIA_CHIEF_CAN_RESTORE_MEMBERS',
+          status: 'BLOCKED'
+        });
+        await notifySecurityLeadership(incident);
         return no(cb, 'لا تملك صلاحية إعادة هذه الشخصية للخدمة.');
       }
-      target.activeService = true;
+      if (target.id === actor.id) return no(cb, 'لا يمكن استعادة حسابك بهذه العملية.');
+      if (target.securityStatus === 'ACTIVE' && !target.suspended) {
+        return no(cb, 'الحساب غير موقوف أو مقيّد أمنيًا.');
+      }
+      target.securityStatus = 'ACTIVE';
+      target.activeService = false;
       target.suspended = false;
-      target.status = 'في الخدمة';
+      target.suspensionReason = '';
+      target.status = 'خارج الخدمة';
+      const incident = recordSecurityEvent({
+        actor,
+        target,
+        action: 'MEMBER_RESTORED',
+        type: 'MANUAL_REVIEW',
+        level: 1,
+        reason: 'RESTORED_BY_CIA_CHIEF',
+        status: 'RESTORED'
+      });
+      await notifySecurityLeadership(incident);
       saveState();
       emitState();
       const result = ok(cb, { action: 'reactivate', user: publicUser(target, actor) });
@@ -8559,16 +8935,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return result;
     });
 
-    socket.on('admin:kickMember', (payload, cb) => {
+    socket.on('admin:kickMember', async (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-      const reason = clean(payload?.reason, 1000);
+      const reason = redactSecurityReason(payload?.reason);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
       target.suspended = true;
+      target.securityStatus = 'SUSPENDED';
       target.suspensionReason = reason;
       target.online = false;
       target.status = 'مفصول';
@@ -8578,7 +8955,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
           targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.', reason });
         }
       }
-      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${reason}`);
+      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${redactSecurityReason(reason)}`);
+      const incident = recordSecurityEvent({
+        actor,
+        target,
+        action: 'MEMBER_SUSPENDED',
+        type: 'ADMINISTRATIVE_SUSPENSION',
+        level: 2,
+        reason,
+        status: 'SUSPENDED'
+      });
+      await notifySecurityLeadership(incident);
       saveState();
       emitState();
       const result = ok(cb, { action: 'kick', user: publicUser(target, actor) });
@@ -8586,16 +8973,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return result;
     });
 
-    socket.on('admin:kickUser', (payload, cb) => {
+    socket.on('admin:kickUser', async (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       const target = getUserById(clean(payload?.userId || payload?.memberId, 120));
-      const reason = clean(payload?.reason, 1000);
+      const reason = redactSecurityReason(payload?.reason);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
       target.suspended = true;
+      target.securityStatus = 'SUSPENDED';
       target.suspensionReason = reason;
       target.online = false;
       target.status = 'مفصول';
@@ -8605,18 +8993,31 @@ socket.on('member:saveIdentity', (payload, cb) => {
           targetSocket.emit('member:kicked', { message: 'تم فصل الشخصية من الخدمة.', reason });
         }
       }
-      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${reason}`);
+      addAuditLog('فصل من الخدمة', actor, target, `سبب الفصل: ${redactSecurityReason(reason)}`);
+      const incident = recordSecurityEvent({
+        actor,
+        target,
+        action: 'MEMBER_SUSPENDED',
+        type: 'ADMINISTRATIVE_SUSPENSION',
+        level: 2,
+        reason,
+        status: 'SUSPENDED'
+      });
+      await notifySecurityLeadership(incident);
       saveState();
       emitState();
       return ok(cb, { action: 'kick', user: publicUser(target, actor) });
     });
 
-    socket.on('radio:text', (payload, cb) => {
+    socket.on('radio:text', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
       const text = clean(payload?.text || payload?.message, 2000);
       if (!text) return no(cb, 'الرسالة فارغة.');
+      if (await moderateOutgoingText(actor, text, 'RADIO')) {
+        return no(cb, 'تم حظر الرسالة بواسطة مركز الأمن.');
+      }
       const packet = {
         id: makeId('RADIO'),
         channel,
@@ -8630,7 +9031,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { message: packet });
     });
 
-    socket.on('radio:code', (payload, cb) => {
+    socket.on('radio:code', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
@@ -8642,6 +9043,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         meaning: clean(payload?.meaning, 200)
       };
       if (!packet.code) return no(cb, 'كود الراديو غير موجود.');
+      if (await moderateOutgoingText(actor, `${packet.code} ${packet.meaning}`, 'RADIO_CODE')) {
+        return no(cb, 'تم حظر كود الراديو بواسطة مركز الأمن.');
+      }
       emitRadioToChannel(channel, 'radio:code', packet);
       return ok(cb, { message: packet });
     });
@@ -8769,6 +9173,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const text = clean(payload?.text || payload?.message, 4000);
       const image = clean(payload?.image, 8 * 1024 * 1024);
       if (!text && !image) return no(cb, 'الرسالة فارغة.');
+      if (text && await moderateOutgoingText(actor, text, mode === 'private' ? 'PRIVATE_CHAT' : 'CHAT')) {
+        return no(cb, 'تم حظر الرسالة بواسطة مركز الأمن.');
+      }
 
       const message = {
         id: makeId(mode === 'private' ? 'PCHAT' : 'CHAT'),
@@ -8848,13 +9255,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { id: messageId });
     });
 
-    socket.on('support:send', (payload, cb) => {
+    socket.on('support:send', async (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       const senderName = actor
         ? actor.name
         : clean(payload?.name || payload?.characterName || 'شخصية غير معتمدة', 120);
       const text = clean(payload?.text || payload?.message, 3000);
       if (!text) return no(cb, 'اكتب الاستفسار أولاً.');
+      if (await moderateOutgoingText(actor, text, 'SUPPORT')) {
+        return no(cb, 'تم حظر الاستفسار بواسطة مركز الأمن.');
+      }
 
       let threadId = clean(payload?.threadId, 120);
       let ownerToken = clean(payload?.ownerToken, 200);
@@ -8915,7 +9325,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { threadId, messages });
     });
 
-    socket.on('support:reply', (payload, cb) => {
+    socket.on('support:reply', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor || !isLeadership(actor)) {
         return no(cb, 'الرد على استفسارات الاعتماد متاح للقائد وSenior Commander CIA فقط.');
@@ -8923,6 +9333,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const text = clean(payload?.text || payload?.message, 3000);
       const threadId = clean(payload?.threadId, 120);
       if (!text || !threadId) return no(cb, 'بيانات الرد غير مكتملة.');
+      if (await moderateOutgoingText(actor, text, 'SUPPORT_REPLY')) {
+        return no(cb, 'تم حظر الرد بواسطة مركز الأمن.');
+      }
       const original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
       if (!original) return no(cb, 'محادثة الاستفسار غير موجودة.');
       const message = {

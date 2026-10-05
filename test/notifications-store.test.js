@@ -46,12 +46,24 @@ test('notification pages, counts, and summaries are isolated to the authenticate
   assert.equal(page.hasMore, true);
   assert.equal(page.rows[0].userId, 'agent-a');
   assert.deepEqual(await store.countsForUser('agent-a'), {
-    all: 2, critical: 1, messages: 1, sos: 1, operations: 0, finance: 0, system: 0, unread: 2, unreadCritical: 1
+    all: 2, critical: 1, messages: 1, sos: 1, operations: 0, finance: 0, system: 0, unread: 2, unreadCritical: 1, unreadSecurity: 0
   });
   const summary = await store.summarySince('agent-a', new Date(Date.now() - 60000).toISOString());
   assert.equal(summary.total, 2);
   assert.equal(summary.attention, 1);
   assert.equal(summary.byType.SOS, 1);
+});
+
+test('counts unread security alerts separately and only for their owner', async () => {
+  const { store } = makeStore();
+  await store.createMany([
+    notification('security-unread', 'chief-a', 'HIGH', 'SECURITY'),
+    notification('security-read', 'chief-a', 'NOTICE', 'SECURITY'),
+    notification('security-other', 'chief-b', 'HIGH', 'SECURITY')
+  ]);
+  await store.markRead('chief-a', 'security-read');
+  assert.equal((await store.countsForUser('chief-a')).unreadSecurity, 1);
+  assert.equal((await store.countsForUser('chief-b')).unreadSecurity, 1);
 });
 
 test('read and acknowledge mutations cannot cross users; reading does not acknowledge critical alerts', async () => {
@@ -111,7 +123,7 @@ test('PostgreSQL queries initialize the schema and scope reads and mutations to 
     async query(sql, params = []) {
       calls.push({ sql, params });
       if (sql.includes('COUNT(*) FILTER')) {
-        return { rows: [{ all: '1', critical: '1', messages: '0', sos: '1', operations: '0', finance: '0', system: '0', unread: '1', unreadCritical: '1' }] };
+         return { rows: [{ all: '1', critical: '1', messages: '0', sos: '1', operations: '0', finance: '0', system: '0', unread: '1', unreadCritical: '1', unreadSecurity: '0' }] };
       }
       return { rows: [] };
     }
