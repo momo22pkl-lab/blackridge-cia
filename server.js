@@ -25,6 +25,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
+const { NotificationsStore } = require('./notifications-store');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 
@@ -54,6 +55,7 @@ function prepareFileStorage() {
 
 let postgresPool = null;
 let stateStore = null;
+let notificationsStore = null;
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -111,6 +113,7 @@ const EMPTY_STATE = {
   cia_audit_logs: [],
   cia_attendance: [],
   cia_operations: [],
+  cia_notifications: [],
   cia_battalions: [],
   ibp_deployments: [],
   ibp_operations: [],
@@ -173,7 +176,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
     'cia_morse_logs', 'cia_audit_logs', 'cia_attendance', 'cia_operations', 'cia_battalions',
-    'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports'
+    'cia_notifications', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
@@ -246,6 +249,112 @@ const socketToUser = new Map();
 const radioChannels = new Map();
 const pendingRequestSockets = new Map();
 const supportThreadSockets = new Map();
+
+function notificationCanReach(user, details) {
+  if (!user || user.suspended || user.approved === false || user.serviceApproved === false) return false;
+  const targetUserId = details.targetUserId ? String(details.targetUserId) : '';
+  const sourceUserId = details.sourceUserId ? String(details.sourceUserId) : '';
+  if (['SECURITY', 'SYSTEM'].includes(details.type) && details.leadershipOnly === true) return isLeadership(user);
+  if (details.type === 'MESSAGE' || details.type === 'SALARY' || details.type === 'TRANSACTION' || details.type === 'FINANCE') {
+    return !!targetUserId && user.id === targetUserId;
+  }
+  if (details.type === 'SOS') return user.id !== sourceUserId;
+  if (details.type === 'OPERATION') {
+    const ownCode = clean(user.publicCode, 100).toUpperCase();
+    const memberCodes = Array.isArray(details.memberCodes) ? details.memberCodes : [];
+    return user.id !== sourceUserId && (rankLevel(user.rank) >= 2 ||
+      (!!ownCode && memberCodes.some((code) => clean(code, 100).toUpperCase() === ownCode)));
+  }
+  if (details.type === 'CASE') {
+    const ownCode = clean(user.publicCode, 100).toUpperCase();
+    return isLeadership(user) ||
+      (!!ownCode && clean(details.createdByCode, 100).toUpperCase() === ownCode) ||
+      (!!ownCode && clean(details.assignedCode, 100).toUpperCase() === ownCode);
+  }
+  if (details.type === 'REPORT') {
+    return isLeadership(user) ||
+      (!!targetUserId && user.id === targetUserId) ||
+      details.isSecret !== true;
+  }
+  if (details.type === 'LOGIN') return isLeadership(user) && user.id !== sourceUserId;
+  if (['RANK', 'PERMISSION', 'PROFILE', 'REQUEST', 'SECURITY'].includes(details.type)) {
+    return (!!targetUserId && user.id === targetUserId) ||
+      (details.leadershipOnly === true && isLeadership(user));
+  }
+  return (!!targetUserId && user.id === targetUserId) ||
+    (details.leadershipOnly === true && isLeadership(user));
+}
+
+async function sendNotificationCounts(userId) {
+  if (!notificationsStore || !userId) return null;
+  try {
+    try {
+      await notificationsStore.markDelivered(userId);
+    } catch (error) {
+      console.error('[BLACK RIDGE] Could not mark queued notifications delivered:', error.message);
+    }
+    const counts = await notificationsStore.countsForUser(userId);
+    for (const socketId of sessions.get(userId) || []) {
+      const targetSocket = io.sockets.sockets.get(socketId);
+      if (targetSocket) targetSocket.emit('notification:count', counts);
+    }
+    return counts;
+  } catch (error) {
+    console.error('[BLACK RIDGE] Could not load notification counts:', error.message);
+    return null;
+  }
+}
+
+async function publishNotifications(recipients, details = {}) {
+  if (!notificationsStore || !Array.isArray(recipients) || !recipients.length) return [];
+  const seen = new Set();
+  const targets = recipients.filter((user) => {
+    if (!user || seen.has(user.id) || !notificationCanReach(user, details)) return false;
+    seen.add(user.id);
+    return true;
+  });
+  if (!targets.length) return [];
+  const priority = ['CRITICAL', 'HIGH', 'NOTICE', 'SYSTEM'].includes(String(details.priority || '').toUpperCase())
+    ? String(details.priority).toUpperCase()
+    : 'NOTICE';
+  const source = details.sourceUserId ? state.cia_users.find((user) => user.id === details.sourceUserId) : null;
+  const records = targets.map((user) => ({
+    id: makeId('NTF'),
+    userId: user.id,
+    type: clean(details.type || 'SYSTEM', 40).toUpperCase(),
+    title: clean(details.title || 'BLACK RIDGE INTELLIGENCE', 180),
+    message: clean(details.message || '', 1000),
+    priority,
+    status: (sessions.get(user.id)?.size || 0) > 0 ? 'DELIVERED' : 'SENT',
+    sourceUserId: source?.id || null,
+    sourceCode: clean(details.sourceCode || source?.publicCode || '', 100),
+    relatedId: clean(details.relatedId || '', 200) || null,
+    metadata: {
+      ...(details.metadata && typeof details.metadata === 'object' && !Array.isArray(details.metadata)
+        ? details.metadata
+        : {}),
+      ...(source && (isChief(user) || user.id === source.id || details.sourceNameVisible === true)
+        ? { sourceName: clean(source.identity?.fullName || source.name, 120) }
+        : {})
+    }
+  }));
+  try {
+    const created = await notificationsStore.createMany(records);
+    const countsToRefresh = new Set();
+    for (const notification of created) {
+      countsToRefresh.add(notification.userId);
+      for (const socketId of sessions.get(notification.userId) || []) {
+        const targetSocket = io.sockets.sockets.get(socketId);
+        if (targetSocket) targetSocket.emit('notification:new', notification);
+      }
+    }
+    await Promise.all([...countsToRefresh].map(sendNotificationCounts));
+    return created;
+  } catch (error) {
+    console.error('[BLACK RIDGE] Notification persistence failed:', error.message);
+    return [];
+  }
+}
 
 function missionMapColor(value) {
   const color = String(value || '').trim();
@@ -485,6 +594,9 @@ function normalizeUser(user) {
   user.loginCount = Number(user.loginCount || 0);
   user.lastLoginAt = user.lastLoginAt || null;
   user.lastLogoutAt = user.lastLogoutAt || null;
+  user.lastSeenAt = user.lastSeenAt || user.lastLogoutAt || user.lastLoginAt || null;
+  user.lastNotificationCheckAt = user.lastNotificationCheckAt || null;
+  user.notificationSessionSinceAt = user.notificationSessionSinceAt || null;
 
   user.radioChannel = clean(user.radioChannel || 'CH-1', 50);
   user.radioOnline = user.radioOnline === true;
@@ -1223,8 +1335,15 @@ function markLogin(socket, user, options = {}) {
   user.radioOnline = false;
 
   if (first) {
+    const sessionStartedAt = now();
+    const priorSessionAt = user.lastSeenAt || user.lastLogoutAt || user.lastLoginAt || null;
+    if (options.resumeSession !== true || !user.notificationSessionSinceAt) {
+      user.notificationSessionSinceAt = priorSessionAt;
+    }
+    socket.notificationSessionSinceAt = options.resumeSession === true ? null : user.notificationSessionSinceAt;
+    user.lastSeenAt = sessionStartedAt;
     user.loginCount += 1;
-    user.lastLoginAt = now();
+    user.lastLoginAt = sessionStartedAt;
 
     addAuditLog(
       'تسجيل الدخول',
@@ -1268,6 +1387,7 @@ function markLogout(socket) {
     user.online = false;
     user.radioOnline = false;
     user.lastLogoutAt = now();
+    user.lastSeenAt = user.lastLogoutAt;
 
     addAuditLog(
       'تسجيل الخروج',
@@ -2181,6 +2301,128 @@ io.on(
       snapshot(null)
     );
 
+    socket.on('notification:count', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const counts = await notificationsStore.countsForUser(actor.id);
+        socket.emit('notification:count', counts);
+        return ok(cb, { counts });
+      } catch (error) {
+        console.error('[BLACK RIDGE] Notification count query failed:', error.message);
+        return no(cb, 'تعذر تحميل عداد الإشعارات.');
+      }
+    });
+
+    socket.on('notification:list', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const result = await notificationsStore.listForUser({
+          userId: actor.id,
+          category: payload?.category,
+          search: payload?.search,
+          priority: payload?.priority,
+          type: payload?.type,
+          limit: payload?.limit,
+          offset: payload?.offset
+        });
+        actor.lastNotificationCheckAt = now();
+        saveState();
+        const response = {
+          ok: true,
+          rows: result.rows,
+          hasMore: result.hasMore,
+          offset: Math.max(0, Number(payload?.offset) || 0),
+          counts: await notificationsStore.countsForUser(actor.id)
+        };
+        socket.emit('notification:list:result', response);
+        return ok(cb, response);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Notification list query failed:', error.message);
+        return no(cb, 'تعذر تحميل مركز الإشعارات.');
+      }
+    });
+
+    socket.on('notification:since', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const since = actor.notificationSessionSinceAt || null;
+        const [summary, result] = await Promise.all([
+          notificationsStore.summarySince(actor.id, since),
+          notificationsStore.listForUser({
+            userId: actor.id,
+            since,
+            limit: payload?.limit,
+            offset: payload?.offset
+          })
+        ]);
+        actor.lastNotificationCheckAt = now();
+        saveState();
+        const response = {
+          ok: true,
+          since,
+          summary,
+          rows: result.rows,
+          hasMore: result.hasMore,
+          offset: Math.max(0, Number(payload?.offset) || 0)
+        };
+        socket.emit('notification:since:result', response);
+        return ok(cb, response);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Missed-notification query failed:', error.message);
+        return no(cb, 'تعذر تحميل ملخص الغياب.');
+      }
+    });
+
+    socket.on('notification:read', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const notification = await notificationsStore.markRead(actor.id, clean(payload?.id, 200));
+        if (!notification) return no(cb, 'الإشعار غير موجود أو لا تملك صلاحية عرضه.');
+        const result = { ok: true, notification };
+        socket.emit('notification:read:result', result);
+        await sendNotificationCounts(actor.id);
+        return ok(cb, result);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Mark-read update failed:', error.message);
+        return no(cb, 'تعذر تحديث حالة الإشعار.');
+      }
+    });
+
+    socket.on('notification:markAllRead', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const changed = await notificationsStore.markAllRead(actor.id);
+        const result = { ok: true, changed };
+        socket.emit('notification:markAllRead:result', result);
+        await sendNotificationCounts(actor.id);
+        return ok(cb, result);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Mark-all-read update failed:', error.message);
+        return no(cb, 'تعذر تحديث الإشعارات.');
+      }
+    });
+
+    socket.on('notification:acknowledge', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      try {
+        const notification = await notificationsStore.acknowledge(actor.id, clean(payload?.id, 200));
+        if (!notification) return no(cb, 'يمكن تأكيد الإشعارات الحرجة الخاصة بحسابك فقط.');
+        const result = { ok: true, notification };
+        socket.emit('notification:acknowledged', result);
+        await sendNotificationCounts(actor.id);
+        return ok(cb, result);
+      } catch (error) {
+        console.error('[BLACK RIDGE] Critical acknowledgement failed:', error.message);
+        return no(cb, 'تعذر تأكيد التنبيه الحرج.');
+      }
+    });
+
     socket.on(
       'shared:data:seed',
       (seed, cb) => {
@@ -2760,7 +3002,7 @@ io.on(
 
     socket.on(
       'auth:login',
-      (payload, cb) => {
+      async (payload, cb) => {
         try {
           const name =
             clean(
@@ -2833,7 +3075,9 @@ io.on(
             user,
             {
               resumeService:
-                payload?.resumeService === true
+                payload?.resumeService === true,
+              resumeSession:
+                payload?.resumeSession === true
             }
           );
 
@@ -2846,6 +3090,37 @@ io.on(
             salary !== null
           ) {
             saveState();
+            await publishNotifications([user], {
+              type: 'SALARY',
+              title: 'FINANCIAL // SALARY DEPOSIT',
+              message: `تم إيداع راتبك: ${salary}$`,
+              priority: 'NOTICE',
+              targetUserId: user.id,
+              relatedId: user.id,
+              metadata: { amount: salary }
+            });
+          }
+
+          if (payload?.resumeSession !== true) {
+            await publishNotifications(state.cia_users, {
+              type: 'LOGIN',
+              title: 'IMPORTANT SIGN-IN',
+              message: `تسجيل دخول جديد من ${user.publicCode || 'حساب CIA'}.`,
+              priority: 'SYSTEM',
+              sourceUserId: user.id,
+              relatedId: user.id,
+              leadershipOnly: true
+            });
+          }
+
+          let welcomeBack = null;
+          if (payload?.resumeSession !== true && socket.notificationSessionSinceAt && notificationsStore) {
+            try {
+              const summary = await notificationsStore.summarySince(user.id, socket.notificationSessionSinceAt);
+              if (summary.total > 0) welcomeBack = summary;
+            } catch (error) {
+              console.error('[BLACK RIDGE] Welcome-back summary query failed:', error.message);
+            }
           }
 
           const result =
@@ -2867,7 +3142,10 @@ io.on(
 
                 serviceRequired:
                   user.activeService !== true ||
-                  user.serviceApproved === false
+                  user.serviceApproved === false,
+
+                welcomeBack,
+                resumeSession: payload?.resumeSession === true
               }
             );
 
@@ -2876,6 +3154,7 @@ io.on(
             result
           );
 
+          await sendNotificationCounts(user.id);
           emitState();
         } catch (error) {
           const result =
@@ -3212,7 +3491,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'admin:action',
-      (payload, cb) => {
+      async (payload, cb) => {
         try {
           const actor =
             requireAuthenticatedUser(socket);
@@ -3762,6 +4041,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
             );
 
             saveState();
+            await publishNotifications(state.cia_users, {
+              type: 'RANK',
+              title: 'RANK CHANGE',
+              message: `تم تحديث رتبتك: ${rankLabel(oldRank)} ← ${rankLabel(desiredRank)}.`,
+              priority: 'HIGH',
+              sourceUserId: actor.id,
+              targetUserId: target.id,
+              relatedId: target.id,
+              leadershipOnly: true,
+              metadata: { oldRank, newRank: desiredRank }
+            });
             emitState();
 
             return ok(
@@ -4971,7 +5261,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { bank, self: bank });
     });
 
-    socket.on('bank:setBalance', (payload, cb) => {
+    socket.on('bank:setBalance', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const target = getUserById(clean(payload?.memberId || payload?.userId, 120)) ||
@@ -4986,12 +5276,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
       target.bank.balance = amount;
       addAuditLog('تعديل رصيد بنكي', actor, target, `تم ضبط الرصيد إلى ${amount}.`);
       saveState();
+      await publishNotifications([target], {
+        type: 'TRANSACTION',
+        title: 'FINANCIAL // BALANCE UPDATE',
+        message: 'تم تحديث رصيد حسابك البنكي.',
+        priority: 'NOTICE',
+        sourceUserId: actor.id,
+        targetUserId: target.id,
+        relatedId: target.id,
+        metadata: { action: 'balance_update', amount }
+      });
       emitState();
       const bank = bankView(target, actor);
       return ok(cb, { bank, self: target.id === actor.id ? bank : bankView(actor, actor) });
     });
 
-    socket.on('bank:manage', (payload, cb) => {
+    socket.on('bank:manage', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const action = clean(payload?.action, 50).toLowerCase();
@@ -5018,6 +5318,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
       addAuditLog('إدارة حساب بنكي', actor, target, `الإجراء: ${action}.`);
       saveState();
+      const isMoneyMovement = ['withdraw', 'deduct'].includes(action);
+      const isAccountControl = ['freeze', 'unfreeze', 'stop-account', 'start-account'].includes(action);
+      if (isMoneyMovement || isAccountControl) {
+        await publishNotifications([target], {
+          type: isMoneyMovement ? 'TRANSACTION' : 'FINANCE',
+          title: isMoneyMovement ? 'FINANCIAL // WITHDRAWAL' : 'FINANCIAL // ACCOUNT STATUS',
+          message: isMoneyMovement
+            ? `تم سحب ${Math.floor(Number(payload?.amount) || 0)}$ من حسابك البنكي.`
+            : `تم تحديث حالة حسابك البنكي: ${action}.`,
+          priority: action === 'freeze' || action === 'stop-account' ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          targetUserId: target.id,
+          relatedId: target.id,
+          metadata: { action, amount: isMoneyMovement ? Math.floor(Number(payload?.amount) || 0) : null }
+        });
+      }
       emitState();
       const bank = bankView(target, actor);
       const result = ok(cb, { bank, self: target.id === actor.id ? bank : bankView(actor, actor) });
@@ -5025,7 +5341,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return result;
     });
 
-    socket.on('bank:paySalary', (payload, cb) => {
+    socket.on('bank:paySalary', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const target = getUserByPublicCode(payload?.targetCode || payload?.publicCode || payload?.code);
@@ -5046,6 +5362,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
       target.bank.salaryClaimedToday = true;
       addAuditLog('صرف راتب يدوي', actor, target, `تم صرف ${amount}.`);
       saveState();
+      await publishNotifications([target], {
+        type: 'SALARY',
+        title: 'FINANCIAL // SALARY DEPOSIT',
+        message: `تم إيداع راتبك: ${amount}$`,
+        priority: 'NOTICE',
+        sourceUserId: actor.id,
+        targetUserId: target.id,
+        relatedId: target.id,
+        metadata: { amount }
+      });
       emitState();
       const bank = bankView(target, actor);
       const result = ok(cb, {
@@ -5135,7 +5461,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'bank:claimSalary',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -5186,6 +5512,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
 
         saveState();
+        await publishNotifications([actor], {
+          type: 'SALARY',
+          title: 'FINANCIAL // SALARY DEPOSIT',
+          message: `تم إيداع راتبك: ${amount}$`,
+          priority: 'NOTICE',
+          targetUserId: actor.id,
+          relatedId: actor.id,
+          metadata: { amount }
+        });
         emitState();
 
         return ok(
@@ -6214,7 +6549,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'sos:broadcast',
-      (payload, cb) => {
+      async (payload, cb) => {
         try {
           const actor =
             requireSocketUser(socket);
@@ -6477,6 +6812,18 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
 
           saveState();
+
+          await publishNotifications(state.cia_users, {
+            type: 'SOS',
+            title: 'CRITICAL — S.O.S RECEIVED',
+            message: `${actor.publicCode || 'Agent'} أرسل استغاثة${location?.label ? ` من ${location.label}` : ''}${count !== null ? ` — عدد الأفراد: ${count}` : ''}.`,
+            priority: 'CRITICAL',
+            sourceUserId: actor.id,
+            sourceCode: actor.publicCode,
+            sourceNameVisible: true,
+            relatedId: alert.id,
+            metadata: { location: location?.label || '', count }
+          });
 
           io.emit(
             'sos:alert',
@@ -6913,7 +7260,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'report:create',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7028,6 +7375,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
+        await publishNotifications(state.cia_users, {
+          type: 'REPORT',
+          title: 'NEW REPORT',
+          message: `تم إنشاء تقرير جديد: ${report.title}`,
+          priority: report.isSecret ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          targetUserId: actor.id,
+          sourceNameVisible: true,
+          relatedId: report.id,
+          isSecret: report.isSecret,
+          metadata: { reportType: report.type, status: report.status }
+        });
+
         io.emit(
           'report:new',
           report
@@ -7046,7 +7406,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'report:update',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7124,6 +7484,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
+        const reportOwner = getUserByPublicCode(report.fromCode);
+        await publishNotifications(state.cia_users, {
+          type: 'REPORT',
+          title: report.isSecret ? 'CLASSIFIED REPORT UPDATED' : 'REPORT UPDATED',
+          message: `تم تحديث التقرير${report.status ? ` — الحالة: ${report.status}` : ''}.`,
+          priority: report.isSecret ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          targetUserId: reportOwner?.id || null,
+          relatedId: report.id,
+          isSecret: report.isSecret === true,
+          metadata: { reportType: report.type, status: report.status }
+        });
+
         io.emit(
           'report:update',
           report
@@ -7146,7 +7519,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'case:create',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7238,6 +7611,18 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
+        await publishNotifications(state.cia_users, {
+          type: 'CASE',
+          title: 'NEW CASE FILE',
+          message: `تم فتح قضية جديدة: ${caseItem.caseNumber} — ${caseItem.title}`,
+          priority: 'HIGH',
+          sourceUserId: actor.id,
+          relatedId: caseItem.id,
+          createdByCode: caseItem.createdByCode,
+          assignedCode: caseItem.assignedCode,
+          metadata: { caseNumber: caseItem.caseNumber, classification: caseItem.classification }
+        });
+
         io.emit(
           'case:new',
           caseItem
@@ -7257,7 +7642,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'case:update',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7367,6 +7752,18 @@ socket.on('member:saveIdentity', (payload, cb) => {
         );
 
         saveState();
+
+        await publishNotifications(state.cia_users, {
+          type: 'CASE',
+          title: 'CASE FILE UPDATED',
+          message: `تم تحديث القضية ${caseItem.caseNumber}: ${caseItem.title}`,
+          priority: 'HIGH',
+          sourceUserId: actor.id,
+          relatedId: caseItem.id,
+          createdByCode: caseItem.createdByCode,
+          assignedCode: caseItem.assignedCode,
+          metadata: { caseNumber: caseItem.caseNumber, status: caseItem.status }
+        });
 
         io.emit(
           'case:update',
@@ -7485,7 +7882,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'operation:create',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7615,6 +8012,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
+        await publishNotifications(state.cia_users, {
+          type: 'OPERATION',
+          title: 'NEW OPERATION ASSIGNMENT',
+          message: `تمت إضافتك إلى عملية جديدة: ${operation.missionNumber} — ${operation.title}`,
+          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          relatedId: operation.id,
+          memberCodes: operation.memberCodes,
+          metadata: { missionNumber: operation.missionNumber, risk: operation.risk }
+        });
+
         emitOperationState();
 
         return ok(
@@ -7696,7 +8104,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'operation:update',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7735,6 +8143,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           return no(cb, 'التحديثات الميدانية متاحة لمنشئ المهمة والقيادة والمشارك المحدد فقط.');
         }
 
+        const previousMemberCodes = Array.isArray(operation.memberCodes) ? [...operation.memberCodes] : [];
         let selectedAgents = null;
         if (Array.isArray(payload?.memberCodes)) {
           const selectedCodes = [...new Set(
@@ -7817,6 +8226,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
         saveState();
 
+        await publishNotifications(state.cia_users, {
+          type: 'OPERATION',
+          title: 'OPERATION UPDATED',
+          message: `تم تحديث العملية ${operation.missionNumber} — ${operation.title}.`,
+          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          relatedId: operation.id,
+          memberCodes: [...new Set([...previousMemberCodes, ...(operation.memberCodes || [])])],
+          metadata: { missionNumber: operation.missionNumber, risk: operation.risk, status: operation.status }
+        });
+
         emitOperationState();
 
         return ok(
@@ -7834,7 +8254,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
     socket.on(
       'operation:addNote',
-      (payload, cb) => {
+      async (payload, cb) => {
         const actor =
           requireSocketUser(socket);
 
@@ -7914,6 +8334,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
           now();
 
         saveState();
+
+        await publishNotifications(state.cia_users, {
+          type: 'OPERATION',
+          title: 'FIELD UPDATE // OPERATION NOTE',
+          message: `أُضيف تحديث ميداني إلى العملية ${operation.missionNumber}.`,
+          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
+          sourceUserId: actor.id,
+          relatedId: operation.id,
+          memberCodes: operation.memberCodes,
+          metadata: { missionNumber: operation.missionNumber, risk: operation.risk }
+        });
 
         emitOperationState();
 
@@ -8302,7 +8733,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { attendance: current, user: publicUser(actor, actor) });
     });
 
-    socket.on('operation:updateStatus', (payload, cb) => {
+    socket.on('operation:updateStatus', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, socketRequirementMessage(socket));
       const id = clean(payload?.operationId || payload?.id, 200);
@@ -8316,11 +8747,21 @@ socket.on('member:saveIdentity', (payload, cb) => {
       addOperationStatusHistory(operation, actor, previousStatus);
       operation.updatedAt = now();
       saveState();
+      await publishNotifications(state.cia_users, {
+        type: 'OPERATION',
+        title: 'OPERATION STATUS CHANGE',
+        message: `تغيرت حالة العملية ${operation.missionNumber}: ${previousStatus} ← ${operation.status}.`,
+        priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
+        sourceUserId: actor.id,
+        relatedId: operation.id,
+        memberCodes: operation.memberCodes,
+        metadata: { missionNumber: operation.missionNumber, status: operation.status, risk: operation.risk }
+      });
       emitOperationState();
       return ok(cb, { operation: operationSanitize(operation, actor) });
     });
 
-    socket.on('chat:send', (payload, cb) => {
+    socket.on('chat:send', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const mode = payload?.mode === 'private' ? 'private' : 'global';
@@ -8340,9 +8781,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
         timestamp: now(),
         at: now()
       };
+      let privateRecipient = null;
       if (mode === 'private') {
         const target = getUserByPublicCode(message.targetCode);
         if (!target) return no(cb, 'المستخدم المستهدف غير موجود.');
+        privateRecipient = target;
         const key = chatKey(actor.publicCode, target.publicCode);
         state.cia_chats.private[key] = state.cia_chats.private[key] || [];
         state.cia_chats.private[key].push(message);
@@ -8358,6 +8801,19 @@ socket.on('member:saveIdentity', (payload, cb) => {
         io.emit('chat:global', message);
       }
       saveState();
+      if (privateRecipient && privateRecipient.id !== actor.id) {
+        await publishNotifications([privateRecipient], {
+          type: 'MESSAGE',
+          title: 'NEW MESSAGE',
+          message: `وصلتك رسالة خاصة من ${actor.publicCode || 'Agent'}.`,
+          priority: 'NOTICE',
+          sourceUserId: actor.id,
+          targetUserId: privateRecipient.id,
+          sourceNameVisible: true,
+          relatedId: message.id,
+          metadata: { senderCode: actor.publicCode }
+        });
+      }
       emitState();
       return ok(cb, { message });
     });
@@ -8579,8 +9035,17 @@ async function initializePersistence() {
       },
       normalizeState: (value) => normalizePersistedState(value, 'PostgreSQL state')
     });
+    notificationsStore = new NotificationsStore(postgresPool, {
+      getRows: () => state.cia_notifications || [],
+      setRows: (rows) => {
+        state.cia_notifications = rows;
+        saveState();
+      }
+    });
+    await notificationsStore.initialize();
     installPersistenceEmitBarriers();
     console.log('[BLACK RIDGE] PostgreSQL state store ready.');
+    console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
     return;
   }
 
@@ -8590,6 +9055,14 @@ async function initializePersistence() {
 
   prepareFileStorage();
   state = loadState();
+  notificationsStore = new NotificationsStore(null, {
+    getRows: () => state.cia_notifications || [],
+    setRows: (rows) => {
+      state.cia_notifications = rows;
+      saveState();
+    }
+  });
+  await notificationsStore.initialize();
   console.log((IS_RENDER_RUNTIME ? '[BLACK RIDGE] Render temporary JSON state store ready: ' : '[BLACK RIDGE] Local JSON state store ready: ') + DATA_FILE);
 }
 
