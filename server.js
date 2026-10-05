@@ -1413,7 +1413,7 @@ function requireSocketUser(socket) {
       ? getUserById(socket.userId)
       : null;
 
-  if (!user || user.suspended || user.serviceApproved === false) {
+  if (!user || user.suspended || user.approved === false || user.serviceApproved === false) {
     return null;
   }
 
@@ -1428,7 +1428,7 @@ function requireAuthenticatedUser(socket) {
       ? getUserById(socket.userId)
       : null;
 
-  if (!user || user.suspended) return null;
+  if (!user || user.suspended || user.approved === false) return null;
   return user;
 }
 
@@ -7802,7 +7802,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const includeArchived = payload?.includeArchived === true;
       const battalions = (state.cia_battalions || []).filter((item) => includeArchived || item.status !== 'ARCHIVED').map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
       const canManage = canManageIBPBattalions(actor);
-      const assignablePersonnel = canManage ? state.cia_users.filter((user) => user.publicCode && user.approved !== false && user.suspended !== true).map((user) => {
+      const assignablePersonnel = canManage ? state.cia_users.filter((user) => user.publicCode && user.approved !== false && user.suspended !== true && user.serviceApproved !== false).map((user) => {
         const item = { publicCode: user.publicCode, rank: normalizeRank(user.rank), rankLabel: rankLabel(user.rank), online: !!user.online };
         if (isChief(actor)) item.name = user.identity?.fullName || user.name || '';
         return item;
@@ -7874,9 +7874,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (existing) state.cia_battalions = state.cia_battalions.map((item) => String(item.id) === String(existing.id) ? record : item);
       else state.cia_battalions.unshift(record);
       addAuditLog(action, actor, null, detail);
-      saveState();
+      if (state.cia_audit_logs[0]) { state.cia_audit_logs[0].system = 'IBP'; state.cia_audit_logs[0].ibpBattalionId = String(record.id); }
+      const persistence = saveState();
       const result = ok(cb, { battalion: ibpBattalionForViewer(record, actor) });
-      emitIBPBattalionState();
+      Promise.resolve(persistence).then(() => emitIBPBattalionState()).catch(() => {});
       return result;
     });
 
