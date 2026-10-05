@@ -173,7 +173,20 @@
     renderTabs();
   }
 
+  function syncAppSession() {
+    const getSession = window.blackRidgeGetNotificationSession;
+    if (typeof getSession !== 'function') return null;
+    try {
+      const session = getSession();
+      state.user = session?.user || null;
+      return session;
+    } catch (error) {
+      return null;
+    }
+  }
+
   function openCenter(mode = 'all') {
+    const session = syncAppSession();
     if (!state.user) {
       const auth = document.getElementById('passcode-modal');
       if (auth) auth.style.display = 'flex';
@@ -188,6 +201,10 @@
     if (title) title.textContent = mode === 'since' ? 'SINCE YOUR LAST SESSION' : mode === 'activity' ? 'MY ACTIVITY INTELLIGENCE' : 'INTELLIGENCE CENTER';
     document.getElementById('notification-modal-overlay')?.classList.add('is-open');
     renderTabs();
+    if (!socket()?.connected || (session && (!session.authenticated || session.recovering))) {
+      message('SECURE SESSION RECONNECTING — WAIT BEFORE LOADING NOTIFICATIONS.');
+      return;
+    }
     loadRows(true);
   }
 
@@ -243,8 +260,12 @@
 
   function loadRows(reset = false) {
     const connection = socket();
-    if (!connection || !state.user) {
+    if (!state.user) {
       message('SIGN IN TO ACCESS YOUR PRIVATE INTELLIGENCE CENTER.');
+      return;
+    }
+    if (!connection || !connection.connected) {
+      message('SECURE SESSION RECONNECTING — WAIT BEFORE LOADING NOTIFICATIONS.');
       return;
     }
     if (reset) {
@@ -427,7 +448,8 @@
     });
     connection.on('auth:login:result', (result) => {
       if (!result?.ok || !result.user) {
-        clearNotificationSession();
+        const session = syncAppSession();
+        if (!session?.user || !session.authenticated) clearNotificationSession();
         return;
       }
       state.user = result.user;
@@ -435,8 +457,18 @@
         if (response?.counts) updateCounts(response.counts);
       });
       if (!result.resumeSession) displayWelcome(result.welcomeBack, result.user);
+      if (document.getElementById('notification-modal-overlay')?.classList.contains('is-open')) loadRows(true);
     });
-    connection.on('disconnect', clearNotificationSession);
+    connection.on('disconnect', () => {
+      const session = syncAppSession();
+      if (!session?.user) {
+        clearNotificationSession();
+        return;
+      }
+      if (document.getElementById('notification-modal-overlay')?.classList.contains('is-open')) {
+        message('SECURE SESSION RECONNECTING — WAIT BEFORE LOADING NOTIFICATIONS.');
+      }
+    });
     window.addEventListener('blackridge:logout', clearNotificationSession);
   }
 
