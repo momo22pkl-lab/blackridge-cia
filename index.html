@@ -2356,6 +2356,15 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
     let authReconnectPending = false;
+    window.blackRidgeGetNotificationSession = function() {
+      const user = currentUser;
+      return {
+        user: user ? { id: user.id || '', rank: user.rank || '' } : null,
+        authenticated: !!user && ciaSessionAuthenticated,
+        connected: !!ciaSocket && ciaSocket.connected,
+        recovering: !!user && (authReconnectPending || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected)
+      };
+    };
 
     function setSessionRecoveryVisible(visible, message) {
       const overlay = document.getElementById('session-recovery-overlay');
