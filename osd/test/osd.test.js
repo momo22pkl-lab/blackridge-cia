@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const {
   CLASSIFICATIONS,
   ROLE_DEFAULTS,
+  allowedPermissions,
   canReadClassification,
   canonicalJson,
   nextMinorVersion,
@@ -27,6 +28,12 @@ test('clearance checks are enforced from the server-side classification order', 
   assert.equal(canReadClassification({ clearance: 'INTERNAL' }, 'SECRET'), false);
   assert.equal(canReadClassification({ clearance: 'TOP SECRET' }, 'TOP SECRET'), true);
   assert.deepEqual(ROLE_DEFAULTS.AGENT.clearance, 'INTERNAL');
+});
+
+test('user-assigned permissions reject unknown capabilities and deduplicate valid entries', () => {
+  assert.deepEqual(allowedPermissions(['VIEW_DOCUMENTS', 'VIEW_DOCUMENTS']), ['VIEW_DOCUMENTS']);
+  assert.deepEqual(allowedPermissions([]), []);
+  assert.equal(allowedPermissions(['ROOT_ACCESS']), null);
 });
 
 test('draft edits create incrementing version numbers and major rollover', () => {

@@ -1048,7 +1048,11 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
     if (!ROLE_DEFAULTS[role]) return res.status(400).json({ error: 'Choose a valid role.' });
     if (!/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username)) return res.status(400).json({ error: 'Username must be 3–60 letters, numbers, dots, underscores or hyphens.' });
     if (!displayName || !validPassword(password)) return res.status(400).json({ error: 'Display name is required; password must be at least 12 characters.' });
-    const permissions = allowedPermissions(req.body?.permissions) || ROLE_DEFAULTS[role].permissions;
+    let permissions = ROLE_DEFAULTS[role].permissions;
+    if (req.body?.permissions !== undefined) {
+      permissions = allowedPermissions(req.body.permissions);
+      if (!permissions) return res.status(400).json({ error: 'One or more permissions are invalid.' });
+    }
     const clearance = cleanText(req.body?.clearance, 40).toUpperCase();
     if (!CLASSIFICATIONS.includes(clearance)) return res.status(400).json({ error: 'Choose a valid clearance.' });
     const salt = crypto.randomBytes(16).toString('hex');
@@ -1127,6 +1131,15 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'User not found.' });
       }
+      const managers = await client.query(
+        `SELECT COUNT(*)::int AS count FROM osd_users
+         WHERE enabled=TRUE AND permissions @> $1::jsonb`,
+        [JSON.stringify(['MANAGE_USERS'])]
+      );
+      if (!managers.rows[0]?.count) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'At least one enabled user must retain user-management permission.' });
+      }
       await appendAudit(client, {
         actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'OSD USER UPDATED',
         metadata: { userId: req.params.id, changedFields: Object.keys(req.body || {}).filter((key) => ['enabled', 'role', 'permissions', 'clearance'].includes(key)) }
@@ -1165,6 +1178,7 @@ module.exports = {
   DOCUMENT_TYPES,
   ROLE_DEFAULTS,
   STATUSES,
+  allowedPermissions,
   canReadClassification,
   canonicalJson,
   createOsdRouter,
