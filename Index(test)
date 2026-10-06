@@ -2351,22 +2351,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const passcodeEl = document.getElementById('entry-passcode');
       if (passcodeEl) {
         passcodeEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleLogin(); });
-        passcodeEl.addEventListener('input', function() {
-          const code = this.value.trim();
-          const hasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
-          if (!hasChief && code === '1531') showChiefBootstrap();
-          else if (!bootstrapMode) hideChiefBootstrap();
-        });
       }
 
       try {
         const savedName = localStorage.getItem('cia_last_login_name');
-        const savedCode = localStorage.getItem('cia_last_login_code');
         if (savedName) document.getElementById('entry-name').value = savedName;
-        if (savedCode) {
-          document.getElementById('entry-passcode').value = savedCode;
-          if (savedCode === '1531') showChiefBootstrap();
-        }
+        localStorage.removeItem('cia_last_login_code');
+        localStorage.removeItem('cia_last_member_code');
       } catch(e) {}
       updateRadioPowerUI();
     });
@@ -2538,7 +2529,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           let savedCode = currentUser.secretCode || '';
           try {
             savedName = localStorage.getItem('cia_last_login_name') || savedName;
-            savedCode = localStorage.getItem('cia_last_login_code') || savedCode;
           } catch (e) {}
           if (savedName && savedCode) {
             ciaSocket.emit('auth:login', {
@@ -2679,7 +2669,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         currentUser = result.user;
         try {
           localStorage.setItem('cia_last_login_name', currentUser.name || '');
-          localStorage.setItem('cia_last_login_code', currentUser.secretCode || '');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         completeLogin();
         if (result.needsIdentity) openIdentityModal();
@@ -2775,7 +2766,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       ciaSocket.on('admin:chief-secret:result', function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر تغيير رمز القائد.'); return; }
         currentUser = result.user;
-        try { localStorage.setItem('cia_last_login_code', currentUser.secretCode || ''); } catch(e) {}
         const secretEl = document.getElementById('chief-current-secret');
         if (secretEl) secretEl.innerText = currentUser.secretCode;
         alert('تم تغيير رمز دخول القائد وحفظه على السيرفر.');
@@ -2795,10 +2785,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if(loginCode) document.getElementById('entry-passcode').value=loginCode;
         try {
           if(name) localStorage.setItem('cia_last_login_name',name);
-          if(loginCode) {
-            localStorage.setItem('cia_last_login_code',loginCode);
-            localStorage.setItem('cia_last_member_code',loginCode);
-          }
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         alert(`تم قبول شخصيتك: ${name||'—'}.\nكود الدخول الشخصي: ${loginCode||'—'}\nسجّل الدخول لإكمال هويتك، ثم انتظر اعتمادها وقدّم طلب دخول الخدمة. سيصدر الكود العسكري بعد الموافقة النهائية.`);
         currentUser = null;
@@ -3062,7 +3050,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (!result || !result.ok) { msg.innerText = (result && (result.error || result.message)) || 'تعذر إنشاء الحساب.'; return; }
         msg.style.color = 'var(--primary-gold)';
         msg.innerText = 'تم إنشاء الحساب والشخصية الأولى، وبانتظار اعتماد القيادة.';
-        try { localStorage.removeItem('cia_last_login_name'); localStorage.removeItem('cia_last_login_code'); localStorage.setItem('cia_account_login_name', loginName); } catch(e) {}
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
+          localStorage.setItem('cia_account_login_name', loginName);
+        } catch(e) {}
         setTimeout(closeAccountCreateModal, 1400);
       });
     }

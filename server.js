@@ -29,6 +29,7 @@ const { NotificationsStore } = require('./notifications-store');
 const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
+const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -73,15 +74,23 @@ app.use((req, res, next) => {
   if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
-app.use(express.static(__dirname));
+const publicAssets = Object.freeze({
+  '/notifications.css': 'notifications.css',
+  '/notifications-client.js': 'notifications-client.js',
+  '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
+  '/ibp/ibp.js': path.join('ibp', 'ibp.js')
+});
 
-app.get('/', (req, res) => {
-  const candidates = ['index.html', 'index26-7.html', 'index(29).html', 'index (31).html'];
-  for (const file of candidates) {
-    const full = path.join(__dirname, file);
-    if (fs.existsSync(full)) return res.sendFile(full);
+for (const [route, file] of Object.entries(publicAssets)) {
+  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
+}
+
+app.get(['/', '/index.html'], (req, res) => {
+  const entryPoint = path.join(__dirname, 'index.html');
+  if (!fs.existsSync(entryPoint)) {
+    return res.status(404).send('BLACK RIDGE CIA: index.html not found.');
   }
-  res.status(404).send('BLACK RIDGE CIA: index.html not found.');
+  return res.sendFile(entryPoint);
 });
 
 registerPages(app);
@@ -94,12 +103,17 @@ const redactSecurityReason = (value) => clean(value, 300)
 const lower = (value) => clean(value, 200).toLowerCase();
 const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
 
+const CHIEF_BOOTSTRAP = readChiefBootstrapConfig(process.env);
 const SYSTEM = Object.freeze({
-  chiefRegistrationCode: '1531',
-  chiefSaveCode: '4139',
+  chiefRegistrationCode: CHIEF_BOOTSTRAP.registrationCode,
+  chiefSaveCode: CHIEF_BOOTSTRAP.saveCode,
   memberRequestCode: '0012',
   defaultSalary: 580
 });
+
+function chiefBootstrapCodesAreConfigured() {
+  return CHIEF_BOOTSTRAP.configured;
+}
 
 const EMPTY_STATE = {
   cia_users: [],
@@ -133,10 +147,7 @@ const EMPTY_STATE = {
       'CIA CHIEF': SYSTEM.defaultSalary
     }
   },
-  systemConfig: {
-    chiefRegistrationCode: SYSTEM.chiefRegistrationCode,
-    chiefSaveCode: SYSTEM.chiefSaveCode
-  }
+  systemConfig: {}
 };
 
 function clone(obj) {
@@ -160,7 +171,10 @@ function normalizePersistedState(parsed, source = 'persisted state') {
         ...((parsed.settings && parsed.settings.rankSalaries) || {})
       }
     },
-    systemConfig: { ...base.systemConfig, ...(parsed.systemConfig || {}) },
+    systemConfig: withoutBootstrapCodes({
+      ...base.systemConfig,
+      ...(parsed.systemConfig || {})
+    }),
     cia_chats: {
       global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
       private: parsed.cia_chats?.private && typeof parsed.cia_chats.private === 'object' ? parsed.cia_chats.private : {}
@@ -3168,6 +3182,15 @@ io.on(
               result
             );
 
+            return;
+          }
+
+          if (!chiefBootstrapCodesAreConfigured()) {
+            const result = no(
+              cb,
+              'تأسيس القيادة غير متاح؛ اضبط متغيري CIA_CHIEF_REGISTRATION_CODE وCIA_CHIEF_SAVE_CODE بقيمتين عشوائيتين مختلفتين لا تقل كل منهما عن 24 حرفاً.'
+            );
+            socket.emit('auth:chief:result', result);
             return;
           }
 
