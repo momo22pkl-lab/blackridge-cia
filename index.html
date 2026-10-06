@@ -1564,6 +1564,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>
       <li id="chief-nav" class="nav-btn" style="display: none;" onclick="showPane('chief-panel', this)"><i class="fa-solid fa-user-gear"></i> إدارة القيادة</li>
       <li id="audit-nav" class="nav-btn" style="display: none;" onclick="showPane('audit-panel', this)"><i class="fa-solid fa-clock-rotate-left"></i> السجلات اليومية</li>
+      <li id="security-nav" class="nav-btn" style="display: none;" onclick="showPane('security-panel', this)"><i class="fa-solid fa-shield-halved"></i> مركز الأمن</li>
     </ul>
     <div style="padding: 15px; border-top: 1px solid var(--border);">
       <button style="width: 100%; padding: 10px; background: var(--red-alert); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="logoutFromSystem()">تسجيل الخروج</button>
@@ -2261,6 +2262,24 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       </div>
     </div>
 
+    <div id="security-panel" class="view-pane">
+      <div class="classified-shell" dir="rtl">
+        <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
+        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. السجل الأمني لا يحتفظ بنص الرسائل المحظورة؛ بيانات الأسماء والتفاصيل الحساسة تظهر لـ CIA CHIEF فقط.</p>
+        <div id="security-summary" style="margin:12px 0;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
+        <div id="security-active-alerts" style="margin-top:10px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">الحسابات المقيّدة أو الموقوفة</div>
+        <div id="security-restricted-members" style="margin-top:10px;"></div>
+        <div id="security-manual-suspend" style="display:none;margin-top:12px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">سجل الحوادث والإجراءات</div>
+        <div id="security-incident-list" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -2289,6 +2308,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let identityPendingUser = null;
     let serverHasChief = null;
     let auditLogs = [];
+    let securityIncidents = [];
+    let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
     let operationAgentDirectory = [];
@@ -2464,6 +2485,26 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (document.getElementById('leadership-secure-chat-panel')) renderLeadershipSecureChats();
         renderSupportPanel();
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
+      });
+
+      ciaSocket.on('security:logs:result', applySecurityCenterResult);
+      ciaSocket.on('security:incident', function(incident) {
+        if (!incident || !currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+        securityIncidents = [incident, ...(securityIncidents || []).filter(item => item.id !== incident.id)].slice(0, 300);
+        renderSecurityCenter();
+        const panel = document.getElementById('security-panel');
+        if (panel && panel.classList.contains('active') && ciaSocket && ciaSocket.connected) loadSecurityCenter();
+      });
+      ciaSocket.on('security:restricted', function(result) {
+        const message = (result && result.reason) || 'تم تقييد الحساب أمنيًا. راجع القيادة.';
+        alert(message);
+        currentUser = null;
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+        } catch (e) {}
+        window.dispatchEvent(new Event('blackridge:logout'));
+        location.reload();
       });
 
       ciaSocket.on('admin:member:result', function(result) {
@@ -3124,6 +3165,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if (chiefSecrets) chiefSecrets.style.display = currentUser.rank === 'CIA CHIEF' ? 'block' : 'none';
       const auditNav = document.getElementById('audit-nav');
       if (auditNav) auditNav.style.display = (currentUser.rank === 'CIA CHIEF' || currentUser.rank === 'SUPREME COMMANDER') ? 'flex' : 'none';
+      const securityNav = document.getElementById('security-nav');
+      if (securityNav) securityNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const leaderTools = document.getElementById('leader-self-tools');
       if (leaderTools) leaderTools.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'block' : 'none';
       const handoverButton = document.getElementById('chief-handover-button');
@@ -3139,6 +3182,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       updateViews();
       updateServiceUI();
       renderMorsePanels();
+      if (['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) loadSecurityCenter();
     }
 
     function setUserStatus(newStatus) {
@@ -3981,6 +4025,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         alert('أكمل الموافقات الثلاث من لوحة الحالة قبل دخول أقسام الخدمة.');
         return;
       }
+      if (paneId === 'security-panel' && (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)))) {
+        alert('مركز الأمن متاح للقيادة الأمنية فقط.');
+        return;
+      }
       if (paneId === 'morse-translator-view' && currentUser && currentUser.serviceApproved === false) {
         alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
         return;
@@ -4006,6 +4054,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (paneId === 'sos-history-map-view') setTimeout(function(){ initSOSHistoryMap(); }, 50);
       if (paneId === 'bank') setTimeout(loadBankDirectory, 50);
       if (paneId === 'operations') setTimeout(function(){ loadTacticalOperations(); loadOperationAgentDirectory(); }, 50);
+      if (paneId === 'security-panel') setTimeout(loadSecurityCenter, 50);
       updateViews();
     }
 
@@ -4025,6 +4074,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
         renderChiefPanel();
         renderDailyAuditLogs();
+        renderSecurityCenter();
+      } else {
+        const securityNav = document.getElementById('security-nav');
+        if (securityNav) securityNav.style.display = 'none';
+        renderSecurityCenter();
       }
     }
 
@@ -4049,6 +4103,134 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           return `<div class="audit-log-item"><div class="audit-log-title">مباشرة ${esc(r.dayKey||'')}</div><div class="audit-log-meta">#${esc(r.userCode||'')} — ${esc(r.userName||'')}<br>البداية: ${esc(start)}<br>النهاية: ${esc(end)}<br>الراتب: ${r.salaryPaid ? 'تم الصرف' : 'مؤهل / لم يُصرف'}</div></div>`;
         }).join('') : '<div class="identity-meta" style="text-align:center;padding:15px;">لا توجد سجلات مباشرة بعد.</div>';
       }
+    }
+
+    function applySecurityCenterResult(result) {
+      if (!result || !result.ok) return;
+      securityIncidents = Array.isArray(result.incidents) ? result.incidents : [];
+      unreadSecurityNotificationCount = Number(result.unreadSecurityNotifications) || 0;
+      renderSecurityCenter();
+    }
+
+    function loadSecurityCenter() {
+      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!ciaSocket || !ciaSocket.connected) return;
+      ciaSocket.emit('security:getLogs', {}, function(result) {
+        if (!result || !result.ok) {
+          if (result && result.message) alert(result.message);
+          return;
+        }
+        applySecurityCenterResult(result);
+      });
+    }
+
+    function renderSecurityCenter() {
+      const root = document.getElementById('security-panel');
+      if (!root) return;
+      const allowed = !!currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank));
+      if (!allowed) {
+        ['security-summary','security-active-alerts','security-restricted-members','security-manual-suspend','security-incident-list'].forEach(id => {
+          const box = document.getElementById(id);
+          if (box) box.innerHTML = '';
+        });
+        return;
+      }
+      const chief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      const allMembers = Array.isArray(registeredUsers) ? registeredUsers : [];
+      const restricted = allMembers.filter(user => user && (user.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(user.securityStatus)));
+      const currentStatusFor = incident => allMembers.find(user =>
+        (incident.userId && user.id === incident.userId) ||
+        (incident.publicCode && user.publicCode === incident.publicCode)
+      );
+      const activeAlerts = (securityIncidents || []).filter(incident => {
+        if (incident.status === 'REVIEW_REQUIRED') return true;
+        if (!['SUSPENDED','SECURITY_RESTRICTED'].includes(incident.status)) return false;
+        const member = currentStatusFor(incident);
+        return !!member && (member.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(member.securityStatus));
+      }).slice(0, 30);
+      const restored = (securityIncidents || []).filter(incident => incident.action === 'MEMBER_RESTORED').length;
+      const summary = document.getElementById('security-summary');
+      if (summary) summary.innerHTML = `
+        <div style="display:flex;gap:9px;flex-wrap:wrap;">
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">تنبيهات غير مقروءة</div><div style="font-size:1.35rem;color:#facc15;font-weight:900;">${unreadSecurityNotificationCount}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">حالات مفتوحة</div><div style="font-size:1.35rem;color:#f87171;font-weight:900;">${activeAlerts.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">أعضاء موقوفون أو مقيّدون</div><div style="font-size:1.35rem;color:#fbbf24;font-weight:900;">${restricted.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">عمليات استعادة مسجلة</div><div style="font-size:1.35rem;color:#4ade80;font-weight:900;">${restored}</div></div>
+        </div>`;
+
+      const describe = incident => {
+        const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        const who = incident.userName
+          ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}`
+          : incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد';
+        const actor = incident.actorName || incident.actorCode;
+        const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
+        return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
+          <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
+          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
+          ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
+        </div>`;
+      };
+      const alertsBox = document.getElementById('security-active-alerts');
+      if (alertsBox) alertsBox.innerHTML = activeAlerts.length
+        ? activeAlerts.map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حالات أمنية مفتوحة.</div>';
+
+      const restrictedBox = document.getElementById('security-restricted-members');
+      if (restrictedBox) {
+        restrictedBox.innerHTML = restricted.length
+          ? restricted.map(user => `<div class="audit-log-item"><div class="audit-log-title">${esc(user.name || user.publicCode || 'عضو')}</div>
+              <div class="audit-log-meta">#${esc(user.publicCode || '—')} · ${esc(user.rank || 'AGENT')} · ${esc(user.securityStatus || (user.suspended ? 'SUSPENDED' : 'RESTRICTED'))}</div>
+              ${user.suspensionReason ? `<div class="audit-log-details">${esc(user.suspensionReason)}</div>` : ''}
+              ${chief ? `<button type="button" class="btn-main" data-security-restore="${esc(user.id)}" style="margin-top:8px;background:#166534;">استعادة بواسطة CIA CHIEF</button>` : ''}
+            </div>`).join('')
+          : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حسابات مقيّدة أو موقوفة.</div>';
+      }
+      root.querySelectorAll('[data-security-restore]').forEach(button => {
+        button.onclick = () => restoreSecurityMember(button.dataset.securityRestore);
+      });
+
+      const manual = document.getElementById('security-manual-suspend');
+      if (manual) {
+        manual.style.display = chief ? 'block' : 'none';
+        if (chief) {
+          const candidates = allMembers.filter(user => user && user.id !== currentUser.id && user.securityStatus === 'ACTIVE' && user.suspended !== true);
+          manual.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="security-suspend-target" class="input-field" style="flex:1;min-width:180px;">
+              <option value="">اختر عضوًا للإيقاف الأمني</option>
+              ${candidates.map(user => `<option value="${esc(user.id)}">${esc(user.name || user.publicCode || 'عضو')} — #${esc(user.publicCode || '—')}</option>`).join('')}
+            </select>
+            <input id="security-suspend-reason" class="input-field" maxlength="300" placeholder="سبب الإيقاف — لا تضع نص الرسالة أو كلمة مرور">
+            <button type="button" class="btn-main" onclick="suspendSecurityMemberFromPanel()" style="background:#991b1b;">إيقاف أمني</button>
+          </div>`;
+        }
+      }
+
+      const incidentsBox = document.getElementById('security-incident-list');
+      if (incidentsBox) incidentsBox.innerHTML = securityIncidents.length
+        ? securityIncidents.slice(0, 100).map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حوادث مسجلة.</div>';
+    }
+
+    function suspendSecurityMemberFromPanel() {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      const userId = document.getElementById('security-suspend-target')?.value || '';
+      const reason = (document.getElementById('security-suspend-reason')?.value || '').trim();
+      if (!userId || !reason) return alert('اختر عضوًا واكتب سبب الإيقاف.');
+      if (!confirm('سيُمنع العضو من تسجيل الدخول حتى يراجعه CIA CHIEF. هل تريد المتابعة؟')) return;
+      ciaSocket.emit('security:suspendMember', { userId, reason }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر إيقاف العضو.');
+        loadSecurityCenter();
+      });
+    }
+
+    function restoreSecurityMember(userId) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      if (!confirm('سيُرفع الإيقاف الأمني، لكن الحساب سيبقى خارج الخدمة حتى يبدأ العضو الخدمة بنفسه. تأكيد الاستعادة؟')) return;
+      ciaSocket.emit('security:restoreMember', { userId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذرت استعادة العضو.');
+        loadSecurityCenter();
+      });
     }
 
     function updateServiceUI() {
@@ -5416,7 +5598,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           const canChangeTargetRank = u.id !== (currentUser && currentUser.id) && (actorRank === 'CIA CHIEF' && normalizedRank !== 'CIA CHIEF' || actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(normalizedRank));
           const rankButton = canChangeTargetRank ? '<button type="button" onclick="manageRank(' + index + ')" style="padding:3px 6px;background:var(--cyan-glow);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">ترقية / تنزيل</button>' : '';
           const kickButton = canManageTarget ? '<button type="button" onclick="kickMember(' + index + ')" title="فصل العضو مع الاحتفاظ ببياناته" style="padding:3px 6px;background:var(--red-alert);color:#fff;border:none;cursor:pointer;border-radius:3px;">فصل من الخدمة</button>' : '';
-          const serviceButton = u.status === 'مفصول' ? (canManageTarget ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">إعادة للخدمة</button>' : '') : rankButton + ' ' + kickButton;
+          const serviceButton = u.status === 'مفصول' ? (actorRank === 'CIA CHIEF' ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">استعادة أمنية</button>' : '') : rankButton + ' ' + kickButton;
           const codeCell = u.publicCode ? '#' + esc(u.publicCode) : '<span style="color:var(--primary-gold);">بانتظار اعتماد الخدمة</span>';
           return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">' + codeCell + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank ' + getRankBadge(normalizedRank) + '">' + esc(getRankLabel(normalizedRank)) + '</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>' + editCodeBtn + ' ' + serviceButton + '</td></tr>';
         }).join('');
@@ -5582,12 +5764,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     function reactivateMember(index) {
-      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
       const member = registeredUsers[index];
       if (!member) return;
-      ciaSocket.emit('admin:reactivateMember', { memberId: member.id }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر إعادة العضو للخدمة.');
-      });
+      restoreSecurityMember(member.id);
     }
 
     function kickMember(index) {

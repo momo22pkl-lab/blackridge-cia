@@ -19,3 +19,9 @@ Run npm test to check the PostgreSQL state-store adapter.
 On startup, the server creates the `notifications` table and its indexes in the configured PostgreSQL database. This is an automatic, additive schema migration; no manual SQL or new environment variables are required. Keep `DATABASE_URL` configured for durable notifications on Render. Without it, local development falls back to the existing JSON state file.
 
 Notifications are scoped to the authenticated server-side user ID. The Socket.IO API supports counts, paged/searchable lists, missed-event summaries, mark-read, and acknowledgement of critical alerts. Reading a critical alert does not acknowledge it. The client adds a responsive notification center, critical unread banner, live toasts, and a welcome-back brief. `npm test` also exercises per-user isolation and notification state transitions.
+
+## Security and moderation
+
+Message checks run on the server before persistence or broadcast for global/private chat, radio text/codes, Morse translation, and support messages/replies. The starter English and Arabic blocklist is intentionally small; add project-specific terms with the `CIA_SECURITY_BLOCKED_TERMS` environment variable, one term or phrase per line or separated by semicolons. Entries default to level 1; prefix one with `LEVEL 2:`, `LEVEL 3:`, or `LEVEL 4:` to set its severity. These terms are configuration, not credentials.
+
+Threat patterns are level 3 and suspicious script/HTML payload patterns are level 4. Obfuscation bypass attempts are level 3; repeated level-1 violations are raised to level 2. Level 2 restricts the account and ends its active session; levels 3–4 suspend it. Only CIA CHIEF can restore a restricted account, and restoration leaves it off duty. Security incidents and notification actions are persisted without storing the blocked message text; alert delivery reuses the durable notification center, including offline delivery.

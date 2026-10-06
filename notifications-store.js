@@ -232,7 +232,7 @@ class NotificationsStore {
 
   async countsForUser(userId) {
     const ownId = String(userId || '');
-    const empty = { all: 0, critical: 0, messages: 0, sos: 0, operations: 0, finance: 0, system: 0, unread: 0, unreadCritical: 0 };
+    const empty = { all: 0, critical: 0, messages: 0, sos: 0, operations: 0, finance: 0, system: 0, unread: 0, unreadCritical: 0, unreadSecurity: 0 };
     if (!ownId) return empty;
 
     if (this.pool) {
@@ -246,7 +246,8 @@ class NotificationsStore {
            COUNT(*) FILTER (WHERE type IN ('SALARY', 'TRANSACTION', 'FINANCE'))::int AS finance,
            COUNT(*) FILTER (WHERE type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM'))::int AS system,
            COUNT(*) FILTER (WHERE read_at IS NULL)::int AS unread,
-           COUNT(*) FILTER (WHERE read_at IS NULL AND priority = 'CRITICAL')::int AS "unreadCritical"
+            COUNT(*) FILTER (WHERE read_at IS NULL AND priority = 'CRITICAL')::int AS "unreadCritical",
+            COUNT(*) FILTER (WHERE read_at IS NULL AND type = 'SECURITY')::int AS "unreadSecurity"
          FROM notifications WHERE user_id = $1`,
         [ownId]
       );
@@ -264,7 +265,8 @@ class NotificationsStore {
       finance: rows.filter((row) => ['SALARY', 'TRANSACTION', 'FINANCE'].includes(row.type)).length,
       system: rows.filter((row) => this.fallbackMatchesCategory(row, 'system')).length,
       unread: rows.filter((row) => !row.readAt).length,
-      unreadCritical: rows.filter((row) => !row.readAt && row.priority === 'CRITICAL').length
+      unreadCritical: rows.filter((row) => !row.readAt && row.priority === 'CRITICAL').length,
+      unreadSecurity: rows.filter((row) => !row.readAt && row.type === 'SECURITY').length
     };
   }
 
