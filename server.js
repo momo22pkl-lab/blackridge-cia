@@ -27,7 +27,7 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { NotificationsStore } = require('./notifications-store');
 const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
-const { registerPages } = require('./ibp/pages');
+const { pageHtml, registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 
@@ -78,7 +78,8 @@ const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
-  '/ibp/ibp.js': path.join('ibp', 'ibp.js')
+  '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
+  '/ibp/command-center.css': path.join('ibp', 'command-center.css')
 });
 
 for (const [route, file] of Object.entries(publicAssets)) {
@@ -86,11 +87,7 @@ for (const [route, file] of Object.entries(publicAssets)) {
 }
 
 app.get(['/', '/index.html'], (req, res) => {
-  const entryPoint = path.join(__dirname, 'index.html');
-  if (!fs.existsSync(entryPoint)) {
-    return res.status(404).send('BLACK RIDGE CIA: index.html not found.');
-  }
-  return res.sendFile(entryPoint);
+  return res.type('html').send(pageHtml('dashboard', req.path, ''));
 });
 
 registerPages(app);
@@ -7131,2448 +7128,4 @@ socket.on('member:saveIdentity', (payload, cb) => {
 
             rankLabel:
               rankLabel(
-                actor.rank
-              ),
-
-            rank:
-              rankLabel(
-                actor.rank
-              ),
-
-            location,
-
-            locationCoords,
-
-            count,
-
-            crewCount:
-              count,
-
-            membersCount:
-              count,
-
-            status:
-              status ||
-              'OPEN',
-
-            note,
-
-            statusCode:
-              'OPEN',
-
-            userCode:
-              actor.publicCode,
-
-            text,
-
-            createdAt:
-              now(),
-
-            at:
-              now(),
-
-            senderName:
-              actor.name
-          };
-
-          state.cia_sos.unshift(
-            alert
-          );
-
-          state.cia_sos =
-            state.cia_sos.slice(
-              0,
-              500
-            );
-
-          addAuditLog(
-            'S.O.S',
-            actor,
-            null,
-            `ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø¨Ù„Ø§Øº Ø§Ø³ØªØºØ§Ø«Ø© ${alert.id}.`
-          );
-
-          saveState();
-
-          await publishNotifications(state.cia_users, {
-            type: 'SOS',
-            title: 'CRITICAL â€” S.O.S RECEIVED',
-            message: `${actor.publicCode || 'Agent'} Ø£Ø±Ø³Ù„ Ø§Ø³ØªØºØ§Ø«Ø©${location?.label ? ` Ù…Ù† ${location.label}` : ''}${count !== null ? ` â€” Ø¹Ø¯Ø¯ Ø§Ù„Ø£ÙØ±Ø§Ø¯: ${count}` : ''}.`,
-            priority: 'CRITICAL',
-            sourceUserId: actor.id,
-            sourceCode: actor.publicCode,
-            sourceNameVisible: true,
-            relatedId: alert.id,
-            metadata: { location: location?.label || '', count }
-          });
-
-          io.emit(
-            'sos:alert',
-            alert
-          );
-
-          emitState();
-
-          return ok(
-            cb,
-            {
-              alert
-            }
-          );
-        } catch (error) {
-          return no(
-            cb,
-            error.message ||
-              'ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø¨Ù„Ø§Øº S.O.S.'
-          );
-        }
-      }
-    );
-
-    /* =====================================================
-       SOS â€” DELETE
-    ===================================================== */
-
-    socket.on(
-      'sos:delete',
-      (payload, cb) => {
-        try {
-          const actor =
-            requireSocketUser(socket);
-
-          if (!actor) {
-            return no(
-              cb,
-              'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-            );
-          }
-
-          if (
-            !(
-              isChief(actor) ||
-              isSenior(actor) ||
-              isHighCommander(actor)
-            )
-          ) {
-            return no(
-              cb,
-              'Ø­Ø°Ù Ø¨Ù„Ø§ØºØ§Øª Ø§Ù„Ø§Ø³ØªØºØ§Ø«Ø© Ù…ØªØ§Ø­ Ù„Ù„Ù‚ÙŠØ§Ø¯Ø© ÙÙ‚Ø·.'
-            );
-          }
-
-          const id =
-            clean(
-              payload?.id ||
-              payload?.sosId,
-              200
-            );
-
-          if (!id) {
-            return no(
-              cb,
-              'Ù…Ø¹Ø±Ù Ø§Ù„Ø¨Ù„Ø§Øº ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.'
-            );
-          }
-
-          const exists =
-            state.cia_sos.some(
-              (alert) =>
-                String(alert.id) ===
-                String(id)
-            );
-
-          if (!exists) {
-            return no(
-              cb,
-              'Ø¨Ù„Ø§Øº Ø§Ù„Ø§Ø³ØªØºØ§Ø«Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.'
-            );
-          }
-
-          state.cia_sos =
-            state.cia_sos.filter(
-              (alert) =>
-                String(alert.id) !==
-                String(id)
-            );
-
-          addAuditLog(
-            'Ø­Ø°Ù S.O.S',
-            actor,
-            null,
-            `ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¨Ù„Ø§Øº ${id}.`
-          );
-
-          saveState();
-
-          io.emit(
-            'sos:deleted',
-            {
-              id
-            }
-          );
-
-          emitState();
-
-          return ok(
-            cb,
-            {
-              id
-            }
-          );
-        } catch (error) {
-          return no(
-            cb,
-            error.message ||
-              'ØªØ¹Ø°Ø± Ø­Ø°Ù Ø¨Ù„Ø§Øº Ø§Ù„Ø§Ø³ØªØºØ§Ø«Ø©.'
-          );
-        }
-      }
-    );
-
-    /* =====================================================
-       SOS STATUS
-    ===================================================== */
-
-    socket.on(
-      'sos:updateStatus',
-      (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const id =
-          clean(
-            payload?.id ||
-            payload?.sosId,
-            200
-          );
-
-        const alert =
-          state.cia_sos.find(
-            (item) =>
-              String(item.id) ===
-              String(id)
-          );
-
-        if (!alert) {
-          return no(
-            cb,
-            'Ø¨Ù„Ø§Øº Ø§Ù„Ø§Ø³ØªØºØ§Ø«Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.'
-          );
-        }
-
-        if (
-          !(
-            isChief(actor) ||
-            isSenior(actor) ||
-            isHighCommander(actor)
-          )
-        ) {
-          return no(
-            cb,
-            'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØ­Ø¯ÙŠØ« Ø­Ø§Ù„Ø© Ø§Ù„Ø¨Ù„Ø§Øº.'
-          );
-        }
-
-        const newStatus =
-          clean(
-            payload?.status ||
-            'OPEN',
-            100
-          );
-
-        alert.status =
-          newStatus;
-
-        alert.statusCode =
-          newStatus;
-
-        alert.updatedAt =
-          now();
-
-        addAuditLog(
-          'ØªØ­Ø¯ÙŠØ« S.O.S',
-          actor,
-          null,
-          `${id} â†’ ${newStatus}`
-        );
-
-        saveState();
-
-        io.emit(
-          'sos:updated',
-          alert
-        );
-
-        emitState();
-
-        return ok(
-          cb,
-          {
-            alert
-          }
-        );
-      }
-    );
-
-    /* =====================================================
-       GLOBAL CHAT
-    ===================================================== */
-
-    socket.on(
-      'chat:global',
-      (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const text =
-          clean(
-            payload?.text ||
-            payload?.message,
-            4000
-          );
-
-        if (!text) {
-          return no(
-            cb,
-            'Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙØ§Ø±ØºØ©.'
-          );
-        }
-
-        const message = {
-          id:
-            makeId('CHAT'),
-
-          fromCode:
-            actor.publicCode,
-
-          fromRank:
-            rankLabel(
-              actor.rank
-            ),
-
-          text,
-
-          at:
-            now()
-        };
-
-        state.cia_chats.global.push(
-          message
-        );
-
-        state.cia_chats.global =
-          state.cia_chats.global.slice(
-            -1000
-          );
-
-        saveState();
-
-        io.emit(
-          'chat:global',
-          message
-        );
-
-        return ok(
-          cb,
-          {
-            message
-          }
-        );
-      }
-    );
-
-    /* =====================================================
-       PRIVATE CHAT
-    ===================================================== */
-
-    socket.on(
-      'chat:private',
-      (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const targetCode =
-          clean(
-            payload?.targetCode ||
-            payload?.toCode,
-            100
-          );
-
-        const text =
-          clean(
-            payload?.text ||
-            payload?.message,
-            4000
-          );
-
-        if (
-          !targetCode ||
-          !text
-        ) {
-          return no(
-            cb,
-            'Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø© ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©.'
-          );
-        }
-
-        const target =
-          getUserByPublicCode(
-            targetCode
-          );
-
-        if (!target) {
-          return no(
-            cb,
-            'Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ù…Ø³ØªÙ‡Ø¯Ù ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.'
-          );
-        }
-
-        const key =
-          chatKey(
-            actor.publicCode,
-            target.publicCode
-          );
-
-        if (
-          !state.cia_chats.private[key]
-        ) {
-          state.cia_chats.private[key] =
-            [];
-        }
-
-        const message = {
-          id:
-            makeId('PCHAT'),
-
-          fromCode:
-            actor.publicCode,
-
-          toCode:
-            target.publicCode,
-
-          fromName:
-            isLeadership(actor)
-              ? actor.name
-              : null,
-
-          text,
-
-          at:
-            now()
-        };
-
-        state.cia_chats.private[key].push(
-          message
-        );
-
-        state.cia_chats.private[key] =
-          state.cia_chats.private[key].slice(
-            -500
-          );
-
-        saveState();
-
-        const targetSockets =
-          sessions.get(
-            target.id
-          );
-
-        if (
-          targetSockets
-        ) {
-          for (
-            const socketId
-            of targetSockets
-          ) {
-            const targetSocket =
-              io.sockets.sockets.get(
-                socketId
-              );
-
-            if (
-              targetSocket
-            ) {
-              targetSocket.emit(
-                'chat:private',
-                message
-              );
-            }
-          }
-        }
-
-        socket.emit(
-          'chat:private',
-          message
-        );
-
-        return ok(
-          cb,
-          {
-            message
-          }
-        );
-      }
-    );
-
-    /* =====================================================
-       REPORTS
-    ===================================================== */
-
-    socket.on(
-      'report:create',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const report = {
-          id:
-            makeId('REPORT'),
-
-          title:
-            clean(
-              payload?.title ||
-              'ØªÙ‚Ø±ÙŠØ± CIA',
-              200
-            ),
-
-          type:
-            clean(
-              payload?.type ||
-              'GENERAL',
-              100
-            ),
-
-           text:
-             clean(
-               payload?.text ||
-               payload?.body ||
-               payload?.description ||
-               '',
-               10000
-             ),
-
-           body:
-             clean(
-               payload?.body ||
-               payload?.text ||
-               payload?.description ||
-               '',
-               10000
-             ),
-
-           img:
-             clean(
-               payload?.img ||
-               payload?.image ||
-               '',
-               8 * 1024 * 1024
-             ),
-
-           isSecret:
-             payload?.isSecret === true,
-
-          status:
-            clean(
-              payload?.status ||
-              'OPEN',
-              100
-            ),
-
-          fromCode:
-            actor.publicCode,
-
-          fromRank:
-            rankLabel(
-              actor.rank
-            ),
-
-           code:
-             actor.publicCode,
-
-           author:
-             actor.name,
-
-          createdAt:
-            now(),
-
-           date:
-             now(),
-
-          immutable:
-            true
-        };
-
-        if (!report.text) {
-          return no(
-            cb,
-            'Ø§Ù„ØªÙ‚Ø±ÙŠØ± ÙØ§Ø±Øº.'
-          );
-        }
-
-        state.cia_reports.unshift(
-          report
-        );
-
-        state.cia_reports =
-          state.cia_reports.slice(
-            0,
-            1000
-          );
-
-        addAuditLog(
-          'Ø¥Ù†Ø´Ø§Ø¡ ØªÙ‚Ø±ÙŠØ±',
-          actor,
-          null,
-          `ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ØªÙ‚Ø±ÙŠØ± ${report.id}.`
-        );
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'REPORT',
-          title: 'NEW REPORT',
-          message: `ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ ØªÙ‚Ø±ÙŠØ± Ø¬Ø¯ÙŠØ¯: ${report.title}`,
-          priority: report.isSecret ? 'HIGH' : 'NOTICE',
-          sourceUserId: actor.id,
-          targetUserId: actor.id,
-          sourceNameVisible: true,
-          relatedId: report.id,
-          isSecret: report.isSecret,
-          metadata: { reportType: report.type, status: report.status }
-        });
-
-        io.emit(
-          'report:new',
-          report
-        );
-
-        emitState();
-
-        return ok(
-          cb,
-          {
-            report
-          }
-        );
-      }
-    );
-
-    socket.on(
-      'report:update',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const id =
-          clean(
-            payload?.id,
-            200
-          );
-
-        const report =
-          state.cia_reports.find(
-            (r) =>
-              String(r.id) ===
-              String(id)
-          );
-
-        if (!report) {
-          return no(
-            cb,
-            'Ø§Ù„ØªÙ‚Ø±ÙŠØ± ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.'
-          );
-        }
-
-        if (
-          !(
-            isLeadership(actor) ||
-            report.fromCode ===
-              actor.publicCode
-          )
-        ) {
-          return no(
-            cb,
-            'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØ¹Ø¯ÙŠÙ„ Ù‡Ø°Ø§ Ø§Ù„ØªÙ‚Ø±ÙŠØ±.'
-          );
-        }
-
-        if (
-          payload?.status !==
-          undefined
-        ) {
-          report.status =
-            clean(
-              payload.status,
-              100
-            );
-        }
-
-        if (
-          payload?.text !==
-          undefined
-        ) {
-          report.text =
-            clean(
-              payload.text,
-              10000
-            );
-        }
-
-        report.updatedAt =
-          now();
-
-        addAuditLog(
-          'ØªØ­Ø¯ÙŠØ« ØªÙ‚Ø±ÙŠØ±',
-          actor,
-          null,
-          `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªÙ‚Ø±ÙŠØ± ${id}.`
-        );
-
-        saveState();
-
-        const reportOwner = getUserByPublicCode(report.fromCode);
-        await publishNotifications(state.cia_users, {
-          type: 'REPORT',
-          title: report.isSecret ? 'CLASSIFIED REPORT UPDATED' : 'REPORT UPDATED',
-          message: `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªÙ‚Ø±ÙŠØ±${report.status ? ` â€” Ø§Ù„Ø­Ø§Ù„Ø©: ${report.status}` : ''}.`,
-          priority: report.isSecret ? 'HIGH' : 'NOTICE',
-          sourceUserId: actor.id,
-          targetUserId: reportOwner?.id || null,
-          relatedId: report.id,
-          isSecret: report.isSecret === true,
-          metadata: { reportType: report.type, status: report.status }
-        });
-
-        io.emit(
-          'report:update',
-          report
-        );
-
-        emitState();
-
-        return ok(
-          cb,
-          {
-            report
-          }
-        );
-      }
-    );
-
-    /* =====================================================
-       CASES
-    ===================================================== */
-
-    socket.on(
-      'case:create',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const title =
-          clean(
-            payload?.title ||
-            'CIA CASE',
-            200
-          );
-
-        const description =
-          clean(
-            payload?.description ||
-            payload?.text ||
-            '',
-            10000
-          );
-
-        const caseItem = {
-          id:
-            makeId('CASE'),
-
-          caseNumber:
-            `CASE-${Date.now()}`,
-
-          title,
-
-          description,
-
-          status:
-            clean(
-              payload?.status ||
-              'OPEN',
-              100
-            ),
-
-          classification:
-            clean(
-              payload?.classification ||
-              'CONFIDENTIAL',
-              100
-            ),
-
-          assignedCode:
-            clean(
-              payload?.assignedCode ||
-              '',
-              100
-            ),
-
-          createdByCode:
-            actor.publicCode,
-
-          createdByName:
-            isLeadership(actor)
-              ? actor.name
-              : '',
-
-          createdAt:
-            now(),
-
-          updatedAt:
-            now()
-        };
-
-        state.cia_cases.unshift(
-          caseItem
-        );
-
-        state.cia_cases =
-          state.cia_cases.slice(
-            0,
-            1000
-          );
-
-        addAuditLog(
-          'ÙØªØ­ Ù‚Ø¶ÙŠØ©',
-          actor,
-          null,
-          `ØªÙ… ÙØªØ­ Ø§Ù„Ù‚Ø¶ÙŠØ© ${caseItem.caseNumber}.`
-        );
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'CASE',
-          title: 'NEW CASE FILE',
-          message: `ØªÙ… ÙØªØ­ Ù‚Ø¶ÙŠØ© Ø¬Ø¯ÙŠØ¯Ø©: ${caseItem.caseNumber} â€” ${caseItem.title}`,
-          priority: 'HIGH',
-          sourceUserId: actor.id,
-          relatedId: caseItem.id,
-          createdByCode: caseItem.createdByCode,
-          assignedCode: caseItem.assignedCode,
-          metadata: { caseNumber: caseItem.caseNumber, classification: caseItem.classification }
-        });
-
-        io.emit(
-          'case:new',
-          caseItem
-        );
-
-        emitState();
-
-        return ok(
-          cb,
-          {
-            case:
-              caseItem
-          }
-        );
-      }
-    );
-
-    socket.on(
-      'case:update',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.'
-          );
-        }
-
-        const id =
-          clean(
-            payload?.id,
-            200
-          );
-
-        const caseItem =
-          state.cia_cases.find(
-            (c) =>
-              String(c.id) ===
-              String(id)
-          );
-
-        if (!caseItem) {
-          return no(
-            cb,
-            'Ø§Ù„Ù‚Ø¶ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.'
-          );
-        }
-
-        if (
-          !(
-            isLeadership(actor) ||
-            caseItem.createdByCode ===
-              actor.publicCode
-          )
-        ) {
-          return no(
-            cb,
-            'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØ¹Ø¯ÙŠÙ„ Ù‡Ø°Ù‡ Ø§Ù„Ù‚Ø¶ÙŠØ©.'
-          );
-        }
-
-        if (
-          payload?.title !==
-          undefined
-        ) {
-          caseItem.title =
-            clean(
-              payload.title,
-              200
-            );
-        }
-
-        if (
-          payload?.description !==
-          undefined
-        ) {
-          caseItem.description =
-            clean(
-              payload.description,
-              10000
-            );
-        }
-
-        if (
-          payload?.status !==
-          undefined
-        ) {
-          caseItem.status =
-            clean(
-              payload.status,
-              100
-            );
-        }
-
-        if (
-          payload?.classification !==
-          undefined
-        ) {
-          caseItem.classification =
-            clean(
-              payload.classification,
-              100
-            );
-        }
-
-        if (
-          payload?.assignedCode !==
-          undefined
-        ) {
-          caseItem.assignedCode =
-            clean(
-              payload.assignedCode,
-              100
-            );
-        }
-
-        caseItem.updatedAt =
-          now();
-
-        addAuditLog(
-          'ØªØ­Ø¯ÙŠØ« Ù‚Ø¶ÙŠØ©',
-          actor,
-          null,
-          `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù‚Ø¶ÙŠØ© ${caseItem.caseNumber}.`
-        );
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'CASE',
-          title: 'CASE FILE UPDATED',
-          message: `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù‚Ø¶ÙŠØ© ${caseItem.caseNumber}: ${caseItem.title}`,
-          priority: 'HIGH',
-          sourceUserId: actor.id,
-          relatedId: caseItem.id,
-          createdByCode: caseItem.createdByCode,
-          assignedCode: caseItem.assignedCode,
-          metadata: { caseNumber: caseItem.caseNumber, status: caseItem.status }
-        });
-
-        io.emit(
-          'case:update',
-          caseItem
-        );
-
-        emitState();
-
-        return ok(
-          cb,
-          {
-            case:
-              caseItem
-          }
-        );
-      }
-    );
-
-    /* =====================================================
-       OPERATION / MISSIONS
-    ===================================================== */
-
-
-    socket.on('ibp:user-language:set', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„Ø®Ø¯Ù…Ø© Ø£ÙˆÙ„Ø§Ù‹.');
-      const language = payload?.language;
-      if (language !== 'ar' && language !== 'en') return no(cb, 'Ø§Ù„Ù„ØºØ© ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ…Ø©.');
-      actor.ibpLanguage = language;
-      saveState();
-      return ok(cb, { language });
-    });
-    socket.on('ibp:battalions:list', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„Ø®Ø¯Ù…Ø© Ø£ÙˆÙ„Ø§Ù‹.');
-      const includeArchived = payload?.includeArchived === true;
-      const battalions = (state.cia_battalions || []).filter((item) => includeArchived || item.status !== 'ARCHIVED').map((item) => ibpBattalionForViewer(item, actor)).filter(Boolean);
-      const canManage = canManageIBPBattalions(actor);
-      const assignablePersonnel = canManage ? state.cia_users.filter((user) => user.publicCode && user.approved !== false && user.suspended !== true && user.serviceApproved !== false).map((user) => {
-        const item = { publicCode: user.publicCode, rank: normalizeRank(user.rank), rankLabel: rankLabel(user.rank), online: !!user.online };
-        if (isChief(actor)) item.name = user.identity?.fullName || user.name || '';
-        return item;
-      }) : [];
-      return ok(cb, { battalions, assignablePersonnel, canManage, canCreate: canManage, canTransfer: canManage, permissions: { leadership: canManageOperations(actor), admin: canManage } });
-    });
-    socket.on('ibp:battalion:save', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„Ø®Ø¯Ù…Ø© Ø£ÙˆÙ„Ø§Ù‹.');
-      if (!canManageIBPBattalions(actor)) return no(cb, 'Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„ÙƒØªØ§Ø¦Ø¨ ÙˆØªØ¹Ø¯ÙŠÙ„Ù‡Ø§ Ù…ØªØ§Ø­ Ù„Ù€ CIA CHIEF Ùˆ SUPREME COMMANDER ÙÙ‚Ø·.');
-      const id = clean(payload?.id, 120);
-      const existing = id ? (state.cia_battalions || []).find((item) => String(item.id) === id) : null;
-      if (id && !existing) return no(cb, 'Ø§Ù„ÙƒØªÙŠØ¨Ø© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (existing?.status === 'ARCHIVED') return no(cb, 'Ø§Ù„Ø³Ø¬Ù„ Ø§Ù„Ù…Ø¤Ø±Ø´Ù Ù„Ù„Ù‚Ø±Ø§Ø¡Ø© ÙÙ‚Ø·.');
-      const code = clean(payload?.code || existing?.code, 32).toUpperCase().replace(/\s+/g, '-');
-      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) return no(cb, 'Ø£Ø¯Ø®Ù„ Ø±Ù…Ø² ÙƒØªÙŠØ¨Ø© ÙØ±ÙŠØ¯Ø§Ù‹ Ù…Ù† Ø­Ø±ÙÙŠÙ† Ø¥Ù„Ù‰ 32 Ø­Ø±ÙØ§Ù‹ Ø£Ùˆ Ø±Ù‚Ù…Ø§Ù‹.');
-      const duplicateCode = (state.cia_battalions || []).find((item) => String(item.id) !== String(existing?.id || '') && String(item.code || '').toUpperCase() === code);
-      if (duplicateCode) return no(cb, 'Ø±Ù…Ø² Ø§Ù„ÙƒØªÙŠØ¨Ø© Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø§Ù„ÙØ¹Ù„.');
-      const nameAr = clean(payload?.nameAr || existing?.nameAr, 100);
-      const nameEn = clean(payload?.nameEn || existing?.nameEn, 100);
-      if (!nameAr && !nameEn) return no(cb, 'Ø£Ø¯Ø®Ù„ Ø§Ø³Ù… Ø§Ù„ÙƒØªÙŠØ¨Ø© Ø¨Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© Ø£Ùˆ Ø§Ù„Ø¥Ù†Ø¬Ù„ÙŠØ²ÙŠØ©.');
-      const sector = clean(payload?.sector, 100);
-      const status = ['ACTIVE','ALERT','STANDBY'].includes(payload?.status) ? payload.status : 'ACTIVE';
-      const color = /^#[0-9a-fA-F]{6}$/.test(payload?.color || '') ? payload.color : (existing?.color || '#c7a25a');
-      const symbol = clean(payload?.symbol || existing?.symbol || 'UNIT', 16).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() || 'UNIT';
-      const emblem = clean(payload?.emblem || existing?.emblem || symbol, 32);
-      const resolveRole = (value, minRank, label) => {
-        const roleCode = clean(value, 100);
-        const person = roleCode ? ibpResolveCode(roleCode) : null;
-        if (roleCode && (!person || person.approved === false || person.suspended === true || person.serviceApproved === false)) throw new Error('Ø±Ù…Ø² ' + label + ' ØºÙŠØ± ØµØ§Ù„Ø­.');
-        if (person && rankLevel(person.rank) < minRank) throw new Error('ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† ' + label + ' Ù…Ù† Ø§Ù„Ø±ØªØ¨Ø© Ø§Ù„Ù‚ÙŠØ§Ø¯ÙŠØ© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©.');
-        return person;
-      };
-      let commander, deputy, seniorCommander;
-      try {
-        commander = resolveRole(payload?.commanderCode ?? existing?.commanderCode, 2, 'Ù‚Ø§Ø¦Ø¯ Ø§Ù„ÙƒØªÙŠØ¨Ø©');
-        deputy = resolveRole(payload?.deputyCode ?? existing?.deputyCode, 2, 'Ù†Ø§Ø¦Ø¨ Ù‚Ø§Ø¦Ø¯ Ø§Ù„ÙƒØªÙŠØ¨Ø©');
-        seniorCommander = resolveRole(payload?.seniorCommanderCode ?? existing?.seniorCommanderCode, 3, 'Ø§Ù„Ù‚Ø§Ø¦Ø¯ Ø§Ù„Ø£Ø¹Ù„Ù‰');
-      } catch (error) { return no(cb, error.message); }
-      if (commander && deputy && clean(commander.publicCode,100).toUpperCase() === clean(deputy.publicCode,100).toUpperCase()) return no(cb, 'ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ø§Ù„Ù‚Ø§Ø¦Ø¯ ÙˆØ§Ù„Ù†Ø§Ø¦Ø¨ Ø´Ø®ØµÙŠÙ† Ù…Ø®ØªÙ„ÙÙŠÙ†.');
-      const requested = Array.isArray(payload?.memberCodes) ? payload.memberCodes.slice(0, 150) : (existing?.memberCodes || []);
-      const memberMap = new Map();
-      for (const value of requested) {
-        const memberCode = clean(value, 100);
-        if (!memberCode) continue;
-        const person = ibpResolveCode(memberCode);
-        if (!person || person.approved === false || person.suspended === true || person.serviceApproved === false) return no(cb, 'ØªØ¹Ø°Ø± Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø£Ø­Ø¯ Ø£ÙƒÙˆØ§Ø¯ Ø§Ù„Ø£ÙØ±Ø§Ø¯ Ø§Ù„Ù…Ø®ØªØ§Ø±ÙŠÙ†.');
-        memberMap.set(clean(person.publicCode, 100).toUpperCase(), person.publicCode);
-      }
-      for (const person of [commander, deputy]) if (person) memberMap.set(clean(person.publicCode,100).toUpperCase(), person.publicCode);
-      const memberCodes = [...memberMap.values()];
-      const wanted = new Set(memberCodes.map((memberCode) => clean(memberCode, 100).toUpperCase()));
-      const conflict = (state.cia_battalions || []).find((unit) => String(unit.id) !== String(existing?.id || '') && unit.status !== 'ARCHIVED' && [...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []), unit.commanderCode || '', unit.deputyCode || ''].some((memberCode) => wanted.has(clean(memberCode, 100).toUpperCase())));
-      if (conflict) return no(cb, 'Ø£Ø­Ø¯ Ø§Ù„Ø£ÙØ±Ø§Ø¯ Ø§Ù„Ù…Ø­Ø¯Ø¯Ù‘ÙŠÙ† Ù…Ø¹ÙŠÙ‘Ù† Ø¨Ø§Ù„ÙØ¹Ù„ Ø¶Ù…Ù† ÙƒØªÙŠØ¨Ø© Ø£Ø®Ø±Ù‰ Ù†Ø´Ø·Ø©.');
-      const nowValue = now();
-      const action = existing ? 'ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª ÙƒØªÙŠØ¨Ø©' : 'Ø¥Ù†Ø´Ø§Ø¡ ÙƒØªÙŠØ¨Ø©';
-      const detail = 'ØªÙ… Ø­ÙØ¸ Ø§Ù„ÙƒØªÙŠØ¨Ø© ' + code + ' ÙˆØ±Ø¨Ø· ' + memberCodes.length + ' Ù…Ù† Ø§Ù„Ø£ÙØ±Ø§Ø¯.';
-      const history = Array.isArray(existing?.history) ? existing.history.slice(-99) : [];
-      history.push({ action, actorCode: actor.publicCode || '', at: nowValue, detail });
-      const record = {
-        ...(existing || {}), id: existing ? existing.id : makeId('BAT'), code, name: nameAr || nameEn, nameAr, nameEn, sector,
-        status, color, symbol, emblem, commanderCode: commander ? commander.publicCode : '', deputyCode: deputy ? deputy.publicCode : '',
-        seniorCommanderCode: seniorCommander ? seniorCommander.publicCode : '', memberCodes,
-        notes: clean(payload?.notes ?? existing?.notes, 1000), mapPosition: existing?.mapPosition || null, history,
-        createdAt: existing?.createdAt || nowValue, createdByCode: existing?.createdByCode || actor.publicCode,
-        updatedAt: nowValue, updatedByCode: actor.publicCode
-      };
-      if (!Array.isArray(state.cia_battalions)) state.cia_battalions = [];
-      if (existing) state.cia_battalions = state.cia_battalions.map((item) => String(item.id) === String(existing.id) ? record : item);
-      else state.cia_battalions.unshift(record);
-      addAuditLog(action, actor, null, detail);
-      if (state.cia_audit_logs[0]) { state.cia_audit_logs[0].system = 'IBP'; state.cia_audit_logs[0].ibpBattalionId = String(record.id); }
-      const persistence = saveState();
-      const result = ok(cb, { battalion: ibpBattalionForViewer(record, actor) });
-      Promise.resolve(persistence).then(() => emitIBPBattalionState()).catch(() => {});
-      return result;
-    });
-
-    socket.on(
-      'operation:create',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            socketRequirementMessage(socket)
-          );
-        }
-
-        if (!canManageOperations(actor)) {
-          return no(cb, 'Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ù…Ù‡Ù…Ø§Øª Ù…ØªØ§Ø­ Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-        }
-
-        const requestedCodes = Array.isArray(payload?.memberCodes)
-          ? payload.memberCodes
-          : [payload?.agentCode || ''];
-        const memberCodes = [...new Set(
-          requestedCodes.map((code) => clean(code, 100)).filter(Boolean)
-        )];
-        if (!memberCodes.length || memberCodes.length > 50) {
-          return no(cb, 'Ø§Ø®ØªØ± Ù…Ù† ÙØ±Ø¯ ÙˆØ§Ø­Ø¯ Ø¥Ù„Ù‰ 50 ÙØ±Ø¯Ù‹Ø§ Ù„Ù„Ù…Ù‡Ù…Ø©.');
-        }
-        const assignedAgents = memberCodes.map((code) => getUserByPublicCode(code));
-        if (assignedAgents.some((member) =>
-          !member ||
-          member.approved === false ||
-          member.suspended
-        )) {
-          return no(cb, 'ØªØ£ÙƒØ¯ Ø£Ù† Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø£ÙØ±Ø§Ø¯ Ø§Ù„Ù…Ø®ØªØ§Ø±ÙŠÙ† Ù…Ø¹ØªÙ…Ø¯ÙˆÙ† ÙˆØºÙŠØ± Ù…ÙˆÙ‚ÙˆÙÙŠÙ†. ÙŠÙ…ÙƒÙ† Ø¥Ø³Ù†Ø§Ø¯ Ø§Ù„Ù…Ù‡Ù…Ø© Ø­ØªÙ‰ Ù„Ù…Ù† Ù‡Ùˆ ØºÙŠØ± Ù…ØªØµÙ„ Ø¨Ø§Ù„Ø®Ø¯Ù…Ø©.');
-        }
-
-        const operation = {
-          id:
-            makeId('OP'),
-
-          missionNumber:
-            clean(
-              payload?.missionNumber ||
-              `OP-${Date.now()}`,
-              100
-            ),
-
-          title:
-            clean(
-              payload?.title ||
-              'CIA OPERATION',
-              200
-            ),
-
-          type:
-            clean(
-              payload?.type ||
-              'GENERAL',
-              100
-            ),
-
-          risk:
-            clean(
-              payload?.risk ||
-              'MEDIUM',
-              100
-            ),
-
-          objective:
-            clean(
-              payload?.objective ||
-              '',
-              5000
-            ),
-
-          status:
-            clean(
-              payload?.status ||
-              'PLANNED',
-              100
-            ),
-
-          startLocation:
-            payload?.startLocation ||
-            null,
-
-          endLocation:
-            payload?.endLocation ||
-            null,
-
-          commanderCode:
-            actor.publicCode,
-
-          commanderName:
-            actor.name,
-
-          memberCodes:
-            assignedAgents.map((member) => member.publicCode),
-
-          notes: [],
-
-          mapMarkers: [],
-
-          mapDrawings: [],
-
-          createdByCode:
-            actor.publicCode,
-
-          createdByName:
-            isLeadership(actor)
-              ? actor.name
-              : '',
-
-          createdAt:
-            now(),
-
-          updatedAt:
-            now()
-        };
-
-        state.cia_operations.push(
-          operation
-        );
-
-        addAuditLog(
-          'Ø¥Ù†Ø´Ø§Ø¡ Ø¹Ù…Ù„ÙŠØ©',
-          actor,
-          null,
-          `ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${operation.missionNumber}.`
-        );
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'OPERATION',
-          title: 'NEW OPERATION ASSIGNMENT',
-          message: `ØªÙ…Øª Ø¥Ø¶Ø§ÙØªÙƒ Ø¥Ù„Ù‰ Ø¹Ù…Ù„ÙŠØ© Ø¬Ø¯ÙŠØ¯Ø©: ${operation.missionNumber} â€” ${operation.title}`,
-          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
-          sourceUserId: actor.id,
-          relatedId: operation.id,
-          memberCodes: operation.memberCodes,
-          metadata: { missionNumber: operation.missionNumber, risk: operation.risk }
-        });
-
-        emitOperationState();
-
-        return ok(
-          cb,
-          {
-            operation:
-              operationSanitize(
-                operation,
-                actor
-              )
-          }
-        );
-      }
-    );
-
-    socket.on(
-      'operation:list',
-      (payload, cb) => {
-        const actor =
-          requireAuthenticatedUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            socketRequirementMessage(socket)
-          );
-        }
-        if (actor.serviceApproved === false && normalizeRank(actor.rank) !== 'AGENT') {
-          return no(cb, 'Ø¹Ø±Ø¶ Ø§Ù„Ù…Ù‡Ù…Ø§Øª Ù…ØªØ§Ø­ Ù„Ù„Ù‚ÙŠØ§Ø¯Ø© Ø¨Ø¹Ø¯ Ø§Ø¹ØªÙ…Ø§Ø¯ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø®Ø¯Ù…Ø©.');
-        }
-
-        return ok(
-          cb,
-          {
-            operations:
-              state.cia_operations
-                .map(
-                  (op) =>
-                    operationSanitize(
-                      op,
-                      actor
-                    )
-                )
-                .filter(Boolean)
-          }
-        );
-      }
-    );
-
-    socket.on('operation:agents', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, socketRequirementMessage(socket));
-      if (!canManageOperations(actor)) {
-        return no(cb, 'Ù‚Ø§Ø¦Ù…Ø© Ø§Ø®ØªÙŠØ§Ø± Ø£Ø¹Ø¶Ø§Ø¡ Ø§Ù„Ù…Ù‡Ù…Ø© Ù…ØªØ§Ø­Ø© Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-      }
-      const members = state.cia_users
-        .filter((member) =>
-          member.approved !== false &&
-          !member.suspended &&
-          member.publicCode
-        )
-        .sort((left, right) =>
-          rankLevel(right.rank) - rankLevel(left.rank) ||
-          clean(left.publicCode, 100).localeCompare(clean(right.publicCode, 100))
-        )
-        .map((member) => {
-          const safeMember = {
-            code: member.publicCode,
-            rank: normalizeRank(member.rank),
-            rankLabel: rankLabel(member.rank),
-            online: !!member.online,
-            activeService: member.activeService === true
-          };
-          if (isChief(actor)) safeMember.name = member.identity?.fullName || member.name;
-          return safeMember;
-        });
-      return ok(cb, { agents: members });
-    });
-
-    socket.on(
-      'operation:update',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            socketRequirementMessage(socket)
-          );
-        }
-
-        if (!canManageOperations(actor)) {
-          return no(cb, 'ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ù…Ù‡Ù…Ø§Øª Ù…ØªØ§Ø­ Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-        }
-
-        const id =
-          clean(
-            payload?.id,
-            200
-          );
-
-        const operation =
-          state.cia_operations.find(
-            (op) =>
-              String(op.id) ===
-              String(id)
-          );
-
-        if (!operation) {
-          return no(
-            cb,
-            'Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.'
-          );
-        }
-
-        if (!canAnnotateOperation(actor, operation)) {
-          return no(cb, 'Ø§Ù„ØªØ­Ø¯ÙŠØ«Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…ØªØ§Ø­Ø© Ù„Ù…Ù†Ø´Ø¦ Ø§Ù„Ù…Ù‡Ù…Ø© ÙˆØ§Ù„Ù‚ÙŠØ§Ø¯Ø© ÙˆØ§Ù„Ù…Ø´Ø§Ø±Ùƒ Ø§Ù„Ù…Ø­Ø¯Ø¯ ÙÙ‚Ø·.');
-        }
-
-        const previousMemberCodes = Array.isArray(operation.memberCodes) ? [...operation.memberCodes] : [];
-        let selectedAgents = null;
-        if (Array.isArray(payload?.memberCodes)) {
-          const selectedCodes = [...new Set(
-            payload.memberCodes.map((code) => clean(code, 100)).filter(Boolean)
-          )];
-          if (!selectedCodes.length || selectedCodes.length > 50) {
-            return no(cb, 'Ø§Ø®ØªØ± Ù…Ù† ÙØ±Ø¯ ÙˆØ§Ø­Ø¯ Ø¥Ù„Ù‰ 50 ÙØ±Ø¯Ù‹Ø§ Ù„Ù„Ù…Ù‡Ù…Ø©.');
-          }
-          selectedAgents = selectedCodes.map((code) => getUserByPublicCode(code));
-          if (selectedAgents.some((member) =>
-            !member ||
-            member.approved === false ||
-            member.suspended
-          )) {
-            return no(cb, 'ØªØ£ÙƒØ¯ Ø£Ù† Ø§Ù„Ø£ÙƒÙˆØ§Ø¯ Ø§Ù„Ù…Ø®ØªØ§Ø±Ø© ØªØ®Øµ Ø£ÙØ±Ø§Ø¯Ù‹Ø§ Ù…Ø¹ØªÙ…Ø¯ÙŠÙ† ÙˆØºÙŠØ± Ù…ÙˆÙ‚ÙˆÙÙŠÙ†.');
-          }
-        }
-
-        if (selectedAgents) {
-          operation.memberCodes = selectedAgents.map((member) => member.publicCode);
-        }
-
-        const previousStatus = operation.status;
-        const fields = [
-          'missionNumber',
-          'title',
-          'type',
-          'risk',
-          'objective',
-          'status',
-          'commanderCode'
-        ];
-
-        for (
-          const field
-          of fields
-        ) {
-          if (
-            payload?.[field] !==
-            undefined
-          ) {
-            operation[field] =
-              clean(
-                payload[field],
-                field ===
-                  'objective'
-                  ? 5000
-                  : 500
-              );
-          }
-        }
-
-        addOperationStatusHistory(operation, actor, previousStatus);
-
-        if (
-          payload?.startLocation !==
-          undefined
-        ) {
-          operation.startLocation =
-            payload.startLocation;
-        }
-
-        if (
-          payload?.endLocation !==
-          undefined
-        ) {
-          operation.endLocation =
-            payload.endLocation;
-        }
-
-        operation.updatedAt =
-          now();
-
-        addAuditLog(
-          'ØªØ­Ø¯ÙŠØ« Ø¹Ù…Ù„ÙŠØ©',
-          actor,
-          null,
-          `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${operation.missionNumber}.`
-        );
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'OPERATION',
-          title: 'OPERATION UPDATED',
-          message: `ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${operation.missionNumber} â€” ${operation.title}.`,
-          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
-          sourceUserId: actor.id,
-          relatedId: operation.id,
-          memberCodes: [...new Set([...previousMemberCodes, ...(operation.memberCodes || [])])],
-          metadata: { missionNumber: operation.missionNumber, risk: operation.risk, status: operation.status }
-        });
-
-        emitOperationState();
-
-        return ok(
-          cb,
-          {
-            operation:
-              operationSanitize(
-                operation,
-                actor
-              )
-          }
-        );
-      }
-    );
-
-    socket.on(
-      'operation:addNote',
-      async (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            socketRequirementMessage(socket)
-          );
-        }
-
-        const id =
-          clean(
-            payload?.id,
-            200
-          );
-
-        const operation =
-          state.cia_operations.find(
-            (op) =>
-              String(op.id) ===
-              String(id)
-          );
-
-        if (!operation) {
-          return no(
-            cb,
-            'Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.'
-          );
-        }
-
-        if (!canAnnotateOperation(actor, operation)) {
-          return no(cb, 'Ø§Ù„ØªØ­Ø¯ÙŠØ«Ø§Øª Ø§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠØ© Ù…ØªØ§Ø­Ø© Ù„Ù…Ù†Ø´Ø¦ Ø§Ù„Ù…Ù‡Ù…Ø© ÙˆØ§Ù„Ù‚ÙŠØ§Ø¯Ø© ÙˆØ§Ù„Ù…Ø´Ø§Ø±Ùƒ Ø§Ù„Ù…Ø­Ø¯Ø¯ ÙÙ‚Ø·.');
-        }
-
-        const text =
-          clean(
-            payload?.text ||
-            payload?.note,
-            3000
-          );
-
-        if (!text) {
-          return no(
-            cb,
-            'Ø§Ù„Ù…Ù„Ø§Ø­Ø¸Ø© ÙØ§Ø±ØºØ©.'
-          );
-        }
-
-        operation.notes =
-          Array.isArray(
-            operation.notes
-          )
-            ? operation.notes
-            : [];
-
-        operation.notes.push({
-          at:
-            now(),
-
-          authorCode:
-            actor.publicCode,
-
-          authorName:
-            isChief(actor)
-              ? actor.name
-              : '',
-
-          text
-        });
-
-        operation.notes =
-          operation.notes.slice(
-            -200
-          );
-
-        operation.updatedAt =
-          now();
-
-        saveState();
-
-        await publishNotifications(state.cia_users, {
-          type: 'OPERATION',
-          title: 'FIELD UPDATE // OPERATION NOTE',
-          message: `Ø£ÙØ¶ÙŠÙ ØªØ­Ø¯ÙŠØ« Ù…ÙŠØ¯Ø§Ù†ÙŠ Ø¥Ù„Ù‰ Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${operation.missionNumber}.`,
-          priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
-          sourceUserId: actor.id,
-          relatedId: operation.id,
-          memberCodes: operation.memberCodes,
-          metadata: { missionNumber: operation.missionNumber, risk: operation.risk }
-        });
-
-        emitOperationState();
-
-        return ok(
-          cb,
-          {
-            operation:
-              operationSanitize(
-                operation,
-                actor
-              )
-          }
-        );
-      }
-    );
-
-    socket.on(
-      'operation:delete',
-      (payload, cb) => {
-        const actor =
-          requireSocketUser(socket);
-
-        if (!actor) {
-          return no(
-            cb,
-            socketRequirementMessage(socket)
-          );
-        }
-
-        if (
-          !isChief(actor)
-        ) {
-          return no(
-            cb,
-            'Ø­Ø°Ù Ø§Ù„Ø¹Ù…Ù„ÙŠØ§Øª Ù…ØªØ§Ø­ Ù„Ù€ CIA CHIEF ÙÙ‚Ø·.'
-          );
-        }
-
-        const id =
-          clean(
-            payload?.id,
-            200
-          );
-
-        const exists =
-          state.cia_operations.some(
-            (op) =>
-              String(op.id) ===
-              String(id)
-          );
-
-        if (!exists) {
-          return no(
-            cb,
-            'Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.'
-          );
-        }
-
-        state.cia_operations =
-          state.cia_operations.filter(
-            (op) =>
-              String(op.id) !==
-              String(id)
-          );
-
-        addAuditLog(
-          'Ø­Ø°Ù Ø¹Ù…Ù„ÙŠØ©',
-          actor,
-          null,
-          `ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${id}.`
-        );
-
-        saveState();
-
-        emitOperationState();
-
-        return ok(
-          cb,
-          {
-            id
-          }
-        );
-      }
-    );
-
-    socket.on('operation:addMarker', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠÙ„Ø²Ù… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„Ø®Ø¯Ù…Ø© Ø£ÙˆÙ„Ø§Ù‹.');
-      const id = clean(payload?.id || payload?.operationId, 200);
-      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
-      if (!operation) return no(cb, 'Ø§Ù„Ù…Ù‡Ù…Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canManageOperations(actor)) {
-        return no(cb, 'Ù…Ø±Ø§Ø¬Ø¹Ø© Ø®Ø±ÙŠØ·Ø© Ø§Ù„Ù…Ù‡Ù…Ø© Ù…ØªØ§Ø­Ø© Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-      }
-      const point = missionPoint(payload?.point || payload);
-      if (!point) return no(cb, 'Ù…ÙˆÙ‚Ø¹ Ø§Ù„Ø¹Ù„Ø§Ù…Ø© ØºÙŠØ± ØµØ­ÙŠØ­.');
-      const marker = {
-        id: makeId('OPMARK'),
-        ...point,
-        label: clean(payload?.label || 'Ø¹Ù„Ø§Ù…Ø© Ù…ÙŠØ¯Ø§Ù†ÙŠØ©', 180),
-        kind: ['criminal', 'people'].includes(payload?.kind) ? payload.kind : 'point',
-        count: Number.isInteger(Number(payload?.count)) && Number(payload?.count) >= 1 && Number(payload?.count) <= 1000
-          ? Number(payload.count)
-          : null,
-        color: missionMapColor(payload?.color),
-        authorCode: actor.publicCode,
-        at: now()
-      };
-      operation.mapMarkers = Array.isArray(operation.mapMarkers) ? operation.mapMarkers : [];
-      operation.mapMarkers.push(marker);
-      operation.mapMarkers = operation.mapMarkers.slice(-200);
-      operation.updatedAt = now();
-      saveState();
-      emitOperationState();
-      return ok(cb, { marker, operation: operationSanitize(operation, actor) });
-    });
-
-    socket.on('operation:addDrawing', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠÙ„Ø²Ù… ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„Ø®Ø¯Ù…Ø© Ø£ÙˆÙ„Ø§Ù‹.');
-      const id = clean(payload?.id || payload?.operationId, 200);
-      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
-      if (!operation) return no(cb, 'Ø§Ù„Ù…Ù‡Ù…Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canManageOperations(actor)) {
-        return no(cb, 'Ù…Ø±Ø§Ø¬Ø¹Ø© Ø®Ø±ÙŠØ·Ø© Ø§Ù„Ù…Ù‡Ù…Ø© Ù…ØªØ§Ø­Ø© Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-      }
-      const points = Array.isArray(payload?.points)
-        ? payload.points.map(missionPoint).filter(Boolean).slice(0, 500)
-        : [];
-      if (points.length < 2) return no(cb, 'Ø§Ù„Ø±Ø³Ù… ÙŠØ­ØªØ§Ø¬ Ù†Ù‚Ø·ØªÙŠÙ† Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„.');
-      const shape = MISSION_DRAWING_SHAPES.has(payload?.shape) ? payload.shape : 'freehand';
-      const drawing = {
-        id: makeId('OPDRAW'),
-        points,
-        shape,
-        color: missionMapColor(payload?.color),
-        authorCode: actor.publicCode,
-        at: now()
-      };
-      operation.mapDrawings = Array.isArray(operation.mapDrawings) ? operation.mapDrawings : [];
-      operation.mapDrawings.push(drawing);
-      operation.mapDrawings = operation.mapDrawings.slice(-100);
-      operation.updatedAt = now();
-      saveState();
-      emitOperationState();
-      return ok(cb, { drawing, operation: operationSanitize(operation, actor) });
-    });
-
-    /* =====================================================
-       CLIENT COMPATIBILITY EVENTS
-    ===================================================== */
-
-    socket.on('admin:updateMember', (payload, cb) => {
-      try {
-        const actor = requireSocketUser(socket);
-        if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-        const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-        if (!target) return no(cb, 'Ø§Ù„Ø´Ø®ØµÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-        if (!canManageMember(actor, target)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØ¹Ø¯ÙŠÙ„ Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-
-        let action = 'code';
-        if (payload?.rank !== undefined) {
-          const rank = normalizeRank(payload.rank);
-          if (!canChangeRank(actor, target, rank)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØºÙŠÙŠØ± Ø±ØªØ¨Ø© Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-          target.rank = rank;
-          ensureBank(target).salary = defaultSalaryForRank(rank);
-          action = 'rank';
-        }
-        if (payload?.secretCode !== undefined) {
-          const secretCode = clean(payload.secretCode, 100);
-          const error = validateSecretCode(secretCode, target);
-          if (error || !canChangeSecret(actor, target)) return no(cb, error || 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØºÙŠÙŠØ± ÙƒÙˆØ¯ Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-          target.secretCode = secretCode;
-          action = 'code';
-        }
-        if (payload?.publicCode !== undefined) {
-          const publicCode = clean(payload.publicCode, 100);
-          const duplicate = getUserByPublicCode(publicCode);
-          if (!publicCode || publicCode === 'PENDING' || (duplicate && duplicate.id !== target.id)) {
-            return no(cb, 'Ø§Ù„ÙƒÙˆØ¯ Ø§Ù„Ø¹Ø³ÙƒØ±ÙŠ ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ù…Ø³ØªØ®Ø¯Ù….');
-          }
-          if (!canManageMember(actor, target)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ØªØºÙŠÙŠØ± Ø§Ù„ÙƒÙˆØ¯ Ø§Ù„Ø¹Ø³ÙƒØ±ÙŠ.');
-          if (target.serviceApproved !== true) return no(cb, 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥ØµØ¯Ø§Ø± Ø£Ùˆ ØªØºÙŠÙŠØ± Ø§Ù„ÙƒÙˆØ¯ Ø§Ù„Ø¹Ø³ÙƒØ±ÙŠ Ù‚Ø¨Ù„ Ù…ÙˆØ§ÙÙ‚Ø© Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø®Ø¯Ù…Ø©.');
-          target.publicCode = publicCode;
-          action = 'code';
-        }
-        saveState();
-        emitState();
-        const result = ok(cb, { action, user: publicUser(target, actor) });
-        socket.emit('admin:member:result', result);
-        return result;
-      } catch (error) {
-        return no(cb, error.message || 'ØªØ¹Ø°Ø± ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-      }
-    });
-
-    socket.on('admin:reactivateMember', async (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-      if (!actor || !target) return no(cb, 'Ø§Ù„Ø´Ø®ØµÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canRestoreSecurityMember(actor)) {
-        const incident = recordSecurityEvent({
-          actor,
-          target: actor,
-          action: 'UNAUTHORIZED_RESTORE_ATTEMPT',
-          type: 'ACCESS_CONTROL',
-          level: 3,
-          reason: 'ONLY_CIA_CHIEF_CAN_RESTORE_MEMBERS',
-          status: 'BLOCKED'
-        });
-        await notifySecurityLeadership(incident);
-        return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© Ø¥Ø¹Ø§Ø¯Ø© Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ© Ù„Ù„Ø®Ø¯Ù…Ø©.');
-      }
-      if (target.id === actor.id) return no(cb, 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ø­Ø³Ø§Ø¨Ùƒ Ø¨Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©.');
-      if (target.securityStatus === 'ACTIVE' && !target.suspended) {
-        return no(cb, 'Ø§Ù„Ø­Ø³Ø§Ø¨ ØºÙŠØ± Ù…ÙˆÙ‚ÙˆÙ Ø£Ùˆ Ù…Ù‚ÙŠÙ‘Ø¯ Ø£Ù…Ù†ÙŠÙ‹Ø§.');
-      }
-      target.securityStatus = 'ACTIVE';
-      target.activeService = false;
-      target.suspended = false;
-      target.suspensionReason = '';
-      target.status = 'Ø®Ø§Ø±Ø¬ Ø§Ù„Ø®Ø¯Ù…Ø©';
-      const incident = recordSecurityEvent({
-        actor,
-        target,
-        action: 'MEMBER_RESTORED',
-        type: 'MANUAL_REVIEW',
-        level: 1,
-        reason: 'RESTORED_BY_CIA_CHIEF',
-        status: 'RESTORED'
-      });
-      await notifySecurityLeadership(incident);
-      saveState();
-      emitState();
-      const result = ok(cb, { action: 'reactivate', user: publicUser(target, actor) });
-      socket.emit('admin:member:result', result);
-      return result;
-    });
-
-    socket.on('admin:kickMember', async (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
-      const reason = redactSecurityReason(payload?.reason);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø¥Ù„Ù‰ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø£ÙˆÙ„Ø§Ù‹.');
-      if (!target) return no(cb, 'Ø§Ù„Ø´Ø®ØµÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canManageMember(actor, target)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ÙØµÙ„ Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-      if (!reason) return no(cb, 'Ø³Ø¨Ø¨ Ø§Ù„ÙØµÙ„ Ø¥Ù„Ø²Ø§Ù…ÙŠ.');
-      target.activeService = false;
-      target.suspended = true;
-      target.securityStatus = 'SUSPENDED';
-      target.suspensionReason = reason;
-      target.online = false;
-      target.status = 'Ù…ÙØµÙˆÙ„';
-      for (const socketId of sessions.get(target.id) || []) {
-        const targetSocket = io.sockets.sockets.get(socketId);
-        if (targetSocket) {
-          targetSocket.emit('member:kicked', { message: 'ØªÙ… ÙØµÙ„ Ø§Ù„Ø´Ø®ØµÙŠØ© Ù…Ù† Ø§Ù„Ø®Ø¯Ù…Ø©.', reason });
-        }
-      }
-      addAuditLog('ÙØµÙ„ Ù…Ù† Ø§Ù„Ø®Ø¯Ù…Ø©', actor, target, `Ø³Ø¨Ø¨ Ø§Ù„ÙØµÙ„: ${redactSecurityReason(reason)}`);
-      const incident = recordSecurityEvent({
-        actor,
-        target,
-        action: 'MEMBER_SUSPENDED',
-        type: 'ADMINISTRATIVE_SUSPENSION',
-        level: 2,
-        reason,
-        status: 'SUSPENDED'
-      });
-      await notifySecurityLeadership(incident);
-      saveState();
-      emitState();
-      const result = ok(cb, { action: 'kick', user: publicUser(target, actor) });
-      socket.emit('admin:member:result', result);
-      return result;
-    });
-
-    socket.on('admin:kickUser', async (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      const target = getUserById(clean(payload?.userId || payload?.memberId, 120));
-      const reason = redactSecurityReason(payload?.reason);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø¥Ù„Ù‰ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø£ÙˆÙ„Ø§Ù‹.');
-      if (!target) return no(cb, 'Ø§Ù„Ø´Ø®ØµÙŠØ© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canManageMember(actor, target)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© ÙØµÙ„ Ù‡Ø°Ù‡ Ø§Ù„Ø´Ø®ØµÙŠØ©.');
-      if (!reason) return no(cb, 'Ø³Ø¨Ø¨ Ø§Ù„ÙØµÙ„ Ø¥Ù„Ø²Ø§Ù…ÙŠ.');
-      target.activeService = false;
-      target.suspended = true;
-      target.securityStatus = 'SUSPENDED';
-      target.suspensionReason = reason;
-      target.online = false;
-      target.status = 'Ù…ÙØµÙˆÙ„';
-      for (const socketId of sessions.get(target.id) || []) {
-        const targetSocket = io.sockets.sockets.get(socketId);
-        if (targetSocket) {
-          targetSocket.emit('member:kicked', { message: 'ØªÙ… ÙØµÙ„ Ø§Ù„Ø´Ø®ØµÙŠØ© Ù…Ù† Ø§Ù„Ø®Ø¯Ù…Ø©.', reason });
-        }
-      }
-      addAuditLog('ÙØµÙ„ Ù…Ù† Ø§Ù„Ø®Ø¯Ù…Ø©', actor, target, `Ø³Ø¨Ø¨ Ø§Ù„ÙØµÙ„: ${redactSecurityReason(reason)}`);
-      const incident = recordSecurityEvent({
-        actor,
-        target,
-        action: 'MEMBER_SUSPENDED',
-        type: 'ADMINISTRATIVE_SUSPENSION',
-        level: 2,
-        reason,
-        status: 'SUSPENDED'
-      });
-      await notifySecurityLeadership(incident);
-      saveState();
-      emitState();
-      return ok(cb, { action: 'kick', user: publicUser(target, actor) });
-    });
-
-    socket.on('radio:text', async (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
-      const text = clean(payload?.text || payload?.message, 2000);
-      if (!text) return no(cb, 'Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙØ§Ø±ØºØ©.');
-      if (await moderateOutgoingText(actor, text, 'RADIO')) {
-        return no(cb, 'ØªÙ… Ø­Ø¸Ø± Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø¨ÙˆØ§Ø³Ø·Ø© Ù…Ø±ÙƒØ² Ø§Ù„Ø£Ù…Ù†.');
-      }
-      const packet = {
-        id: makeId('RADIO'),
-        channel,
-        userCode: actor.publicCode,
-        fromCode: actor.publicCode,
-        fromRank: rankLabel(actor.rank),
-        text,
-        at: now()
-      };
-      emitRadioToChannel(channel, 'radio:text', packet);
-      return ok(cb, { message: packet });
-    });
-
-    socket.on('radio:code', async (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
-      const packet = {
-        channel,
-        userCode: actor.publicCode,
-        userName: actor.name,
-        code: clean(payload?.code, 50),
-        meaning: clean(payload?.meaning, 200)
-      };
-      if (!packet.code) return no(cb, 'ÙƒÙˆØ¯ Ø§Ù„Ø±Ø§Ø¯ÙŠÙˆ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.');
-      if (await moderateOutgoingText(actor, `${packet.code} ${packet.meaning}`, 'RADIO_CODE')) {
-        return no(cb, 'ØªÙ… Ø­Ø¸Ø± ÙƒÙˆØ¯ Ø§Ù„Ø±Ø§Ø¯ÙŠÙˆ Ø¨ÙˆØ§Ø³Ø·Ø© Ù…Ø±ÙƒØ² Ø§Ù„Ø£Ù…Ù†.');
-      }
-      emitRadioToChannel(channel, 'radio:code', packet);
-      return ok(cb, { message: packet });
-    });
-
-    socket.on('radio:ptt:start', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
-      emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, ptt: true,
-        statusHtml: 'Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¨Ø« Ø§Ù„ØµÙˆØªÙŠ...'
-      });
-      return ok(cb);
-    });
-
-    socket.on('radio:ptt:stop', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
-      emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, ptt: false,
-        statusHtml: 'Ø§Ù†ØªÙ‡Ù‰ Ø§Ù„Ø¨Ø«.'
-      });
-      return ok(cb);
-    });
-
-    socket.on('report:delete', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      if (!isLeadership(actor)) return no(cb, 'Ø­Ø°Ù Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ± Ù…ØªØ§Ø­ Ù„Ù„Ù‚ÙŠØ§Ø¯Ø© ÙÙ‚Ø·.');
-      const id = clean(payload?.id || payload?.reportId, 200);
-      const exists = state.cia_reports.some((report) => String(report.id) === String(id));
-      if (!exists) return no(cb, 'Ø§Ù„ØªÙ‚Ø±ÙŠØ± ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.');
-      state.cia_reports = state.cia_reports.filter((report) => String(report.id) !== String(id));
-      addAuditLog('Ø­Ø°Ù ØªÙ‚Ø±ÙŠØ±', actor, null, `ØªÙ… Ø­Ø°Ù Ø§Ù„ØªÙ‚Ø±ÙŠØ± ${id}.`);
-      saveState();
-      emitState();
-      return ok(cb, { id });
-    });
-
-    socket.on('duty:start', (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      if (actor.serviceApproved !== true) {
-        return no(cb, 'ÙŠÙ„Ø²Ù… Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ø´Ø®ØµÙŠØ© ÙˆØ§Ø¹ØªÙ…Ø§Ø¯ Ø§Ù„Ù‡ÙˆÙŠØ© ÙˆØ·Ù„Ø¨ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø®Ø¯Ù…Ø© Ù‚Ø¨Ù„ Ù…Ø¨Ø§Ø´Ø±Ø© Ø§Ù„Ø®Ø¯Ù…Ø©.');
-      }
-      if (!actor.publicCode && !isLeadership(actor)) {
-        return no(cb, 'Ù„Ù… ÙŠØµØ¯Ø± Ø§Ù„ÙƒÙˆØ¯ Ø§Ù„Ø¹Ø³ÙƒØ±ÙŠ Ø¨Ø¹Ø¯Ø› Ø§Ø·Ù„Ø¨ Ù…Ù† CIA CHIEF Ø¥ÙƒÙ…Ø§Ù„ Ø§Ø¹ØªÙ…Ø§Ø¯ Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø®Ø¯Ù…Ø©.');
-      }
-      if (actor.activeService === true) {
-        return ok(cb, { attendance: null, user: publicUser(actor, actor) });
-      }
-      const dayKey = now().slice(0, 10);
-      const current = (state.cia_attendance || []).find(
-        (item) => item.userId === actor.id && item.dayKey === dayKey && !item.endedAt
-      );
-      if (current) return ok(cb, { attendance: current });
-      const attendance = {
-        id: makeId('DUTY'),
-        userId: actor.id,
-        userCode: actor.publicCode,
-        userName: actor.name,
-        dayKey,
-        startedAt: now(),
-        endedAt: null,
-        salaryPaid: false
-      };
-      state.cia_attendance.unshift(attendance);
-      actor.activeService = true;
-      actor.online = true;
-      actor.status = 'ÙÙŠ Ø§Ù„Ø®Ø¯Ù…Ø©';
-      saveState();
-      emitState();
-      return ok(cb, { attendance, user: publicUser(actor, actor) });
-    });
-
-    socket.on('duty:end', (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const current = (state.cia_attendance || []).find(
-        (item) => item.userId === actor.id && !item.endedAt
-      );
-      if (current) current.endedAt = now();
-      removeRadioMember(socket.id);
-      actor.radioOnline = false;
-      actor.activeService = false;
-      actor.status = 'Ø®Ø§Ø±Ø¬ Ø§Ù„Ø®Ø¯Ù…Ø©';
-      saveState();
-      emitState();
-      return ok(cb, { attendance: current, user: publicUser(actor, actor) });
-    });
-
-    socket.on('operation:updateStatus', async (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, socketRequirementMessage(socket));
-      const id = clean(payload?.operationId || payload?.id, 200);
-      const operation = state.cia_operations.find((item) => String(item.id) === String(id));
-      if (!operation) return no(cb, 'Ø§Ù„Ù…Ù‡Ù…Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      if (!canManageOperations(actor)) {
-        return no(cb, 'ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù…Ù‡Ù…Ø© Ù…ØªØ§Ø­ Ù„Ù„Ø±ØªØ¨ Ø§Ù„Ø¹Ù„ÙŠØ§ Ø§Ù„Ø«Ù„Ø§Ø« ÙÙ‚Ø·.');
-      }
-      const previousStatus = operation.status;
-      operation.status = clean(payload?.status, 100) || operation.status;
-      addOperationStatusHistory(operation, actor, previousStatus);
-      operation.updatedAt = now();
-      saveState();
-      await publishNotifications(state.cia_users, {
-        type: 'OPERATION',
-        title: 'OPERATION STATUS CHANGE',
-        message: `ØªØºÙŠØ±Øª Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ù…Ù„ÙŠØ© ${operation.missionNumber}: ${previousStatus} â† ${operation.status}.`,
-        priority: operation.risk === 'HIGH' || operation.risk === 'CRITICAL' ? 'HIGH' : 'NOTICE',
-        sourceUserId: actor.id,
-        relatedId: operation.id,
-        memberCodes: operation.memberCodes,
-        metadata: { missionNumber: operation.missionNumber, status: operation.status, risk: operation.risk }
-      });
-      emitOperationState();
-      return ok(cb, { operation: operationSanitize(operation, actor) });
-    });
-
-    socket.on('chat:send', async (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const mode = payload?.mode === 'private' ? 'private' : 'global';
-      const text = clean(payload?.text || payload?.message, 4000);
-      const image = clean(payload?.image, 8 * 1024 * 1024);
-      if (!text && !image) return no(cb, 'Ø§Ù„Ø±Ø³Ø§Ù„Ø© ÙØ§Ø±ØºØ©.');
-      if (text && await moderateOutgoingText(actor, text, mode === 'private' ? 'PRIVATE_CHAT' : 'CHAT')) {
-        return no(cb, 'ØªÙ… Ø­Ø¸Ø± Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø¨ÙˆØ§Ø³Ø·Ø© Ù…Ø±ÙƒØ² Ø§Ù„Ø£Ù…Ù†.');
-      }
-
-      const message = {
-        id: makeId(mode === 'private' ? 'PCHAT' : 'CHAT'),
-        senderCode: actor.publicCode,
-        senderName: actor.name,
-        fromCode: actor.publicCode,
-        fromName: actor.name,
-        targetCode: clean(payload?.targetCode, 100),
-        text,
-        image,
-        timestamp: now(),
-        at: now()
-      };
-      let privateRecipient = null;
-      if (mode === 'private') {
-        const target = getUserByPublicCode(message.targetCode);
-        if (!target) return no(cb, 'Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ù…Ø³ØªÙ‡Ø¯Ù ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯.');
-        privateRecipient = target;
-        const key = chatKey(actor.publicCode, target.publicCode);
-        state.cia_chats.private[key] = state.cia_chats.private[key] || [];
-        state.cia_chats.private[key].push(message);
-        state.cia_chats.private[key] = state.cia_chats.private[key].slice(-500);
-        const targets = new Set([...(sessions.get(actor.id) || []), ...(sessions.get(target.id) || [])]);
-        for (const socketId of targets) {
-          const targetSocket = io.sockets.sockets.get(socketId);
-          if (targetSocket) targetSocket.emit('chat:private', message);
-        }
-      } else {
-        state.cia_chats.global.push(message);
-        state.cia_chats.global = state.cia_chats.global.slice(-1000);
-        io.emit('chat:global', message);
-      }
-      saveState();
-      if (privateRecipient && privateRecipient.id !== actor.id) {
-        await publishNotifications([privateRecipient], {
-          type: 'MESSAGE',
-          title: 'NEW MESSAGE',
-          message: `ÙˆØµÙ„ØªÙƒ Ø±Ø³Ø§Ù„Ø© Ø®Ø§ØµØ© Ù…Ù† ${actor.publicCode || 'Agent'}.`,
-          priority: 'NOTICE',
-          sourceUserId: actor.id,
-          targetUserId: privateRecipient.id,
-          sourceNameVisible: true,
-          relatedId: message.id,
-          metadata: { senderCode: actor.publicCode }
-        });
-      }
-      emitState();
-      return ok(cb, { message });
-    });
-
-    socket.on('chat:delete', (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor) return no(cb, 'ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„.');
-      const messageId = clean(payload?.messageId || payload?.id, 200);
-      const admin = payload?.admin === true;
-      if (admin && !isLeadership(actor)) return no(cb, 'Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ø­Ø°Ù Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ.');
-      let removed = false;
-      if (payload?.mode === 'private') {
-        for (const key of Object.keys(state.cia_chats.private || {})) {
-          const before = state.cia_chats.private[key].length;
-          state.cia_chats.private[key] = state.cia_chats.private[key].filter(
-            (message) => String(message.id) !== String(messageId) ||
-              (!admin && message.senderCode !== actor.publicCode)
-          );
-          removed = removed || before !== state.cia_chats.private[key].length;
-        }
-      } else {
-        const before = state.cia_chats.global.length;
-        state.cia_chats.global = state.cia_chats.global.filter(
-          (message) => String(message.id) !== String(messageId)
-        );
-        removed = before !== state.cia_chats.global.length;
-      }
-      if (!removed) return no(cb, 'Ø§Ù„Ø±Ø³Ø§Ù„Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø© Ø£Ùˆ Ù„Ø§ ØªÙ…Ù„Ùƒ ØµÙ„Ø§Ø­ÙŠØ© Ø­Ø°ÙÙ‡Ø§.');
-      saveState();
-      emitState();
-      return ok(cb, { id: messageId });
-    });
-
-    socket.on('support:send', async (payload, cb) => {
-      const actor = requireAuthenticatedUser(socket);
-      const senderName = actor
-        ? actor.name
-        : clean(payload?.name || payload?.characterName || 'Ø´Ø®ØµÙŠØ© ØºÙŠØ± Ù…Ø¹ØªÙ…Ø¯Ø©', 120);
-      const text = clean(payload?.text || payload?.message, 3000);
-      if (!text) return no(cb, 'Ø§ÙƒØªØ¨ Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø± Ø£ÙˆÙ„Ø§Ù‹.');
-      if (await moderateOutgoingText(actor, text, 'SUPPORT')) {
-        return no(cb, 'ØªÙ… Ø­Ø¸Ø± Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø± Ø¨ÙˆØ§Ø³Ø·Ø© Ù…Ø±ÙƒØ² Ø§Ù„Ø£Ù…Ù†.');
-      }
-
-      let threadId = clean(payload?.threadId, 120);
-      let ownerToken = clean(payload?.ownerToken, 200);
-      let original = null;
-      if (threadId) {
-        original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
-        const suppliedHash = ownerToken
-          ? crypto.createHash('sha256').update(ownerToken).digest('hex')
-          : '';
-        if (!original?.ownerTokenHash || suppliedHash !== original.ownerTokenHash) {
-          return no(cb, 'ØªØ¹Ø°Ø± Ø¥Ø«Ø¨Ø§Øª Ù…Ù„ÙƒÙŠØ© Ù…Ø­Ø§Ø¯Ø«Ø© Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø±.');
-        }
-      } else {
-        threadId = `THREAD-${crypto.randomBytes(24).toString('hex')}`;
-        ownerToken = crypto.randomBytes(32).toString('hex');
-      }
-
-      const message = {
-        id: makeId('SUPPORT'),
-        threadId,
-        senderCode: actor?.publicCode || '',
-        senderName,
-        senderRank: actor ? rankLabel(actor.rank) : 'Agent Ù‚ÙŠØ¯ Ø§Ù„Ø§Ø¹ØªÙ…Ø§Ø¯',
-        text,
-        at: now(),
-        reply: false,
-        ownerUserId: original?.ownerUserId || actor?.id || null,
-        ...(!original ? {
-          ownerTokenHash: crypto.createHash('sha256').update(ownerToken).digest('hex')
-        } : {})
-      };
-      supportThreadSockets.set(message.threadId, socket.id);
-      state.cia_support.push(message);
-      state.cia_support = state.cia_support.slice(-500);
-      saveState();
-
-      for (const targetSocket of io.sockets.sockets.values()) {
-        const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
-        if (targetUser && isLeadership(targetUser)) {
-          targetSocket.emit('support:message', message);
-        }
-      }
-      return ok(cb, { message, threadId: message.threadId, ownerToken });
-    });
-
-    socket.on('support:history', (payload, cb) => {
-      const threadId = clean(payload?.threadId, 120);
-      const ownerToken = clean(payload?.ownerToken, 200);
-      const original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
-      const suppliedHash = ownerToken
-        ? crypto.createHash('sha256').update(ownerToken).digest('hex')
-        : '';
-      if (!original?.ownerTokenHash || suppliedHash !== original.ownerTokenHash) {
-        return no(cb, 'ØªØ¹Ø°Ø± Ø¥Ø«Ø¨Ø§Øª Ù…Ù„ÙƒÙŠØ© Ù…Ø­Ø§Ø¯Ø«Ø© Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø±.');
-      }
-      supportThreadSockets.set(threadId, socket.id);
-      const messages = state.cia_support.filter((item) => item.threadId === threadId);
-      return ok(cb, { threadId, messages });
-    });
-
-    socket.on('support:reply', async (payload, cb) => {
-      const actor = requireSocketUser(socket);
-      if (!actor || !isLeadership(actor)) {
-        return no(cb, 'Ø§Ù„Ø±Ø¯ Ø¹Ù„Ù‰ Ø§Ø³ØªÙØ³Ø§Ø±Ø§Øª Ø§Ù„Ø§Ø¹ØªÙ…Ø§Ø¯ Ù…ØªØ§Ø­ Ù„Ù„Ù‚Ø§Ø¦Ø¯ ÙˆSenior Commander CIA ÙÙ‚Ø·.');
-      }
-      const text = clean(payload?.text || payload?.message, 3000);
-      const threadId = clean(payload?.threadId, 120);
-      if (!text || !threadId) return no(cb, 'Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø±Ø¯ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©.');
-      if (await moderateOutgoingText(actor, text, 'SUPPORT_REPLY')) {
-        return no(cb, 'ØªÙ… Ø­Ø¸Ø± Ø§Ù„Ø±Ø¯ Ø¨ÙˆØ§Ø³Ø·Ø© Ù…Ø±ÙƒØ² Ø§Ù„Ø£Ù…Ù†.');
-      }
-      const original = state.cia_support.find((item) => item.threadId === threadId && item.reply !== true);
-      if (!original) return no(cb, 'Ù…Ø­Ø§Ø¯Ø«Ø© Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø± ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©.');
-      const message = {
-        id: makeId('SUPPORT'),
-        threadId,
-        senderCode: actor.publicCode,
-        senderName: actor.name,
-        senderRank: rankLabel(actor.rank),
-        text,
-        at: now(),
-        reply: true
-      };
-      state.cia_support.push(message);
-      state.cia_support = state.cia_support.slice(-500);
-      saveState();
-      for (const targetSocket of io.sockets.sockets.values()) {
-        const targetUser = targetSocket.userId ? getUserById(targetSocket.userId) : null;
-        if (targetUser && isLeadership(targetUser)) targetSocket.emit('support:message', message);
-      }
-      const requesterIds = new Set();
-      if (original.ownerUserId) {
-        for (const socketId of sessions.get(original.ownerUserId) || []) requesterIds.add(socketId);
-      }
-      const activeOwnerSocket = supportThreadSockets.get(threadId);
-      if (activeOwnerSocket) requesterIds.add(activeOwnerSocket);
-      for (const socketId of requesterIds) {
-        const requesterSocket = io.sockets.sockets.get(socketId);
-        if (requesterSocket) requesterSocket.emit('support:private-reply', { threadId, message });
-      }
-      return ok(cb, { message });
-    });
-
-    /* =====================================================
-       DISCONNECT
-    ===================================================== */
-
-    socket.on(
-      'disconnect',
-      () => {
-        removeRadioMember(
-          socket.id
-        );
-
-        markLogout(socket);
-      }
-    );
-  }
-);
-
-io.on('connection', (socket) => {
-  registerIBPSocket(socket, {
-    getState: () => state,
-    requireSocketUser,
-    clean,
-    rankLevel,
-    normalizeRank,
-    rankLabel,
-    isChief,
-    isSenior,
-    isLeadership,
-    canManageIBPBattalions,
-    ibpResolveCode,
-    ibpBattalionForViewer,
-    publicUser,
-    now,
-    makeId,
-    addAuditLog,
-    saveState,
-    emitState,
-    markLogin,
-    markLogout,
-    socketToUser
-  });
-});
-
-/* =====================================================
-   HTTP SERVER START
-===================================================== */
-
-function installPersistenceEmitBarriers() {
-  const originalIoEmit = io.emit.bind(io);
-  io.emit = function(event, ...args) {
-    if (!stateStore) return originalIoEmit(event, ...args);
-    stateStore.flush().then(() => originalIoEmit(event, ...args)).catch((error) => {
-      console.error('[BLACK RIDGE] Broadcast skipped because persistence failed:', error.message);
-    });
-    return io;
-  };
-}
-
-async function initializePersistence() {
-  if (DATABASE_URL) {
-    const { Pool } = require('pg');
-    postgresPool = new Pool({
-      connectionString: DATABASE_URL,
-      max: 5,
-      connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 30000
-    });
-    postgresPool.on('error', (error) => {
-      console.error('[BLACK RIDGE] Idle PostgreSQL connection error:', error.message);
-    });
-    await postgresPool.query('SELECT 1');
-    stateStore = new PostgresStateStore(postgresPool);
-    state = await stateStore.load({
-      initialState: EMPTY_STATE,
-      getLegacyState: () => {
-        const legacy = readLegacyStateFile();
-        if (legacy) console.log('[BLACK RIDGE] Importing legacy JSON data from ' + legacy.file);
-        return legacy ? legacy.state : null;
-      },
-      normalizeState: (value) => normalizePersistedState(value, 'PostgreSQL state')
-    });
-    notificationsStore = new NotificationsStore(postgresPool, {
-      getRows: () => state.cia_notifications || [],
-      setRows: (rows) => {
-        state.cia_notifications = rows;
-        saveState();
-      }
-    });
-    await notificationsStore.initialize();
-    installPersistenceEmitBarriers();
-    console.log('[BLACK RIDGE] PostgreSQL state store ready.');
-    console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
-    return;
-  }
-
-  if (IS_RENDER_RUNTIME) {
-    console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
-  }
-
-  prepareFileStorage();
-  state = loadState();
-  notificationsStore = new NotificationsStore(null, {
-    getRows: () => state.cia_notifications || [],
-    setRows: (rows) => {
-      state.cia_notifications = rows;
-      saveState();
-    }
-  });
-  await notificationsStore.initialize();
-  console.log((IS_RENDER_RUNTIME ? '[BLACK RIDGE] Render temporary JSON state store ready: ' : '[BLACK RIDGE] Local JSON state store ready: ') + DATA_FILE);
-}
-
-let shutdownPromise = null;
-function installGracefulShutdown() {
-  const shutdown = (signal) => {
-    if (shutdownPromise) return shutdownPromise;
-    shutdownPromise = (async () => {
-      console.log('[BLACK RIDGE] ' + signal + ' received; draining connections and saved-state writes.');
-      const forceExitTimer = setTimeout(() => {
-        console.error('[BLACK RIDGE] Shutdown timed out while draining state writes.');
-        process.exit(1);
-      }, 25000);
-      if (typeof forceExitTimer.unref === 'function') forceExitTimer.unref();
-
-      try {
-        await new Promise((resolve) => io.close(resolve));
-      } catch (error) {
-        console.error('[BLACK RIDGE] Error closing Socket.IO:', error.message);
-        process.exitCode = 1;
-      }
-      try {
-        if (stateStore) await stateStore.flush();
-      } catch (error) {
-        console.error('[BLACK RIDGE] Pending PostgreSQL writes did not finish cleanly:', error.message);
-        process.exitCode = 1;
-      }
-      try {
-        if (postgresPool) await postgresPool.end();
-      } catch (error) {
-        console.error('[BLACK RIDGE] Error closing PostgreSQL pool:', error.message);
-        process.exitCode = 1;
-      } finally {
-        clearTimeout(forceExitTimer);
-      }
-    })();
-    return shutdownPromise;
-  };
-
-  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
-  process.once('SIGINT', () => { void shutdown('SIGINT'); });
-}
-
-async function startServer() {
-  await initializePersistence();
-  httpServer.listen(PORT, () => {
-    console.log('');
-    console.log('==================================================');
-    console.log(' BLACK RIDGE CITY CIA SYSTEM');
-    console.log(' PORT: ' + PORT);
-    console.log(' STATUS: ONLINE');
-    console.log(' LOGIN / LEADERSHIP / RADIO / SOS: READY');
-    console.log('==================================================');
-    installGracefulShutdown();
-  });
-}
-
-startServer().catch(async (error) => {
-  console.error('[BLACK RIDGE] Startup failed:', error.message);
-  if (postgresPool) {
-    try {
-      await postgresPool.end();
-    } catch (closeError) {
-      console.error('[BLACK RIDGE] Error closing PostgreSQL pool after startup failure:', closeError.message);
-    }
-  }
-  process.exitCode = 1;
-});
+       'bÇb£f+b¤ƒbf ƒbŸfb—fb³ff+bËf+b¤¸œ¤ì(€€€€€½¹ÍÐÍ•Ñ½È€ô±•…¸¡Á…å±½…ü¹Í•Ñ½È°€ÄÀÀ¤ì(€€€€€½¹ÍÐÍÑ…ÑÕÌ€ôlQ%Yœ°1IPœ°MQ9	dt¹¥¹±Õ‘•Ì¡Á…å±½…ü¹ÍÑ…ÑÕÌ¤€üÁ…å±½…¹ÍÑ…ÑÕÌ€è€Q%Yœì(€€€€€½¹ÍÐ½±½È€ô€½xlÀ´å„µ™µuìÙô¼¹Ñ•ÍÐ¡Á…å±½…ü¹½±½Èñð€œœ¤€üÁ…å±½…¹½±½È€è€¡•á¥ÍÑ¥¹œü¹½±½Èñð€œŒÝ„ÈÕ„œ¤ì(€€€€€½¹ÍÐÍåµ‰½°€ô±•…¸¡Á…å±½…ü¹Íåµ‰½°ñð•á¥ÍÑ¥¹œü¹Íåµ‰½°ñð€U9%Pœ°€ÄØ¤¹É•Á±…” ½my„µéµhÀ´ä€µt½œ°€œœ¤¹ÑÉ¥´ ¤¹Ñ½UÁÁ•É…Í” ¤ñð€U9%Pœì(€€€€€½¹ÍÐ•µ‰±•´€ô±•…¸¡Á…å±½…ü¹•µ‰±•´ñð•á¥ÍÑ¥¹œü¹•µ‰±•´ñðÍåµ‰½°°€ÌÈ¤ì(€€€€€½¹ÍÐÉ•Í½±Ù•I½±”€ô€¡Ù…±Õ”°µ¥¹I…¹¬°±…‰•°¤€ôøì(€€€€€€€½¹ÍÐÉ½±•½‘”€ô±•…¸¡Ù…±Õ”°€ÄÀÀ¤ì(€€€€€€€½¹ÍÐÁ•ÉÍ½¸€ôÉ½±•½‘”€ü¥‰ÁI•Í½±Ù•½‘”¡É½±•½‘”¤€è¹Õ±°ì(€€€€€€€¥˜€¡É½±•½‘”€˜˜€ …Á•ÉÍ½¸ñðÁ•ÉÍ½¸¹…ÁÁÉ½Ù•€ôôô™…±Í”ñðÁ•ÉÍ½¸¹ÍÕÍÁ•¹‘•€ôôôÑÉÕ”ñðÁ•ÉÍ½¸¹Í•ÉÙ¥•ÁÁÉ½Ù•€ôôô™…±Í”¤¤Ñ¡É½Ü¹•ÜÉÉ½È ŸbÇfbÈ€œ€¬±…‰•°€¬€œƒbëf+bÄƒb×bŸfb´¸œ¤ì(€€€€€€€¥˜€¡Á•ÉÍ½¸€˜˜É…¹­1•Ù•°¡Á•ÉÍ½¸¹É…¹¬¤€ðµ¥¹I…¹¬¤Ñ¡É½Ü¹•ÜÉÉ½È Ÿf+b³b ƒbfƒf+ff#f€œ€¬±…‰•°€¬€œƒffƒbŸfbÇb«b£b¤ƒbŸfff+bŸb¿f+b¤ƒbŸffbßff#b£b¤¸œ¤ì(€€€€€€€É•ÑÕÉ¸Á•ÉÍ½¸ì(€€€€€ôì(€€€€€±•Ð½µµ…¹‘•È°‘•ÁÕÑä°Í•¹¥½É½µµ…¹‘•Èì(€€€€€ÑÉäì(€€€€€€€½µµ…¹‘•È€ôÉ•Í½±Ù•I½±”¡Á…å±½…ü¹½µµ…¹‘•É½‘”€üü•á¥ÍÑ¥¹œü¹½µµ…¹‘•É½‘”°€È°€ŸfbŸb›b¼ƒbŸffb«f+b£b¤œ¤ì(€€€€€€€‘•ÁÕÑä€ôÉ•Í½±Ù•I½±”¡Á…å±½…ü¹‘•ÁÕÑå½‘”€üü•á¥ÍÑ¥¹œü¹‘•ÁÕÑå½‘”°€È°€ŸfbŸb›b ƒfbŸb›b¼ƒbŸffb«f+b£b¤œ¤ì(€€€€€€€Í•¹¥½É½µµ…¹‘•È€ôÉ•Í½±Ù•I½±”¡Á…å±½…ü¹Í•¹¥½É½µµ…¹‘•É½‘”€üü•á¥ÍÑ¥¹œü¹Í•¹¥½É½µµ…¹‘•É½‘”°€Ì°€ŸbŸffbŸb›b¼ƒbŸfbbçff$œ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ìÉ•ÑÕÉ¸¹¼¡ˆ°•ÉÉ½È¹µ•ÍÍ…”¤ìô(€€€€€¥˜€¡½µµ…¹‘•È€˜˜‘•ÁÕÑä€˜˜±•…¸¡½µµ…¹‘•È¹ÁÕ‰±¥½‘”°ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤€ôôô±•…¸¡‘•ÁÕÑä¹ÁÕ‰±¥½‘”°ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒbfƒf+ff#fƒbŸffbŸb›b¼ƒf#bŸffbŸb›b ƒbÓb»b×f+fƒfb»b«fff+f¸œ¤ì(€€€€€½¹ÍÐÉ•ÅÕ•ÍÑ•€ôÉÉ…ä¹¥ÍÉÉ…ä¡Á…å±½…ü¹µ•µ‰•É½‘•Ì¤€üÁ…å±½…¹µ•µ‰•É½‘•Ì¹Í±¥” À°€ÄÔÀ¤€è€¡•á¥ÍÑ¥¹œü¹µ•µ‰•É½‘•Ìñðmt¤ì(€€€€€½¹ÍÐµ•µ‰•É5…À€ô¹•Ü5…À ¤ì(€€€€€™½È€¡½¹ÍÐÙ…±Õ”½˜É•ÅÕ•ÍÑ•¤ì(€€€€€€€½¹ÍÐµ•µ‰•É½‘”€ô±•…¸¡Ù…±Õ”°€ÄÀÀ¤ì(€€€€€€€¥˜€ …µ•µ‰•É½‘”¤½¹Ñ¥¹Õ”ì(€€€€€€€½¹ÍÐÁ•ÉÍ½¸€ô¥‰ÁI•Í½±Ù•½‘”¡µ•µ‰•É½‘”¤ì(€€€€€€€¥˜€ …Á•ÉÍ½¸ñðÁ•ÉÍ½¸¹…ÁÁÉ½Ù•€ôôô™…±Í”ñðÁ•ÉÍ½¸¹ÍÕÍÁ•¹‘•€ôôôÑÉÕ”ñðÁ•ÉÍ½¸¹Í•ÉÙ¥•ÁÁÉ½Ù•€ôôô™…±Í”¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bçbÃbÄƒbŸfb«b·ffƒffƒbb·b¼ƒbff#bŸb¼ƒbŸfbfbÇbŸb¼ƒbŸffb»b«bŸbÇf+f¸œ¤ì(€€€€€€€µ•µ‰•É5…À¹Í•Ð¡±•…¸¡Á•ÉÍ½¸¹ÁÕ‰±¥½‘”°€ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤°Á•ÉÍ½¸¹ÁÕ‰±¥½‘”¤ì(€€€€€ô(€€€€€™½È€¡½¹ÍÐÁ•ÉÍ½¸½˜m½µµ…¹‘•È°‘•ÁÕÑåt¤¥˜€¡Á•ÉÍ½¸¤µ•µ‰•É5…À¹Í•Ð¡±•…¸¡Á•ÉÍ½¸¹ÁÕ‰±¥½‘”°ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤°Á•ÉÍ½¸¹ÁÕ‰±¥½‘”¤ì(€€€€€½¹ÍÐµ•µ‰•É½‘•Ì€ôl¸¸¹µ•µ‰•É5…À¹Ù…±Õ•Ì ¥tì(€€€€€½¹ÍÐÝ…¹Ñ•€ô¹•ÜM•Ð¡µ•µ‰•É½‘•Ì¹µ…À ¡µ•µ‰•É½‘”¤€ôø±•…¸¡µ•µ‰•É½‘”°€ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤¤¤ì(€€€€€½¹ÍÐ½¹™±¥Ð€ô€¡ÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ìñðmt¤¹™¥¹ ¡Õ¹¥Ð¤€ôøMÑÉ¥¹œ¡Õ¹¥Ð¹¥¤€„ôôMÑÉ¥¹œ¡•á¥ÍÑ¥¹œü¹¥ñð€œœ¤€˜˜Õ¹¥Ð¹ÍÑ…ÑÕÌ€„ôô€I!%Yœ€˜˜l¸¸¸¡ÉÉ…ä¹¥ÍÉÉ…ä¡Õ¹¥Ð¹µ•µ‰•É½‘•Ì¤€üÕ¹¥Ð¹µ•µ‰•É½‘•Ì€èmt¤°Õ¹¥Ð¹½µµ…¹‘•É½‘”ñð€œœ°Õ¹¥Ð¹‘•ÁÕÑå½‘”ñð€œt¹Í½µ” ¡µ•µ‰•É½‘”¤€ôøÝ…¹Ñ•¹¡…Ì¡±•…¸¡µ•µ‰•É½‘”°€ÄÀÀ¤¹Ñ½UÁÁ•É…Í” ¤¤¤¤ì(€€€€€¥˜€¡½¹™±¥Ð¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿbb·b¼ƒbŸfbfbÇbŸb¼ƒbŸffb·b¿b¿fGf+fƒfbçf+fGfƒb£bŸffbçfƒbÛffƒfb«f+b£b¤ƒbb»bÇf$ƒfbÓbßb¤¸œ¤ì(€€€€€½¹ÍÐ¹½ÝY…±Õ”€ô¹½Ü ¤ì(€€€€€½¹ÍÐ…Ñ¥½¸€ô•á¥ÍÑ¥¹œ€ü€Ÿb«bçb¿f+fƒb£f+bŸfbŸb¨ƒfb«f+b£b¤œ€è€Ÿb—fbÓbŸb„ƒfb«f+b£b¤œì(€€€€€½¹ÍÐ‘•Ñ…¥°€ô€Ÿb«fƒb·fbàƒbŸffb«f+b£b¤€œ€¬½‘”€¬€œƒf#bÇb£bÜ€œ€¬µ•µ‰•É½‘•Ì¹±•¹Ñ €¬€œƒffƒbŸfbfbÇbŸb¼¸œì(€€€€€½¹ÍÐ¡¥ÍÑ½Éä€ôÉÉ…ä¹¥ÍÉÉ…ä¡•á¥ÍÑ¥¹œü¹¡¥ÍÑ½Éä¤€ü•á¥ÍÑ¥¹œ¹¡¥ÍÑ½Éä¹Í±¥” ´ää¤€èmtì(€€€€€¡¥ÍÑ½Éä¹ÁÕÍ ¡ì…Ñ¥½¸°…Ñ½É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”ñð€œœ°…Ðè¹½ÝY…±Õ”°‘•Ñ…¥°ô¤ì(€€€€€½¹ÍÐÉ•½É€ôì(€€€€€€€€¸¸¸¡•á¥ÍÑ¥¹œñðíô¤°¥è•á¥ÍÑ¥¹œ€ü•á¥ÍÑ¥¹œ¹¥€èµ…­•% 	Pœ¤°½‘”°¹…µ”è¹…µ•Èñð¹…µ•¸°¹…µ•È°¹…µ•¸°Í•Ñ½È°(€€€€€€€ÍÑ…ÑÕÌ°½±½È°Íåµ‰½°°•µ‰±•´°½µµ…¹‘•É½‘”è½µµ…¹‘•È€ü½µµ…¹‘•È¹ÁÕ‰±¥½‘”€è€œœ°‘•ÁÕÑå½‘”è‘•ÁÕÑä€ü‘•ÁÕÑä¹ÁÕ‰±¥½‘”€è€œœ°(€€€€€€€Í•¹¥½É½µµ…¹‘•É½‘”èÍ•¹¥½É½µµ…¹‘•È€üÍ•¹¥½É½µµ…¹‘•È¹ÁÕ‰±¥½‘”€è€œœ°µ•µ‰•É½‘•Ì°(€€€€€€€¹½Ñ•Ìè±•…¸¡Á…å±½…ü¹¹½Ñ•Ì€üü•á¥ÍÑ¥¹œü¹¹½Ñ•Ì°€ÄÀÀÀ¤°µ…ÁA½Í¥Ñ¥½¸è•á¥ÍÑ¥¹œü¹µ…ÁA½Í¥Ñ¥½¸ñð¹Õ±°°¡¥ÍÑ½Éä°(€€€€€€€É•…Ñ•‘Ðè•á¥ÍÑ¥¹œü¹É•…Ñ•‘Ðñð¹½ÝY…±Õ”°É•…Ñ•‘	å½‘”è•á¥ÍÑ¥¹œü¹É•…Ñ•‘	å½‘”ñð…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€ÕÁ‘…Ñ•‘Ðè¹½ÝY…±Õ”°ÕÁ‘…Ñ•‘	å½‘”è…Ñ½È¹ÁÕ‰±¥½‘”(€€€€€ôì(€€€€€¥˜€ …ÉÉ…ä¹¥ÍÉÉ…ä¡ÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ì¤¤ÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ì€ômtì(€€€€€¥˜€¡•á¥ÍÑ¥¹œ¤ÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ì€ôÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ì¹µ…À ¡¥Ñ•´¤€ôøMÑÉ¥¹œ¡¥Ñ•´¹¥¤€ôôôMÑÉ¥¹œ¡•á¥ÍÑ¥¹œ¹¥¤€üÉ•½É€è¥Ñ•´¤ì(€€€€€•±Í”ÍÑ…Ñ”¹¥…}‰…ÑÑ…±¥½¹Ì¹Õ¹Í¡¥™Ð¡É•½É¤ì(€€€€€…‘‘Õ‘¥Ñ1½œ¡…Ñ¥½¸°…Ñ½È°¹Õ±°°‘•Ñ…¥°¤ì(€€€€€¥˜€¡ÍÑ…Ñ”¹¥…}…Õ‘¥Ñ}±½ÍlÁt¤ìÍÑ…Ñ”¹¥…}…Õ‘¥Ñ}±½ÍlÁt¹ÍåÍÑ•´€ô€%	@œìÍÑ…Ñ”¹¥…}…Õ‘¥Ñ}±½ÍlÁt¹¥‰Á	…ÑÑ…±¥½¹%€ôMÑÉ¥¹œ¡É•½É¹¥¤ìô(€€€€€½¹ÍÐÁ•ÉÍ¥ÍÑ•¹”€ôÍ…Ù•MÑ…Ñ” ¤ì(€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¬¡ˆ°ì‰…ÑÑ…±¥½¸è¥‰Á	…ÑÑ…±¥½¹½ÉY¥•Ý•È¡É•½É°…Ñ½È¤ô¤ì(€€€€€AÉ½µ¥Í”¹É•Í½±Ù”¡Á•ÉÍ¥ÍÑ•¹”¤¹Ñ¡•¸  ¤€ôø•µ¥Ñ%	A	…ÑÑ…±¥½¹MÑ…Ñ” ¤¤¹…Ñ   ¤€ôøíô¤ì(€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì(€€€ô¤ì((€€€Í½­•Ð¹½¸ (€€€€€€½Á•É…Ñ¥½¸éÉ•…Ñ”œ°(€€€€€…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€€€½¹ÍÐ…Ñ½È€ô(€€€€€€€€€É•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì((€€€€€€€¥˜€ ……Ñ½È¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb—fbÓbŸb„ƒbŸffffbŸb¨ƒfb«bŸb´ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐÉ•ÅÕ•ÍÑ•‘½‘•Ì€ôÉÉ…ä¹¥ÍÉÉ…ä¡Á…å±½…ü¹µ•µ‰•É½‘•Ì¤(€€€€€€€€€€üÁ…å±½…¹µ•µ‰•É½‘•Ì(€€€€€€€€€€èmÁ…å±½…ü¹…•¹Ñ½‘”ñð€œtì(€€€€€€€½¹ÍÐµ•µ‰•É½‘•Ì€ôl¸¸¹¹•ÜM•Ð (€€€€€€€€€É•ÅÕ•ÍÑ•‘½‘•Ì¹µ…À ¡½‘”¤€ôø±•…¸¡½‘”°€ÄÀÀ¤¤¹™¥±Ñ•È¡	½½±•…¸¤(€€€€€€€€¥tì(€€€€€€€¥˜€ …µ•µ‰•É½‘•Ì¹±•¹Ñ ñðµ•µ‰•É½‘•Ì¹±•¹Ñ €ø€ÔÀ¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸb»b«bÄƒffƒfbÇb¼ƒf#bŸb·b¼ƒb—ff$€ÔÀƒfbÇb¿f/bœƒfffffb¤¸œ¤ì(€€€€€€€ô(€€€€€€€½¹ÍÐ…ÍÍ¥¹•‘•¹ÑÌ€ôµ•µ‰•É½‘•Ì¹µ…À ¡½‘”¤€ôø•ÑUÍ•É	åAÕ‰±¥½‘”¡½‘”¤¤ì(€€€€€€€¥˜€¡…ÍÍ¥¹•‘•¹ÑÌ¹Í½µ” ¡µ•µ‰•È¤€ôø(€€€€€€€€€€…µ•µ‰•Èñð(€€€€€€€€€µ•µ‰•È¹…ÁÁÉ½Ù•€ôôô™…±Í”ñð(€€€€€€€€€µ•µ‰•È¹ÍÕÍÁ•¹‘•(€€€€€€€€¤¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bfb¼ƒbfƒb³ff+bäƒbŸfbfbÇbŸb¼ƒbŸffb»b«bŸbÇf+fƒfbçb«fb¿f#fƒf#bëf+bÄƒff#ff#ff+f¸ƒf+fffƒb—bÏfbŸb¼ƒbŸffffb¤ƒb·b«f$ƒfffƒff ƒbëf+bÄƒfb«b×fƒb£bŸfb»b¿fb¤¸œ¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ôì(€€€€€€€€€¥è(€€€€€€€€€€€µ…­•% =@œ¤°((€€€€€€€€€µ¥ÍÍ¥½¹9Õµ‰•Èè(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹µ¥ÍÍ¥½¹9Õµ‰•Èñð(€€€€€€€€€€€€€=@´‘í…Ñ”¹¹½Ü ¥õ€°(€€€€€€€€€€€€€€ÄÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€Ñ¥Ñ±”è(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹Ñ¥Ñ±”ñð(€€€€€€€€€€€€€€%=AIQ%=8œ°(€€€€€€€€€€€€€€ÈÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€ÑåÁ”è(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹ÑåÁ”ñð(€€€€€€€€€€€€€€9I0œ°(€€€€€€€€€€€€€€ÄÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€É¥Í¬è(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹É¥Í¬ñð(€€€€€€€€€€€€€€5%U4œ°(€€€€€€€€€€€€€€ÄÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€½‰©•Ñ¥Ù”è(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹½‰©•Ñ¥Ù”ñð(€€€€€€€€€€€€€€œœ°(€€€€€€€€€€€€€€ÔÀÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€ÍÑ…ÑÕÌè(€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€Á…å±½…ü¹ÍÑ…ÑÕÌñð(€€€€€€€€€€€€€€A199œ°(€€€€€€€€€€€€€€ÄÀÀ(€€€€€€€€€€€€¤°((€€€€€€€€€ÍÑ…ÉÑ1½…Ñ¥½¸è(€€€€€€€€€€€Á…å±½…ü¹ÍÑ…ÉÑ1½…Ñ¥½¸ñð(€€€€€€€€€€€¹Õ±°°((€€€€€€€€€•¹‘1½…Ñ¥½¸è(€€€€€€€€€€€Á…å±½…ü¹•¹‘1½…Ñ¥½¸ñð(€€€€€€€€€€€¹Õ±°°((€€€€€€€€€½µµ…¹‘•É½‘”è(€€€€€€€€€€€…Ñ½È¹ÁÕ‰±¥½‘”°((€€€€€€€€€½µµ…¹‘•É9…µ”è(€€€€€€€€€€€…Ñ½È¹¹…µ”°((€€€€€€€€€µ•µ‰•É½‘•Ìè(€€€€€€€€€€€…ÍÍ¥¹•‘•¹ÑÌ¹µ…À ¡µ•µ‰•È¤€ôøµ•µ‰•È¹ÁÕ‰±¥½‘”¤°((€€€€€€€€€¹½Ñ•Ìèmt°((€€€€€€€€€µ…Á5…É­•ÉÌèmt°((€€€€€€€€€µ…ÁÉ…Ý¥¹Ìèmt°((€€€€€€€€€É•…Ñ•‘	å½‘”è(€€€€€€€€€€€…Ñ½È¹ÁÕ‰±¥½‘”°((€€€€€€€€€É•…Ñ•‘	å9…µ”è(€€€€€€€€€€€¥Í1•…‘•ÉÍ¡¥À¡…Ñ½È¤(€€€€€€€€€€€€€€ü…Ñ½È¹¹…µ”(€€€€€€€€€€€€€€è€œœ°((€€€€€€€€€É•…Ñ•‘Ðè(€€€€€€€€€€€¹½Ü ¤°((€€€€€€€€€ÕÁ‘…Ñ•‘Ðè(€€€€€€€€€€€¹½Ü ¤(€€€€€€€ôì((€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹ÁÕÍ  (€€€€€€€€€½Á•É…Ñ¥½¸(€€€€€€€€¤ì((€€€€€€€…‘‘Õ‘¥Ñ1½œ (€€€€€€€€€€Ÿb—fbÓbŸb„ƒbçfff+b¤œ°(€€€€€€€€€…Ñ½È°(€€€€€€€€€¹Õ±°°(€€€€€€€€€ƒb«fƒb—fbÓbŸb„ƒbŸfbçfff+b¤€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•Éô¹€(€€€€€€€€¤ì((€€€€€€€Í…Ù•MÑ…Ñ” ¤ì((€€€€€€€…Ý…¥ÐÁÕ‰±¥Í¡9½Ñ¥™¥…Ñ¥½¹Ì¡ÍÑ…Ñ”¹¥…}ÕÍ•ÉÌ°ì(€€€€€€€€€ÑåÁ”è€=AIQ%=8œ°(€€€€€€€€€Ñ¥Ñ±”è€9\=AIQ%=8MM%959Pœ°(€€€€€€€€€µ•ÍÍ…”èƒb«fb¨ƒb—bÛbŸfb«fƒb—ff$ƒbçfff+b¤ƒb³b¿f+b¿b¤è€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•ÉôƒŠP€‘í½Á•É…Ñ¥½¸¹Ñ¥Ñ±•õ€°(€€€€€€€€€ÁÉ¥½É¥Ñäè½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€!% œñð½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€I%Q%0œ€ü€!% œ€è€9=Q%œ°(€€€€€€€€€Í½ÕÉ•UÍ•É%è…Ñ½È¹¥°(€€€€€€€€€É•±…Ñ•‘%è½Á•É…Ñ¥½¸¹¥°(€€€€€€€€€µ•µ‰•É½‘•Ìè½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ì°(€€€€€€€€€µ•Ñ…‘…Ñ„èìµ¥ÍÍ¥½¹9Õµ‰•Èè½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•È°É¥Í¬è½Á•É…Ñ¥½¸¹É¥Í¬ô(€€€€€€€ô¤ì((€€€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì((€€€€€€€É•ÑÕÉ¸½¬ (€€€€€€€€€ˆ°(€€€€€€€€€ì(€€€€€€€€€€€½Á•É…Ñ¥½¸è(€€€€€€€€€€€€€½Á•É…Ñ¥½¹M…¹¥Ñ¥é” (€€€€€€€€€€€€€€€½Á•É…Ñ¥½¸°(€€€€€€€€€€€€€€€…Ñ½È(€€€€€€€€€€€€€€¤(€€€€€€€€€ô(€€€€€€€€¤ì(€€€€€ô(€€€€¤ì((€€€Í½­•Ð¹½¸ (€€€€€€½Á•É…Ñ¥½¸é±¥ÍÐœ°(€€€€€€¡Á…å±½…°ˆ¤€ôøì(€€€€€€€½¹ÍÐ…Ñ½È€ô(€€€€€€€€€É•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì((€€€€€€€¥˜€ ……Ñ½È¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤(€€€€€€€€€€¤ì(€€€€€€€ô(€€€€€€€¥˜€¡…Ñ½È¹Í•ÉÙ¥•ÁÁÉ½Ù•€ôôô™…±Í”€˜˜¹½Éµ…±¥é•I…¹¬¡…Ñ½È¹É…¹¬¤€„ôô€9Pœ¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbçbÇbØƒbŸffffbŸb¨ƒfb«bŸb´ƒffff+bŸb¿b¤ƒb£bçb¼ƒbŸbçb«fbŸb¼ƒb¿b»f#fƒbŸfb»b¿fb¤¸œ¤ì(€€€€€€€ô((€€€€€€€É•ÑÕÉ¸½¬ (€€€€€€€€€ˆ°(€€€€€€€€€ì(€€€€€€€€€€€½Á•É…Ñ¥½¹Ìè(€€€€€€€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì(€€€€€€€€€€€€€€€€¹µ…À (€€€€€€€€€€€€€€€€€€¡½À¤€ôø(€€€€€€€€€€€€€€€€€€€½Á•É…Ñ¥½¹M…¹¥Ñ¥é” (€€€€€€€€€€€€€€€€€€€€€½À°(€€€€€€€€€€€€€€€€€€€€€…Ñ½È(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€¹™¥±Ñ•È¡	½½±•…¸¤(€€€€€€€€€ô(€€€€€€€€¤ì(€€€€€ô(€€€€¤ì((€€€Í½­•Ð¹½¸ ½Á•É…Ñ¥½¸é…•¹ÑÌœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤¤ì(€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸfbŸb›fb¤ƒbŸb»b«f+bŸbÄƒbbçbÛbŸb„ƒbŸffffb¤ƒfb«bŸb·b¤ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐµ•µ‰•ÉÌ€ôÍÑ…Ñ”¹¥…}ÕÍ•ÉÌ(€€€€€€€€¹™¥±Ñ•È ¡µ•µ‰•È¤€ôø(€€€€€€€€€µ•µ‰•È¹…ÁÁÉ½Ù•€„ôô™…±Í”€˜˜(€€€€€€€€€€…µ•µ‰•È¹ÍÕÍÁ•¹‘•€˜˜(€€€€€€€€€µ•µ‰•È¹ÁÕ‰±¥½‘”(€€€€€€€€¤(€€€€€€€€¹Í½ÉÐ ¡±•™Ð°É¥¡Ð¤€ôø(€€€€€€€€€É…¹­1•Ù•°¡É¥¡Ð¹É…¹¬¤€´É…¹­1•Ù•°¡±•™Ð¹É…¹¬¤ñð(€€€€€€€€€±•…¸¡±•™Ð¹ÁÕ‰±¥½‘”°€ÄÀÀ¤¹±½…±•½µÁ…É”¡±•…¸¡É¥¡Ð¹ÁÕ‰±¥½‘”°€ÄÀÀ¤¤(€€€€€€€€¤(€€€€€€€€¹µ…À ¡µ•µ‰•È¤€ôøì(€€€€€€€€€½¹ÍÐÍ…™•5•µ‰•È€ôì(€€€€€€€€€€€½‘”èµ•µ‰•È¹ÁÕ‰±¥½‘”°(€€€€€€€€€€€É…¹¬è¹½Éµ…±¥é•I…¹¬¡µ•µ‰•È¹É…¹¬¤°(€€€€€€€€€€€É…¹­1…‰•°èÉ…¹­1…‰•°¡µ•µ‰•È¹É…¹¬¤°(€€€€€€€€€€€½¹±¥¹”è€„…µ•µ‰•È¹½¹±¥¹”°(€€€€€€€€€€€…Ñ¥Ù•M•ÉÙ¥”èµ•µ‰•È¹…Ñ¥Ù•M•ÉÙ¥”€ôôôÑÉÕ”(€€€€€€€€€ôì(€€€€€€€€€¥˜€¡¥Í¡¥•˜¡…Ñ½È¤¤Í…™•5•µ‰•È¹¹…µ”€ôµ•µ‰•È¹¥‘•¹Ñ¥Ñäü¹™Õ±±9…µ”ñðµ•µ‰•È¹¹…µ”ì(€€€€€€€€€É•ÑÕÉ¸Í…™•5•µ‰•Èì(€€€€€€€ô¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì…•¹ÑÌèµ•µ‰•ÉÌô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ (€€€€€€½Á•É…Ñ¥½¸éÕÁ‘…Ñ”œ°(€€€€€…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€€€½¹ÍÐ…Ñ½È€ô(€€€€€€€€€É•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì((€€€€€€€¥˜€ ……Ñ½È¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bçb¿f+fƒbŸffffbŸb¨ƒfb«bŸb´ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐ¥€ô(€€€€€€€€€±•…¸ (€€€€€€€€€€€Á…å±½…ü¹¥°(€€€€€€€€€€€€ÈÀÀ(€€€€€€€€€€¤ì((€€€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ô(€€€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥¹ (€€€€€€€€€€€€¡½À¤€ôø(€€€€€€€€€€€€€MÑÉ¥¹œ¡½À¹¥¤€ôôô(€€€€€€€€€€€€€MÑÉ¥¹œ¡¥¤(€€€€€€€€€€¤ì((€€€€€€€¥˜€ …½Á•É…Ñ¥½¸¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€€ŸbŸfbçfff+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ ……¹¹¹½Ñ…Ñ•=Á•É…Ñ¥½¸¡…Ñ½È°½Á•É…Ñ¥½¸¤¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfb«b·b¿f+b¯bŸb¨ƒbŸfff+b¿bŸff+b¤ƒfb«bŸb·b¤ƒfffbÓb˜ƒbŸffffb¤ƒf#bŸfff+bŸb¿b¤ƒf#bŸffbÓbŸbÇfƒbŸffb·b¿b¼ƒffbÜ¸œ¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐÁÉ•Ù¥½ÕÍ5•µ‰•É½‘•Ì€ôÉÉ…ä¹¥ÍÉÉ…ä¡½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ì¤€ül¸¸¹½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ít€èmtì(€€€€€€€±•ÐÍ•±•Ñ•‘•¹ÑÌ€ô¹Õ±°ì(€€€€€€€¥˜€¡ÉÉ…ä¹¥ÍÉÉ…ä¡Á…å±½…ü¹µ•µ‰•É½‘•Ì¤¤ì(€€€€€€€€€½¹ÍÐÍ•±•Ñ•‘½‘•Ì€ôl¸¸¹¹•ÜM•Ð (€€€€€€€€€€€Á…å±½…¹µ•µ‰•É½‘•Ì¹µ…À ¡½‘”¤€ôø±•…¸¡½‘”°€ÄÀÀ¤¤¹™¥±Ñ•È¡	½½±•…¸¤(€€€€€€€€€€¥tì(€€€€€€€€€¥˜€ …Í•±•Ñ•‘½‘•Ì¹±•¹Ñ ñðÍ•±•Ñ•‘½‘•Ì¹±•¹Ñ €ø€ÔÀ¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸb»b«bÄƒffƒfbÇb¼ƒf#bŸb·b¼ƒb—ff$€ÔÀƒfbÇb¿f/bœƒfffffb¤¸œ¤ì(€€€€€€€€€ô(€€€€€€€€€Í•±•Ñ•‘•¹ÑÌ€ôÍ•±•Ñ•‘½‘•Ì¹µ…À ¡½‘”¤€ôø•ÑUÍ•É	åAÕ‰±¥½‘”¡½‘”¤¤ì(€€€€€€€€€¥˜€¡Í•±•Ñ•‘•¹ÑÌ¹Í½µ” ¡µ•µ‰•È¤€ôø(€€€€€€€€€€€€…µ•µ‰•Èñð(€€€€€€€€€€€µ•µ‰•È¹…ÁÁÉ½Ù•€ôôô™…±Í”ñð(€€€€€€€€€€€µ•µ‰•È¹ÍÕÍÁ•¹‘•(€€€€€€€€€€¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bfb¼ƒbfƒbŸfbff#bŸb¼ƒbŸffb»b«bŸbÇb¤ƒb«b»bÔƒbfbÇbŸb¿f/bœƒfbçb«fb¿f+fƒf#bëf+bÄƒff#ff#ff+f¸œ¤ì(€€€€€€€€€ô(€€€€€€€ô((€€€€€€€¥˜€¡Í•±•Ñ•‘•¹ÑÌ¤ì(€€€€€€€€€½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ì€ôÍ•±•Ñ•‘•¹ÑÌ¹µ…À ¡µ•µ‰•È¤€ôøµ•µ‰•È¹ÁÕ‰±¥½‘”¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ€ô½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌì(€€€€€€€½¹ÍÐ™¥•±‘Ì€ôl(€€€€€€€€€€µ¥ÍÍ¥½¹9Õµ‰•Èœ°(€€€€€€€€€€Ñ¥Ñ±”œ°(€€€€€€€€€€ÑåÁ”œ°(€€€€€€€€€€É¥Í¬œ°(€€€€€€€€€€½‰©•Ñ¥Ù”œ°(€€€€€€€€€€ÍÑ…ÑÕÌœ°(€€€€€€€€€€½µµ…¹‘•É½‘”œ(€€€€€€€tì((€€€€€€€™½È€ (€€€€€€€€€½¹ÍÐ™¥•±(€€€€€€€€€½˜™¥•±‘Ì(€€€€€€€€¤ì(€€€€€€€€€¥˜€ (€€€€€€€€€€€Á…å±½…ü¹m™¥•±‘t€„ôô(€€€€€€€€€€€Õ¹‘•™¥¹•(€€€€€€€€€€¤ì(€€€€€€€€€€€½Á•É…Ñ¥½¹m™¥•±‘t€ô(€€€€€€€€€€€€€±•…¸ (€€€€€€€€€€€€€€€Á…å±½…‘m™¥•±‘t°(€€€€€€€€€€€€€€€™¥•±€ôôô(€€€€€€€€€€€€€€€€€€½‰©•Ñ¥Ù”œ(€€€€€€€€€€€€€€€€€€ü€ÔÀÀÀ(€€€€€€€€€€€€€€€€€€è€ÔÀÀ(€€€€€€€€€€€€€€¤ì(€€€€€€€€€ô(€€€€€€€ô((€€€€€€€…‘‘=Á•É…Ñ¥½¹MÑ…ÑÕÍ!¥ÍÑ½Éä¡½Á•É…Ñ¥½¸°…Ñ½È°ÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ¤ì((€€€€€€€¥˜€ (€€€€€€€€€Á…å±½…ü¹ÍÑ…ÉÑ1½…Ñ¥½¸€„ôô(€€€€€€€€€Õ¹‘•™¥¹•(€€€€€€€€¤ì(€€€€€€€€€½Á•É…Ñ¥½¸¹ÍÑ…ÉÑ1½…Ñ¥½¸€ô(€€€€€€€€€€€Á…å±½…¹ÍÑ…ÉÑ1½…Ñ¥½¸ì(€€€€€€€ô((€€€€€€€¥˜€ (€€€€€€€€€Á…å±½…ü¹•¹‘1½…Ñ¥½¸€„ôô(€€€€€€€€€Õ¹‘•™¥¹•(€€€€€€€€¤ì(€€€€€€€€€½Á•É…Ñ¥½¸¹•¹‘1½…Ñ¥½¸€ô(€€€€€€€€€€€Á…å±½…¹•¹‘1½…Ñ¥½¸ì(€€€€€€€ô((€€€€€€€½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ð€ô(€€€€€€€€€¹½Ü ¤ì((€€€€€€€…‘‘Õ‘¥Ñ1½œ (€€€€€€€€€€Ÿb«b·b¿f+b¬ƒbçfff+b¤œ°(€€€€€€€€€…Ñ½È°(€€€€€€€€€¹Õ±°°(€€€€€€€€€ƒb«fƒb«b·b¿f+b¬ƒbŸfbçfff+b¤€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•Éô¹€(€€€€€€€€¤ì((€€€€€€€Í…Ù•MÑ…Ñ” ¤ì((€€€€€€€…Ý…¥ÐÁÕ‰±¥Í¡9½Ñ¥™¥…Ñ¥½¹Ì¡ÍÑ…Ñ”¹¥…}ÕÍ•ÉÌ°ì(€€€€€€€€€ÑåÁ”è€=AIQ%=8œ°(€€€€€€€€€Ñ¥Ñ±”è€=AIQ%=8UAQœ°(€€€€€€€€€µ•ÍÍ…”èƒb«fƒb«b·b¿f+b¬ƒbŸfbçfff+b¤€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•ÉôƒŠP€‘í½Á•É…Ñ¥½¸¹Ñ¥Ñ±•ô¹€°(€€€€€€€€€ÁÉ¥½É¥Ñäè½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€!% œñð½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€I%Q%0œ€ü€!% œ€è€9=Q%œ°(€€€€€€€€€Í½ÕÉ•UÍ•É%è…Ñ½È¹¥°(€€€€€€€€€É•±…Ñ•‘%è½Á•É…Ñ¥½¸¹¥°(€€€€€€€€€µ•µ‰•É½‘•Ìèl¸¸¹¹•ÜM•Ð¡l¸¸¹ÁÉ•Ù¥½ÕÍ5•µ‰•É½‘•Ì°€¸¸¸¡½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ìñðmt¥t¥t°(€€€€€€€€€µ•Ñ…‘…Ñ„èìµ¥ÍÍ¥½¹9Õµ‰•Èè½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•È°É¥Í¬è½Á•É…Ñ¥½¸¹É¥Í¬°ÍÑ…ÑÕÌè½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌô(€€€€€€€ô¤ì((€€€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì((€€€€€€€É•ÑÕÉ¸½¬ (€€€€€€€€€ˆ°(€€€€€€€€€ì(€€€€€€€€€€€½Á•É…Ñ¥½¸è(€€€€€€€€€€€€€½Á•É…Ñ¥½¹M…¹¥Ñ¥é” (€€€€€€€€€€€€€€€½Á•É…Ñ¥½¸°(€€€€€€€€€€€€€€€…Ñ½È(€€€€€€€€€€€€€€¤(€€€€€€€€€ô(€€€€€€€€¤ì(€€€€€ô(€€€€¤ì((€€€Í½­•Ð¹½¸ (€€€€€€½Á•É…Ñ¥½¸é…‘‘9½Ñ”œ°(€€€€€…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€€€½¹ÍÐ…Ñ½È€ô(€€€€€€€€€É•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì((€€€€€€€¥˜€ ……Ñ½È¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐ¥€ô(€€€€€€€€€±•…¸ (€€€€€€€€€€€Á…å±½…ü¹¥°(€€€€€€€€€€€€ÈÀÀ(€€€€€€€€€€¤ì((€€€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ô(€€€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥¹ (€€€€€€€€€€€€¡½À¤€ôø(€€€€€€€€€€€€€MÑÉ¥¹œ¡½À¹¥¤€ôôô(€€€€€€€€€€€€€MÑÉ¥¹œ¡¥¤(€€€€€€€€€€¤ì((€€€€€€€¥˜€ …½Á•É…Ñ¥½¸¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€€ŸbŸfbçfff+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ ……¹¹¹½Ñ…Ñ•=Á•É…Ñ¥½¸¡…Ñ½È°½Á•É…Ñ¥½¸¤¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfb«b·b¿f+b¯bŸb¨ƒbŸfff+b¿bŸff+b¤ƒfb«bŸb·b¤ƒfffbÓb˜ƒbŸffffb¤ƒf#bŸfff+bŸb¿b¤ƒf#bŸffbÓbŸbÇfƒbŸffb·b¿b¼ƒffbÜ¸œ¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐÑ•áÐ€ô(€€€€€€€€€±•…¸ (€€€€€€€€€€€Á…å±½…ü¹Ñ•áÐñð(€€€€€€€€€€€Á…å±½…ü¹¹½Ñ”°(€€€€€€€€€€€€ÌÀÀÀ(€€€€€€€€€€¤ì((€€€€€€€¥˜€ …Ñ•áÐ¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€€ŸbŸfffbŸb·bãb¤ƒfbŸbÇbëb¤¸œ(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€½Á•É…Ñ¥½¸¹¹½Ñ•Ì€ô(€€€€€€€€€ÉÉ…ä¹¥ÍÉÉ…ä (€€€€€€€€€€€½Á•É…Ñ¥½¸¹¹½Ñ•Ì(€€€€€€€€€€¤(€€€€€€€€€€€€ü½Á•É…Ñ¥½¸¹¹½Ñ•Ì(€€€€€€€€€€€€èmtì((€€€€€€€½Á•É…Ñ¥½¸¹¹½Ñ•Ì¹ÁÕÍ ¡ì(€€€€€€€€€…Ðè(€€€€€€€€€€€¹½Ü ¤°((€€€€€€€€€…ÕÑ¡½É½‘”è(€€€€€€€€€€€…Ñ½È¹ÁÕ‰±¥½‘”°((€€€€€€€€€…ÕÑ¡½É9…µ”è(€€€€€€€€€€€¥Í¡¥•˜¡…Ñ½È¤(€€€€€€€€€€€€€€ü…Ñ½È¹¹…µ”(€€€€€€€€€€€€€€è€œœ°((€€€€€€€€€Ñ•áÐ(€€€€€€€ô¤ì((€€€€€€€½Á•É…Ñ¥½¸¹¹½Ñ•Ì€ô(€€€€€€€€€½Á•É…Ñ¥½¸¹¹½Ñ•Ì¹Í±¥” (€€€€€€€€€€€€´ÈÀÀ(€€€€€€€€€€¤ì((€€€€€€€½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ð€ô(€€€€€€€€€¹½Ü ¤ì((€€€€€€€Í…Ù•MÑ…Ñ” ¤ì((€€€€€€€…Ý…¥ÐÁÕ‰±¥Í¡9½Ñ¥™¥…Ñ¥½¹Ì¡ÍÑ…Ñ”¹¥…}ÕÍ•ÉÌ°ì(€€€€€€€€€ÑåÁ”è€=AIQ%=8œ°(€€€€€€€€€Ñ¥Ñ±”è€%1UAQ€¼¼=AIQ%=89=Qœ°(€€€€€€€€€µ•ÍÍ…”èƒbf?bÛf+fƒb«b·b¿f+b¬ƒff+b¿bŸff(ƒb—ff$ƒbŸfbçfff+b¤€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•Éô¹€°(€€€€€€€€€ÁÉ¥½É¥Ñäè½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€!% œñð½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€I%Q%0œ€ü€!% œ€è€9=Q%œ°(€€€€€€€€€Í½ÕÉ•UÍ•É%è…Ñ½È¹¥°(€€€€€€€€€É•±…Ñ•‘%è½Á•É…Ñ¥½¸¹¥°(€€€€€€€€€µ•µ‰•É½‘•Ìè½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ì°(€€€€€€€€€µ•Ñ…‘…Ñ„èìµ¥ÍÍ¥½¹9Õµ‰•Èè½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•È°É¥Í¬è½Á•É…Ñ¥½¸¹É¥Í¬ô(€€€€€€€ô¤ì((€€€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì((€€€€€€€É•ÑÕÉ¸½¬ (€€€€€€€€€ˆ°(€€€€€€€€€ì(€€€€€€€€€€€½Á•É…Ñ¥½¸è(€€€€€€€€€€€€€½Á•É…Ñ¥½¹M…¹¥Ñ¥é” (€€€€€€€€€€€€€€€½Á•É…Ñ¥½¸°(€€€€€€€€€€€€€€€…Ñ½È(€€€€€€€€€€€€€€¤(€€€€€€€€€ô(€€€€€€€€¤ì(€€€€€ô(€€€€¤ì((€€€Í½­•Ð¹½¸ (€€€€€€½Á•É…Ñ¥½¸é‘•±•Ñ”œ°(€€€€€€¡Á…å±½…°ˆ¤€ôøì(€€€€€€€½¹ÍÐ…Ñ½È€ô(€€€€€€€€€É•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì((€€€€€€€¥˜€ ……Ñ½È¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€¥˜€ (€€€€€€€€€€…¥Í¡¥•˜¡…Ñ½È¤(€€€€€€€€¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€€Ÿb·bÃfƒbŸfbçfff+bŸb¨ƒfb«bŸb´ƒff %!%ƒffbÜ¸œ(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€½¹ÍÐ¥€ô(€€€€€€€€€±•…¸ (€€€€€€€€€€€Á…å±½…ü¹¥°(€€€€€€€€€€€€ÈÀÀ(€€€€€€€€€€¤ì((€€€€€€€½¹ÍÐ•á¥ÍÑÌ€ô(€€€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹Í½µ” (€€€€€€€€€€€€¡½À¤€ôø(€€€€€€€€€€€€€MÑÉ¥¹œ¡½À¹¥¤€ôôô(€€€€€€€€€€€€€MÑÉ¥¹œ¡¥¤(€€€€€€€€€€¤ì((€€€€€€€¥˜€ …•á¥ÍÑÌ¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼ (€€€€€€€€€€€ˆ°(€€€€€€€€€€€€ŸbŸfbçfff+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ(€€€€€€€€€€¤ì(€€€€€€€ô((€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì€ô(€€€€€€€€€ÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥±Ñ•È (€€€€€€€€€€€€¡½À¤€ôø(€€€€€€€€€€€€€MÑÉ¥¹œ¡½À¹¥¤€„ôô(€€€€€€€€€€€€€MÑÉ¥¹œ¡¥¤(€€€€€€€€€€¤ì((€€€€€€€…‘‘Õ‘¥Ñ1½œ (€€€€€€€€€€Ÿb·bÃfƒbçfff+b¤œ°(€€€€€€€€€…Ñ½È°(€€€€€€€€€¹Õ±°°(€€€€€€€€€ƒb«fƒb·bÃfƒbŸfbçfff+b¤€‘í¥‘ô¹€(€€€€€€€€¤ì((€€€€€€€Í…Ù•MÑ…Ñ” ¤ì((€€€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì((€€€€€€€É•ÑÕÉ¸½¬ (€€€€€€€€€ˆ°(€€€€€€€€€ì(€€€€€€€€€€€¥(€€€€€€€€€ô(€€€€€€€€¤ì(€€€€€ô(€€€€¤ì((€€€Í½­•Ð¹½¸ ½Á•É…Ñ¥½¸é…‘‘5…É­•Èœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+fbËfƒb«bÏb³f+fƒbŸfb¿b»f#fƒffb»b¿fb¤ƒbf#fbŸf,¸œ¤ì(€€€€€½¹ÍÐ¥€ô±•…¸¡Á…å±½…ü¹¥ñðÁ…å±½…ü¹½Á•É…Ñ¥½¹%°€ÈÀÀ¤ì(€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ôÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥¹ ¡¥Ñ•´¤€ôøMÑÉ¥¹œ¡¥Ñ•´¹¥¤€ôôôMÑÉ¥¹œ¡¥¤¤ì(€€€€€¥˜€ …½Á•É…Ñ¥½¸¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸffffb¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸfbÇbŸb³bçb¤ƒb»bÇf+bßb¤ƒbŸffffb¤ƒfb«bŸb·b¤ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐÁ½¥¹Ð€ôµ¥ÍÍ¥½¹A½¥¹Ð¡Á…å±½…ü¹Á½¥¹ÐñðÁ…å±½…¤ì(€€€€€¥˜€ …Á½¥¹Ð¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿff#fbäƒbŸfbçfbŸfb¤ƒbëf+bÄƒb×b·f+b´¸œ¤ì(€€€€€½¹ÍÐµ…É­•È€ôì(€€€€€€€¥èµ…­•% =A5I,œ¤°(€€€€€€€€¸¸¹Á½¥¹Ð°(€€€€€€€±…‰•°è±•…¸¡Á…å±½…ü¹±…‰•°ñð€ŸbçfbŸfb¤ƒff+b¿bŸff+b¤œ°€ÄàÀ¤°(€€€€€€€­¥¹èlÉ¥µ¥¹…°œ°€Á•½Á±”t¹¥¹±Õ‘•Ì¡Á…å±½…ü¹­¥¹¤€üÁ…å±½…¹­¥¹€è€Á½¥¹Ðœ°(€€€€€€€½Õ¹Ðè9Õµ‰•È¹¥Í%¹Ñ••È¡9Õµ‰•È¡Á…å±½…ü¹½Õ¹Ð¤¤€˜˜9Õµ‰•È¡Á…å±½…ü¹½Õ¹Ð¤€øô€Ä€˜˜9Õµ‰•È¡Á…å±½…ü¹½Õ¹Ð¤€ðô€ÄÀÀÀ(€€€€€€€€€€ü9Õµ‰•È¡Á…å±½…¹½Õ¹Ð¤(€€€€€€€€€€è¹Õ±°°(€€€€€€€½±½Èèµ¥ÍÍ¥½¹5…Á½±½È¡Á…å±½…ü¹½±½È¤°(€€€€€€€…ÕÑ¡½É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€…Ðè¹½Ü ¤(€€€€€ôì(€€€€€½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ€ôÉÉ…ä¹¥ÍÉÉ…ä¡½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ¤€ü½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ€èmtì(€€€€€½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ¹ÁÕÍ ¡µ…É­•È¤ì(€€€€€½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ€ô½Á•É…Ñ¥½¸¹µ…Á5…É­•ÉÌ¹Í±¥” ´ÈÀÀ¤ì(€€€€€½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ð€ô¹½Ü ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ…É­•È°½Á•É…Ñ¥½¸è½Á•É…Ñ¥½¹M…¹¥Ñ¥é”¡½Á•É…Ñ¥½¸°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ½Á•É…Ñ¥½¸é…‘‘É…Ý¥¹œœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+fbËfƒb«bÏb³f+fƒbŸfb¿b»f#fƒffb»b¿fb¤ƒbf#fbŸf,¸œ¤ì(€€€€€½¹ÍÐ¥€ô±•…¸¡Á…å±½…ü¹¥ñðÁ…å±½…ü¹½Á•É…Ñ¥½¹%°€ÈÀÀ¤ì(€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ôÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥¹ ¡¥Ñ•´¤€ôøMÑÉ¥¹œ¡¥Ñ•´¹¥¤€ôôôMÑÉ¥¹œ¡¥¤¤ì(€€€€€¥˜€ …½Á•É…Ñ¥½¸¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸffffb¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸfbÇbŸb³bçb¤ƒb»bÇf+bßb¤ƒbŸffffb¤ƒfb«bŸb·b¤ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐÁ½¥¹ÑÌ€ôÉÉ…ä¹¥ÍÉÉ…ä¡Á…å±½…ü¹Á½¥¹ÑÌ¤(€€€€€€€€üÁ…å±½…¹Á½¥¹ÑÌ¹µ…À¡µ¥ÍÍ¥½¹A½¥¹Ð¤¹™¥±Ñ•È¡	½½±•…¸¤¹Í±¥” À°€ÔÀÀ¤(€€€€€€€€èmtì(€€€€€¥˜€¡Á½¥¹ÑÌ¹±•¹Ñ €ð€È¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÇbÏfƒf+b·b«bŸb°ƒffbßb«f+fƒbçff$ƒbŸfbff¸œ¤ì(€€€€€½¹ÍÐÍ¡…Á”€ô5%MM%=9}I]%9}M!AL¹¡…Ì¡Á…å±½…ü¹Í¡…Á”¤€üÁ…å±½…¹Í¡…Á”€è€™É••¡…¹œì(€€€€€½¹ÍÐ‘É…Ý¥¹œ€ôì(€€€€€€€¥èµ…­•% =AI\œ¤°(€€€€€€€Á½¥¹ÑÌ°(€€€€€€€Í¡…Á”°(€€€€€€€½±½Èèµ¥ÍÍ¥½¹5…Á½±½È¡Á…å±½…ü¹½±½È¤°(€€€€€€€…ÕÑ¡½É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€…Ðè¹½Ü ¤(€€€€€ôì(€€€€€½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì€ôÉÉ…ä¹¥ÍÉÉ…ä¡½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì¤€ü½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì€èmtì(€€€€€½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì¹ÁÕÍ ¡‘É…Ý¥¹œ¤ì(€€€€€½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì€ô½Á•É…Ñ¥½¸¹µ…ÁÉ…Ý¥¹Ì¹Í±¥” ´ÄÀÀ¤ì(€€€€€½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ð€ô¹½Ü ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì‘É…Ý¥¹œ°½Á•É…Ñ¥½¸è½Á•É…Ñ¥½¹M…¹¥Ñ¥é”¡½Á•É…Ñ¥½¸°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€€¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô(€€€€€€1%9P=5AQ%	%1%QdY9QL(€€€€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼((€€€Í½­•Ð¹½¸ …‘µ¥¸éÕÁ‘…Ñ•5•µ‰•Èœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€€€½¹ÍÐÑ…É•Ð€ô•ÑUÍ•É	å%¡±•…¸¡Á…å±½…ü¹µ•µ‰•É%ñðÁ…å±½…ü¹ÕÍ•É%°€ÄÈÀ¤¤ì(€€€€€€€¥˜€ …Ñ…É•Ð¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÓb»b×f+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€€€¥˜€ ……¹5…¹…•5•µ‰•È¡…Ñ½È°Ñ…É•Ð¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒb«bçb¿f+fƒfbÃfƒbŸfbÓb»b×f+b¤¸œ¤ì((€€€€€€€±•Ð…Ñ¥½¸€ô€½‘”œì(€€€€€€€¥˜€¡Á…å±½…ü¹É…¹¬€„ôôÕ¹‘•™¥¹•¤ì(€€€€€€€€€½¹ÍÐÉ…¹¬€ô¹½Éµ…±¥é•I…¹¬¡Á…å±½…¹É…¹¬¤ì(€€€€€€€€€¥˜€ ……¹¡…¹•I…¹¬¡…Ñ½È°Ñ…É•Ð°É…¹¬¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒb«bëf+f+bÄƒbÇb«b£b¤ƒfbÃfƒbŸfbÓb»b×f+b¤¸œ¤ì(€€€€€€€€€Ñ…É•Ð¹É…¹¬€ôÉ…¹¬ì(€€€€€€€€€•¹ÍÕÉ•	…¹¬¡Ñ…É•Ð¤¹Í…±…Éä€ô‘•™…Õ±ÑM…±…Éå½ÉI…¹¬¡É…¹¬¤ì(€€€€€€€€€…Ñ¥½¸€ô€É…¹¬œì(€€€€€€€ô(€€€€€€€¥˜€¡Á…å±½…ü¹Í•É•Ñ½‘”€„ôôÕ¹‘•™¥¹•¤ì(€€€€€€€€€½¹ÍÐÍ•É•Ñ½‘”€ô±•…¸¡Á…å±½…¹Í•É•Ñ½‘”°€ÄÀÀ¤ì(€€€€€€€€€½¹ÍÐ•ÉÉ½È€ôÙ…±¥‘…Ñ•M•É•Ñ½‘”¡Í•É•Ñ½‘”°Ñ…É•Ð¤ì(€€€€€€€€€¥˜€¡•ÉÉ½Èñð€……¹¡…¹•M•É•Ð¡…Ñ½È°Ñ…É•Ð¤¤É•ÑÕÉ¸¹¼¡ˆ°•ÉÉ½Èñð€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒb«bëf+f+bÄƒff#b¼ƒfbÃfƒbŸfbÓb»b×f+b¤¸œ¤ì(€€€€€€€€€Ñ…É•Ð¹Í•É•Ñ½‘”€ôÍ•É•Ñ½‘”ì(€€€€€€€€€…Ñ¥½¸€ô€½‘”œì(€€€€€€€ô(€€€€€€€¥˜€¡Á…å±½…ü¹ÁÕ‰±¥½‘”€„ôôÕ¹‘•™¥¹•¤ì(€€€€€€€€€½¹ÍÐÁÕ‰±¥½‘”€ô±•…¸¡Á…å±½…¹ÁÕ‰±¥½‘”°€ÄÀÀ¤ì(€€€€€€€€€½¹ÍÐ‘ÕÁ±¥…Ñ”€ô•ÑUÍ•É	åAÕ‰±¥½‘”¡ÁÕ‰±¥½‘”¤ì(€€€€€€€€€¥˜€ …ÁÕ‰±¥½‘”ñðÁÕ‰±¥½‘”€ôôô€A9%9œñð€¡‘ÕÁ±¥…Ñ”€˜˜‘ÕÁ±¥…Ñ”¹¥€„ôôÑ…É•Ð¹¥¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfff#b¼ƒbŸfbçbÏfbÇf(ƒbëf+bÄƒb×bŸfb´ƒbf ƒfbÏb«b»b¿f¸œ¤ì(€€€€€€€€€ô(€€€€€€€€€¥˜€ ……¹5…¹…•5•µ‰•È¡…Ñ½È°Ñ…É•Ð¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒb«bëf+f+bÄƒbŸfff#b¼ƒbŸfbçbÏfbÇf(¸œ¤ì(€€€€€€€€€¥˜€¡Ñ…É•Ð¹Í•ÉÙ¥•ÁÁÉ½Ù•€„ôôÑÉÕ”¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒf+fffƒb—b×b¿bŸbÄƒbf ƒb«bëf+f+bÄƒbŸfff#b¼ƒbŸfbçbÏfbÇf(ƒfb£fƒff#bŸffb¤ƒb¿b»f#fƒbŸfb»b¿fb¤¸œ¤ì(€€€€€€€€€Ñ…É•Ð¹ÁÕ‰±¥½‘”€ôÁÕ‰±¥½‘”ì(€€€€€€€€€…Ñ¥½¸€ô€½‘”œì(€€€€€€€ô(€€€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¬¡ˆ°ì…Ñ¥½¸°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡Ñ…É•Ð°…Ñ½È¤ô¤ì(€€€€€€€Í½­•Ð¹•µ¥Ð …‘µ¥¸éµ•µ‰•ÈéÉ•ÍÕ±Ðœ°É•ÍÕ±Ð¤ì(€€€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°•ÉÉ½È¹µ•ÍÍ…”ñð€Ÿb«bçbÃbÄƒb«bçb¿f+fƒbŸfbÓb»b×f+b¤¸œ¤ì(€€€€€ô(€€€ô¤ì((€€€Í½­•Ð¹½¸ …‘µ¥¸éÉ•…Ñ¥Ù…Ñ•5•µ‰•Èœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€½¹ÍÐÑ…É•Ð€ô•ÑUÍ•É	å%¡±•…¸¡Á…å±½…ü¹µ•µ‰•É%ñðÁ…å±½…ü¹ÕÍ•É%°€ÄÈÀ¤¤ì(€€€€€¥˜€ ……Ñ½Èñð€…Ñ…É•Ð¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÓb»b×f+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹I•ÍÑ½É•M•ÕÉ¥Ñå5•µ‰•È¡…Ñ½È¤¤ì(€€€€€€€½¹ÍÐ¥¹¥‘•¹Ð€ôÉ•½É‘M•ÕÉ¥ÑåÙ•¹Ð¡ì(€€€€€€€€€…Ñ½È°(€€€€€€€€€Ñ…É•Ðè…Ñ½È°(€€€€€€€€€…Ñ¥½¸è€U9UQ!=I%i}IMQ=I}QQ5APœ°(€€€€€€€€€ÑåÁ”è€MM}=9QI=0œ°(€€€€€€€€€±•Ù•°è€Ì°(€€€€€€€€€É•…Í½¸è€=91e}%}!%}9}IMQ=I}55	ILœ°(€€€€€€€€€ÍÑ…ÑÕÌè€	1=-œ(€€€€€€€ô¤ì(€€€€€€€…Ý…¥Ð¹½Ñ¥™åM•ÕÉ¥Ñå1•…‘•ÉÍ¡¥À¡¥¹¥‘•¹Ð¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒb—bçbŸb¿b¤ƒfbÃfƒbŸfbÓb»b×f+b¤ƒffb»b¿fb¤¸œ¤ì(€€€€€ô(€€€€€¥˜€¡Ñ…É•Ð¹¥€ôôô…Ñ½È¹¥¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒf+fffƒbŸbÏb«bçbŸb¿b¤ƒb·bÏbŸb£fƒb£fbÃfƒbŸfbçfff+b¤¸œ¤ì(€€€€€¥˜€¡Ñ…É•Ð¹Í•ÕÉ¥ÑåMÑ…ÑÕÌ€ôôô€Q%Yœ€˜˜€…Ñ…É•Ð¹ÍÕÍÁ•¹‘•¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfb·bÏbŸb ƒbëf+bÄƒff#ff#fƒbf ƒfff+fGb¼ƒbfff+f/bœ¸œ¤ì(€€€€€ô(€€€€€Ñ…É•Ð¹Í•ÕÉ¥ÑåMÑ…ÑÕÌ€ô€Q%Yœì(€€€€€Ñ…É•Ð¹…Ñ¥Ù•M•ÉÙ¥”€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹‘•€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹Í¥½¹I•…Í½¸€ô€œœì(€€€€€Ñ…É•Ð¹ÍÑ…ÑÕÌ€ô€Ÿb»bŸbÇb°ƒbŸfb»b¿fb¤œì(€€€€€½¹ÍÐ¥¹¥‘•¹Ð€ôÉ•½É‘M•ÕÉ¥ÑåÙ•¹Ð¡ì(€€€€€€€…Ñ½È°(€€€€€€€Ñ…É•Ð°(€€€€€€€…Ñ¥½¸è€55	I}IMQ=Iœ°(€€€€€€€ÑåÁ”è€59U1}IY%\œ°(€€€€€€€±•Ù•°è€Ä°(€€€€€€€É•…Í½¸è€IMQ=I}	e}%}!%œ°(€€€€€€€ÍÑ…ÑÕÌè€IMQ=Iœ(€€€€€ô¤ì(€€€€€…Ý…¥Ð¹½Ñ¥™åM•ÕÉ¥Ñå1•…‘•ÉÍ¡¥À¡¥¹¥‘•¹Ð¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¬¡ˆ°ì…Ñ¥½¸è€É•…Ñ¥Ù…Ñ”œ°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡Ñ…É•Ð°…Ñ½È¤ô¤ì(€€€€€Í½­•Ð¹•µ¥Ð …‘µ¥¸éµ•µ‰•ÈéÉ•ÍÕ±Ðœ°É•ÍÕ±Ð¤ì(€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì(€€€ô¤ì((€€€Í½­•Ð¹½¸ …‘µ¥¸é­¥­5•µ‰•Èœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€½¹ÍÐÑ…É•Ð€ô•ÑUÍ•É	å%¡±•…¸¡Á…å±½…ü¹µ•µ‰•É%ñðÁ…å±½…ü¹ÕÍ•É%°€ÄÈÀ¤¤ì(€€€€€½¹ÍÐÉ•…Í½¸€ôÉ•‘…ÑM•ÕÉ¥ÑåI•…Í½¸¡Á…å±½…ü¹É•…Í½¸¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#fƒb—ff$ƒbŸfb·bÏbŸb ƒbf#fbŸf,¸œ¤ì(€€€€€¥˜€ …Ñ…É•Ð¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÓb»b×f+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹5…¹…•5•µ‰•È¡…Ñ½È°Ñ…É•Ð¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒfb×fƒfbÃfƒbŸfbÓb»b×f+b¤¸œ¤ì(€€€€€¥˜€ …É•…Í½¸¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbÏb£b ƒbŸffb×fƒb—fbËbŸff(¸œ¤ì(€€€€€Ñ…É•Ð¹…Ñ¥Ù•M•ÉÙ¥”€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹‘•€ôÑÉÕ”ì(€€€€€Ñ…É•Ð¹Í•ÕÉ¥ÑåMÑ…ÑÕÌ€ô€MUMA9œì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹Í¥½¹I•…Í½¸€ôÉ•…Í½¸ì(€€€€€Ñ…É•Ð¹½¹±¥¹”€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÑ…ÑÕÌ€ô€Ÿffb×f#fœì(€€€€€™½È€¡½¹ÍÐÍ½­•Ñ%½˜Í•ÍÍ¥½¹Ì¹•Ð¡Ñ…É•Ð¹¥¤ñðmt¤ì(€€€€€€€½¹ÍÐÑ…É•ÑM½­•Ð€ô¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹•Ð¡Í½­•Ñ%¤ì(€€€€€€€¥˜€¡Ñ…É•ÑM½­•Ð¤ì(€€€€€€€€€Ñ…É•ÑM½­•Ð¹•µ¥Ð µ•µ‰•Èé­¥­•œ°ìµ•ÍÍ…”è€Ÿb«fƒfb×fƒbŸfbÓb»b×f+b¤ƒffƒbŸfb»b¿fb¤¸œ°É•…Í½¸ô¤ì(€€€€€€€ô(€€€€€ô(€€€€€…‘‘Õ‘¥Ñ1½œ Ÿfb×fƒffƒbŸfb»b¿fb¤œ°…Ñ½È°Ñ…É•Ð°ƒbÏb£b ƒbŸffb×fè€‘íÉ•‘…ÑM•ÕÉ¥ÑåI•…Í½¸¡É•…Í½¸¥õ€¤ì(€€€€€½¹ÍÐ¥¹¥‘•¹Ð€ôÉ•½É‘M•ÕÉ¥ÑåÙ•¹Ð¡ì(€€€€€€€…Ñ½È°(€€€€€€€Ñ…É•Ð°(€€€€€€€…Ñ¥½¸è€55	I}MUMA9œ°(€€€€€€€ÑåÁ”è€5%9%MQIQ%Y}MUMA9M%=8œ°(€€€€€€€±•Ù•°è€È°(€€€€€€€É•…Í½¸°(€€€€€€€ÍÑ…ÑÕÌè€MUMA9œ(€€€€€ô¤ì(€€€€€…Ý…¥Ð¹½Ñ¥™åM•ÕÉ¥Ñå1•…‘•ÉÍ¡¥À¡¥¹¥‘•¹Ð¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¬¡ˆ°ì…Ñ¥½¸è€­¥¬œ°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡Ñ…É•Ð°…Ñ½È¤ô¤ì(€€€€€Í½­•Ð¹•µ¥Ð …‘µ¥¸éµ•µ‰•ÈéÉ•ÍÕ±Ðœ°É•ÍÕ±Ð¤ì(€€€€€É•ÑÕÉ¸É•ÍÕ±Ðì(€€€ô¤ì((€€€Í½­•Ð¹½¸ …‘µ¥¸é­¥­UÍ•Èœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€½¹ÍÐÑ…É•Ð€ô•ÑUÍ•É	å%¡±•…¸¡Á…å±½…ü¹ÕÍ•É%ñðÁ…å±½…ü¹µ•µ‰•É%°€ÄÈÀ¤¤ì(€€€€€½¹ÍÐÉ•…Í½¸€ôÉ•‘…ÑM•ÕÉ¥ÑåI•…Í½¸¡Á…å±½…ü¹É•…Í½¸¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#fƒb—ff$ƒbŸfb·bÏbŸb ƒbf#fbŸf,¸œ¤ì(€€€€€¥˜€ …Ñ…É•Ð¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÓb»b×f+b¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹5…¹…•5•µ‰•È¡…Ñ½È°Ñ…É•Ð¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒfb×fƒfbÃfƒbŸfbÓb»b×f+b¤¸œ¤ì(€€€€€¥˜€ …É•…Í½¸¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbÏb£b ƒbŸffb×fƒb—fbËbŸff(¸œ¤ì(€€€€€Ñ…É•Ð¹…Ñ¥Ù•M•ÉÙ¥”€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹‘•€ôÑÉÕ”ì(€€€€€Ñ…É•Ð¹Í•ÕÉ¥ÑåMÑ…ÑÕÌ€ô€MUMA9œì(€€€€€Ñ…É•Ð¹ÍÕÍÁ•¹Í¥½¹I•…Í½¸€ôÉ•…Í½¸ì(€€€€€Ñ…É•Ð¹½¹±¥¹”€ô™…±Í”ì(€€€€€Ñ…É•Ð¹ÍÑ…ÑÕÌ€ô€Ÿffb×f#fœì(€€€€€™½È€¡½¹ÍÐÍ½­•Ñ%½˜Í•ÍÍ¥½¹Ì¹•Ð¡Ñ…É•Ð¹¥¤ñðmt¤ì(€€€€€€€½¹ÍÐÑ…É•ÑM½­•Ð€ô¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹•Ð¡Í½­•Ñ%¤ì(€€€€€€€¥˜€¡Ñ…É•ÑM½­•Ð¤ì(€€€€€€€€€Ñ…É•ÑM½­•Ð¹•µ¥Ð µ•µ‰•Èé­¥­•œ°ìµ•ÍÍ…”è€Ÿb«fƒfb×fƒbŸfbÓb»b×f+b¤ƒffƒbŸfb»b¿fb¤¸œ°É•…Í½¸ô¤ì(€€€€€€€ô(€€€€€ô(€€€€€…‘‘Õ‘¥Ñ1½œ Ÿfb×fƒffƒbŸfb»b¿fb¤œ°…Ñ½È°Ñ…É•Ð°ƒbÏb£b ƒbŸffb×fè€‘íÉ•‘…ÑM•ÕÉ¥ÑåI•…Í½¸¡É•…Í½¸¥õ€¤ì(€€€€€½¹ÍÐ¥¹¥‘•¹Ð€ôÉ•½É‘M•ÕÉ¥ÑåÙ•¹Ð¡ì(€€€€€€€…Ñ½È°(€€€€€€€Ñ…É•Ð°(€€€€€€€…Ñ¥½¸è€55	I}MUMA9œ°(€€€€€€€ÑåÁ”è€5%9%MQIQ%Y}MUMA9M%=8œ°(€€€€€€€±•Ù•°è€È°(€€€€€€€É•…Í½¸°(€€€€€€€ÍÑ…ÑÕÌè€MUMA9œ(€€€€€ô¤ì(€€€€€…Ý…¥Ð¹½Ñ¥™åM•ÕÉ¥Ñå1•…‘•ÉÍ¡¥À¡¥¹¥‘•¹Ð¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì…Ñ¥½¸è€­¥¬œ°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡Ñ…É•Ð°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ É…‘¥¼éÑ•áÐœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐ¡…¹¹•°€ô±•…¸¡Á…å±½…ü¹¡…¹¹•°ñð…Ñ½È¹É…‘¥½¡…¹¹•°ñð€ ´Äœ°€ÔÀ¤ì(€€€€€½¹ÍÐÑ•áÐ€ô±•…¸¡Á…å±½…ü¹Ñ•áÐñðÁ…å±½…ü¹µ•ÍÍ…”°€ÈÀÀÀ¤ì(€€€€€¥˜€ …Ñ•áÐ¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÇbÏbŸfb¤ƒfbŸbÇbëb¤¸œ¤ì(€€€€€¥˜€¡…Ý…¥Ðµ½‘•É…Ñ•=ÕÑ½¥¹Q•áÐ¡…Ñ½È°Ñ•áÐ°€I%<œ¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«fƒb·bãbÄƒbŸfbÇbÏbŸfb¤ƒb£f#bŸbÏbßb¤ƒfbÇfbÈƒbŸfbff¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐÁ…­•Ð€ôì(€€€€€€€¥èµ…­•% I%<œ¤°(€€€€€€€¡…¹¹•°°(€€€€€€€ÕÍ•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€™É½µ½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€™É½µI…¹¬èÉ…¹­1…‰•°¡…Ñ½È¹É…¹¬¤°(€€€€€€€Ñ•áÐ°(€€€€€€€…Ðè¹½Ü ¤(€€€€€ôì(€€€€€•µ¥ÑI…‘¥½Q½¡…¹¹•°¡¡…¹¹•°°€É…‘¥¼éÑ•áÐœ°Á…­•Ð¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ•ÍÍ…”èÁ…­•Ðô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ É…‘¥¼é½‘”œ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐ¡…¹¹•°€ô±•…¸¡Á…å±½…ü¹¡…¹¹•°ñð…Ñ½È¹É…‘¥½¡…¹¹•°ñð€ ´Äœ°€ÔÀ¤ì(€€€€€½¹ÍÐÁ…­•Ð€ôì(€€€€€€€¡…¹¹•°°(€€€€€€€ÕÍ•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€ÕÍ•É9…µ”è…Ñ½È¹¹…µ”°(€€€€€€€½‘”è±•…¸¡Á…å±½…ü¹½‘”°€ÔÀ¤°(€€€€€€€µ•…¹¥¹œè±•…¸¡Á…å±½…ü¹µ•…¹¥¹œ°€ÈÀÀ¤(€€€€€ôì(€€€€€¥˜€ …Á…­•Ð¹½‘”¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿff#b¼ƒbŸfbÇbŸb¿f+f ƒbëf+bÄƒff#b³f#b¼¸œ¤ì(€€€€€¥˜€¡…Ý…¥Ðµ½‘•É…Ñ•=ÕÑ½¥¹Q•áÐ¡…Ñ½È°€‘íÁ…­•Ð¹½‘•ô€‘íÁ…­•Ð¹µ•…¹¥¹õ€°€I%=}=œ¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«fƒb·bãbÄƒff#b¼ƒbŸfbÇbŸb¿f+f ƒb£f#bŸbÏbßb¤ƒfbÇfbÈƒbŸfbff¸œ¤ì(€€€€€ô(€€€€€•µ¥ÑI…‘¥½Q½¡…¹¹•°¡¡…¹¹•°°€É…‘¥¼é½‘”œ°Á…­•Ð¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ•ÍÍ…”èÁ…­•Ðô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ É…‘¥¼éÁÑÐéÍÑ…ÉÐœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐ¡…¹¹•°€ô±•…¸¡Á…å±½…ü¹¡…¹¹•°ñð…Ñ½È¹É…‘¥½¡…¹¹•°ñð€ ´Äœ°€ÔÀ¤ì(€€€€€•µ¥ÑI…‘¥½Q½¡…¹¹•°¡¡…¹¹•°°€É…‘¥¼éÍÑ…Ñ”œ°ì(€€€€€€€¡…¹¹•°°ÕÍ•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°ÁÑÐèÑÉÕ”°(€€€€€€€ÍÑ…ÑÕÍ!Ñµ°è€Ÿb³bŸbÇf(ƒbŸfb£b¬ƒbŸfb×f#b«f(¸¸¸œ(€€€€€ô¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ É…‘¥¼éÁÑÐéÍÑ½Àœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐ¡…¹¹•°€ô±•…¸¡Á…å±½…ü¹¡…¹¹•°ñð…Ñ½È¹É…‘¥½¡…¹¹•°ñð€ ´Äœ°€ÔÀ¤ì(€€€€€•µ¥ÑI…‘¥½Q½¡…¹¹•°¡¡…¹¹•°°€É…‘¥¼éÍÑ…Ñ”œ°ì(€€€€€€€¡…¹¹•°°ÕÍ•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°ÁÑÐè™…±Í”°(€€€€€€€ÍÑ…ÑÕÍ!Ñµ°è€ŸbŸfb«ff$ƒbŸfb£b¬¸œ(€€€€€ô¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ É•Á½ÉÐé‘•±•Ñ”œ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€¥˜€ …¥Í1•…‘•ÉÍ¡¥À¡…Ñ½È¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿb·bÃfƒbŸfb«fbŸbÇf+bÄƒfb«bŸb´ƒffff+bŸb¿b¤ƒffbÜ¸œ¤ì(€€€€€½¹ÍÐ¥€ô±•…¸¡Á…å±½…ü¹¥ñðÁ…å±½…ü¹É•Á½ÉÑ%°€ÈÀÀ¤ì(€€€€€½¹ÍÐ•á¥ÍÑÌ€ôÍÑ…Ñ”¹¥…}É•Á½ÉÑÌ¹Í½µ” ¡É•Á½ÉÐ¤€ôøMÑÉ¥¹œ¡É•Á½ÉÐ¹¥¤€ôôôMÑÉ¥¹œ¡¥¤¤ì(€€€€€¥˜€ …•á¥ÍÑÌ¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfb«fbÇf+bÄƒbëf+bÄƒff#b³f#b¼¸œ¤ì(€€€€€ÍÑ…Ñ”¹¥…}É•Á½ÉÑÌ€ôÍÑ…Ñ”¹¥…}É•Á½ÉÑÌ¹™¥±Ñ•È ¡É•Á½ÉÐ¤€ôøMÑÉ¥¹œ¡É•Á½ÉÐ¹¥¤€„ôôMÑÉ¥¹œ¡¥¤¤ì(€€€€€…‘‘Õ‘¥Ñ1½œ Ÿb·bÃfƒb«fbÇf+bÄœ°…Ñ½È°¹Õ±°°ƒb«fƒb·bÃfƒbŸfb«fbÇf+bÄ€‘í¥‘ô¹€¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì¥ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ‘ÕÑäéÍÑ…ÉÐœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€¥˜€¡…Ñ½È¹Í•ÉÙ¥•ÁÁÉ½Ù•€„ôôÑÉÕ”¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+fbËfƒfb£f#fƒbŸfbÓb»b×f+b¤ƒf#bŸbçb«fbŸb¼ƒbŸfff#f+b¤ƒf#bßfb ƒb¿b»f#fƒbŸfb»b¿fb¤ƒfb£fƒfb£bŸbÓbÇb¤ƒbŸfb»b¿fb¤¸œ¤ì(€€€€€ô(€€€€€¥˜€ ……Ñ½È¹ÁÕ‰±¥½‘”€˜˜€…¥Í1•…‘•ÉÍ¡¥À¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿffƒf+b×b¿bÄƒbŸfff#b¼ƒbŸfbçbÏfbÇf(ƒb£bçb¿blƒbŸbßfb ƒff%!%ƒb—ffbŸfƒbŸbçb«fbŸb¼ƒb¿b»f#fƒbŸfb»b¿fb¤¸œ¤ì(€€€€€ô(€€€€€¥˜€¡…Ñ½È¹…Ñ¥Ù•M•ÉÙ¥”€ôôôÑÉÕ”¤ì(€€€€€€€É•ÑÕÉ¸½¬¡ˆ°ì…ÑÑ•¹‘…¹”è¹Õ±°°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡…Ñ½È°…Ñ½È¤ô¤ì(€€€€€ô(€€€€€½¹ÍÐ‘…å-•ä€ô¹½Ü ¤¹Í±¥” À°€ÄÀ¤ì(€€€€€½¹ÍÐÕÉÉ•¹Ð€ô€¡ÍÑ…Ñ”¹¥…}…ÑÑ•¹‘…¹”ñðmt¤¹™¥¹ (€€€€€€€€¡¥Ñ•´¤€ôø¥Ñ•´¹ÕÍ•É%€ôôô…Ñ½È¹¥€˜˜¥Ñ•´¹‘…å-•ä€ôôô‘…å-•ä€˜˜€…¥Ñ•´¹•¹‘•‘Ð(€€€€€€¤ì(€€€€€¥˜€¡ÕÉÉ•¹Ð¤É•ÑÕÉ¸½¬¡ˆ°ì…ÑÑ•¹‘…¹”èÕÉÉ•¹Ðô¤ì(€€€€€½¹ÍÐ…ÑÑ•¹‘…¹”€ôì(€€€€€€€¥èµ…­•% UQdœ¤°(€€€€€€€ÕÍ•É%è…Ñ½È¹¥°(€€€€€€€ÕÍ•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€ÕÍ•É9…µ”è…Ñ½È¹¹…µ”°(€€€€€€€‘…å-•ä°(€€€€€€€ÍÑ…ÉÑ•‘Ðè¹½Ü ¤°(€€€€€€€•¹‘•‘Ðè¹Õ±°°(€€€€€€€Í…±…ÉåA…¥è™…±Í”(€€€€€ôì(€€€€€ÍÑ…Ñ”¹¥…}…ÑÑ•¹‘…¹”¹Õ¹Í¡¥™Ð¡…ÑÑ•¹‘…¹”¤ì(€€€€€…Ñ½È¹…Ñ¥Ù•M•ÉÙ¥”€ôÑÉÕ”ì(€€€€€…Ñ½È¹½¹±¥¹”€ôÑÉÕ”ì(€€€€€…Ñ½È¹ÍÑ…ÑÕÌ€ô€Ÿff(ƒbŸfb»b¿fb¤œì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì…ÑÑ•¹‘…¹”°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡…Ñ½È°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ‘ÕÑäé•¹œ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐÕÉÉ•¹Ð€ô€¡ÍÑ…Ñ”¹¥…}…ÑÑ•¹‘…¹”ñðmt¤¹™¥¹ (€€€€€€€€¡¥Ñ•´¤€ôø¥Ñ•´¹ÕÍ•É%€ôôô…Ñ½È¹¥€˜˜€…¥Ñ•´¹•¹‘•‘Ð(€€€€€€¤ì(€€€€€¥˜€¡ÕÉÉ•¹Ð¤ÕÉÉ•¹Ð¹•¹‘•‘Ð€ô¹½Ü ¤ì(€€€€€É•µ½Ù•I…‘¥½5•µ‰•È¡Í½­•Ð¹¥¤ì(€€€€€…Ñ½È¹É…‘¥½=¹±¥¹”€ô™…±Í”ì(€€€€€…Ñ½È¹…Ñ¥Ù•M•ÉÙ¥”€ô™…±Í”ì(€€€€€…Ñ½È¹ÍÑ…ÑÕÌ€ô€Ÿb»bŸbÇb°ƒbŸfb»b¿fb¤œì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì…ÑÑ•¹‘…¹”èÕÉÉ•¹Ð°ÕÍ•ÈèÁÕ‰±¥UÍ•È¡…Ñ½È°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ½Á•É…Ñ¥½¸éÕÁ‘…Ñ•MÑ…ÑÕÌœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°Í½­•ÑI•ÅÕ¥É•µ•¹Ñ5•ÍÍ…”¡Í½­•Ð¤¤ì(€€€€€½¹ÍÐ¥€ô±•…¸¡Á…å±½…ü¹½Á•É…Ñ¥½¹%ñðÁ…å±½…ü¹¥°€ÈÀÀ¤ì(€€€€€½¹ÍÐ½Á•É…Ñ¥½¸€ôÍÑ…Ñ”¹¥…}½Á•É…Ñ¥½¹Ì¹™¥¹ ¡¥Ñ•´¤€ôøMÑÉ¥¹œ¡¥Ñ•´¹¥¤€ôôôMÑÉ¥¹œ¡¥¤¤ì(€€€€€¥˜€ …½Á•É…Ñ¥½¸¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸffffb¤ƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€¥˜€ ……¹5…¹…•=Á•É…Ñ¥½¹Ì¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«b·b¿f+b¬ƒbŸffffb¤ƒfb«bŸb´ƒffbÇb«b ƒbŸfbçff+bœƒbŸfb¯fbŸb¬ƒffbÜ¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ€ô½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌì(€€€€€½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌ€ô±•…¸¡Á…å±½…ü¹ÍÑ…ÑÕÌ°€ÄÀÀ¤ñð½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌì(€€€€€…‘‘=Á•É…Ñ¥½¹MÑ…ÑÕÍ!¥ÍÑ½Éä¡½Á•É…Ñ¥½¸°…Ñ½È°ÁÉ•Ù¥½ÕÍMÑ…ÑÕÌ¤ì(€€€€€½Á•É…Ñ¥½¸¹ÕÁ‘…Ñ•‘Ð€ô¹½Ü ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€…Ý…¥ÐÁÕ‰±¥Í¡9½Ñ¥™¥…Ñ¥½¹Ì¡ÍÑ…Ñ”¹¥…}ÕÍ•ÉÌ°ì(€€€€€€€ÑåÁ”è€=AIQ%=8œ°(€€€€€€€Ñ¥Ñ±”è€=AIQ%=8MQQUL!9œ°(€€€€€€€µ•ÍÍ…”èƒb«bëf+bÇb¨ƒb·bŸfb¤ƒbŸfbçfff+b¤€‘í½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•Éôè€‘íÁÉ•Ù¥½ÕÍMÑ…ÑÕÍôƒŠ@€‘í½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÍô¹€°(€€€€€€€ÁÉ¥½É¥Ñäè½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€!% œñð½Á•É…Ñ¥½¸¹É¥Í¬€ôôô€I%Q%0œ€ü€!% œ€è€9=Q%œ°(€€€€€€€Í½ÕÉ•UÍ•É%è…Ñ½È¹¥°(€€€€€€€É•±…Ñ•‘%è½Á•É…Ñ¥½¸¹¥°(€€€€€€€µ•µ‰•É½‘•Ìè½Á•É…Ñ¥½¸¹µ•µ‰•É½‘•Ì°(€€€€€€€µ•Ñ…‘…Ñ„èìµ¥ÍÍ¥½¹9Õµ‰•Èè½Á•É…Ñ¥½¸¹µ¥ÍÍ¥½¹9Õµ‰•È°ÍÑ…ÑÕÌè½Á•É…Ñ¥½¸¹ÍÑ…ÑÕÌ°É¥Í¬è½Á•É…Ñ¥½¸¹É¥Í¬ô(€€€€€ô¤ì(€€€€€•µ¥Ñ=Á•É…Ñ¥½¹MÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì½Á•É…Ñ¥½¸è½Á•É…Ñ¥½¹M…¹¥Ñ¥é”¡½Á•É…Ñ¥½¸°…Ñ½È¤ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ¡…ÐéÍ•¹œ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐµ½‘”€ôÁ…å±½…ü¹µ½‘”€ôôô€ÁÉ¥Ù…Ñ”œ€ü€ÁÉ¥Ù…Ñ”œ€è€±½‰…°œì(€€€€€½¹ÍÐÑ•áÐ€ô±•…¸¡Á…å±½…ü¹Ñ•áÐñðÁ…å±½…ü¹µ•ÍÍ…”°€ÐÀÀÀ¤ì(€€€€€½¹ÍÐ¥µ…”€ô±•…¸¡Á…å±½…ü¹¥µ…”°€à€¨€ÄÀÈÐ€¨€ÄÀÈÐ¤ì(€€€€€¥˜€ …Ñ•áÐ€˜˜€…¥µ…”¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÇbÏbŸfb¤ƒfbŸbÇbëb¤¸œ¤ì(€€€€€¥˜€¡Ñ•áÐ€˜˜…Ý…¥Ðµ½‘•É…Ñ•=ÕÑ½¥¹Q•áÐ¡…Ñ½È°Ñ•áÐ°µ½‘”€ôôô€ÁÉ¥Ù…Ñ”œ€ü€AI%YQ}!Pœ€è€!Pœ¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«fƒb·bãbÄƒbŸfbÇbÏbŸfb¤ƒb£f#bŸbÏbßb¤ƒfbÇfbÈƒbŸfbff¸œ¤ì(€€€€€ô((€€€€€½¹ÍÐµ•ÍÍ…”€ôì(€€€€€€€¥èµ…­•%¡µ½‘”€ôôô€ÁÉ¥Ù…Ñ”œ€ü€A!Pœ€è€!Pœ¤°(€€€€€€€Í•¹‘•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€Í•¹‘•É9…µ”è…Ñ½È¹¹…µ”°(€€€€€€€™É½µ½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€™É½µ9…µ”è…Ñ½È¹¹…µ”°(€€€€€€€Ñ…É•Ñ½‘”è±•…¸¡Á…å±½…ü¹Ñ…É•Ñ½‘”°€ÄÀÀ¤°(€€€€€€€Ñ•áÐ°(€€€€€€€¥µ…”°(€€€€€€€Ñ¥µ•ÍÑ…µÀè¹½Ü ¤°(€€€€€€€…Ðè¹½Ü ¤(€€€€€ôì(€€€€€±•ÐÁÉ¥Ù…Ñ•I•¥Á¥•¹Ð€ô¹Õ±°ì(€€€€€¥˜€¡µ½‘”€ôôô€ÁÉ¥Ù…Ñ”œ¤ì(€€€€€€€½¹ÍÐÑ…É•Ð€ô•ÑUÍ•É	åAÕ‰±¥½‘”¡µ•ÍÍ…”¹Ñ…É•Ñ½‘”¤ì(€€€€€€€¥˜€ …Ñ…É•Ð¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸffbÏb«b»b¿fƒbŸffbÏb«fb¿fƒbëf+bÄƒff#b³f#b¼¸œ¤ì(€€€€€€€ÁÉ¥Ù…Ñ•I•¥Á¥•¹Ð€ôÑ…É•Ðì(€€€€€€€½¹ÍÐ­•ä€ô¡…Ñ-•ä¡…Ñ½È¹ÁÕ‰±¥½‘”°Ñ…É•Ð¹ÁÕ‰±¥½‘”¤ì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åtñðmtì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt¹ÁÕÍ ¡µ•ÍÍ…”¤ì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt¹Í±¥” ´ÔÀÀ¤ì(€€€€€€€½¹ÍÐÑ…É•ÑÌ€ô¹•ÜM•Ð¡l¸¸¸¡Í•ÍÍ¥½¹Ì¹•Ð¡…Ñ½È¹¥¤ñðmt¤°€¸¸¸¡Í•ÍÍ¥½¹Ì¹•Ð¡Ñ…É•Ð¹¥¤ñðmt¥t¤ì(€€€€€€€™½È€¡½¹ÍÐÍ½­•Ñ%½˜Ñ…É•ÑÌ¤ì(€€€€€€€€€½¹ÍÐÑ…É•ÑM½­•Ð€ô¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹•Ð¡Í½­•Ñ%¤ì(€€€€€€€€€¥˜€¡Ñ…É•ÑM½­•Ð¤Ñ…É•ÑM½­•Ð¹•µ¥Ð ¡…ÐéÁÉ¥Ù…Ñ”œ°µ•ÍÍ…”¤ì(€€€€€€€ô(€€€€€ô•±Í”ì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°¹ÁÕÍ ¡µ•ÍÍ…”¤ì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°¹Í±¥” ´ÄÀÀÀ¤ì(€€€€€€€¥¼¹•µ¥Ð ¡…Ðé±½‰…°œ°µ•ÍÍ…”¤ì(€€€€€ô(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€¥˜€¡ÁÉ¥Ù…Ñ•I•¥Á¥•¹Ð€˜˜ÁÉ¥Ù…Ñ•I•¥Á¥•¹Ð¹¥€„ôô…Ñ½È¹¥¤ì(€€€€€€€…Ý…¥ÐÁÕ‰±¥Í¡9½Ñ¥™¥…Ñ¥½¹Ì¡mÁÉ¥Ù…Ñ•I•¥Á¥•¹Ñt°ì(€€€€€€€€€ÑåÁ”è€5MMœ°(€€€€€€€€€Ñ¥Ñ±”è€9\5MMœ°(€€€€€€€€€µ•ÍÍ…”èƒf#b×fb«fƒbÇbÏbŸfb¤ƒb»bŸb×b¤ƒff€‘í…Ñ½È¹ÁÕ‰±¥½‘”ñð€•¹Ðô¹€°(€€€€€€€€€ÁÉ¥½É¥Ñäè€9=Q%œ°(€€€€€€€€€Í½ÕÉ•UÍ•É%è…Ñ½È¹¥°(€€€€€€€€€Ñ…É•ÑUÍ•É%èÁÉ¥Ù…Ñ•I•¥Á¥•¹Ð¹¥°(€€€€€€€€€Í½ÕÉ•9…µ•Y¥Í¥‰±”èÑÉÕ”°(€€€€€€€€€É•±…Ñ•‘%èµ•ÍÍ…”¹¥°(€€€€€€€€€µ•Ñ…‘…Ñ„èìÍ•¹‘•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”ô(€€€€€€€ô¤ì(€€€€€ô(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ•ÍÍ…”ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ¡…Ðé‘•±•Ñ”œ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½È¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿf+b³b ƒb«bÏb³f+fƒbŸfb¿b»f#f¸œ¤ì(€€€€€½¹ÍÐµ•ÍÍ…•%€ô±•…¸¡Á…å±½…ü¹µ•ÍÍ…•%ñðÁ…å±½…ü¹¥°€ÈÀÀ¤ì(€€€€€½¹ÍÐ…‘µ¥¸€ôÁ…å±½…ü¹…‘µ¥¸€ôôôÑÉÕ”ì(€€€€€¥˜€¡…‘µ¥¸€˜˜€…¥Í1•…‘•ÉÍ¡¥À¡…Ñ½È¤¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfbœƒb«fffƒb×fbŸb·f+b¤ƒbŸfb·bÃfƒbŸfb—b¿bŸbÇf(¸œ¤ì(€€€€€±•ÐÉ•µ½Ù•€ô™…±Í”ì(€€€€€¥˜€¡Á…å±½…ü¹µ½‘”€ôôô€ÁÉ¥Ù…Ñ”œ¤ì(€€€€€€€™½È€¡½¹ÍÐ­•ä½˜=‰©•Ð¹­•åÌ¡ÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ”ñðíô¤¤ì(€€€€€€€€€½¹ÍÐ‰•™½É”€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt¹±•¹Ñ ì(€€€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt¹™¥±Ñ•È (€€€€€€€€€€€€¡µ•ÍÍ…”¤€ôøMÑÉ¥¹œ¡µ•ÍÍ…”¹¥¤€„ôôMÑÉ¥¹œ¡µ•ÍÍ…•%¤ñð(€€€€€€€€€€€€€€ ……‘µ¥¸€˜˜µ•ÍÍ…”¹Í•¹‘•É½‘”€„ôô…Ñ½È¹ÁÕ‰±¥½‘”¤(€€€€€€€€€€¤ì(€€€€€€€€€É•µ½Ù•€ôÉ•µ½Ù•ñð‰•™½É”€„ôôÍÑ…Ñ”¹¥…}¡…ÑÌ¹ÁÉ¥Ù…Ñ•m­•åt¹±•¹Ñ ì(€€€€€€€ô(€€€€€ô•±Í”ì(€€€€€€€½¹ÍÐ‰•™½É”€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°¹±•¹Ñ ì(€€€€€€€ÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°€ôÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°¹™¥±Ñ•È (€€€€€€€€€€¡µ•ÍÍ…”¤€ôøMÑÉ¥¹œ¡µ•ÍÍ…”¹¥¤€„ôôMÑÉ¥¹œ¡µ•ÍÍ…•%¤(€€€€€€€€¤ì(€€€€€€€É•µ½Ù•€ô‰•™½É”€„ôôÍÑ…Ñ”¹¥…}¡…ÑÌ¹±½‰…°¹±•¹Ñ ì(€€€€€ô(€€€€€¥˜€ …É•µ½Ù•¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÇbÏbŸfb¤ƒbëf+bÄƒff#b³f#b¿b¤ƒbf ƒfbœƒb«fffƒb×fbŸb·f+b¤ƒb·bÃffbœ¸œ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€•µ¥ÑMÑ…Ñ” ¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ì¥èµ•ÍÍ…•%ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ÍÕÁÁ½ÉÐéÍ•¹œ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•ÕÑ¡•¹Ñ¥…Ñ•‘UÍ•È¡Í½­•Ð¤ì(€€€€€½¹ÍÐÍ•¹‘•É9…µ”€ô…Ñ½È(€€€€€€€€ü…Ñ½È¹¹…µ”(€€€€€€€€è±•…¸¡Á…å±½…ü¹¹…µ”ñðÁ…å±½…ü¹¡…É…Ñ•É9…µ”ñð€ŸbÓb»b×f+b¤ƒbëf+bÄƒfbçb«fb¿b¤œ°€ÄÈÀ¤ì(€€€€€½¹ÍÐÑ•áÐ€ô±•…¸¡Á…å±½…ü¹Ñ•áÐñðÁ…å±½…ü¹µ•ÍÍ…”°€ÌÀÀÀ¤ì(€€€€€¥˜€ …Ñ•áÐ¤É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfb«b ƒbŸfbŸbÏb«fbÏbŸbÄƒbf#fbŸf,¸œ¤ì(€€€€€¥˜€¡…Ý…¥Ðµ½‘•É…Ñ•=ÕÑ½¥¹Q•áÐ¡…Ñ½È°Ñ•áÐ°€MUAA=IPœ¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«fƒb·bãbÄƒbŸfbŸbÏb«fbÏbŸbÄƒb£f#bŸbÏbßb¤ƒfbÇfbÈƒbŸfbff¸œ¤ì(€€€€€ô((€€€€€±•ÐÑ¡É•…‘%€ô±•…¸¡Á…å±½…ü¹Ñ¡É•…‘%°€ÄÈÀ¤ì(€€€€€±•Ð½Ý¹•ÉQ½­•¸€ô±•…¸¡Á…å±½…ü¹½Ý¹•ÉQ½­•¸°€ÈÀÀ¤ì(€€€€€±•Ð½É¥¥¹…°€ô¹Õ±°ì(€€€€€¥˜€¡Ñ¡É•…‘%¤ì(€€€€€€€½É¥¥¹…°€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹Ñ¡É•…‘%€ôôôÑ¡É•…‘%€˜˜¥Ñ•´¹É•Á±ä€„ôôÑÉÕ”¤ì(€€€€€€€½¹ÍÐÍÕÁÁ±¥•‘!…Í €ô½Ý¹•ÉQ½­•¸(€€€€€€€€€€üÉåÁÑ¼¹É•…Ñ•!…Í  Í¡„ÈÔØœ¤¹ÕÁ‘…Ñ”¡½Ý¹•ÉQ½­•¸¤¹‘¥•ÍÐ ¡•àœ¤(€€€€€€€€€€è€œœì(€€€€€€€¥˜€ …½É¥¥¹…°ü¹½Ý¹•ÉQ½­•¹!…Í ñðÍÕÁÁ±¥•‘!…Í €„ôô½É¥¥¹…°¹½Ý¹•ÉQ½­•¹!…Í ¤ì(€€€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bçbÃbÄƒb—b¯b£bŸb¨ƒffff+b¤ƒfb·bŸb¿b¯b¤ƒbŸfbŸbÏb«fbÏbŸbÄ¸œ¤ì(€€€€€€€ô(€€€€€ô•±Í”ì(€€€€€€€Ñ¡É•…‘%€ôQ!I´‘íÉåÁÑ¼¹É…¹‘½µ	åÑ•Ì ÈÐ¤¹Ñ½MÑÉ¥¹œ ¡•àœ¥õ€ì(€€€€€€€½Ý¹•ÉQ½­•¸€ôÉåÁÑ¼¹É…¹‘½µ	åÑ•Ì ÌÈ¤¹Ñ½MÑÉ¥¹œ ¡•àœ¤ì(€€€€€ô((€€€€€½¹ÍÐµ•ÍÍ…”€ôì(€€€€€€€¥èµ…­•% MUAA=IPœ¤°(€€€€€€€Ñ¡É•…‘%°(€€€€€€€Í•¹‘•É½‘”è…Ñ½Èü¹ÁÕ‰±¥½‘”ñð€œœ°(€€€€€€€Í•¹‘•É9…µ”°(€€€€€€€Í•¹‘•ÉI…¹¬è…Ñ½È€üÉ…¹­1…‰•°¡…Ñ½È¹É…¹¬¤€è€•¹Ðƒff+b¼ƒbŸfbŸbçb«fbŸb¼œ°(€€€€€€€Ñ•áÐ°(€€€€€€€…Ðè¹½Ü ¤°(€€€€€€€É•Á±äè™…±Í”°(€€€€€€€½Ý¹•ÉUÍ•É%è½É¥¥¹…°ü¹½Ý¹•ÉUÍ•É%ñð…Ñ½Èü¹¥ñð¹Õ±°°(€€€€€€€€¸¸¸ …½É¥¥¹…°€üì(€€€€€€€€€½Ý¹•ÉQ½­•¹!…Í èÉåÁÑ¼¹É•…Ñ•!…Í  Í¡„ÈÔØœ¤¹ÕÁ‘…Ñ”¡½Ý¹•ÉQ½­•¸¤¹‘¥•ÍÐ ¡•àœ¤(€€€€€€€ô€èíô¤(€€€€€ôì(€€€€€ÍÕÁÁ½ÉÑQ¡É•…‘M½­•ÑÌ¹Í•Ð¡µ•ÍÍ…”¹Ñ¡É•…‘%°Í½­•Ð¹¥¤ì(€€€€€ÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹ÁÕÍ ¡µ•ÍÍ…”¤ì(€€€€€ÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹Í±¥” ´ÔÀÀ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì((€€€€€™½È€¡½¹ÍÐÑ…É•ÑM½­•Ð½˜¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹Ù…±Õ•Ì ¤¤ì(€€€€€€€½¹ÍÐÑ…É•ÑUÍ•È€ôÑ…É•ÑM½­•Ð¹ÕÍ•É%€ü•ÑUÍ•É	å%¡Ñ…É•ÑM½­•Ð¹ÕÍ•É%¤€è¹Õ±°ì(€€€€€€€¥˜€¡Ñ…É•ÑUÍ•È€˜˜¥Í1•…‘•ÉÍ¡¥À¡Ñ…É•ÑUÍ•È¤¤ì(€€€€€€€€€Ñ…É•ÑM½­•Ð¹•µ¥Ð ÍÕÁÁ½ÉÐéµ•ÍÍ…”œ°µ•ÍÍ…”¤ì(€€€€€€€ô(€€€€€ô(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ•ÍÍ…”°Ñ¡É•…‘%èµ•ÍÍ…”¹Ñ¡É•…‘%°½Ý¹•ÉQ½­•¸ô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ÍÕÁÁ½ÉÐé¡¥ÍÑ½Éäœ°€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐÑ¡É•…‘%€ô±•…¸¡Á…å±½…ü¹Ñ¡É•…‘%°€ÄÈÀ¤ì(€€€€€½¹ÍÐ½Ý¹•ÉQ½­•¸€ô±•…¸¡Á…å±½…ü¹½Ý¹•ÉQ½­•¸°€ÈÀÀ¤ì(€€€€€½¹ÍÐ½É¥¥¹…°€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹Ñ¡É•…‘%€ôôôÑ¡É•…‘%€˜˜¥Ñ•´¹É•Á±ä€„ôôÑÉÕ”¤ì(€€€€€½¹ÍÐÍÕÁÁ±¥•‘!…Í €ô½Ý¹•ÉQ½­•¸(€€€€€€€€üÉåÁÑ¼¹É•…Ñ•!…Í  Í¡„ÈÔØœ¤¹ÕÁ‘…Ñ”¡½Ý¹•ÉQ½­•¸¤¹‘¥•ÍÐ ¡•àœ¤(€€€€€€€€è€œœì(€€€€€¥˜€ …½É¥¥¹…°ü¹½Ý¹•ÉQ½­•¹!…Í ñðÍÕÁÁ±¥•‘!…Í €„ôô½É¥¥¹…°¹½Ý¹•ÉQ½­•¹!…Í ¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«bçbÃbÄƒb—b¯b£bŸb¨ƒffff+b¤ƒfb·bŸb¿b¯b¤ƒbŸfbŸbÏb«fbÏbŸbÄ¸œ¤ì(€€€€€ô(€€€€€ÍÕÁÁ½ÉÑQ¡É•…‘M½­•ÑÌ¹Í•Ð¡Ñ¡É•…‘%°Í½­•Ð¹¥¤ì(€€€€€½¹ÍÐµ•ÍÍ…•Ì€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹™¥±Ñ•È ¡¥Ñ•´¤€ôø¥Ñ•´¹Ñ¡É•…‘%€ôôôÑ¡É•…‘%¤ì(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìÑ¡É•…‘%°µ•ÍÍ…•Ìô¤ì(€€€ô¤ì((€€€Í½­•Ð¹½¸ ÍÕÁÁ½ÉÐéÉ•Á±äœ°…Íå¹Œ€¡Á…å±½…°ˆ¤€ôøì(€€€€€½¹ÍÐ…Ñ½È€ôÉ•ÅÕ¥É•M½­•ÑUÍ•È¡Í½­•Ð¤ì(€€€€€¥˜€ ……Ñ½Èñð€…¥Í1•…‘•ÉÍ¡¥À¡…Ñ½È¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€ŸbŸfbÇb¼ƒbçff$ƒbŸbÏb«fbÏbŸbÇbŸb¨ƒbŸfbŸbçb«fbŸb¼ƒfb«bŸb´ƒfffbŸb›b¼ƒf!M•¹¥½È½µµ…¹‘•È%ƒffbÜ¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐÑ•áÐ€ô±•…¸¡Á…å±½…ü¹Ñ•áÐñðÁ…å±½…ü¹µ•ÍÍ…”°€ÌÀÀÀ¤ì(€€€€€½¹ÍÐÑ¡É•…‘%€ô±•…¸¡Á…å±½…ü¹Ñ¡É•…‘%°€ÄÈÀ¤ì(€€€€€¥˜€ …Ñ•áÐñð€…Ñ¡É•…‘%¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿb£f+bŸfbŸb¨ƒbŸfbÇb¼ƒbëf+bÄƒffb«ffb¤¸œ¤ì(€€€€€¥˜€¡…Ý…¥Ðµ½‘•É…Ñ•=ÕÑ½¥¹Q•áÐ¡…Ñ½È°Ñ•áÐ°€MUAA=IQ}IA1dœ¤¤ì(€€€€€€€É•ÑÕÉ¸¹¼¡ˆ°€Ÿb«fƒb·bãbÄƒbŸfbÇb¼ƒb£f#bŸbÏbßb¤ƒfbÇfbÈƒbŸfbff¸œ¤ì(€€€€€ô(€€€€€½¹ÍÐ½É¥¥¹…°€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹Ñ¡É•…‘%€ôôôÑ¡É•…‘%€˜˜¥Ñ•´¹É•Á±ä€„ôôÑÉÕ”¤ì(€€€€€¥˜€ …½É¥¥¹…°¤É•ÑÕÉ¸¹¼¡ˆ°€Ÿfb·bŸb¿b¯b¤ƒbŸfbŸbÏb«fbÏbŸbÄƒbëf+bÄƒff#b³f#b¿b¤¸œ¤ì(€€€€€½¹ÍÐµ•ÍÍ…”€ôì(€€€€€€€¥èµ…­•% MUAA=IPœ¤°(€€€€€€€Ñ¡É•…‘%°(€€€€€€€Í•¹‘•É½‘”è…Ñ½È¹ÁÕ‰±¥½‘”°(€€€€€€€Í•¹‘•É9…µ”è…Ñ½È¹¹…µ”°(€€€€€€€Í•¹‘•ÉI…¹¬èÉ…¹­1…‰•°¡…Ñ½È¹É…¹¬¤°(€€€€€€€Ñ•áÐ°(€€€€€€€…Ðè¹½Ü ¤°(€€€€€€€É•Á±äèÑÉÕ”(€€€€€ôì(€€€€€ÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹ÁÕÍ ¡µ•ÍÍ…”¤ì(€€€€€ÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ€ôÍÑ…Ñ”¹¥…}ÍÕÁÁ½ÉÐ¹Í±¥” ´ÔÀÀ¤ì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€™½È€¡½¹ÍÐÑ…É•ÑM½­•Ð½˜¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹Ù…±Õ•Ì ¤¤ì(€€€€€€€½¹ÍÐÑ…É•ÑUÍ•È€ôÑ…É•ÑM½­•Ð¹ÕÍ•É%€ü•ÑUÍ•É	å%¡Ñ…É•ÑM½­•Ð¹ÕÍ•É%¤€è¹Õ±°ì(€€€€€€€¥˜€¡Ñ…É•ÑUÍ•È€˜˜¥Í1•…‘•ÉÍ¡¥À¡Ñ…É•ÑUÍ•È¤¤Ñ…É•ÑM½­•Ð¹•µ¥Ð ÍÕÁÁ½ÉÐéµ•ÍÍ…”œ°µ•ÍÍ…”¤ì(€€€€€ô(€€€€€½¹ÍÐÉ•ÅÕ•ÍÑ•É%‘Ì€ô¹•ÜM•Ð ¤ì(€€€€€¥˜€¡½É¥¥¹…°¹½Ý¹•ÉUÍ•É%¤ì(€€€€€€€™½È€¡½¹ÍÐÍ½­•Ñ%½˜Í•ÍÍ¥½¹Ì¹•Ð¡½É¥¥¹…°¹½Ý¹•ÉUÍ•É%¤ñðmt¤É•ÅÕ•ÍÑ•É%‘Ì¹…‘¡Í½­•Ñ%¤ì(€€€€€ô(€€€€€½¹ÍÐ…Ñ¥Ù•=Ý¹•ÉM½­•Ð€ôÍÕÁÁ½ÉÑQ¡É•…‘M½­•ÑÌ¹•Ð¡Ñ¡É•…‘%¤ì(€€€€€¥˜€¡…Ñ¥Ù•=Ý¹•ÉM½­•Ð¤É•ÅÕ•ÍÑ•É%‘Ì¹…‘¡…Ñ¥Ù•=Ý¹•ÉM½­•Ð¤ì(€€€€€™½È€¡½¹ÍÐÍ½­•Ñ%½˜É•ÅÕ•ÍÑ•É%‘Ì¤ì(€€€€€€€½¹ÍÐÉ•ÅÕ•ÍÑ•ÉM½­•Ð€ô¥¼¹Í½­•ÑÌ¹Í½­•ÑÌ¹•Ð¡Í½­•Ñ%¤ì(€€€€€€€¥˜€¡É•ÅÕ•ÍÑ•ÉM½­•Ð¤É•ÅÕ•ÍÑ•ÉM½­•Ð¹•µ¥Ð ÍÕÁÁ½ÉÐéÁÉ¥Ù…Ñ”µÉ•Á±äœ°ìÑ¡É•…‘%°µ•ÍÍ…”ô¤ì(€€€€€ô(€€€€€É•ÑÕÉ¸½¬¡ˆ°ìµ•ÍÍ…”ô¤ì(€€€ô¤ì((€€€€¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô(€€€€€€%M=99P(€€€€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼((€€€Í½­•Ð¹½¸ (€€€€€€‘¥Í½¹¹•Ðœ°(€€€€€€ ¤€ôøì(€€€€€€€É•µ½Ù•I…‘¥½5•µ‰•È (€€€€€€€€€Í½­•Ð¹¥(€€€€€€€€¤ì((€€€€€€€µ…É­1½½ÕÐ¡Í½­•Ð¤ì(€€€€€ô(€€€€¤ì(€ô(¤ì()¥¼¹½¸ ½¹¹•Ñ¥½¸œ°€¡Í½­•Ð¤€ôøì(€É•¥ÍÑ•É%	AM½­•Ð¡Í½­•Ð°ì(€€€•ÑMÑ…Ñ”è€ ¤€ôøÍÑ…Ñ”°(€€€É•ÅÕ¥É•M½­•ÑUÍ•È°(€€€±•…¸°(€€€É…¹­1•Ù•°°(€€€¹½Éµ…±¥é•I…¹¬°(€€€É…¹­1…‰•°°(€€€¥Í¡¥•˜°(€€€¥ÍM•¹¥½È°(€€€¥Í1•…‘•ÉÍ¡¥À°(€€€…¹5…¹…•%	A	…ÑÑ…±¥½¹Ì°(€€€¥‰ÁI•Í½±Ù•½‘”°(€€€¥‰Á	…ÑÑ…±¥½¹½ÉY¥•Ý•È°(€€€ÁÕ‰±¥UÍ•È°(€€€¹½Ü°(€€€µ…­•%°(€€€…‘‘Õ‘¥Ñ1½œ°(€€€Í…Ù•MÑ…Ñ”°(€€€•µ¥ÑMÑ…Ñ”°(€€€µ…É­1½¥¸°(€€€µ…É­1½½ÕÐ°(€€€Í½­•ÑQ½UÍ•È(€ô¤ì)ô¤ì((¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô(€€!QQ@MIYHMQIP(ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼()™Õ¹Ñ¥½¸¥¹ÍÑ…±±A•ÉÍ¥ÍÑ•¹•µ¥Ñ	…ÉÉ¥•ÉÌ ¤ì(€½¹ÍÐ½É¥¥¹…±%½µ¥Ð€ô¥¼¹•µ¥Ð¹‰¥¹¡¥¼¤ì(€¥¼¹•µ¥Ð€ô™Õ¹Ñ¥½¸¡•Ù•¹Ð°€¸¸¹…ÉÌ¤ì(€€€¥˜€ …ÍÑ…Ñ•MÑ½É”¤É•ÑÕÉ¸½É¥¥¹…±%½µ¥Ð¡•Ù•¹Ð°€¸¸¹…ÉÌ¤ì(€€€ÍÑ…Ñ•MÑ½É”¹™±ÕÍ  ¤¹Ñ¡•¸  ¤€ôø½É¥¥¹…±%½µ¥Ð¡•Ù•¹Ð°€¸¸¹…ÉÌ¤¤¹…Ñ  ¡•ÉÉ½È¤€ôøì(€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%t	É½…‘…ÍÐÍ­¥ÁÁ•‰•…ÕÍ”Á•ÉÍ¥ÍÑ•¹”™…¥±•èœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€ô¤ì(€€€É•ÑÕÉ¸¥¼ì(€ôì)ô()…Íå¹Œ™Õ¹Ñ¥½¸¥¹¥Ñ¥…±¥é•A•ÉÍ¥ÍÑ•¹” ¤ì(€¥˜€¡Q	M}UI0¤ì(€€€½¹ÍÐìA½½°ô€ôÉ•ÅÕ¥É” Áœœ¤ì(€€€Á½ÍÑÉ•ÍA½½°€ô¹•ÜA½½°¡ì(€€€€€½¹¹•Ñ¥½¹MÑÉ¥¹œèQ	M}UI0°(€€€€€µ…àè€Ô°(€€€€€½¹¹•Ñ¥½¹Q¥µ•½ÕÑ5¥±±¥Ìè€ÄÀÀÀÀ°(€€€€€¥‘±•Q¥µ•½ÕÑ5¥±±¥Ìè€ÌÀÀÀÀ(€€€ô¤ì(€€€Á½ÍÑÉ•ÍA½½°¹½¸ •ÉÉ½Èœ°€¡•ÉÉ½È¤€ôøì(€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%t%‘±”A½ÍÑÉ•ME0½¹¹•Ñ¥½¸•ÉÉ½Èèœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€ô¤ì(€€€…Ý…¥ÐÁ½ÍÑÉ•ÍA½½°¹ÅÕ•Éä M1P€Äœ¤ì(€€€ÍÑ…Ñ•MÑ½É”€ô¹•ÜA½ÍÑÉ•ÍMÑ…Ñ•MÑ½É”¡Á½ÍÑÉ•ÍA½½°¤ì(€€€ÍÑ…Ñ”€ô…Ý…¥ÐÍÑ…Ñ•MÑ½É”¹±½…¡ì(€€€€€¥¹¥Ñ¥…±MÑ…Ñ”è5AQe}MQQ°(€€€€€•Ñ1•…åMÑ…Ñ”è€ ¤€ôøì(€€€€€€€½¹ÍÐ±•…ä€ôÉ•…‘1•…åMÑ…Ñ•¥±” ¤ì(€€€€€€€¥˜€¡±•…ä¤½¹Í½±”¹±½œ m	1,I%t%µÁ½ÉÑ¥¹œ±•…ä)M=8‘…Ñ„™É½´€œ€¬±•…ä¹™¥±”¤ì(€€€€€€€É•ÑÕÉ¸±•…ä€ü±•…ä¹ÍÑ…Ñ”€è¹Õ±°ì(€€€€€ô°(€€€€€¹½Éµ…±¥é•MÑ…Ñ”è€¡Ù…±Õ”¤€ôø¹½Éµ…±¥é•A•ÉÍ¥ÍÑ•‘MÑ…Ñ”¡Ù…±Õ”°€A½ÍÑÉ•ME0ÍÑ…Ñ”œ¤(€€€ô¤ì(€€€¹½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”€ô¹•Ü9½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”¡Á½ÍÑÉ•ÍA½½°°ì(€€€€€•ÑI½ÝÌè€ ¤€ôøÍÑ…Ñ”¹¥…}¹½Ñ¥™¥…Ñ¥½¹Ìñðmt°(€€€€€Í•ÑI½ÝÌè€¡É½ÝÌ¤€ôøì(€€€€€€€ÍÑ…Ñ”¹¥…}¹½Ñ¥™¥…Ñ¥½¹Ì€ôÉ½ÝÌì(€€€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€€€ô(€€€ô¤ì(€€€…Ý…¥Ð¹½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”¹¥¹¥Ñ¥…±¥é” ¤ì(€€€¥¹ÍÑ…±±A•ÉÍ¥ÍÑ•¹•µ¥Ñ	…ÉÉ¥•ÉÌ ¤ì(€€€½¹Í½±”¹±½œ m	1,I%tA½ÍÑÉ•ME0ÍÑ…Ñ”ÍÑ½É”É•…‘ä¸œ¤ì(€€€½¹Í½±”¹±½œ m	1,I%tA½ÍÑÉ•ME0¹½Ñ¥™¥…Ñ¥½¸ÍÑ½É”É•…‘ä¸œ¤ì(€€€É•ÑÕÉ¸ì(€ô((€¥˜€¡%M}I9I}IU9Q%5¤ì(€€€½¹Í½±”¹Ý…É¸ m	1,I%tQ	M}UI0¥Ì¹½Ð½¹™¥ÕÉ•ìÕÍ¥¹œÑ•µÁ½É…Éä)M=8ÍÑ…Ñ”…Ð€œ€¬Q}%1€¬€œ¸MÑ…Ñ”µ…ä‰”±½ÍÐ½¸É•ÍÑ…ÉÐ½ÈÉ•‘•Á±½ä¸œ¤ì(€ô((€ÁÉ•Á…É•¥±•MÑ½É…” ¤ì(€ÍÑ…Ñ”€ô±½…‘MÑ…Ñ” ¤ì(€¹½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”€ô¹•Ü9½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”¡¹Õ±°°ì(€€€•ÑI½ÝÌè€ ¤€ôøÍÑ…Ñ”¹¥…}¹½Ñ¥™¥…Ñ¥½¹Ìñðmt°(€€€Í•ÑI½ÝÌè€¡É½ÝÌ¤€ôøì(€€€€€ÍÑ…Ñ”¹¥…}¹½Ñ¥™¥…Ñ¥½¹Ì€ôÉ½ÝÌì(€€€€€Í…Ù•MÑ…Ñ” ¤ì(€€€ô(€ô¤ì(€…Ý…¥Ð¹½Ñ¥™¥…Ñ¥½¹ÍMÑ½É”¹¥¹¥Ñ¥…±¥é” ¤ì(€½¹Í½±”¹±½œ ¡%M}I9I}IU9Q%5€ü€m	1,I%tI•¹‘•ÈÑ•µÁ½É…Éä)M=8ÍÑ…Ñ”ÍÑ½É”É•…‘äè€œ€è€m	1,I%t1½…°)M=8ÍÑ…Ñ”ÍÑ½É”É•…‘äè€œ¤€¬Q}%1¤ì)ô()±•ÐÍ¡ÕÑ‘½Ý¹AÉ½µ¥Í”€ô¹Õ±°ì)™Õ¹Ñ¥½¸¥¹ÍÑ…±±É…•™Õ±M¡ÕÑ‘½Ý¸ ¤ì(€½¹ÍÐÍ¡ÕÑ‘½Ý¸€ô€¡Í¥¹…°¤€ôøì(€€€¥˜€¡Í¡ÕÑ‘½Ý¹AÉ½µ¥Í”¤É•ÑÕÉ¸Í¡ÕÑ‘½Ý¹AÉ½µ¥Í”ì(€€€Í¡ÕÑ‘½Ý¹AÉ½µ¥Í”€ô€¡…Íå¹Œ€ ¤€ôøì(€€€€€½¹Í½±”¹±½œ m	1,I%t€œ€¬Í¥¹…°€¬€œÉ••¥Ù•ì‘É…¥¹¥¹œ½¹¹•Ñ¥½¹Ì…¹Í…Ù•µÍÑ…Ñ”ÝÉ¥Ñ•Ì¸œ¤ì(€€€€€½¹ÍÐ™½É•á¥ÑQ¥µ•È€ôÍ•ÑQ¥µ•½ÕÐ  ¤€ôøì(€€€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%tM¡ÕÑ‘½Ý¸Ñ¥µ•½ÕÐÝ¡¥±”‘É…¥¹¥¹œÍÑ…Ñ”ÝÉ¥Ñ•Ì¸œ¤ì(€€€€€€€ÁÉ½•ÍÌ¹•á¥Ð Ä¤ì(€€€€€ô°€ÈÔÀÀÀ¤ì(€€€€€¥˜€¡ÑåÁ•½˜™½É•á¥ÑQ¥µ•È¹Õ¹É•˜€ôôô€™Õ¹Ñ¥½¸œ¤™½É•á¥ÑQ¥µ•È¹Õ¹É•˜ ¤ì((€€€€€ÑÉäì(€€€€€€€…Ý…¥Ð¹•ÜAÉ½µ¥Í” ¡É•Í½±Ù”¤€ôø¥¼¹±½Í”¡É•Í½±Ù”¤¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%tÉÉ½È±½Í¥¹œM½­•Ð¹%<èœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€€€€€ÁÉ½•ÍÌ¹•á¥Ñ½‘”€ô€Äì(€€€€€ô(€€€€€ÑÉäì(€€€€€€€¥˜€¡ÍÑ…Ñ•MÑ½É”¤…Ý…¥ÐÍÑ…Ñ•MÑ½É”¹™±ÕÍ  ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%tA•¹‘¥¹œA½ÍÑÉ•ME0ÝÉ¥Ñ•Ì‘¥¹½Ð™¥¹¥Í ±•…¹±äèœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€€€€€ÁÉ½•ÍÌ¹•á¥Ñ½‘”€ô€Äì(€€€€€ô(€€€€€ÑÉäì(€€€€€€€¥˜€¡Á½ÍÑÉ•ÍA½½°¤…Ý…¥ÐÁ½ÍÑÉ•ÍA½½°¹•¹ ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%tÉÉ½È±½Í¥¹œA½ÍÑÉ•ME0Á½½°èœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€€€€€ÁÉ½•ÍÌ¹•á¥Ñ½‘”€ô€Äì(€€€€€ô™¥¹…±±äì(€€€€€€€±•…ÉQ¥µ•½ÕÐ¡™½É•á¥ÑQ¥µ•È¤ì(€€€€€ô(€€€ô¤ ¤ì(€€€É•ÑÕÉ¸Í¡ÕÑ‘½Ý¹AÉ½µ¥Í”ì(€ôì((€ÁÉ½•ÍÌ¹½¹” M%QI4œ°€ ¤€ôøìÙ½¥Í¡ÕÑ‘½Ý¸ M%QI4œ¤ìô¤ì(€ÁÉ½•ÍÌ¹½¹” M%%9Pœ°€ ¤€ôøìÙ½¥Í¡ÕÑ‘½Ý¸ M%%9Pœ¤ìô¤ì)ô()…Íå¹Œ™Õ¹Ñ¥½¸ÍÑ…ÉÑM•ÉÙ•È ¤ì(€…Ý…¥Ð¥¹¥Ñ¥…±¥é•A•ÉÍ¥ÍÑ•¹” ¤ì(€¡ÑÑÁM•ÉÙ•È¹±¥ÍÑ•¸¡A=IP°€ ¤€ôøì(€€€½¹Í½±”¹±½œ œœ¤ì(€€€½¹Í½±”¹±½œ œôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôœ¤ì(€€€½¹Í½±”¹±½œ œ	1,I%%Qd%MeMQ4œ¤ì(€€€½¹Í½±”¹±½œ œA=IPè€œ€¬A=IP¤ì(€€€½¹Í½±”¹±½œ œMQQULè=91%9œ¤ì(€€€½¹Í½±”¹±½œ œ1=%8€¼1IM!%@€¼I%<€¼M=LèIdœ¤ì(€€€½¹Í½±”¹±½œ œôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôœ¤ì(€€€¥¹ÍÑ…±±É…•™Õ±M¡ÕÑ‘½Ý¸ ¤ì(€ô¤ì)ô()ÍÑ…ÉÑM•ÉÙ•È ¤¹…Ñ ¡…Íå¹Œ€¡•ÉÉ½È¤€ôøì(€½¹Í½±”¹•ÉÉ½È m	1,I%tMÑ…ÉÑÕÀ™…¥±•èœ°•ÉÉ½È¹µ•ÍÍ…”¤ì(€¥˜€¡Á½ÍÑÉ•ÍA½½°¤ì(€€€ÑÉäì(€€€€€…Ý…¥ÐÁ½ÍÑÉ•ÍA½½°¹•¹ ¤ì(€€€ô…Ñ €¡±½Í•ÉÉ½È¤ì(€€€€€½¹Í½±”¹•ÉÉ½È m	1,I%tÉÉ½È±½Í¥¹œA½ÍÑÉ•ME0Á½½°…™Ñ•ÈÍÑ…ÉÑÕÀ™…¥±ÕÉ”èœ°±½Í•ÉÉ½È¹µ•ÍÍ…”¤ì(€€€ô(€ô(€ÁÉ½•ÍÌ¹•á¥Ñ½‘”€ô€Äì)ô¤ì
