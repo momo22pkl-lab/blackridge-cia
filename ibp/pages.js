@@ -1,5 +1,7 @@
 'use strict';
 
+const { COMMAND_NAV, renderCommandPage } = require('./command-center');
+
 const NAV = [
   { path: '/dashboard', key: 'dashboard', code: '00', ar: 'مركز القيادة', en: 'Command Center', section: 'COMMAND' },
   { path: '/map', key: 'map', code: '01', ar: 'نظام الخريطة', en: 'Map System', section: 'COMMAND' },
@@ -73,6 +75,7 @@ function loginPage(next) {
   return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090b0e"><title>IBP / Secure Access</title><link rel="stylesheet" href="/ibp/ibp.css"></head><body class="ibp-login" data-page="login"><main class="ibp-login-card"><div class="ibp-login-brand"><span class="ibp-mark">IBP</span><div><strong>INTELLIGENCE BATTALION PROGRAM</strong><small>LOS SANTOS SECTOR COMMAND NETWORK</small></div></div><div class="ibp-eyebrow">SECURE CHANNEL / AUTHORIZATION</div><h1>' + tr('الدخول إلى النظام', 'SYSTEM ACCESS') + '</h1><p>' + tr('سجّل الدخول بحسابك المعتمد للوصول إلى الأنظمة المصرّح بها.', 'Sign in with your approved account to access authorized systems.') + '</p><form id="ibp-login-form" class="ibp-login-form"><label class="ibp-label">' + tr('اسم الحساب', 'Account name') + '<input class="ibp-input" name="name" autocomplete="username" required></label><label class="ibp-label">' + tr('رمز الدخول', 'Access code') + '<input class="ibp-input" name="code" type="password" autocomplete="current-password" required></label><div id="ibp-login-error" class="ibp-login-error" role="alert"></div><button class="ibp-button primary" type="submit">' + tr('التحقق والدخول', 'VERIFY & ENTER') + '</button></form><div class="ibp-login-footer">ACCESS IS LOGGED · IBP / LOS SANTOS</div></main><script src="/socket.io/socket.io.js"></script><script src="/ibp/ibp.js" defer></script></body></html>';
 }
 function pageHtml(key, pathname, recordId) {
+  if (key === 'dashboard' || key.startsWith('command-')) return renderCommandPage(key, pathname);
   if (key === 'login') return loginPage(pathname);
   const meta = META[key] || META.dashboard;
   const active = NAV.find((item) => item.key === key) || NAV[0];
@@ -86,6 +89,8 @@ function pageHtml(key, pathname, recordId) {
   return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#090b0e"><meta name="description" content="IBP independent sector intelligence system"><title>' + escapeHtml(meta[2]) + ' · IBP</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/ibp/ibp.css"></head><body data-page="' + escapeHtml(key) + '" data-route="' + escapeHtml(pathname) + '"' + record + '><div class="ibp-app" id="ibp-app-shell"><header class="ibp-topbar"><div class="ibp-brand"><button class="ibp-icon-btn ibp-hamburger" id="ibp-nav-toggle" type="button" aria-label="Open navigation">☰</button><span class="ibp-mark">IBP</span><div><strong>INTELLIGENCE BATTALION PROGRAM</strong><small>LOS SANTOS SECTOR COMMAND NETWORK</small></div></div><div class="ibp-top-actions"><span class="ibp-user-pill" id="ibp-current-user">' + tr('قناة آمنة', 'SECURE CHANNEL') + '</span><button class="ibp-lang" id="ibp-language-toggle" type="button" aria-label="Change language">EN</button><button class="ibp-icon-btn" id="ibp-logout" type="button">' + tr('خروج', 'LOG OUT') + '</button></div></header><nav class="ibp-nav" aria-label="IBP Systems"><div class="ibp-nav-head"><div class="ibp-eyebrow">COMMAND NETWORK</div><strong>' + tr('الأنظمة المستقلة', 'INDEPENDENT SYSTEMS') + '</strong></div>' + links + '<div class="ibp-nav-foot">LOS SANTOS SECTOR<br>SECURE NETWORK · IBP</div></nav><main class="ibp-main" id="ibp-main"><header class="ibp-page-head"><div><div class="ibp-eyebrow">' + escapeHtml(meta[0]) + '</div><h1>' + tr(meta[1], meta[2]) + '</h1><p>' + tr(meta[3], meta[4]) + '</p></div><div class="ibp-page-actions"><span class="ibp-chip">' + escapeHtml(active.code) + ' / ' + tr('مصادق عليه', 'AUTHORIZED') + '</span></div></header>' + pageContent(key) + '<footer class="ibp-page-footer"><span>IBP / ' + escapeHtml(meta[2]) + '</span><span>' + tr('نطاق البيانات يحدده الخادم', 'DATA SCOPE IS ENFORCED BY SERVER') + '</span></footer></main></div><div class="ibp-toast" id="ibp-toast" role="status" aria-live="polite"></div><script src="/socket.io/socket.io.js"></script><script src="/ibp/ibp.js" defer></script></body></html>';
 }
 function matchRoute(pathname) {
+  const commandRoute = COMMAND_NAV.find((item) => item.path === pathname);
+  if (commandRoute) return { key: commandRoute.key, recordId: '' };
   const exact = NAV.find((item) => item.path === pathname);
   if (exact) return { key: exact.key, recordId: '' };
   let match = pathname.match(/^\/battalions\/([^/]+)\/?$/);
@@ -98,7 +103,7 @@ function matchRoute(pathname) {
   return null;
 }
 function registerPages(app) {
-  app.get(['/dashboard','/map','/battalions','/battalions/:id','/battalion-tree','/personnel','/personnel/:code','/deployment','/operations','/operations/:id','/command','/intelligence','/archive','/blackbox','/reports','/access-control','/settings','/translation','/ibp-login'], (req, res) => {
+  app.get(['/dashboard','/map','/battalions','/battalions/:id','/battalion-tree','/personnel','/personnel/:code','/deployment','/operations','/operations/:id','/command','/intelligence','/archive','/blackbox','/reports','/access-control','/settings','/translation','/ibp-login','/command/sectors','/command/battalions','/command/map','/command/operations','/command/sos','/command/reports','/command/personnel','/command/messages','/command/bank','/command/intelligence'], (req, res) => {
     const route = matchRoute(req.path);
     if (!route) return res.sendStatus(404);
     res.type('html').send(pageHtml(route.key, req.path, route.recordId));
