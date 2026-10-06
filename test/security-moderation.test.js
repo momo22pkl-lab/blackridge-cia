@@ -19,9 +19,11 @@ test('blocks clear profanity and avoids substring-only matches', () => {
 test('normalizes Arabic and simple evasion without treating ordinary Morse as abuse', () => {
   assert.equal(normalizeMessage('كِسْمَك'), 'كسمك');
   assert.equal(inspectMessage('f.u.c.k').type, 'OBFUSCATED_PROFANITY');
+  assert.equal(inspectMessage('f\u200Bu.c.k').type, 'OBFUSCATED_PROFANITY');
   assert.equal(inspectMessage('fuuuuuck').type, 'OBFUSCATED_PROFANITY');
   assert.equal(inspectMessage('kcuf').type, 'OBFUSCATED_PROFANITY');
   assert.equal(inspectMessage('fuсk').type, 'OBFUSCATED_PROFANITY');
+  assert.equal(inspectMessage('that is shit and а').level, 1);
   assert.equal(inspectMessage('كسمك').type, 'PROFANITY');
   assert.equal(decodeMorse('.... . .-.. .-.. ---'), 'HELLO');
   assert.equal(inspectMessage('.... . .-.. .-.. ---'), null);

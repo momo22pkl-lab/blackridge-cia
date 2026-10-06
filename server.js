@@ -968,6 +968,10 @@ function recordSecurityEvent({
     userName: clean(target?.identity?.fullName || target?.name || actor?.name || '', 120),
     publicCode: clean(target?.publicCode || actor?.publicCode || '', 100),
     rank: normalizeRank(target?.rank || actor?.rank || 'AGENT'),
+    actorId: actor?.id || null,
+    actorName: clean(actor?.identity?.fullName || actor?.name || '', 120),
+    actorCode: clean(actor?.publicCode || '', 100),
+    actorRank: normalizeRank(actor?.rank || 'AGENT'),
     timestamp,
     at: timestamp,
     type: clean(type, 80).toUpperCase(),
@@ -1002,6 +1006,8 @@ function securityEventForViewer(incident, viewer) {
     id: incident.id,
     publicCode: incident.publicCode,
     rank: incident.rank,
+    actorCode: incident.actorCode || '',
+    actorRank: incident.actorRank || '',
     timestamp: incident.timestamp || incident.at,
     type: incident.type,
     level: incident.level,
@@ -1014,6 +1020,8 @@ function securityEventForViewer(incident, viewer) {
   if (isChief(viewer)) {
     result.userId = incident.userId;
     result.userName = incident.userName;
+    result.actorId = incident.actorId;
+    result.actorName = incident.actorName;
     result.reason = incident.reason;
   }
   return result;

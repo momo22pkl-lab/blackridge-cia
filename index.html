@@ -4163,9 +4163,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const who = incident.userName
           ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}`
           : incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد';
+        const actor = incident.actorName || incident.actorCode;
+        const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
         return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
           <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
-          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}<br>${esc(date)}</div>
+          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
           ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
         </div>`;
       };

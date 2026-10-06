@@ -51,7 +51,7 @@ function normalizeMessage(value) {
   return String(value == null ? '' : value)
     .normalize('NFKC')
     .toLocaleLowerCase('en')
-    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/gu, '')
+    .replace(/\p{Cf}/gu, '')
     .replace(/[\u064B-\u065F\u0670]/gu, '')
     .replace(/\u0640/gu, '')
     .replace(/[أإآٱ]/gu, 'ا')
@@ -85,6 +85,14 @@ function containsWholeTerm(text, term) {
   return new RegExp(`(^|[^\\p{L}\\p{N}])${phrase}(?=$|[^\\p{L}\\p{N}])`, 'u').test(text);
 }
 
+function containsTermLookalike(value, term) {
+  return [...String(value || '')].some((character) => {
+    const raw = character.normalize('NFKC').toLocaleLowerCase('en');
+    const mapped = LOOKALIKE_MAP.get(raw) || raw;
+    return mapped !== raw && [...mapped].length === 1 && term.includes(mapped);
+  });
+}
+
 function decodeMorse(value) {
   const input = String(value || '').trim();
   if (!input || !/^[.\-/\s]+$/u.test(input) || (input.match(/[.-]/gu) || []).length < 4) return null;
@@ -107,6 +115,13 @@ function deobfuscationVariants(value) {
   const add = (candidate, source) => {
     if (candidate && candidate !== normalized) variants.push({ value: candidate, source });
   };
+
+  const punctuationCollapsed = normalized
+    .split(/\s+/u)
+    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
+    .join(' ')
+    .trim();
+  add(punctuationCollapsed, 'separator-obfuscation');
 
   for (const word of words) {
     const collapsed = word.replace(/(.)\1{2,}/gu, '$1');
@@ -170,11 +185,10 @@ function inspectMessage(value, configuredTerms = '') {
     return { type: 'OBFUSCATED_THREAT', level: 3, reason: 'OBFUSCATED_THREAT_PATTERN', source: 'obfuscation' };
   }
 
-  const hasLookalike = [...source].some((character) => LOOKALIKE_MAP.has(character));
   const rules = [...DEFAULT_BLOCKED_TERMS, ...parseBlockedTerms(configuredTerms)];
   for (const rule of rules) {
     if (containsWholeTerm(scanText, rule.term)) {
-      if (!morseDecoded && hasLookalike) {
+      if (!morseDecoded && containsTermLookalike(source, rule.term)) {
         return {
           type: 'OBFUSCATED_PROFANITY',
           level: 3,
@@ -207,16 +221,14 @@ function inspectMessage(value, configuredTerms = '') {
     }
   }
 
-  if (hasLookalike) {
-    for (const rule of rules) {
-      if (containsWholeTerm(normalized, rule.term)) {
-        return {
-          type: 'OBFUSCATED_PROFANITY',
-          level: 3,
-          reason: 'UNICODE_LOOKALIKE_BYPASS',
-          source: 'unicode-lookalike'
-        };
-      }
+  for (const rule of rules) {
+    if (containsTermLookalike(source, rule.term) && containsWholeTerm(normalized, rule.term)) {
+      return {
+        type: 'OBFUSCATED_PROFANITY',
+        level: 3,
+        reason: 'UNICODE_LOOKALIKE_BYPASS',
+        source: 'unicode-lookalike'
+      };
     }
   }
   return null;
