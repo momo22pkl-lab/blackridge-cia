@@ -9,6 +9,10 @@
 
 Never put DATABASE_URL in source control or paste it into chat. Configure it as an environment variable in Render. When migrating an existing service, restore or attach any old JSON state file before the first database startup; files already lost from an ephemeral filesystem cannot be recovered by the migration.
 
+## First CIA CHIEF setup
+
+Before claiming the first CIA CHIEF, set `CIA_CHIEF_REGISTRATION_CODE` and `CIA_CHIEF_SAVE_CODE` as server-side environment variables in Render. Use different random values of at least 24 characters. Do not commit them to the repository or store them in browser storage. The server removes these fields from legacy persisted state when loading it, and new snapshots do not contain them. Existing chief accounts can continue to log in without these bootstrap variables.
+
 ## Local development
 
 Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
