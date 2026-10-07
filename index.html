@@ -6,6 +6,7 @@
   <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/notifications.css" rel="stylesheet">
+  <link href="/official-warnings.css" rel="stylesheet">
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -2424,6 +2425,18 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
     <!-- Chief Panel -->
     <div id="chief-panel" class="view-pane">
+      <section id="official-warning-admin" class="ow-admin-card" hidden aria-labelledby="ow-admin-title">
+        <div class="ow-admin-heading"><div><div class="ow-eyebrow">BLACK RIDGE // COMMAND AUTHORITY</div><h2 id="ow-admin-title">التحذيرات الرسمية</h2><p>إصدار التحذير محصور بالقائد، وتُحفظ السجلات ضمن مركز الإشعارات الحالي.</p></div><span class="ow-classified-stamp">CLASSIFIED</span></div>
+        <form id="official-warning-form" class="ow-form">
+          <label class="ow-field"><span>الشخص</span><select name="targetUserId" id="ow-target" required><option value="">جارٍ تحميل قائمة الأفراد…</option></select></label>
+          <div id="ow-person-info" class="ow-person-info" hidden></div>
+          <label class="ow-field"><span>نوع التحذير</span><select name="warningType" required><option value="">اختر نوع التحذير</option><option>سلوكي</option><option>ميداني</option><option>أمني</option><option>إداري</option><option>أخرى</option></select></label>
+          <label class="ow-field"><span>محتوى التحذير</span><textarea name="content" minlength="10" maxlength="3000" rows="5" required placeholder="اكتب سبب التحذير بالتفصيل"></textarea><small>من 10 إلى 3000 حرف. سيظهر النص للمستلم كما أُصدر.</small></label>
+          <label class="ow-justification-choice"><input type="checkbox" name="allowJustification" checked><span>السماح بالتبرير</span></label>
+          <div class="ow-form-footer"><button class="ow-issue-button" type="submit">إصدار التحذير</button><span id="ow-form-status" role="status" aria-live="polite"></span></div>
+        </form>
+        <section class="ow-responses" aria-labelledby="ow-responses-title"><div class="ow-section-heading"><h3 id="ow-responses-title">التبريرات الواردة</h3><button id="ow-refresh-responses" type="button" class="ow-secondary-button">تحديث السجل</button></div><div id="ow-response-list" class="ow-response-list"><p class="ow-empty">لا توجد تبريرات محمّلة.</p></div></section>
+      </section>
       <div id="chief-command-secrets" class="classified-shell">
         <div class="classified-title"><i class="fa-solid fa-user-shield"></i> BLACK RIDGE // CHIEF COMMAND</div>
         <div class="security-line"></div>
@@ -7932,6 +7945,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 })();
 </script>
   <script src="/notifications-client.js"></script>
+  <script src="/official-warnings-client.js"></script>
   <script>
   (() => {
     'use strict';
