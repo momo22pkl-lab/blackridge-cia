@@ -131,6 +131,10 @@ function registerOfficialWarnings(socket, context) {
         }
       });
       if (!Array.isArray(created) || !created.length) return fail(callback, 'تعذر حفظ التحذير وإرساله.');
+      if (typeof context.recordAudit === 'function') {
+        try { await context.recordAudit('إصدار تحذير رسمي', auth.current, target, warningId + ' // ' + warningType + ' // تبرير: ' + (payload && payload.allowJustification === true ? 'مسموح' : 'ممنوع')); }
+        catch (auditError) { console.error('[BLACK RIDGE] Official warning audit write failed:', auditError.message); }
+      }
       return send(callback, { ok: true, warning: warningView(created[0]) });
     } catch (error) {
       return fail(callback, 'تعذر حفظ التحذير وإرساله.');
@@ -170,6 +174,10 @@ function registerOfficialWarnings(socket, context) {
         }
       });
       if (!Array.isArray(created) || !created.length) return fail(callback, 'تعذر حفظ التبرير وإرساله للقائد.');
+      if (typeof context.recordAudit === 'function') {
+        try { await context.recordAudit('استلام تبرير تحذير رسمي', current, issuer, warningId + ' // ' + (current.publicCode || '')); }
+        catch (auditError) { console.error('[BLACK RIDGE] Official warning response audit write failed:', auditError.message); }
+      }
       return send(callback, { ok: true, message: 'تم حفظ التبرير وإرساله للقائد.' });
     } catch (error) {
       return fail(callback, 'تعذر حفظ التبرير وإرساله للقائد.');
