@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('node:path');
+
 const NAV = [
   { path: '/dashboard', key: 'dashboard', code: '00', ar: 'مركز القيادة', en: 'Command Center', section: 'COMMAND' },
   { path: '/map', key: 'map', code: '01', ar: 'نظام الخريطة', en: 'Map System', section: 'COMMAND' },
@@ -98,6 +100,9 @@ function matchRoute(pathname) {
   return null;
 }
 function registerPages(app) {
+  app.get('/world-command-battalions.js', (req, res) => {
+    res.type('application/javascript').sendFile(path.join(__dirname, 'world-command-battalions.js'));
+  });
   app.get(['/dashboard','/map','/battalions','/battalions/:id','/battalion-tree','/personnel','/personnel/:code','/deployment','/operations','/operations/:id','/command','/intelligence','/archive','/blackbox','/reports','/access-control','/settings','/translation','/ibp-login'], (req, res) => {
     const route = matchRoute(req.path);
     if (!route) return res.sendStatus(404);
