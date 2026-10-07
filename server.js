@@ -2566,7 +2566,12 @@ io.on(
       normalizeRank,
       rankLabel,
       publishNotifications,
-      makeId
+      makeId,
+      recordAudit: async (action, actor, target, details) => {
+        addAuditLog(action, actor, target, details);
+        await saveState();
+        emitState();
+      }
     });
 
     socket.emit(
