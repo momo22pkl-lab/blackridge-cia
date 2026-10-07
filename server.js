@@ -27,7 +27,7 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { NotificationsStore } = require('./notifications-store');
 const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
-const { pageHtml, registerPages } = require('./ibp/pages');
+const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 
@@ -78,8 +78,7 @@ const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
-  '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
-  '/ibp/command-center.css': path.join('ibp', 'command-center.css')
+  '/ibp/ibp.js': path.join('ibp', 'ibp.js')
 });
 
 for (const [route, file] of Object.entries(publicAssets)) {
@@ -87,7 +86,11 @@ for (const [route, file] of Object.entries(publicAssets)) {
 }
 
 app.get(['/', '/index.html'], (req, res) => {
-  return res.type('html').send(pageHtml('dashboard', req.path, ''));
+  const entryPoint = path.join(__dirname, 'index.html');
+  if (!fs.existsSync(entryPoint)) {
+    return res.status(404).send('BLACK RIDGE CIA: index.html not found.');
+  }
+  return res.sendFile(entryPoint);
 });
 
 registerPages(app);
