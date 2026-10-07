@@ -31,6 +31,7 @@ const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
+const { registerOfficialWarnings } = require('./official-warnings');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -78,6 +79,8 @@ app.use((req, res, next) => {
 const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
+  '/official-warnings.css': 'official-warnings.css',
+  '/official-warnings-client.js': 'official-warnings-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js')
 });
@@ -280,6 +283,9 @@ function notificationCanReach(user, details) {
     return !!targetUserId && user.id === targetUserId;
   }
   if (details.type === 'SOS') return user.id !== sourceUserId;
+  if (details.type === 'WARNING' || details.type === 'WARNING_RESPONSE') {
+    return !!targetUserId && user.id === targetUserId;
+  }
   if (details.type === 'OPERATION') {
     const ownCode = clean(user.publicCode, 100).toUpperCase();
     const memberCodes = Array.isArray(details.memberCodes) ? details.memberCodes : [];
@@ -2551,6 +2557,17 @@ io.on(
       });
       return socket;
     };
+
+    registerOfficialWarnings(socket, {
+      getAuthenticatedUser: () => requireSocketUser(socket),
+      getUsers: () => state.cia_users,
+      getNotificationsStore: () => notificationsStore,
+      isChief,
+      normalizeRank,
+      rankLabel,
+      publishNotifications,
+      makeId
+    });
 
     socket.emit(
       'state:update',
