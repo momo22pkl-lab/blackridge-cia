@@ -24,7 +24,9 @@ test('the server does not expose the whole repository as static files', () => {
     '/notifications.css',
     '/notifications-client.js',
     '/ibp/ibp.css',
-    '/ibp/ibp.js'
+    '/ibp/ibp.js',
+    '/official-warnings.css',
+    '/official-warnings-client.js'
   ]) {
     assert.ok(serverSource.includes(publicPath), `expected explicit public route for ${publicPath}`);
   }
