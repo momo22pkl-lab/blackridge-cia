@@ -23,19 +23,21 @@ Without PostgreSQL, the OSD API fails closed and does not create documents. With
 ## Included workflow
 
 - Separate OSD accounts, role-based clearance, individual server-enforced permissions, password hashing, expiring HttpOnly sessions, same-origin writes, and login throttling.
-- Ten document templates, bilingual responsive center, archive/search filters, draft editor, preview, approval, signing/issue, revocation, archive, secure bearer links, and public verification.
-- Atomic sector/year document numbering, immutable version rows, amendment drafts linked to their predecessor, server-generated timestamps, HMAC-signed issued snapshots, and append-only hash-chained audit events.
-- Browser print layout for A4; use **Print / Save PDF** and choose **Save as PDF** in the browser print dialog.
+- Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, secure bearer links, and public verification.
+- Atomic sector/year document numbering, immutable version rows, amendment drafts linked to their predecessor, server-generated UTC timestamps, HMAC-signed issued snapshots, and append-only hash-chained audit events.
+- Commanders draw their own signature in a pointer-enabled canvas using a mouse, stylus, or touch. The server rejects absent, oversized, malformed, or checksum-invalid PNGs; the approved drawing is stored with the issued snapshot and covered by its HMAC.
+- Browser print layout for A4 includes the issued signature image and metadata; use **Print / Save PDF** and choose **Save as PDF** in the browser print dialog.
 
-An issued snapshot is never edited in place. An amendment creates a new draft record linked to the source document and starts a new major version. The verification page displays only limited metadata and never reveals the real signer name or document body.
+An issued snapshot is never edited in place. An amendment creates a new draft record linked to the source document and starts a new major version. The verification page displays only limited metadata and never reveals the real signer name or document body. Signature images are returned only to users with download or signer-identity permission; secure share links include them only when download access was explicitly granted.
 
 ## Current boundaries
 
 - The verification code and secure verification URL are implemented; a scannable QR image and binary attachment upload are not part of this first implementation.
 - PDF output uses the browser's print-to-PDF pipeline, not a server-side PDF renderer.
+- The handwritten image records the signer's drawn mark; the server HMAC proves that the stored issued snapshot has not changed, but neither mechanism is a government digital signature or a legal-identity verification service.
 - Hash chaining and database triggers make version/audit mutation detectable within the application. A database owner can still alter database structure or secrets; this is not a compliance certification or protection against a fully compromised host.
 - Document numbers use the initials of the sector's first words (for example, Los Santos Sector → `LSS`) and a database counter per sector/year.
 
 ## Checks
 
-Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, privacy redaction, normalization, numbering, version increments, and signature integrity helpers.
+Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, privacy redaction, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers.

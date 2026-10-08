@@ -14,7 +14,7 @@
 <body>
   <div class="app-frame">
     <header class="topbar">
-      <a class="brand" href="/osd/" aria-label="OSD Document Center">
+      <a class="brand" href="/osd/" aria-label="CIA Official Sector Documents">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 52 52" fill="none">
             <path d="M26 4 45 14v15c0 10-8 16-19 20C15 45 7 39 7 29V14L26 4Z" stroke="currentColor" stroke-width="1.4"/>
@@ -23,7 +23,7 @@
             <path d="m26 2 1.6 4.1L32 7.7l-4.4 1.5L26 13l-1.6-3.8L20 7.7l4.4-1.6L26 2Z" fill="currentColor"/>
           </svg>
         </span>
-        <span class="brand-copy"><strong>OSD</strong><small>OFFICIAL SECTOR DOCUMENTS</small></span>
+        <span class="brand-copy"><strong>CIA</strong><small>OFFICIAL SECTOR DOCUMENTS</small></span>
       </a>
       <div class="top-context"><span class="top-context-dot"></span><span data-i18n="topSystem">DOCUMENT AUTHORITY SYSTEM</span><span class="context-separator">/</span><span id="topSector">LOS SANTOS SECTOR</span></div>
       <div class="top-actions">
@@ -44,6 +44,7 @@
           <button class="nav-item" data-page="archive"><span class="nav-icon">▤</span><span data-i18n="archive">أرشيف الوثائق</span></button>
           <button class="nav-item" data-page="pending"><span class="nav-icon">◷</span><span data-i18n="pending">بانتظار المراجعة</span><span class="nav-count" id="pendingCount">0</span></button>
           <button class="nav-item" data-page="issued"><span class="nav-icon">▣</span><span data-i18n="issued">الوثائق الصادرة</span></button>
+          <button class="nav-item" data-page="drafts"><span class="nav-icon">✎</span><span data-i18n="drafts">المسودات</span></button>
           <button class="nav-item" data-page="templates"><span class="nav-icon">▧</span><span data-i18n="templates">قوالب الوثائق</span></button>
           <button class="nav-item" data-page="verify"><span class="nav-icon">◉</span><span data-i18n="verify">التحقق من وثيقة</span></button>
           <button class="nav-item" data-page="audit"><span class="nav-icon">≋</span><span data-i18n="audit">سجل التدقيق</span></button>
@@ -119,16 +120,16 @@
               <div class="preview-head"><div><div class="panel-kicker">LIVE PREVIEW</div><h3 data-i18n="previewPane">معاينة الوثيقة</h3></div><span class="preview-live"><i></i><span data-i18n="live">مباشر</span></span></div>
               <article class="paper-preview" id="livePreview">
                 <div class="paper-ribbon"><span>OFFICIAL SECTOR DOCUMENT</span><b id="previewClassification">INTERNAL</b></div>
-                <div class="paper-brand"><span class="paper-seal"><svg viewBox="0 0 52 52" fill="none"><path d="M26 4 45 14v15c0 10-8 16-19 20C15 45 7 39 7 29V14L26 4Z" stroke="currentColor" stroke-width="1.7"/><circle cx="26" cy="25" r="7" stroke="currentColor" stroke-width="1.7"/><path d="M26 13v5M26 32v6M13 25h5m14 0h7M17 16l4 4m10 10 4 4m0-18-4 4m-10 10-4 4" stroke="currentColor" stroke-width="1.5"/></svg></span><div><b>OSD</b><small>OFFICIAL SECTOR DOCUMENTS</small></div><span class="paper-doc-meta"><small>DOCUMENT NO.</small><b id="previewNumber">OSD-—</b></span></div>
+                <div class="paper-brand"><span class="paper-seal"><svg viewBox="0 0 52 52" fill="none"><path d="M26 4 45 14v15c0 10-8 16-19 20C15 45 7 39 7 29V14L26 4Z" stroke="currentColor" stroke-width="1.7"/><circle cx="26" cy="25" r="7" stroke="currentColor" stroke-width="1.7"/><path d="M26 13v5M26 32v6M13 25h5m14 0h7M17 16l4 4m10 10 4 4m0-18-4 4m-10 10-4 4" stroke="currentColor" stroke-width="1.5"/></svg></span><div><b>CIA</b><small>OFFICIAL SECTOR DOCUMENTS</small></div><span class="paper-doc-meta"><small>DOCUMENT NO.</small><b id="previewNumber">OSD-—</b></span></div>
                 <div class="paper-rule"></div>
-                <div class="paper-meta"><span>DATE <b id="previewDate">GENERATED ON ISSUE</b></span><span>SECTOR <b id="previewSector">LOS SANTOS SECTOR</b></span><span>VERSION <b id="previewVersion">DRAFT</b></span></div>
+              <div class="paper-meta"><span><i data-i18n="issuedUtc">ISSUED AT · UTC</i><b id="previewDate">GENERATED ON ISSUE</b></span><span><i data-i18n="documentIdLabel">DOCUMENT ID</i><b id="previewDocumentId">GENERATED ON SAVE</b></span><span><i data-i18n="authorizationLevelLabel">AUTHORIZATION LEVEL</i><b id="previewAuthorizationLevel">INTERNAL</b></span><span>SECTOR <b id="previewSector">LOS SANTOS SECTOR</b></span><span>VERSION <b id="previewVersion">DRAFT</b></span></div>
                 <div class="paper-type" id="previewType">OFFICIAL MEMORANDUM</div>
                 <h2 id="previewTitle">DOCUMENT TITLE</h2>
                 <div class="paper-recipient" id="previewRecipient">TO: AUTHORIZED RECIPIENT</div>
                 <p class="paper-content" id="previewBody">Your official document preview will appear here as you complete the form.</p>
-                <div class="paper-signature"><div><small>AUTHORIZED BY</small><b>AUTHORIZED COMMAND</b><span>Signature recorded at issue</span></div><span class="signature-seal">OSD<br>VERIFIED</span></div>
-                <div class="paper-code"><span class="code-grid" aria-hidden="true"></span><span><small>VERIFY CODE</small><b>GENERATED ON ISSUE</b></span></div>
-                <div class="paper-footer"><span>OSD · OFFICIAL DOCUMENT</span><b id="paperFooterClassification">INTERNAL</b><span>PAGE 01 / 01</span></div>
+                <div class="paper-signature"><div><small>AUTHORIZED BY</small><b id="previewSigner">SIGNATURE REQUIRED</b><img id="previewSignature" class="paper-signature-image" alt="Issuer handwritten signature" hidden><span id="previewSignatureCaption">Signature required at issue</span></div><span class="signature-seal">CIA<br>AUTHORITY</span></div>
+                <div class="paper-code"><span class="code-grid" aria-hidden="true"></span><span><small>VERIFY CODE</small><b id="previewVerificationCode">GENERATED ON ISSUE</b></span></div>
+                <div class="paper-footer"><span>CIA · OFFICIAL SECTOR DOCUMENTS</span><b id="paperFooterClassification">INTERNAL</b><span>PAGE 01 / 01</span></div>
               </article>
               <div class="preview-foot"><span class="led amber-led"></span><span data-i18n="previewNotIssued">معاينة فقط — لا تُعد وثيقة صادرة أو موقعة.</span></div>
               <div class="template-suggestion"><span class="suggestion-icon">✦</span><span><b data-i18n="templateTip">التنسيق جاهز</b><small data-i18n="templateTipSub">سيُطبّق القالب والترويسة والترقيم تلقائياً عند الإصدار.</small></span></div>
@@ -159,6 +160,10 @@
           <section class="panel archive-panel"><div class="panel-head"><div><div class="panel-kicker">SIGNED REGISTER</div><h2 data-i18n="issuedTitle">الوثائق الصادرة</h2></div><span class="record-count" id="issuedCount">0 ISSUED</span></div><div class="table-scroll"><table class="records-table"><thead><tr><th data-i18n="document">DOCUMENT</th><th data-i18n="typeCol">TYPE</th><th data-i18n="sectorCol">SECTOR</th><th data-i18n="classificationCol">CLASSIFICATION</th><th data-i18n="issuedAt">ISSUED AT</th><th></th></tr></thead><tbody id="issuedRows"></tbody></table></div><div class="empty-state" id="issuedEmpty"><span class="empty-mark">▣</span><b data-i18n="noIssued">لا توجد وثائق صادرة</b><p data-i18n="issuedHint">الوثائق المعتمدة والموقعة ستظهر هنا.</p></div></section>
         </section>
 
+        <section class="page-view" id="page-drafts" aria-label="Document drafts">
+          <section class="panel archive-panel"><div class="panel-head"><div><div class="panel-kicker">WORKING RECORDS</div><h2 data-i18n="draftsTitle">مسودات الوثائق</h2></div><span class="record-count" id="draftCount">0 DRAFTS</span></div><div class="table-scroll"><table class="records-table"><thead><tr><th data-i18n="document">DOCUMENT</th><th data-i18n="typeCol">TYPE</th><th data-i18n="sectorCol">SECTOR</th><th data-i18n="classificationCol">CLASSIFICATION</th><th data-i18n="updatedCol">UPDATED</th><th></th></tr></thead><tbody id="draftRows"></tbody></table></div><div class="empty-state" id="draftEmpty"><span class="empty-mark">✎</span><b data-i18n="noDrafts">لا توجد مسودات</b><p data-i18n="draftsHint">ستظهر هنا الوثائق التي لم تُرسل بعد للمراجعة.</p><button class="button button-quiet" data-page="create" data-i18n="startDocument">ابدأ وثيقة جديدة</button></div></section>
+        </section>
+
         <section class="page-view" id="page-templates" aria-label="Templates">
           <div class="template-page-head"><div class="panel-kicker">CONTROLLED FORMAT LIBRARY</div><h2 data-i18n="templateTitle">قوالب رسمية جاهزة</h2><p data-i18n="templateCaption">اختر نوع الوثيقة؛ يتولى النظام التنسيق والترقيم والتصنيف.</p></div>
           <div class="template-grid" id="templateGrid"></div>
@@ -176,10 +181,10 @@
         </section>
 
         <section class="page-view" id="page-settings" aria-label="Settings">
-          <div class="settings-grid"><section class="panel settings-panel"><div class="panel-head"><div><div class="panel-kicker">IDENTITY & ACCESS</div><h2 data-i18n="usersTitle">مستخدمو النظام والصلاحيات</h2></div><button class="button button-outline" data-action="openUserForm" id="addUserButton"><span>＋</span><span data-i18n="addUser">إضافة مستخدم</span></button></div><p class="settings-copy" data-i18n="usersCopy">صلاحيات API مفروضة على الخادم. إخفاء عناصر الواجهة ليس بديلاً عن التفويض.</p><div id="userList" class="user-list"></div><div class="permission-key"><span class="panel-kicker">PERMISSION KEYS</span><p>VIEW · CREATE · EDIT · SUBMIT · APPROVE · SIGN · ISSUE · REVOKE · ARCHIVE · SHARE · AUDIT · MANAGE USERS</p></div></section><section class="panel settings-note"><div class="panel-kicker">ISSUER PRIVACY</div><div class="settings-shield">◇</div><h3 data-i18n="privacyTitle">خصوصية هوية الموقّع</h3><p data-i18n="privacyCopy">تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_REAL_SIGNER_IDENTITY.</p><div class="settings-mini-row"><span data-i18n="signatureModel">نموذج التوقيع</span><b>SERVER-SIGNED HMAC</b></div><div class="settings-mini-row"><span data-i18n="recordModel">سجل النسخ</span><b>APPEND-ONLY VERSIONS</b></div><div class="settings-mini-row"><span data-i18n="auditModel">سجل التدقيق</span><b>HASH-CHAINED EVENTS</b></div></section></div>
+          <div class="settings-grid"><section class="panel settings-panel"><div class="panel-head"><div><div class="panel-kicker">IDENTITY & ACCESS</div><h2 data-i18n="usersTitle">مستخدمو النظام والصلاحيات</h2></div><button class="button button-outline" data-action="openUserForm" id="addUserButton"><span>＋</span><span data-i18n="addUser">إضافة مستخدم</span></button></div><p class="settings-copy" data-i18n="usersCopy">صلاحيات API مفروضة على الخادم. إخفاء عناصر الواجهة ليس بديلاً عن التفويض.</p><div id="userList" class="user-list"></div><div class="permission-key"><span class="panel-kicker">PERMISSION KEYS</span><p>VIEW_DOCUMENTS · CREATE_DOCUMENTS · EDIT_DRAFTS · APPROVE_DOCUMENTS · SIGN_DOCUMENTS · ISSUE_DOCUMENTS · REVOKE_DOCUMENTS · ARCHIVE_DOCUMENTS · DOWNLOAD_DOCUMENTS · SHARE_DOCUMENTS · VIEW_SIGNER_IDENTITY</p></div></section><section class="panel settings-note"><div class="panel-kicker">ISSUER PRIVACY</div><div class="settings-shield">◇</div><h3 data-i18n="privacyTitle">خصوصية هوية الموقّع</h3><p data-i18n="privacyCopy">تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_SIGNER_IDENTITY.</p><div class="settings-mini-row"><span data-i18n="signatureModel">نموذج التوقيع</span><b>SERVER-SIGNED HMAC</b></div><div class="settings-mini-row"><span data-i18n="recordModel">سجل النسخ</span><b>APPEND-ONLY VERSIONS</b></div><div class="settings-mini-row"><span data-i18n="auditModel">سجل التدقيق</span><b>HASH-CHAINED EVENTS</b></div></section></div>
         </section>
 
-        <footer class="page-footer"><span>OSD · OFFICIAL SECTOR DOCUMENTS</span><span data-i18n="footerNote">وثائق مستقلة · تحقق من الصلاحية قبل المشاركة</span><span>BUILD 1.0.0</span></footer>
+        <footer class="page-footer"><span>CIA · OFFICIAL SECTOR DOCUMENTS</span><span data-i18n="footerNote">وثائق مستقلة · تحقق من الصلاحية قبل المشاركة</span><span>BUILD 1.0.0</span></footer>
       </main>
     </div>
   </div>
@@ -187,7 +192,7 @@
   <div class="auth-screen" id="authScreen" aria-modal="true" role="dialog" aria-labelledby="authTitle">
     <div class="auth-card">
       <div class="auth-emblem"><svg viewBox="0 0 52 52" fill="none"><path d="M26 4 45 14v15c0 10-8 16-19 20C15 45 7 39 7 29V14L26 4Z" stroke="currentColor" stroke-width="1.5"/><circle cx="26" cy="25" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M26 13v5M26 32v6M13 25h5m14 0h7" stroke="currentColor" stroke-width="1.5"/></svg></div>
-      <div class="panel-kicker">INDEPENDENT DOCUMENT AUTHORITY</div><h1 id="authTitle">OSD</h1><p class="auth-subtitle" data-i18n="authSubtitle">نظام الوثائق الرسمية للقطاعات</p>
+      <div class="panel-kicker">INDEPENDENT DOCUMENT AUTHORITY</div><h1 id="authTitle">CIA</h1><p class="auth-subtitle" data-i18n="authSubtitle">نظام الوثائق الرسمية للقطاعات</p>
       <div class="auth-tabs"><button class="active" type="button" data-auth-tab="login" data-i18n="signIn">تسجيل الدخول</button><button type="button" data-auth-tab="bootstrap" id="bootstrapTab" data-i18n="firstSetup">الإعداد الأولي</button></div>
       <form id="loginForm" class="auth-form"><label><span data-i18n="username">اسم المستخدم</span><input id="loginUsername" autocomplete="username" required></label><label><span data-i18n="password">كلمة المرور</span><input id="loginPassword" type="password" autocomplete="current-password" required></label><button class="button button-primary auth-submit" type="submit" data-i18n="signIn">تسجيل الدخول</button></form>
       <form id="bootstrapForm" class="auth-form" hidden><div class="setup-warning"><b data-i18n="firstSetupRequired">إنشاء قائد النظام الأول</b><span data-i18n="setupHint">يتطلب OSD_BOOTSTRAP_CODE مضبوطاً على الخادم. لا ترسل الرمز في المحادثة.</span></div><label><span data-i18n="bootstrapCode">رمز الإعداد الخادمي</span><input id="bootstrapCode" type="password" autocomplete="off" required></label><label><span data-i18n="displayName">الاسم المعروض</span><input id="bootstrapName" required maxlength="120"></label><label><span data-i18n="username">اسم المستخدم</span><input id="bootstrapUsername" autocomplete="username" required></label><label><span data-i18n="password">كلمة المرور (12 حرفاً على الأقل)</span><input id="bootstrapPassword" type="password" autocomplete="new-password" minlength="12" required></label><button class="button button-primary auth-submit" type="submit" data-i18n="createCommander">إنشاء حساب القائد</button></form>
@@ -197,6 +202,7 @@
   </div>
 
   <div class="modal-backdrop" id="documentModal" hidden><section class="document-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><header class="dialog-head"><div><div class="panel-kicker">OFFICIAL RECORD</div><h2 id="modalTitle">Document</h2><small id="modalNumber"></small></div><button class="icon-button" data-action="closeModal" aria-label="Close">×</button></header><div class="dialog-body" id="modalContent"></div><div class="dialog-actions" id="modalActions"></div></section></div>
+  <div class="modal-backdrop signature-backdrop" id="signatureModal" hidden><section class="document-dialog signature-dialog" role="dialog" aria-modal="true" aria-labelledby="signatureTitle"><header class="dialog-head"><div><div class="panel-kicker">AUTHORIZED COMMAND SIGNATURE</div><h2 id="signatureTitle" data-i18n="signatureDialogTitle">التوقيع الرسمي بخط اليد</h2><small id="signatureDocumentNumber"></small></div><button class="icon-button" data-action="cancelSignature" aria-label="Close">×</button></header><div class="dialog-body"><p class="signature-dialog-hint" data-i18n="signatureDialogHint">ارسم توقيعك بنفسك داخل المربع باستخدام إصبعك أو القلم أو الفأرة.</p><canvas id="signatureCanvas" class="signature-canvas" tabindex="0" aria-label="Draw your own signature" aria-describedby="signatureCanvasHint"></canvas><div class="signature-canvas-caption" id="signatureCanvasHint">PERSONAL HANDWRITTEN SIGNATURE · TOUCH / STYLUS / MOUSE</div></div><div class="dialog-actions signature-actions"><button class="button button-quiet" type="button" data-action="cancelSignature" data-i18n="signatureCancel">إلغاء</button><button class="button button-outline" type="button" data-action="clearSignature" data-i18n="signatureClear">مسح التوقيع</button><button class="button button-primary" type="button" data-action="confirmSignature" data-i18n="signatureConfirm">توقيع وإصدار الوثيقة</button></div></section></div>
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
   <script src="/osd/app.js" defer></script>
 </body>

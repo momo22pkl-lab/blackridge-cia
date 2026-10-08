@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="/notifications.css" rel="stylesheet">
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -1328,6 +1329,269 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 }
 
 </style>
+<style id="br-world-command-styles">
+  #br-world-command-root {
+    --brw-bg: #050a11;
+    --brw-panel: rgba(10, 20, 31, .94);
+    --brw-panel-soft: rgba(12, 25, 38, .82);
+    --brw-line: rgba(116, 159, 184, .19);
+    --brw-line-strong: rgba(91, 195, 231, .36);
+    --brw-text: #e5edf3;
+    --brw-muted: #8294a3;
+    --brw-cyan: #56c9ef;
+    --brw-gold: #d6b168;
+    --brw-red: #f05e67;
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    overflow: auto;
+    color: var(--brw-text);
+    background:
+      radial-gradient(ellipse at 55% 32%, rgba(14, 70, 99, .16), transparent 39%),
+      linear-gradient(130deg, #03070c, #07111c 56%, #050a11);
+    font: 12px/1.45 Inter, "Segoe UI", Arial, sans-serif;
+    direction: ltr;
+    isolation: isolate;
+  }
+  #br-world-command-root[hidden] { display: none !important; }
+  #ibp-command-center .ibp-shell[hidden] { display: none !important; }
+  #br-world-command-root *,
+  #br-world-command-root *::before,
+  #br-world-command-root *::after { box-sizing: border-box; }
+  #br-world-command-root button,
+  #br-world-command-root input { font: inherit; }
+  #br-world-command-root button { color: inherit; }
+  #br-world-command-root .brw-app { min-height: 100%; display: grid; grid-template-rows: 56px 1fr; }
+  #br-world-command-root .brw-topbar {
+    position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 18px;
+    min-width: 0; padding: 0 14px; border-bottom: 1px solid var(--brw-line);
+    background: rgba(4, 10, 16, .96); box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+  }
+  #br-world-command-root .brw-brand { display: flex; align-items: center; gap: 9px; min-width: 198px; }
+  #br-world-command-root .brw-seal {
+    width: 37px; height: 37px; display: grid; place-items: center; flex: none;
+    border: 1px solid rgba(214, 177, 104, .74); border-radius: 50%;
+    color: var(--brw-gold); background: radial-gradient(circle, rgba(214,177,104,.12), transparent 70%);
+    box-shadow: 0 0 17px rgba(214,177,104,.1);
+  }
+  #br-world-command-root .brw-seal svg { width: 22px; height: 22px; }
+  #br-world-command-root .brw-brand strong { display: block; color: #e8edf1; font-size: 11px; letter-spacing: .19em; }
+  #br-world-command-root .brw-brand small { display: block; margin-top: 2px; color: #758594; font: 8px/1.2 "Courier New", monospace; letter-spacing: .17em; }
+  #br-world-command-root .brw-top-nav { display: flex; align-items: center; justify-content: center; gap: 20px; flex: 1; color: #81909c; font: 9px "Courier New", monospace; letter-spacing: .12em; }
+  #br-world-command-root .brw-top-nav span { white-space: nowrap; }
+  #br-world-command-root .brw-top-nav span + span { border-left: 1px solid var(--brw-line); padding-left: 20px; }
+  #br-world-command-root .brw-header-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 220px; }
+  #br-world-command-root .brw-search {
+    display: flex; align-items: center; gap: 7px; width: clamp(120px, 18vw, 205px); height: 30px;
+    padding: 0 9px; border: 1px solid var(--brw-line); border-radius: 4px; color: #8092a0; background: #07111b;
+  }
+  #br-world-command-root .brw-search i { color: var(--brw-cyan); }
+  #br-world-command-root .brw-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #aebbc4; background: transparent; font-size: 10px; }
+  #br-world-command-root .brw-search input::placeholder { color: #647787; }
+  #br-world-command-root .brw-icon-button {
+    position: relative; width: 32px; height: 32px; display: grid; place-items: center;
+    border: 1px solid var(--brw-line); border-radius: 4px; background: #08131d; color: #aebdc7; cursor: pointer;
+  }
+  #br-world-command-root .brw-icon-button:hover { border-color: var(--brw-line-strong); color: var(--brw-cyan); }
+  #br-world-command-root .brw-notice-dot { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--brw-red); box-shadow: 0 0 8px var(--brw-red); }
+  #br-world-command-root .brw-profile { display: flex; align-items: center; gap: 7px; min-width: 91px; padding: 4px 7px; border: 1px solid var(--brw-line); border-radius: 4px; }
+  #br-world-command-root .brw-avatar { width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid #426276; border-radius: 50%; color: var(--brw-cyan); background: #0b1c29; }
+  #br-world-command-root .brw-profile b { display: block; font: 9px "Courier New", monospace; }
+  #br-world-command-root .brw-profile small { display: block; color: #718392; font: 7px "Courier New", monospace; }
+  #br-world-command-root .brw-clock { min-width: 62px; color: #d6c79e; text-align: right; font: 10px/1.4 "Courier New", monospace; }
+  #br-world-command-root .brw-frame { min-height: 0; display: grid; grid-template-columns: 184px minmax(0, 1fr); }
+  #br-world-command-root .brw-sidebar {
+    position: sticky; top: 56px; align-self: start; height: calc(100vh - 56px); min-height: 410px;
+    display: flex; flex-direction: column; padding: 13px 9px 10px; border-right: 1px solid var(--brw-line);
+    background: rgba(5, 12, 19, .9);
+  }
+  #br-world-command-root .brw-nav-caption { padding: 8px 9px; color: #586a79; font: 8px "Courier New", monospace; letter-spacing: .18em; }
+  #br-world-command-root .brw-nav { display: grid; gap: 3px; }
+  #br-world-command-root .brw-nav-button {
+    width: 100%; min-height: 35px; display: flex; align-items: center; gap: 10px;
+    padding: 0 10px; border: 1px solid transparent; border-radius: 3px; background: transparent;
+    color: #a1afba; text-align: left; cursor: pointer; transition: color .18s ease, border-color .18s ease, background .18s ease;
+  }
+  #br-world-command-root .brw-nav-button i { width: 15px; color: #7790a1; text-align: center; }
+  #br-world-command-root .brw-nav-button span { font: 9px "Courier New", monospace; letter-spacing: .1em; }
+  #br-world-command-root .brw-nav-button:hover { border-color: var(--brw-line); background: rgba(34, 77, 100, .16); color: #e7edf1; }
+  #br-world-command-root .brw-nav-button.active { border-color: rgba(214, 177, 104, .26); background: linear-gradient(90deg, rgba(214,177,104,.14), rgba(214,177,104,.025)); color: #ecd392; }
+  #br-world-command-root .brw-nav-button.active i { color: var(--brw-gold); }
+  #br-world-command-root .brw-side-footer { margin-top: auto; padding: 12px 8px 5px; border-top: 1px solid var(--brw-line); text-align: center; }
+  #br-world-command-root .brw-side-footer strong { display: block; color: #9daab4; font: 9px "Courier New", monospace; letter-spacing: .18em; }
+  #br-world-command-root .brw-side-footer small { display: block; margin: 4px 0 10px; color: #526575; font: 7px/1.6 "Courier New", monospace; letter-spacing: .12em; }
+  #br-world-command-root .brw-legacy {
+    width: 100%; min-height: 29px; border: 1px solid rgba(86,201,239,.22); border-radius: 3px;
+    background: rgba(17, 46, 63, .24); color: #91cde0; font: 8px "Courier New", monospace; letter-spacing: .08em; cursor: pointer;
+  }
+  #br-world-command-root .brw-legacy:hover { border-color: var(--brw-cyan); color: #d9f5ff; }
+  #br-world-command-root .brw-main { min-width: 0; padding: 12px; }
+  #br-world-command-root .brw-page-head { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  #br-world-command-root .brw-eyebrow { color: var(--brw-cyan); font: 8px "Courier New", monospace; letter-spacing: .17em; }
+  #br-world-command-root .brw-page-head h1 { margin: 2px 0 0; color: #e8edf1; font-size: 18px; line-height: 1.1; letter-spacing: .04em; }
+  #br-world-command-root .brw-page-head p { margin: 3px 0 0; color: #718493; font-size: 10px; }
+  #br-world-command-root .brw-head-status { display: flex; align-items: center; gap: 7px; color: #9ab0bd; font: 8px "Courier New", monospace; letter-spacing: .08em; white-space: nowrap; }
+  #br-world-command-root .brw-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #58d4a2; box-shadow: 0 0 8px rgba(88,212,162,.7); }
+  #br-world-command-root .brw-command-layout { display: grid; grid-template-columns: minmax(0, 1fr) 276px; align-items: start; gap: 10px; }
+  #br-world-command-root .brw-center-column { min-width: 0; display: grid; gap: 10px; }
+  #br-world-command-root .brw-stage {
+    position: relative; min-width: 0; min-height: 456px; overflow: hidden; border: 1px solid var(--brw-line);
+    border-radius: 5px; background:
+      radial-gradient(ellipse at 50% 52%, rgba(13,73,104,.21), transparent 46%),
+      linear-gradient(rgba(44,95,120,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(44,95,120,.04) 1px, transparent 1px), #07111b;
+    background-size: auto, 32px 32px, 32px 32px, auto;
+  }
+  #br-world-command-root .brw-stage::after { position: absolute; inset: 0; content: ""; pointer-events: none; background: linear-gradient(180deg, transparent 72%, rgba(1,6,11,.24)); }
+  #br-world-command-root .brw-stage-meta { position: absolute; z-index: 2; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 8px; color: #718494; font: 8px "Courier New", monospace; letter-spacing: .13em; }
+  #br-world-command-root .brw-preview-tag { padding: 3px 6px; border: 1px solid rgba(86,201,239,.19); border-radius: 2px; color: #7bb8cc; white-space: nowrap; }
+  #br-world-command-root .brw-globe-wrap { position: absolute; top: 50%; left: 50%; width: clamp(250px, 35vw, 340px); aspect-ratio: 1; transform: translate(-50%, -48%); }
+  #br-world-command-root .brw-orbit { position: absolute; inset: -6%; border: 1px solid rgba(64,183,223,.17); border-radius: 50%; }
+  #br-world-command-root .brw-orbit.orbit-two { inset: -13%; border-style: dashed; border-color: rgba(75,166,203,.19); animation: brw-spin 55s linear infinite; }
+  #br-world-command-root .brw-orbit.orbit-three { inset: -22%; border-color: rgba(65,146,185,.12); transform: rotateX(68deg) rotate(-18deg); }
+  #br-world-command-root .brw-world-svg { position: relative; z-index: 1; display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 24px rgba(40,177,227,.2)); }
+  #br-world-command-root .brw-world-svg .brw-land { fill: #68a697; fill-opacity: .77; stroke: #b0e1cb; stroke-opacity: .53; stroke-width: 1.1; }
+  #br-world-command-root .brw-world-svg .brw-gridline { fill: none; stroke: #6ccff1; stroke-opacity: .24; stroke-width: .8; }
+  #br-world-command-root .brw-globe-core { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 5px; text-align: center; pointer-events: none; }
+  #br-world-command-root .brw-globe-crest { width: 36px; height: 36px; display: grid; place-items: center; margin-bottom: 4px; border: 1px solid rgba(214,177,104,.75); border-radius: 50%; color: var(--brw-gold); background: rgba(4,11,18,.78); box-shadow: 0 0 18px rgba(214,177,104,.2); }
+  #br-world-command-root .brw-globe-core strong { color: #f1f4f5; font-size: 12px; letter-spacing: .18em; text-shadow: 0 2px 8px #000; }
+  #br-world-command-root .brw-globe-core small { color: #b8c5ce; font: 8px "Courier New", monospace; letter-spacing: .23em; text-shadow: 0 2px 8px #000; }
+  #br-world-command-root .brw-globe-pulse { position: absolute; z-index: 0; inset: 12%; border: 1px solid rgba(80,208,245,.15); border-radius: 50%; animation: brw-pulse 3.8s ease-in-out infinite; }
+  #br-world-command-root .brw-nodes { display: contents; }
+  #br-world-command-root .brw-node {
+    position: absolute; z-index: 3; width: 151px; min-height: 43px; display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--node-color) 46%, transparent); border-radius: 4px;
+    color: #dfe8ee; text-align: left; background: linear-gradient(120deg, rgba(8,19,29,.96), rgba(11,27,40,.82));
+    box-shadow: 0 5px 18px rgba(0,0,0,.22); cursor: pointer; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  #br-world-command-root .brw-node:hover { z-index: 4; transform: translateY(-2px); border-color: var(--node-color); box-shadow: 0 0 16px color-mix(in srgb, var(--node-color) 18%, transparent); }
+  #br-world-command-root .brw-node-icon { width: 27px; height: 27px; display: grid; place-items: center; flex: none; border: 1px solid color-mix(in srgb, var(--node-color) 55%, transparent); border-radius: 50%; color: var(--node-color); background: color-mix(in srgb, var(--node-color) 9%, #07111b); }
+  #br-world-command-root .brw-node-icon i { font-size: 11px; }
+  #br-world-command-root .brw-node-copy b { display: block; font: 8px "Courier New", monospace; letter-spacing: .04em; white-space: nowrap; }
+  #br-world-command-root .brw-node-copy small { display: block; margin-top: 2px; color: #778c9a; font: 7px "Courier New", monospace; white-space: nowrap; }
+  #br-world-command-root .brw-node-sector { top: 8%; left: 50%; transform: translateX(-50%); }
+  #br-world-command-root .brw-node-alpha { top: 22%; left: 3%; }
+  #br-world-command-root .brw-node-bravo { top: 22%; right: 3%; }
+  #br-world-command-root .brw-node-delta { top: 49%; left: 1.5%; }
+  #br-world-command-root .brw-node-charlie { top: 49%; right: 1.5%; }
+  #br-world-command-root .brw-node-operations { bottom: 12%; left: 7%; }
+  #br-world-command-root .brw-node-personnel { bottom: 12%; right: 7%; }
+  #br-world-command-root .brw-node-intelligence { bottom: 2%; left: 50%; transform: translateX(-50%); }
+  #br-world-command-root .brw-coordinate { position: absolute; bottom: 8px; z-index: 2; color: #506778; font: 7px "Courier New", monospace; letter-spacing: .12em; }
+  #br-world-command-root .brw-coordinate.left { left: 11px; }
+  #br-world-command-root .brw-coordinate.right { right: 11px; }
+  #br-world-command-root .brw-lower-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); gap: 10px; }
+  #br-world-command-root .brw-panel { min-width: 0; overflow: hidden; border: 1px solid var(--brw-line); border-radius: 4px; background: var(--brw-panel); box-shadow: 0 9px 24px rgba(0,0,0,.14); }
+  #br-world-command-root .brw-panel-head { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--brw-line); }
+  #br-world-command-root .brw-panel-kicker { display: block; margin-bottom: 2px; color: #6e8595; font: 7px "Courier New", monospace; letter-spacing: .14em; }
+  #br-world-command-root .brw-panel-head h2 { margin: 0; color: #d9e2e8; font-size: 9px; letter-spacing: .1em; }
+  #br-world-command-root .brw-view-all { border: 0; padding: 3px; color: var(--brw-cyan); background: transparent; font: 7px "Courier New", monospace; letter-spacing: .08em; cursor: pointer; }
+  #br-world-command-root .brw-map-preview { position: relative; display: block; width: 100%; height: 126px; overflow: hidden; background: #07131e; }
+  #br-world-command-root .brw-map-preview svg { display: block; width: 100%; height: 100%; }
+  #br-world-command-root .brw-map-water { fill: #0a2939; }
+  #br-world-command-root .brw-map-land { fill: #13242d; stroke: #52737c; stroke-width: 1; }
+  #br-world-command-root .brw-map-road { fill: none; stroke: #9ab0ae; stroke-opacity: .66; stroke-width: 2; }
+  #br-world-command-root .brw-map-road.minor { stroke: #688087; stroke-opacity: .55; stroke-width: 1; stroke-dasharray: 3 3; }
+  #br-world-command-root .brw-map-label { position: absolute; bottom: 6px; left: 8px; padding: 3px 5px; border: 1px solid var(--brw-line); color: #b8c9d1; background: rgba(3,9,15,.82); font: 7px "Courier New", monospace; letter-spacing: .1em; }
+  #br-world-command-root .brw-report-table { padding: 3px 9px 7px; }
+  #br-world-command-root .brw-report-row { min-height: 32px; display: grid; grid-template-columns: minmax(0,1.4fr) .75fr .55fr; align-items: center; gap: 5px; border-bottom: 1px solid rgba(116,159,184,.1); }
+  #br-world-command-root .brw-report-row:last-child { border-bottom: 0; }
+  #br-world-command-root .brw-report-row span:first-child b { display: block; color: #cbd7df; font: 8px "Courier New", monospace; }
+  #br-world-command-root .brw-report-row span:first-child small { display: block; color: #70818e; font-size: 7px; }
+  #br-world-command-root .brw-status { width: fit-content; padding: 2px 4px; border: 1px solid rgba(86,201,239,.22); border-radius: 2px; color: #81d5eb; background: rgba(40,134,165,.12); font: 6px "Courier New", monospace; }
+  #br-world-command-root .brw-priority { color: #d6b168; font: 7px "Courier New", monospace; }
+  #br-world-command-root .brw-demo-note { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-top: 1px solid var(--brw-line); color: #6f8998; font-size: 7px; }
+  #br-world-command-root .brw-demo-note i { color: var(--brw-cyan); }
+  #br-world-command-root .brw-side-panels { min-width: 0; display: grid; align-content: start; gap: 8px; }
+  #br-world-command-root .brw-side-panels[hidden] { display: none !important; }
+  #br-world-command-root .brw-side-panel .brw-panel-head { min-height: 35px; }
+  #br-world-command-root .brw-side-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  #br-world-command-root .brw-side-title i { width: 14px; color: var(--brw-cyan); text-align: center; }
+  #br-world-command-root .brw-side-title.danger i { color: var(--brw-red); }
+  #br-world-command-root .brw-count { color: #c4d0d7; font: 8px "Courier New", monospace; }
+  #br-world-command-root .brw-count.danger { color: var(--brw-red); }
+  #br-world-command-root .brw-compact-list { padding: 2px 8px 4px; }
+  #br-world-command-root .brw-compact-row { min-height: 35px; display: grid; grid-template-columns: 21px minmax(0,1fr) auto; align-items: center; gap: 6px; border-bottom: 1px solid rgba(116,159,184,.1); }
+  #br-world-command-root .brw-compact-row:last-child { border-bottom: 0; }
+  #br-world-command-root .brw-mini-icon { width: 19px; height: 19px; display: grid; place-items: center; border: 1px solid rgba(86,201,239,.28); border-radius: 50%; color: var(--brw-cyan); font-size: 8px; }
+  #br-world-command-root .brw-mini-icon.red { border-color: rgba(240,94,103,.4); color: var(--brw-red); }
+  #br-world-command-root .brw-mini-icon.gold { border-color: rgba(214,177,104,.4); color: var(--brw-gold); }
+  #br-world-command-root .brw-compact-copy { min-width: 0; }
+  #br-world-command-root .brw-compact-copy b { display: block; overflow: hidden; color: #cbd6dd; font: 8px "Courier New", monospace; text-overflow: ellipsis; white-space: nowrap; }
+  #br-world-command-root .brw-compact-copy small { display: block; overflow: hidden; color: #718492; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+  #br-world-command-root .brw-row-status { padding: 2px 4px; border: 1px solid rgba(88,212,162,.2); border-radius: 2px; color: #80d7b3; background: rgba(88,212,162,.08); font: 6px "Courier New", monospace; }
+  #br-world-command-root .brw-row-status.red { border-color: rgba(240,94,103,.2); color: #ff9297; background: rgba(240,94,103,.08); }
+  #br-world-command-root .brw-row-status.gold { border-color: rgba(214,177,104,.22); color: #dec37c; background: rgba(214,177,104,.08); }
+  #br-world-command-root .brw-panel-foot { padding: 5px 8px; border-top: 1px solid rgba(116,159,184,.1); color: #526979; text-align: right; font: 6px "Courier New", monospace; letter-spacing: .1em; }
+  #br-world-command-root .brw-quote-panel { position: relative; min-height: 113px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 13px 16px; border: 1px solid var(--brw-line); border-radius: 4px; background: linear-gradient(90deg, rgba(5,12,19,.95), rgba(6,16,25,.72)), repeating-linear-gradient(0deg, transparent 0 17px, rgba(90,135,151,.1) 18px 19px); }
+  #br-world-command-root .brw-quote-panel::after { position: absolute; right: 0; bottom: 0; width: 100%; height: 38px; content: ""; opacity: .2; background: linear-gradient(180deg, transparent, #102536); clip-path: polygon(0 100%,0 70%,8% 55%,13% 64%,19% 30%,25% 58%,31% 42%,37% 64%,44% 18%,51% 60%,57% 35%,64% 70%,72% 28%,79% 56%,85% 20%,92% 63%,100% 38%,100% 100%); }
+  #br-world-command-root .brw-quote-panel p { position: relative; z-index: 1; margin: 0; color: #c2ccd2; font: 8px/1.65 "Courier New", monospace; letter-spacing: .11em; }
+  #br-world-command-root .brw-quote-panel small { position: relative; z-index: 1; margin-top: 6px; color: var(--brw-gold); font: 7px "Courier New", monospace; }
+  #br-world-command-root .brw-placeholder { min-height: 330px; display: grid; place-items: center; padding: 24px; border: 1px solid var(--brw-line); border-radius: 5px; text-align: center; background: radial-gradient(ellipse at 50% 44%, rgba(19,75,99,.15), transparent 54%), #07111b; }
+  #br-world-command-root .brw-placeholder-card { max-width: 460px; }
+  #br-world-command-root .brw-placeholder-icon { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 14px; border: 1px solid rgba(86,201,239,.32); border-radius: 50%; color: var(--brw-cyan); background: rgba(16,55,75,.24); box-shadow: 0 0 25px rgba(86,201,239,.09); font-size: 20px; }
+  #br-world-command-root .brw-placeholder h2 { margin: 0 0 8px; color: #e0e8ed; font-size: 17px; letter-spacing: .1em; }
+  #br-world-command-root .brw-placeholder p { margin: 0 auto 15px; color: #8395a2; font-size: 11px; }
+  #br-world-command-root .brw-coming { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 15px; padding: 6px 9px; border: 1px solid rgba(214,177,104,.24); border-radius: 3px; color: #d3bb80; background: rgba(214,177,104,.06); font: 8px "Courier New", monospace; letter-spacing: .08em; }
+  #br-world-command-root .brw-back-button { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 0 10px; border: 1px solid var(--brw-line-strong); border-radius: 3px; color: #a6d9e9; background: rgba(19,69,91,.2); cursor: pointer; }
+  #br-world-command-root .brw-back-button:hover { border-color: var(--brw-cyan); color: #e2f9ff; }
+  #br-world-command-root .brw-footer { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px 2px; color: #516573; font: 7px "Courier New", monospace; letter-spacing: .1em; }
+  @keyframes brw-spin { to { transform: rotate(360deg); } }
+  @keyframes brw-pulse { 0%,100% { transform: scale(.97); opacity: .24; } 50% { transform: scale(1.04); opacity: .65; } }
+  @media (max-width: 1180px) {
+    #br-world-command-root .brw-frame { grid-template-columns: 166px minmax(0,1fr); }
+    #br-world-command-root .brw-command-layout { grid-template-columns: minmax(0,1fr); }
+    #br-world-command-root .brw-side-panels { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    #br-world-command-root .brw-quote-panel { min-height: 100%; }
+  }
+  @media (max-width: 760px) {
+    #br-world-command-root .brw-topbar { height: 51px; gap: 8px; padding: 0 8px; }
+    #br-world-command-root .brw-app { grid-template-rows: 51px 1fr; }
+    #br-world-command-root .brw-brand { min-width: 0; flex: 1; }
+    #br-world-command-root .brw-brand strong { font-size: 9px; }
+    #br-world-command-root .brw-brand small { font-size: 7px; }
+    #br-world-command-root .brw-seal { width: 31px; height: 31px; }
+    #br-world-command-root .brw-top-nav, #br-world-command-root .brw-search, #br-world-command-root .brw-profile { display: none; }
+    #br-world-command-root .brw-header-tools { min-width: 0; gap: 5px; }
+    #br-world-command-root .brw-clock { min-width: 43px; font-size: 8px; }
+    #br-world-command-root .brw-frame { grid-template-columns: 58px minmax(0,1fr); }
+    #br-world-command-root .brw-sidebar { top: 51px; height: calc(100vh - 51px); min-height: 0; padding: 8px 4px; }
+    #br-world-command-root .brw-nav-caption, #br-world-command-root .brw-nav-button span, #br-world-command-root .brw-side-footer strong, #br-world-command-root .brw-side-footer small { display: none; }
+    #br-world-command-root .brw-nav { gap: 4px; }
+    #br-world-command-root .brw-nav-button { min-height: 38px; justify-content: center; padding: 0; }
+    #br-world-command-root .brw-nav-button i { width: auto; font-size: 13px; }
+    #br-world-command-root .brw-side-footer { padding: 8px 2px 0; }
+    #br-world-command-root .brw-legacy { min-height: 34px; padding: 3px; font-size: 6px; }
+    #br-world-command-root .brw-main { padding: 8px; }
+    #br-world-command-root .brw-page-head { min-height: 42px; margin-bottom: 8px; }
+    #br-world-command-root .brw-page-head h1 { font-size: 15px; }
+    #br-world-command-root .brw-head-status { font-size: 7px; }
+    #br-world-command-root .brw-stage { min-height: 0; padding: 38px 8px 9px; }
+    #br-world-command-root .brw-globe-wrap { position: relative; top: auto; left: auto; width: min(62vw, 244px); margin: 8px auto 13px; transform: none; }
+    #br-world-command-root .brw-nodes { position: relative; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+    #br-world-command-root .brw-node { position: static; width: 100%; min-width: 0; min-height: 42px; transform: none; padding: 5px; }
+    #br-world-command-root .brw-node:hover { transform: translateY(-1px); }
+    #br-world-command-root .brw-node-copy b { overflow: hidden; font-size: 7px; text-overflow: ellipsis; }
+    #br-world-command-root .brw-node-copy small { overflow: hidden; font-size: 6px; text-overflow: ellipsis; }
+    #br-world-command-root .brw-node-icon { width: 23px; height: 23px; }
+    #br-world-command-root .brw-coordinate { display: none; }
+    #br-world-command-root .brw-lower-grid, #br-world-command-root .brw-side-panels { grid-template-columns: minmax(0,1fr); }
+    #br-world-command-root .brw-map-preview { height: 114px; }
+    #br-world-command-root .brw-quote-panel { min-height: 105px; }
+  }
+  @media (max-width: 420px) {
+    #br-world-command-root .brw-brand small { letter-spacing: .1em; }
+    #br-world-command-root .brw-live-label { display: none; }
+    #br-world-command-root .brw-page-head p { max-width: 180px; font-size: 9px; }
+    #br-world-command-root .brw-report-row { grid-template-columns: minmax(0,1fr) .6fr .42fr; }
+    #br-world-command-root .brw-report-row span:first-child b { font-size: 7px; }
+    #br-world-command-root .brw-panel-head { padding-inline: 8px; }
+    #br-world-command-root .brw-footer { font-size: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #br-world-command-root *, #br-world-command-root *::before, #br-world-command-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  }
+</style>
 </head>
 <body>
   <div id="session-recovery-overlay" aria-live="polite" aria-modal="true" role="status"><div class="session-recovery-card"><strong><i class="fa-solid fa-shield-halved"></i> استعادة الجلسة</strong><span id="session-recovery-message">جارٍ إعادة الاتصال بالنظام...</span></div></div>
@@ -1563,6 +1827,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>
       <li id="chief-nav" class="nav-btn" style="display: none;" onclick="showPane('chief-panel', this)"><i class="fa-solid fa-user-gear"></i> إدارة القيادة</li>
       <li id="audit-nav" class="nav-btn" style="display: none;" onclick="showPane('audit-panel', this)"><i class="fa-solid fa-clock-rotate-left"></i> السجلات اليومية</li>
+      <li id="security-nav" class="nav-btn" style="display: none;" onclick="showPane('security-panel', this)"><i class="fa-solid fa-shield-halved"></i> مركز الأمن</li>
     </ul>
     <div style="padding: 15px; border-top: 1px solid var(--border);">
       <button style="width: 100%; padding: 10px; background: var(--red-alert); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="logoutFromSystem()">تسجيل الخروج</button>
@@ -2260,6 +2525,24 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       </div>
     </div>
 
+    <div id="security-panel" class="view-pane">
+      <div class="classified-shell" dir="rtl">
+        <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
+        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. السجل الأمني لا يحتفظ بنص الرسائل المحظورة؛ بيانات الأسماء والتفاصيل الحساسة تظهر لـ CIA CHIEF فقط.</p>
+        <div id="security-summary" style="margin:12px 0;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
+        <div id="security-active-alerts" style="margin-top:10px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">الحسابات المقيّدة أو الموقوفة</div>
+        <div id="security-restricted-members" style="margin-top:10px;"></div>
+        <div id="security-manual-suspend" style="display:none;margin-top:12px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">سجل الحوادث والإجراءات</div>
+        <div id="security-incident-list" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -2288,6 +2571,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let identityPendingUser = null;
     let serverHasChief = null;
     let auditLogs = [];
+    let securityIncidents = [];
+    let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
     let operationAgentDirectory = [];
@@ -2329,31 +2614,32 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const passcodeEl = document.getElementById('entry-passcode');
       if (passcodeEl) {
         passcodeEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleLogin(); });
-        passcodeEl.addEventListener('input', function() {
-          const code = this.value.trim();
-          const hasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
-          if (!hasChief && code === '1531') showChiefBootstrap();
-          else if (!bootstrapMode) hideChiefBootstrap();
-        });
       }
 
       try {
         const savedName = localStorage.getItem('cia_last_login_name');
-        const savedCode = localStorage.getItem('cia_last_login_code');
         if (savedName) document.getElementById('entry-name').value = savedName;
-        if (savedCode) {
-          document.getElementById('entry-passcode').value = savedCode;
-          if (savedCode === '1531') showChiefBootstrap();
-        }
+        localStorage.removeItem('cia_last_login_code');
+        localStorage.removeItem('cia_last_member_code');
       } catch(e) {}
       updateRadioPowerUI();
     });
 
     const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
     const ciaSocket = typeof io === 'function' ? io() : null;
+    window.blackRidgeSocket = ciaSocket;
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
     let authReconnectPending = false;
+    window.blackRidgeGetNotificationSession = function() {
+      const user = currentUser;
+      return {
+        user: user ? { id: user.id || '', rank: user.rank || '' } : null,
+        authenticated: !!user && ciaSessionAuthenticated,
+        connected: !!ciaSocket && ciaSocket.connected,
+        recovering: !!user && (authReconnectPending || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected)
+      };
+    };
 
     function setSessionRecoveryVisible(visible, message) {
       const overlay = document.getElementById('session-recovery-overlay');
@@ -2455,6 +2741,26 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
       });
 
+      ciaSocket.on('security:logs:result', applySecurityCenterResult);
+      ciaSocket.on('security:incident', function(incident) {
+        if (!incident || !currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+        securityIncidents = [incident, ...(securityIncidents || []).filter(item => item.id !== incident.id)].slice(0, 300);
+        renderSecurityCenter();
+        const panel = document.getElementById('security-panel');
+        if (panel && panel.classList.contains('active') && ciaSocket && ciaSocket.connected) loadSecurityCenter();
+      });
+      ciaSocket.on('security:restricted', function(result) {
+        const message = (result && result.reason) || 'تم تقييد الحساب أمنيًا. راجع القيادة.';
+        alert(message);
+        currentUser = null;
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+        } catch (e) {}
+        window.dispatchEvent(new Event('blackridge:logout'));
+        location.reload();
+      });
+
       ciaSocket.on('admin:member:result', function(result) {
         if (!result) return;
         if (!result.ok) { alert(result.message || 'تعذر تنفيذ تعديل العضو.'); return; }
@@ -2486,13 +2792,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           let savedCode = currentUser.secretCode || '';
           try {
             savedName = localStorage.getItem('cia_last_login_name') || savedName;
-            savedCode = localStorage.getItem('cia_last_login_code') || savedCode;
           } catch (e) {}
           if (savedName && savedCode) {
             ciaSocket.emit('auth:login', {
               name: savedName,
               code: savedCode,
-              resumeService: currentUser.activeService === true
+              resumeService: currentUser.activeService === true,
+              resumeSession: true
             }, function(result) {
               if (!result || !result.ok) {
                 if (authReconnectPending) completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
@@ -2626,7 +2932,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         currentUser = result.user;
         try {
           localStorage.setItem('cia_last_login_name', currentUser.name || '');
-          localStorage.setItem('cia_last_login_code', currentUser.secretCode || '');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         completeLogin();
         if (result.needsIdentity) openIdentityModal();
@@ -2722,7 +3029,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       ciaSocket.on('admin:chief-secret:result', function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر تغيير رمز القائد.'); return; }
         currentUser = result.user;
-        try { localStorage.setItem('cia_last_login_code', currentUser.secretCode || ''); } catch(e) {}
         const secretEl = document.getElementById('chief-current-secret');
         if (secretEl) secretEl.innerText = currentUser.secretCode;
         alert('تم تغيير رمز دخول القائد وحفظه على السيرفر.');
@@ -2742,10 +3048,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if(loginCode) document.getElementById('entry-passcode').value=loginCode;
         try {
           if(name) localStorage.setItem('cia_last_login_name',name);
-          if(loginCode) {
-            localStorage.setItem('cia_last_login_code',loginCode);
-            localStorage.setItem('cia_last_member_code',loginCode);
-          }
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         alert(`تم قبول شخصيتك: ${name||'—'}.\nكود الدخول الشخصي: ${loginCode||'—'}\nسجّل الدخول لإكمال هويتك، ثم انتظر اعتمادها وقدّم طلب دخول الخدمة. سيصدر الكود العسكري بعد الموافقة النهائية.`);
         currentUser = null;
@@ -3009,7 +3313,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (!result || !result.ok) { msg.innerText = (result && (result.error || result.message)) || 'تعذر إنشاء الحساب.'; return; }
         msg.style.color = 'var(--primary-gold)';
         msg.innerText = 'تم إنشاء الحساب والشخصية الأولى، وبانتظار اعتماد القيادة.';
-        try { localStorage.removeItem('cia_last_login_name'); localStorage.removeItem('cia_last_login_code'); localStorage.setItem('cia_account_login_name', loginName); } catch(e) {}
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
+          localStorage.setItem('cia_account_login_name', loginName);
+        } catch(e) {}
         setTimeout(closeAccountCreateModal, 1400);
       });
     }
@@ -3089,6 +3398,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
       const done = () => {
         currentUser = null;
+        window.dispatchEvent(new Event('blackridge:logout'));
         location.reload();
       };
       ciaSocket.once('auth:logout:result', done);
@@ -3111,6 +3421,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if (chiefSecrets) chiefSecrets.style.display = currentUser.rank === 'CIA CHIEF' ? 'block' : 'none';
       const auditNav = document.getElementById('audit-nav');
       if (auditNav) auditNav.style.display = (currentUser.rank === 'CIA CHIEF' || currentUser.rank === 'SUPREME COMMANDER') ? 'flex' : 'none';
+      const securityNav = document.getElementById('security-nav');
+      if (securityNav) securityNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const leaderTools = document.getElementById('leader-self-tools');
       if (leaderTools) leaderTools.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'block' : 'none';
       const handoverButton = document.getElementById('chief-handover-button');
@@ -3126,6 +3438,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       updateViews();
       updateServiceUI();
       renderMorsePanels();
+      if (['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) loadSecurityCenter();
     }
 
     function setUserStatus(newStatus) {
@@ -3968,6 +4281,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         alert('أكمل الموافقات الثلاث من لوحة الحالة قبل دخول أقسام الخدمة.');
         return;
       }
+      if (paneId === 'security-panel' && (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)))) {
+        alert('مركز الأمن متاح للقيادة الأمنية فقط.');
+        return;
+      }
       if (paneId === 'morse-translator-view' && currentUser && currentUser.serviceApproved === false) {
         alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
         return;
@@ -3993,6 +4310,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (paneId === 'sos-history-map-view') setTimeout(function(){ initSOSHistoryMap(); }, 50);
       if (paneId === 'bank') setTimeout(loadBankDirectory, 50);
       if (paneId === 'operations') setTimeout(function(){ loadTacticalOperations(); loadOperationAgentDirectory(); }, 50);
+      if (paneId === 'security-panel') setTimeout(loadSecurityCenter, 50);
       updateViews();
     }
 
@@ -4012,6 +4330,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
         renderChiefPanel();
         renderDailyAuditLogs();
+        renderSecurityCenter();
+      } else {
+        const securityNav = document.getElementById('security-nav');
+        if (securityNav) securityNav.style.display = 'none';
+        renderSecurityCenter();
       }
     }
 
@@ -4036,6 +4359,134 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           return `<div class="audit-log-item"><div class="audit-log-title">مباشرة ${esc(r.dayKey||'')}</div><div class="audit-log-meta">#${esc(r.userCode||'')} — ${esc(r.userName||'')}<br>البداية: ${esc(start)}<br>النهاية: ${esc(end)}<br>الراتب: ${r.salaryPaid ? 'تم الصرف' : 'مؤهل / لم يُصرف'}</div></div>`;
         }).join('') : '<div class="identity-meta" style="text-align:center;padding:15px;">لا توجد سجلات مباشرة بعد.</div>';
       }
+    }
+
+    function applySecurityCenterResult(result) {
+      if (!result || !result.ok) return;
+      securityIncidents = Array.isArray(result.incidents) ? result.incidents : [];
+      unreadSecurityNotificationCount = Number(result.unreadSecurityNotifications) || 0;
+      renderSecurityCenter();
+    }
+
+    function loadSecurityCenter() {
+      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!ciaSocket || !ciaSocket.connected) return;
+      ciaSocket.emit('security:getLogs', {}, function(result) {
+        if (!result || !result.ok) {
+          if (result && result.message) alert(result.message);
+          return;
+        }
+        applySecurityCenterResult(result);
+      });
+    }
+
+    function renderSecurityCenter() {
+      const root = document.getElementById('security-panel');
+      if (!root) return;
+      const allowed = !!currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank));
+      if (!allowed) {
+        ['security-summary','security-active-alerts','security-restricted-members','security-manual-suspend','security-incident-list'].forEach(id => {
+          const box = document.getElementById(id);
+          if (box) box.innerHTML = '';
+        });
+        return;
+      }
+      const chief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      const allMembers = Array.isArray(registeredUsers) ? registeredUsers : [];
+      const restricted = allMembers.filter(user => user && (user.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(user.securityStatus)));
+      const currentStatusFor = incident => allMembers.find(user =>
+        (incident.userId && user.id === incident.userId) ||
+        (incident.publicCode && user.publicCode === incident.publicCode)
+      );
+      const activeAlerts = (securityIncidents || []).filter(incident => {
+        if (incident.status === 'REVIEW_REQUIRED') return true;
+        if (!['SUSPENDED','SECURITY_RESTRICTED'].includes(incident.status)) return false;
+        const member = currentStatusFor(incident);
+        return !!member && (member.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(member.securityStatus));
+      }).slice(0, 30);
+      const restored = (securityIncidents || []).filter(incident => incident.action === 'MEMBER_RESTORED').length;
+      const summary = document.getElementById('security-summary');
+      if (summary) summary.innerHTML = `
+        <div style="display:flex;gap:9px;flex-wrap:wrap;">
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">تنبيهات غير مقروءة</div><div style="font-size:1.35rem;color:#facc15;font-weight:900;">${unreadSecurityNotificationCount}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">حالات مفتوحة</div><div style="font-size:1.35rem;color:#f87171;font-weight:900;">${activeAlerts.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">أعضاء موقوفون أو مقيّدون</div><div style="font-size:1.35rem;color:#fbbf24;font-weight:900;">${restricted.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">عمليات استعادة مسجلة</div><div style="font-size:1.35rem;color:#4ade80;font-weight:900;">${restored}</div></div>
+        </div>`;
+
+      const describe = incident => {
+        const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        const who = incident.userName
+          ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}`
+          : incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد';
+        const actor = incident.actorName || incident.actorCode;
+        const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
+        return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
+          <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
+          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
+          ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
+        </div>`;
+      };
+      const alertsBox = document.getElementById('security-active-alerts');
+      if (alertsBox) alertsBox.innerHTML = activeAlerts.length
+        ? activeAlerts.map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حالات أمنية مفتوحة.</div>';
+
+      const restrictedBox = document.getElementById('security-restricted-members');
+      if (restrictedBox) {
+        restrictedBox.innerHTML = restricted.length
+          ? restricted.map(user => `<div class="audit-log-item"><div class="audit-log-title">${esc(user.name || user.publicCode || 'عضو')}</div>
+              <div class="audit-log-meta">#${esc(user.publicCode || '—')} · ${esc(user.rank || 'AGENT')} · ${esc(user.securityStatus || (user.suspended ? 'SUSPENDED' : 'RESTRICTED'))}</div>
+              ${user.suspensionReason ? `<div class="audit-log-details">${esc(user.suspensionReason)}</div>` : ''}
+              ${chief ? `<button type="button" class="btn-main" data-security-restore="${esc(user.id)}" style="margin-top:8px;background:#166534;">استعادة بواسطة CIA CHIEF</button>` : ''}
+            </div>`).join('')
+          : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حسابات مقيّدة أو موقوفة.</div>';
+      }
+      root.querySelectorAll('[data-security-restore]').forEach(button => {
+        button.onclick = () => restoreSecurityMember(button.dataset.securityRestore);
+      });
+
+      const manual = document.getElementById('security-manual-suspend');
+      if (manual) {
+        manual.style.display = chief ? 'block' : 'none';
+        if (chief) {
+          const candidates = allMembers.filter(user => user && user.id !== currentUser.id && user.securityStatus === 'ACTIVE' && user.suspended !== true);
+          manual.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="security-suspend-target" class="input-field" style="flex:1;min-width:180px;">
+              <option value="">اختر عضوًا للإيقاف الأمني</option>
+              ${candidates.map(user => `<option value="${esc(user.id)}">${esc(user.name || user.publicCode || 'عضو')} — #${esc(user.publicCode || '—')}</option>`).join('')}
+            </select>
+            <input id="security-suspend-reason" class="input-field" maxlength="300" placeholder="سبب الإيقاف — لا تضع نص الرسالة أو كلمة مرور">
+            <button type="button" class="btn-main" onclick="suspendSecurityMemberFromPanel()" style="background:#991b1b;">إيقاف أمني</button>
+          </div>`;
+        }
+      }
+
+      const incidentsBox = document.getElementById('security-incident-list');
+      if (incidentsBox) incidentsBox.innerHTML = securityIncidents.length
+        ? securityIncidents.slice(0, 100).map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حوادث مسجلة.</div>';
+    }
+
+    function suspendSecurityMemberFromPanel() {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      const userId = document.getElementById('security-suspend-target')?.value || '';
+      const reason = (document.getElementById('security-suspend-reason')?.value || '').trim();
+      if (!userId || !reason) return alert('اختر عضوًا واكتب سبب الإيقاف.');
+      if (!confirm('سيُمنع العضو من تسجيل الدخول حتى يراجعه CIA CHIEF. هل تريد المتابعة؟')) return;
+      ciaSocket.emit('security:suspendMember', { userId, reason }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر إيقاف العضو.');
+        loadSecurityCenter();
+      });
+    }
+
+    function restoreSecurityMember(userId) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      if (!confirm('سيُرفع الإيقاف الأمني، لكن الحساب سيبقى خارج الخدمة حتى يبدأ العضو الخدمة بنفسه. تأكيد الاستعادة؟')) return;
+      ciaSocket.emit('security:restoreMember', { userId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذرت استعادة العضو.');
+        loadSecurityCenter();
+      });
     }
 
     function updateServiceUI() {
@@ -5403,7 +5854,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           const canChangeTargetRank = u.id !== (currentUser && currentUser.id) && (actorRank === 'CIA CHIEF' && normalizedRank !== 'CIA CHIEF' || actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(normalizedRank));
           const rankButton = canChangeTargetRank ? '<button type="button" onclick="manageRank(' + index + ')" style="padding:3px 6px;background:var(--cyan-glow);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">ترقية / تنزيل</button>' : '';
           const kickButton = canManageTarget ? '<button type="button" onclick="kickMember(' + index + ')" title="فصل العضو مع الاحتفاظ ببياناته" style="padding:3px 6px;background:var(--red-alert);color:#fff;border:none;cursor:pointer;border-radius:3px;">فصل من الخدمة</button>' : '';
-          const serviceButton = u.status === 'مفصول' ? (canManageTarget ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">إعادة للخدمة</button>' : '') : rankButton + ' ' + kickButton;
+          const serviceButton = u.status === 'مفصول' ? (actorRank === 'CIA CHIEF' ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">استعادة أمنية</button>' : '') : rankButton + ' ' + kickButton;
           const codeCell = u.publicCode ? '#' + esc(u.publicCode) : '<span style="color:var(--primary-gold);">بانتظار اعتماد الخدمة</span>';
           return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">' + codeCell + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank ' + getRankBadge(normalizedRank) + '">' + esc(getRankLabel(normalizedRank)) + '</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>' + editCodeBtn + ' ' + serviceButton + '</td></tr>';
         }).join('');
@@ -5569,12 +6020,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     function reactivateMember(index) {
-      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
       const member = registeredUsers[index];
       if (!member) return;
-      ciaSocket.emit('admin:reactivateMember', { memberId: member.id }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر إعادة العضو للخدمة.');
-      });
+      restoreSecurityMember(member.id);
     }
 
     function kickMember(index) {
@@ -7482,5 +7931,181 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
   }
 })();
 </script>
+  <script src="/notifications-client.js"></script>
+  <script>
+  (() => {
+    'use strict';
+    const host = document.getElementById('ibp-command-center');
+    const legacyShell = host && host.querySelector('.ibp-shell');
+    if (!host || !legacyShell || host.dataset.brWorldMounted) return;
+    host.dataset.brWorldMounted = 'true';
+
+    const pages = [
+      { key: 'command', label: 'COMMAND', icon: 'fa-chart-line', title: 'COMMAND CENTER', description: 'Unified overview of Black Ridge command channels.' },
+      { key: 'sectors', label: 'SECTORS', icon: 'fa-crosshairs', title: 'SECTOR COMMAND', description: 'Sector directory and command boundaries will be available in a later phase.' },
+      { key: 'battalions', label: 'BATTALIONS', icon: 'fa-shield-halved', title: 'BATTALIONS', description: 'Battalion command pages will be built in a later phase.' },
+      { key: 'map', label: 'LOS SANTOS MAP', icon: 'fa-map-location-dot', title: 'LOS SANTOS MAP', description: 'Tactical map tools are reserved for a later phase.' },
+      { key: 'operations', label: 'OPERATIONS', icon: 'fa-crosshairs', title: 'OPERATIONS', description: 'Operations planning and records will be built in a later phase.' },
+      { key: 'sos', label: 'SOS', icon: 'fa-tower-broadcast', title: 'CRITICAL SOS', description: 'SOS intake and response workflows are reserved for a later phase.' },
+      { key: 'reports', label: 'REPORTS', icon: 'fa-file-lines', title: 'REPORTS', description: 'Report authoring and review are reserved for a later phase.' },
+      { key: 'personnel', label: 'PERSONNEL', icon: 'fa-users', title: 'PERSONNEL', description: 'Personnel directory and assignment tools will be built in a later phase.' },
+      { key: 'messages', label: 'MESSAGES', icon: 'fa-envelope', title: 'MESSAGES', description: 'Command messaging is reserved for a later phase.' },
+      { key: 'bank', label: 'BANK', icon: 'fa-building-columns', title: 'BANK', description: 'Bank and finance tools are reserved for a later phase.' },
+      { key: 'intelligence', label: 'INTELLIGENCE', icon: 'fa-fingerprint', title: 'INTELLIGENCE', description: 'Intelligence workflows are reserved for a later phase.' }
+    ];
+    const icon = (name) => '<i class="fa-solid ' + name + '" aria-hidden="true"></i>';
+    const nav = pages.map((item) =>
+      '<button type="button" class="brw-nav-button" data-br-page="' + item.key + '" title="' + item.label + '" aria-label="' + item.label + '">' +
+      icon(item.icon) + '<span>' + item.label + '</span></button>'
+    ).join('');
+    const nodes = [
+      { page: 'sectors', title: 'SECTOR COMMAND', subtitle: 'CENTRAL COMMAND', icon: 'fa-crosshairs', color: '#d6b168', cls: 'sector' },
+      { page: 'battalions', title: 'BATTALION ALPHA', subtitle: 'ALPHA SECTOR', icon: 'fa-shield-halved', color: '#63c9ee', cls: 'alpha' },
+      { page: 'battalions', title: 'BATTALION BRAVO', subtitle: 'BRAVO SECTOR', icon: 'fa-shield-halved', color: '#66d3b0', cls: 'bravo' },
+      { page: 'battalions', title: 'BATTALION DELTA', subtitle: 'DELTA SECTOR', icon: 'fa-shield-halved', color: '#ef707a', cls: 'delta' },
+      { page: 'battalions', title: 'BATTALION CHARLIE', subtitle: 'CHARLIE SECTOR', icon: 'fa-shield-halved', color: '#a995e8', cls: 'charlie' },
+      { page: 'operations', title: 'OPERATIONS', subtitle: 'ACTIVE MISSIONS', icon: 'fa-crosshairs', color: '#e5a15f', cls: 'operations' },
+      { page: 'personnel', title: 'PERSONNEL', subtitle: 'ROSTER OVERVIEW', icon: 'fa-users', color: '#77b9d7', cls: 'personnel' },
+      { page: 'intelligence', title: 'INTELLIGENCE', subtitle: 'ANALYSIS & RECON', icon: 'fa-fingerprint', color: '#61c9e8', cls: 'intelligence' }
+    ];
+    const nodeMarkup = nodes.map((item) =>
+      '<button type="button" class="brw-node brw-node-' + item.cls + '" style="--node-color:' + item.color + '" data-br-page="' + item.page + '">' +
+      '<span class="brw-node-icon">' + icon(item.icon) + '</span><span class="brw-node-copy"><b>' + item.title + '</b><small>' + item.subtitle + '</small></span></button>'
+    ).join('');
+    const shield = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 2.5 20 6v5.2c0 5-3.4 8.4-8 10.3-4.6-1.9-8-5.3-8-10.3V6l8-3.5Z"/><path d="m9 12 2 2 4-4"/></svg>';
+    const root = document.createElement('section');
+    root.id = 'br-world-command-root';
+    root.setAttribute('aria-label', 'BLACK RIDGE WORLD COMMAND');
+    root.hidden = true;
+    root.innerHTML =
+      '<div class="brw-app"><header class="brw-topbar">' +
+        '<div class="brw-brand"><span class="brw-seal">' + shield + '</span><div><strong>BLACK RIDGE</strong><small>WORLD COMMAND NETWORK</small></div></div>' +
+        '<div class="brw-top-nav" aria-hidden="true"><span>INTELLIGENCE</span><span>OPERATIONS</span><span>SECURITY</span><span>COMMAND</span></div>' +
+        '<div class="brw-header-tools"><label class="brw-search">' + icon('fa-magnifying-glass') + '<input aria-label="Search command systems" placeholder="Search systems..." disabled></label>' +
+        '<button class="brw-icon-button" type="button" aria-label="Notifications preview" disabled>' + icon('fa-bell') + '<span class="brw-notice-dot"></span></button>' +
+        '<div class="brw-profile"><span class="brw-avatar">' + icon('fa-user-shield') + '</span><span><b>AG-217</b><small>AGENT · PREVIEW</small></span></div>' +
+        '<span class="brw-clock" id="brw-clock">--:--</span><button class="brw-icon-button" type="button" data-br-exit aria-label="Exit Sector Command">' + icon('fa-arrow-up-right-from-square') + '</button></div></header>' +
+        '<div class="brw-frame"><aside class="brw-sidebar"><div class="brw-nav-caption">COMMAND NETWORK</div><nav class="brw-nav" aria-label="World Command modules">' + nav + '</nav>' +
+          '<div class="brw-side-footer"><strong>BLACK RIDGE</strong><small>ONE NETWORK · ONE MISSION</small><button class="brw-legacy" type="button" data-br-legacy>OPEN EXISTING IBP</button></div></aside>' +
+          '<main class="brw-main"><header class="brw-page-head"><div><div class="brw-eyebrow">WORLD COMMAND / LOS SANTOS THEATER</div><h1 id="brw-page-title">COMMAND CENTER</h1><p id="brw-page-description">Unified overview of Black Ridge command channels.</p></div><div class="brw-head-status"><i class="brw-live-dot"></i><span class="brw-live-label">PREVIEW INTERFACE</span></div></header>' +
+            '<div class="brw-command-layout"><div class="brw-center-column" id="brw-page-content"></div><aside class="brw-side-panels" id="brw-side-panels"></aside></div>' +
+            '<footer class="brw-footer"><span>BLACK RIDGE WORLD COMMAND</span><span>PHASE 1 · VISUAL PREVIEW · NO LIVE DATA</span></footer></main></div></div>';
+    host.insertBefore(root, legacyShell);
+
+    const compactRow = (code, title, detail, status, tone) =>
+      '<div class="brw-compact-row"><span class="brw-mini-icon ' + tone + '">' + code + '</span><span class="brw-compact-copy"><b>' + title + '</b><small>' + detail + '</small></span><span class="brw-row-status ' + tone + '">' + status + '</span></div>';
+    const panel = (iconName, title, count, body, page, danger) =>
+      '<article class="brw-panel brw-side-panel"><header class="brw-panel-head"><div class="brw-side-title ' + (danger ? 'danger' : '') + '">' + icon(iconName) + '<h2>' + title + '</h2></div>' +
+      '<span class="brw-count ' + (danger ? 'danger' : '') + '">' + count + '</span><button type="button" class="brw-view-all" data-br-page="' + page + '">VIEW ALL</button></header>' +
+      '<div class="brw-compact-list">' + body + '</div><div class="brw-panel-foot">STATIC INTERFACE PREVIEW · PHASE 1</div></article>';
+
+    function renderDashboard() {
+      return '<section class="brw-stage"><div class="brw-stage-meta"><span>GLOBAL OPERATIONS / LOS SANTOS</span><span class="brw-preview-tag">PHASE 1 · UI PREVIEW</span></div>' +
+        '<div class="brw-globe-wrap"><div class="brw-orbit"></div><div class="brw-orbit orbit-two"></div><div class="brw-orbit orbit-three"></div><div class="brw-globe-pulse"></div>' +
+        '<svg class="brw-world-svg" viewBox="0 0 360 360" role="img" aria-label="Decorative 3D globe preview"><defs>' +
+          '<clipPath id="brw-sphere-clip"><circle cx="180" cy="180" r="158"/></clipPath>' +
+          '<radialGradient id="brw-ocean" cx="36%" cy="28%"><stop stop-color="#24536b"/><stop offset=".5" stop-color="#0c2a40"/><stop offset="1" stop-color="#020913"/></radialGradient>' +
+          '<radialGradient id="brw-shade" cx="35%" cy="28%"><stop stop-color="#fff" stop-opacity=".15"/><stop offset=".55" stop-color="#67d6fa" stop-opacity=".02"/><stop offset="1" stop-color="#000" stop-opacity=".72"/></radialGradient>' +
+          '<pattern id="brw-grid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="#74d6f5" stroke-opacity=".16" stroke-width=".8"/></pattern></defs>' +
+          '<g clip-path="url(#brw-sphere-clip)"><circle cx="180" cy="180" r="158" fill="url(#brw-ocean)"/>' +
+          '<path class="brw-land" d="m38 93 28-22 22 5 13-14 25 7 8 17-10 11 15 11-4 21-17 4-7 17-20 4-5 15-15 4-13-15-17-4-6-27-14-11 4-23Zm63 80 15 4 9 16-8 18 9 19-7 19-15-3-11-20-2-25-10-17Zm65-94 21-17 34 4 19 12 27 1 12 16-13 14-22-4-10 18-18 4-5 20-14 9-14-13-19-2-4-18-17-10 6-20-12-8Zm35 97 14-9 18 10 6 17-9 17-5 30-14 18-12-10 4-22-13-18 3-19Zm74-80 19-3 14 12 20 2 15 18-5 17-14 1-6 16-15 3-13-13-17-3-3-19-13-9Z"/>' +
+          '<path class="brw-gridline" d="M22 180h316M180 22v316M38 121h284M38 239h284M85 34v292M275 34v292"/>' +
+          '<ellipse class="brw-gridline" cx="180" cy="180" rx="82" ry="158"/><ellipse class="brw-gridline" cx="180" cy="180" rx="132" ry="158"/>' +
+          '<circle cx="180" cy="180" r="158" fill="url(#brw-grid)"/><circle cx="180" cy="180" r="158" fill="url(#brw-shade)"/></g>' +
+          '<circle cx="180" cy="180" r="158" fill="none" stroke="#8ce1ff" stroke-opacity=".8" stroke-width="1.5"/></svg>' +
+          '<div class="brw-globe-core"><span class="brw-globe-crest">' + shield + '</span><strong>BLACK RIDGE</strong><small>WORLD COMMAND</small></div></div>' +
+        '<div class="brw-nodes">' + nodeMarkup + '</div><span class="brw-coordinate left">34°03′N / 118°15′W</span><span class="brw-coordinate right">SECURE CHANNEL · DEMO VIEW</span></section>' +
+        '<section class="brw-lower-grid"><article class="brw-panel"><header class="brw-panel-head"><div><span class="brw-panel-kicker">TACTICAL OVERVIEW</span><h2>LOS SANTOS MAP</h2></div><button class="brw-view-all" type="button" data-br-page="map">PREVIEW&nbsp; →</button></header>' +
+          '<div class="brw-map-preview" aria-label="Decorative Los Santos map preview"><svg viewBox="0 0 720 270" role="img" aria-label="Static tactical map preview"><defs><pattern id="brw-map-grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#29434d" stroke-width=".8" stroke-dasharray="2 4"/></pattern></defs>' +
+            '<rect width="720" height="270" fill="#07121b"/><rect width="720" height="270" fill="url(#brw-map-grid)"/><path class="brw-map-water" d="M0 0h720v39l-48 15-38-10-44 20-58-13-51 20-69-15-59 17-52-10-41 18-58-11-50 17-45-12-44 19V0Z"/>' +
+            '<path class="brw-map-land" d="m61 108 58-31 61 12 42-30 53 19 53-24 60 23 54-13 51 30 56-5 61 39-15 45-45 30-17 39-63 4-36-19-54 27-51-21-49 23-43-31-44 17-46-24-52 3-26-40-42-10-22-45Z"/>' +
+            '<path class="brw-map-road" d="m40 180 92-25 83 18 70-39 77 17 82-39 78 26 104-26M92 218l85-23 76 18 87-19 75 24 94-24 102 25M174 87l28 75 35 75m81-131 9 73 47 72m94-127-31 61 38 62m83-98-17 49 25 48"/>' +
+            '<path class="brw-map-road minor" d="m118 113 75 22 64-5 62 27 63-16 71 29 65-12m-292 61 32-39 74-14 47 19 49-6m-109-97 9 55m-63 62 14-45m205 53 10-54"/>' +
+            '<g fill="#66cdeb" stroke="#07121b" stroke-width="3"><circle cx="207" cy="153" r="6"/><circle cx="320" cy="139" r="6"/><circle cx="434" cy="172" r="6"/><circle cx="531" cy="128" r="6"/><circle cx="360" cy="211" r="6"/></g>' +
+            '<text x="30" y="250" fill="#92aab4" font-size="10" font-family="monospace">LOS SANTOS · GRID 04 / 27 · PREVIEW ONLY</text></svg><span class="brw-map-label"><i class="fa-solid fa-location-dot"></i> STATIC MAP PREVIEW · NO LIVE UNITS</span></div></article>' +
+          '<article class="brw-panel"><header class="brw-panel-head"><div><span class="brw-panel-kicker">INTELLIGENCE DESK</span><h2>LATEST REPORTS</h2></div><button class="brw-view-all" type="button" data-br-page="reports">VIEW ALL&nbsp; →</button></header>' +
+            '<div class="brw-report-table"><div class="brw-report-row"><span><b>RPT-026-0412</b><small>Operation overview</small></span><span class="brw-status">DEMO</span><i class="brw-priority">HIGH</i></div>' +
+            '<div class="brw-report-row"><span><b>RPT-026-0411</b><small>Sector intelligence</small></span><span class="brw-status">DEMO</span><i class="brw-priority">MED</i></div>' +
+            '<div class="brw-report-row"><span><b>RPT-026-0410</b><small>Field situation</small></span><span class="brw-status">DEMO</span><i class="brw-priority">LOW</i></div></div>' +
+            '<div class="brw-demo-note">' + icon('fa-shield-halved') + '<span>Illustrative preview only — no live reports are connected in Phase 1.</span></div></article></section>';
+    }
+
+    function renderSidePanels() {
+      return panel('fa-crosshairs', 'ACTIVE OPERATIONS', '04',
+        compactRow('OP', 'Operation Nightfall', 'Los Santos · Preview', 'ONGOING', 'green') +
+        compactRow('OP', 'Operation Steel', 'Paleto Bay · Preview', 'ONGOING', 'green') +
+        compactRow('OP', 'Operation Horizon', 'San Andreas · Preview', 'PLANNED', 'gold') +
+        compactRow('OP', 'Operation Viper', 'El Burro Heights · Preview', 'PLANNED', 'gold'), 'operations') +
+        panel('fa-tower-broadcast', 'CRITICAL SOS', '02',
+        compactRow('!', 'S.O.S #7842', 'Los Santos · Demo item', 'DEMO', 'red') +
+        compactRow('!', 'S.O.S #7839', 'Sandy Shores · Demo item', 'DEMO', 'red'), 'sos', true) +
+        panel('fa-file-lines', 'RECENT REPORTS', '05',
+        compactRow('R', 'RPT-2026-0412', 'Operation report', 'DEMO', 'cyan') +
+        compactRow('R', 'RPT-2026-0411', 'Intelligence report', 'DEMO', 'gold') +
+        compactRow('R', 'RPT-2026-0410', 'Field report', 'DEMO', 'cyan'), 'reports') +
+        panel('fa-users', 'ONLINE PERSONNEL', '12 / 48',
+        compactRow('AG', 'AG-217', 'Los Santos', 'DEMO', 'green') +
+        compactRow('AG', 'AG-104', 'Sandy Shores', 'DEMO', 'green') +
+        compactRow('AG', 'AG-332', 'Paleto Bay', 'DEMO', 'green') +
+        compactRow('AG', 'AG-276', 'Los Santos', 'DEMO', 'green'), 'personnel') +
+        '<div class="brw-quote-panel"><p>“INTELLIGENCE IS NOT WHAT YOU KNOW.<br>IT IS WHAT YOU DO WITH WHAT YOU KNOW.”</p><small>— BLACK RIDGE</small></div>';
+    }
+
+    function renderPlaceholder(item) {
+      return '<section class="brw-placeholder"><div class="brw-placeholder-card"><span class="brw-placeholder-icon">' + icon(item.icon) + '</span>' +
+        '<div class="brw-eyebrow">BLACK RIDGE WORLD COMMAND / PHASE 1</div><h2>' + item.title + '</h2><p>' + item.description + '</p>' +
+        '<span class="brw-coming"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> MODULE COMING IN NEXT PHASE</span><br>' +
+        '<button type="button" class="brw-back-button" data-br-page="command">' + icon('fa-arrow-left') + ' RETURN TO COMMAND CENTER</button></div></section>';
+    }
+
+    const content = root.querySelector('#brw-page-content');
+    const sidebarPanels = root.querySelector('#brw-side-panels');
+    function setPage(key) {
+      const item = pages.find((candidate) => candidate.key === key) || pages[0];
+      root.querySelector('#brw-page-title').textContent = item.key === 'command' ? 'COMMAND CENTER' : item.title;
+      root.querySelector('#brw-page-description').textContent = item.key === 'command' ? 'Unified overview of Black Ridge command channels.' : item.description;
+      content.innerHTML = item.key === 'command' ? renderDashboard() : renderPlaceholder(item);
+      sidebarPanels.innerHTML = item.key === 'command' ? renderSidePanels() : '';
+      sidebarPanels.hidden = item.key !== 'command';
+      root.querySelectorAll('.brw-nav-button').forEach((button) => {
+        const active = button.dataset.brPage === item.key;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      });
+    }
+    function setMode(worldCommand) {
+      root.hidden = !worldCommand;
+      legacyShell.hidden = worldCommand;
+    }
+
+    root.addEventListener('click', (event) => {
+      const legacyButton = event.target.closest('[data-br-legacy]');
+      if (legacyButton) { setMode(false); return; }
+      const exitButton = event.target.closest('[data-br-exit]');
+      if (exitButton) {
+        if (typeof window.exitIBPWorkspace === 'function') window.exitIBPWorkspace();
+        return;
+      }
+      const pageButton = event.target.closest('[data-br-page]');
+      if (pageButton) setPage(pageButton.dataset.brPage);
+    });
+    if (typeof window.openIBPHome === 'function') {
+      const openExistingCenter = window.openIBPHome;
+      window.openIBPHome = function () {
+        const result = openExistingCenter.apply(this, arguments);
+        setMode(true);
+        return result;
+      };
+    }
+    const updateClock = () => {
+      const clock = root.querySelector('#brw-clock');
+      if (clock) clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    };
+    updateClock();
+    window.setInterval(updateClock, 60000);
+    setPage('command');
+  })();
+  </script>
 </body>
 </html>

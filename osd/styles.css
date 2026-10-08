@@ -251,8 +251,9 @@ tbody tr:hover td { background: rgba(255,255,255,.018); }
 .paper-doc-meta small { color: #6a675f; font: 600 6px var(--mono); letter-spacing: .1em; }
 .paper-doc-meta b { font: 700 7px var(--mono); }
 .paper-rule { height: 1px; margin: 13px 0 11px; background: #a7a398; }
-.paper-meta { display: grid; grid-template-columns: 1fr 1.2fr .55fr; gap: 6px; color: #75726a; font: 600 6px var(--mono); letter-spacing: .06em; }
+.paper-meta { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; color: #75726a; font: 600 6px var(--mono); letter-spacing: .06em; }
 .paper-meta span { display: grid; gap: 4px; }
+.paper-meta i { font-style: normal; }
 .paper-meta b { color: #3e3c37; font-size: 7px; }
 .paper-type { margin-top: 27px; color: #76736a; text-align: center; font: 700 7px var(--mono); letter-spacing: .14em; }
 .paper-preview h2 { min-height: 40px; margin: 10px 0; color: #242521; text-align: center; font-size: 16px; font-weight: 700; }
@@ -263,6 +264,8 @@ tbody tr:hover td { background: rgba(255,255,255,.018); }
 .paper-signature small { color: #615e55; font: 700 6px var(--mono); letter-spacing: .1em; }
 .paper-signature b { color: #292a27; font: 700 8px var(--mono); }
 .paper-signature span:not(.signature-seal) { color: #747168; font-size: 7px; }
+.paper-signature-image { display: block; width: min(170px,45vw); height: 42px; object-fit: contain; object-position: left center; mix-blend-mode: multiply; }
+.paper-signature-image[hidden] { display: none; }
 .signature-seal { display: grid; place-items: center; width: 43px; height: 43px; margin-inline-start: auto; border: 1px solid rgba(73,83,73,.55); border-radius: 50%; color: #49584e; text-align: center; font: 700 6px/1.5 var(--mono); transform: rotate(-9deg); }
 .paper-code { display: flex; align-items: center; gap: 8px; margin: 12px 3px 9px; padding-top: 9px; border-top: 1px solid rgba(70,68,62,.2); }
 .code-grid { width: 34px; height: 34px; border: 4px solid #30312d; background: repeating-conic-gradient(#30312d 0 25%, transparent 0 50%) 0 0/7px 7px; }
@@ -365,12 +368,19 @@ tbody tr:hover td { background: rgba(255,255,255,.018); }
 .dialog-head small { color: #9b8a5d; font: 600 8px var(--mono); }
 .dialog-body { padding: 16px 17px; }
 .dialog-copy { color: #c1cbd4; font-size: 10px; line-height: 1.8; white-space: pre-wrap; }
+.dialog-signature { display: block; width: min(230px,100%); height: 68px; margin: 0 0 13px; padding: 5px; border: 1px solid rgba(148,163,184,.14); border-radius: 4px; background: #f2efe6; object-fit: contain; }
 .dialog-meta-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-bottom: 14px; }
 .dialog-meta { padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
 .dialog-meta small, .dialog-meta b { display: block; }
 .dialog-meta small { color: #748391; font: 600 7px var(--mono); }
 .dialog-meta b { margin-top: 5px; color: #d5dde4; font: 600 8px var(--mono); overflow-wrap: anywhere; }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 17px 15px; border-top: 1px solid var(--line); }
+.signature-dialog { width: min(650px,100%); }
+.signature-dialog-hint { margin: 0 0 12px; color: #a7b2bd; font-size: 10px; line-height: 1.8; }
+.signature-canvas { display: block; width: 100%; height: 190px; border: 1px solid rgba(209,174,105,.42); border-radius: 5px; background: #f2efe6; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.signature-canvas-caption { margin-top: 8px; color: #778592; font: 600 7px var(--mono); letter-spacing: .09em; text-align: center; }
+.signature-actions { justify-content: flex-end; }
+.signature-actions .button-primary { color: #16130c; }
 .toast-region { position: fixed; inset-inline-end: 18px; bottom: 18px; z-index: 80; display: grid; gap: 7px; }
 .toast { max-width: min(360px,calc(100vw - 36px)); padding: 10px 13px; border: 1px solid rgba(104,211,183,.25); border-radius: 4px; color: #dce8e2; background: #101a19; box-shadow: 0 8px 30px rgba(0,0,0,.35); font-size: 9px; animation: appear .15s ease-out; }
 .toast.error { border-color: rgba(216,125,125,.3); background: #1b1113; }
@@ -484,6 +494,7 @@ html[dir="ltr"] .paper-preview { direction: ltr; }
   .form-actions .button { flex: 1 1 auto; }
   .page-footer { flex-wrap: wrap; font-size: 6px; }
   .paper-preview { min-height: 480px; padding-inline: 16px; }
+  .signature-canvas { height: 160px; }
 }
 @media (max-width: 390px) {
   .brand-copy small { max-width: 93px; overflow: hidden; white-space: nowrap; }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="/notifications.css" rel="stylesheet">
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -471,8 +472,863 @@
     .morse-live-notice span { display:block; color:var(--text-dim); font-size:.68rem; line-height:1.65; overflow-wrap:anywhere; }
     @keyframes morseNoticeIn { from { opacity:0; transform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
   
+  
+    .operation-picker { position: relative; width: 100%; margin: 5px 0 8px; }
+    .operation-picker.is-open { z-index: 120; }
+    .operation-picker-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; color: var(--text-bright); background: linear-gradient(135deg, #111827, #0b1220); border: 1px solid rgba(34,211,238,.36); border-radius: 9px; text-align: right; cursor: pointer; transition: border-color .16s, box-shadow .16s, background .16s; }
+    .operation-picker-trigger:hover, .operation-picker.is-open .operation-picker-trigger { border-color: var(--cyan-glow); box-shadow: 0 0 0 3px rgba(34,211,238,.08); }
+    .operation-picker-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
+    .operation-picker-arrow { color: var(--cyan-glow); font-size: 1rem; transition: transform .16s; }
+    .operation-picker.is-open .operation-picker-arrow { transform: rotate(180deg); }
+    .operation-picker-selected { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .operation-picker-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; color: #dffaff; background: rgba(34,211,238,.09); border: 1px solid rgba(34,211,238,.23); border-radius: 999px; font-size: .63rem; }
+    .operation-picker-chip-remove { padding: 0 2px; color: var(--cyan-glow); background: transparent; border: 0; cursor: pointer; font-size: .85rem; line-height: 1; }
+    .operation-picker-panel { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 130; padding: 8px; background: #0b1220; border: 1px solid rgba(34,211,238,.42); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+    .operation-picker-panel[hidden] { display: none; }
+    .operation-picker-search { width: 100%; padding: 8px 10px; color: var(--text-bright); background: #111827; border: 1px solid var(--border); border-radius: 7px; outline: none; font-size: .74rem; }
+    .operation-picker-search:focus { border-color: var(--cyan-glow); }
+    .operation-picker-options { max-height: 230px; overflow: auto; margin-top: 7px; }
+    .operation-picker-option { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 7px; cursor: pointer; transition: background .14s; }
+    .operation-picker-option:hover { background: rgba(34,211,238,.09); }
+    .operation-picker-option[hidden] { display: none; }
+    .operation-picker-option input { flex: 0 0 auto; width: 15px; height: 15px; accent-color: var(--cyan-glow); }
+    .operation-picker-option-copy { display: grid; gap: 2px; min-width: 0; }
+    .operation-picker-option-copy strong { color: var(--text-bright); font-size: .7rem; font-weight: 700; }
+    .operation-picker-option-copy small { color: var(--text-dim); font-size: .61rem; }
+    .operation-picker-empty { padding: 12px 8px; color: var(--text-dim); text-align: center; font-size: .68rem; }
+
   </style>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<style id="ibp-system-styles">
+body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ibp-mode .mobile-header,body.ibp-mode .sidebar,body.ibp-mode .sidebar-overlay{display:none!important}body.ibp-mode .content-area{height:100vh;width:100vw;max-width:100vw;padding:0!important;overflow:hidden;flex:1;background:#05070b}body.ibp-mode #ibp-command-center.view-pane.active{display:block;height:100%;overflow:auto}body.ibp-mode .view-pane.active:not(#ibp-command-center){height:100vh;overflow:auto;padding:64px 16px 20px}
+#ibp-return-bar{position:fixed;inset:0 0 auto;height:50px;z-index:10020;align-items:center;justify-content:space-between;padding:0 16px;background:rgba(5,8,13,.96);border-bottom:1px solid rgba(94,234,212,.28);backdrop-filter:blur(12px);color:#dbe5ef;font:700 .72rem monospace}#ibp-return-bar button{border:1px solid rgba(94,234,212,.45);border-radius:5px;padding:7px 11px;background:#0e1820;color:#8ee8d7;cursor:pointer;font:inherit}
+.ibp-shell{--c:#5eead4;--g:#e9c46a;min-height:100%;height:100%;display:flex;flex-direction:column;background:radial-gradient(ellipse at 48% 40%,rgba(18,37,47,.56),transparent 55%),#05070b;color:#e7edf5;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden}.ibp-topbar{height:70px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 22px;border-bottom:1px solid rgba(148,163,184,.16);background:rgba(8,12,18,.88)}.ibp-brand{display:flex;align-items:center;gap:12px}.ibp-mark{width:42px;height:42px;display:grid;place-items:center;border:1px solid rgba(94,234,212,.65);border-radius:10px;color:var(--c);font:900 .86rem monospace;box-shadow:0 0 24px rgba(94,234,212,.13)}.ibp-brand-title{font:800 .88rem monospace;letter-spacing:.15em;color:#f4f7fb}.ibp-brand-sub{margin-top:4px;color:#7c8b9c;font:600 .58rem monospace;letter-spacing:.16em}.ibp-header-right{display:flex;align-items:center;gap:14px}.ibp-live{display:flex;align-items:center;gap:7px;color:#8ce0c3;font:700 .62rem monospace;letter-spacing:.1em}.ibp-dot{width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 11px #34d399;animation:ibpPulse 2s infinite}.ibp-clock{color:#93a3b5;font:700 .72rem monospace}.ibp-exit{border:1px solid #334155;border-radius:5px;padding:8px 10px;background:#0c121a;color:#c5d0dd;font-size:.68rem;cursor:pointer}
+.ibp-layout{flex:1;min-height:0;display:grid;grid-template-columns:224px minmax(0,1fr);direction:ltr}.ibp-rail{display:flex;flex-direction:column;gap:7px;padding:16px 12px;border-right:1px solid rgba(148,163,184,.14);background:rgba(7,10,15,.72);direction:rtl;overflow:auto}.ibp-profile{padding:13px;border:1px solid rgba(94,234,212,.18);border-radius:7px;background:linear-gradient(135deg,rgba(18,32,41,.8),rgba(11,17,25,.8));margin-bottom:8px}.ibp-kicker{color:#748599;font:700 .53rem monospace;letter-spacing:.14em}.ibp-code{display:block;margin:7px 0 4px;color:#f3f6fa;font:900 .96rem monospace;direction:ltr;text-align:right}.ibp-rank{color:var(--c);font:700 .62rem monospace}.ibp-unit{margin-top:7px;color:#8b99a9;font-size:.64rem}.ibp-rail-label{margin:6px 4px 2px;color:#607083;font:700 .52rem monospace;letter-spacing:.15em}.ibp-link{display:flex;align-items:center;gap:10px;width:100%;padding:10px 11px;border:1px solid transparent;border-radius:5px;background:transparent;color:#9aa8b7;text-align:right;font-size:.69rem;cursor:pointer}.ibp-link i{width:16px;color:#607d8a;text-align:center}.ibp-link:hover,.ibp-link.active{border-color:rgba(94,234,212,.22);background:rgba(22,45,51,.48);color:#e9f6f4}.ibp-link.active i,.ibp-link:hover i{color:var(--c)}.ibp-link[hidden],.ibp-card[hidden]{display:none!important}
+.ibp-main{min-width:0;overflow:auto;padding:20px 24px 26px;direction:rtl}.ibp-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:15px;margin-bottom:16px}.ibp-title{margin:0;color:#f4f7fb;font-size:1.18rem}.ibp-caption{margin-top:5px;color:#7c8b9b;font:600 .6rem monospace;letter-spacing:.13em}.ibp-chip{padding:7px 10px;border:1px solid rgba(233,196,106,.28);border-radius:4px;color:var(--g);background:rgba(233,196,106,.06);font:700 .58rem monospace;white-space:nowrap}.ibp-dashboard{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.78fr);gap:14px}.ibp-panel{border:1px solid rgba(148,163,184,.16);border-radius:8px;background:linear-gradient(145deg,rgba(14,21,30,.94),rgba(7,12,18,.96));box-shadow:0 14px 36px rgba(0,0,0,.22)}.ibp-map-panel{padding:13px}.ibp-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.ibp-panel-title{color:#dce6ef;font:800 .65rem monospace;letter-spacing:.12em}.ibp-panel-meta{color:#6f8193;font:600 .55rem monospace}.ibp-map{position:relative;height:270px;overflow:hidden;border:1px solid rgba(94,234,212,.18);border-radius:6px;background-color:#09121a;background-size:cover;background-position:center;isolation:isolate}.ibp-map:before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(7,12,18,.58),rgba(7,12,18,.73)),linear-gradient(rgba(94,234,212,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(94,234,212,.1) 1px,transparent 1px);background-size:auto,34px 34px,34px 34px}.ibp-map:after{content:"";position:absolute;inset:-45% 0;background:linear-gradient(180deg,transparent,rgba(94,234,212,.08),transparent);animation:ibpScan 7s linear infinite;pointer-events:none}.ibp-map-label{position:absolute;top:11px;right:12px;color:#b8d8d6;font:700 .56rem monospace;letter-spacing:.13em}.ibp-node{position:absolute;width:12px;height:12px;border:2px solid #071016;border-radius:50%;background:var(--c);box-shadow:0 0 0 5px rgba(94,234,212,.14),0 0 17px rgba(94,234,212,.75);animation:ibpPulse 2.3s infinite}.ibp-node.a{top:28%;left:31%}.ibp-node.b{top:58%;left:61%;animation-delay:.6s}.ibp-node.c{top:42%;left:78%;animation-delay:1.2s}.ibp-map-open{position:absolute;right:12px;bottom:10px;border:1px solid rgba(94,234,212,.52);border-radius:4px;padding:7px 10px;background:rgba(4,12,17,.82);color:#a9eee2;font-size:.63rem;cursor:pointer}.ibp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:10px}.ibp-stat{padding:11px 12px;border:1px solid rgba(148,163,184,.13);border-radius:6px;background:rgba(9,15,22,.76)}.ibp-stat-label{color:#748497;font:700 .52rem monospace;letter-spacing:.1em}.ibp-stat-value{margin-top:7px;color:#f1f5f9;font:900 1.1rem monospace}.ibp-stat-sub{margin-top:4px;color:#6c7d90;font-size:.57rem}.ibp-feed{padding:14px}.ibp-feed-row{display:flex;align-items:center;gap:9px;padding:11px 0;border-bottom:1px solid rgba(148,163,184,.1)}.ibp-feed-icon{width:29px;height:29px;display:grid;place-items:center;border:1px solid rgba(94,234,212,.25);border-radius:6px;color:var(--c);background:rgba(94,234,212,.06)}.ibp-feed-copy strong{display:block;color:#d7e1ea;font-size:.67rem}.ibp-feed-copy span{display:block;margin-top:4px;color:#6f8092;font:600 .54rem monospace}.ibp-note{margin-top:12px;padding:10px;border-right:2px solid rgba(94,234,212,.5);background:rgba(94,234,212,.035);color:#94a5b5;font-size:.62rem;line-height:1.7}.ibp-modules-head{margin:21px 0 10px}.ibp-modules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.ibp-card{position:relative;display:flex;align-items:flex-start;gap:10px;min-height:86px;padding:12px;border:1px solid rgba(148,163,184,.15);border-radius:7px;background:linear-gradient(140deg,rgba(16,24,33,.95),rgba(8,13,19,.96));color:#d6e0ea;text-align:right;cursor:pointer;transition:transform .16s ease,border-color .16s ease}.ibp-card:hover{transform:translateY(-2px);border-color:rgba(94,234,212,.43)}.ibp-card-icon{flex:none;width:31px;height:31px;display:grid;place-items:center;border:1px solid rgba(94,234,212,.2);border-radius:6px;color:var(--c);background:rgba(94,234,212,.05)}.ibp-card-title{display:block;color:#e5edf5;font-size:.67rem;font-weight:800}.ibp-card-desc{display:block;margin-top:5px;color:#718195;font-size:.56rem;line-height:1.5}.ibp-card-code{position:absolute;left:10px;top:10px;color:#506173;font:700 .48rem monospace}.ibp-foot{display:flex;justify-content:space-between;gap:10px;margin-top:16px;color:#607185;font:600 .52rem monospace;letter-spacing:.08em}
+@keyframes ibpPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.86)}}@keyframes ibpScan{0%{transform:translateY(-60%)}100%{transform:translateY(60%)}}@media(max-width:980px){.ibp-dashboard{grid-template-columns:1fr}.ibp-modules{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){.ibp-topbar{height:60px;padding:0 12px}.ibp-brand-title{font-size:.72rem}.ibp-brand-sub{font-size:.48rem}.ibp-header-right{gap:8px}.ibp-clock{display:none}.ibp-exit{font-size:.58rem;padding:7px}.ibp-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}.ibp-rail{flex-direction:row;align-items:center;gap:5px;padding:7px 9px;border-right:0;border-bottom:1px solid rgba(148,163,184,.14);overflow-x:auto;overflow-y:hidden}.ibp-profile,.ibp-rail-label{display:none}.ibp-link{flex:none;width:auto;white-space:nowrap;padding:8px 9px;font-size:.59rem}.ibp-link i{width:auto}.ibp-main{padding:14px 11px 20px}.ibp-title{font-size:1rem}.ibp-map{height:220px}.ibp-stats{gap:6px}.ibp-stat{padding:9px}.ibp-stat-value{font-size:.95rem}.ibp-modules{grid-template-columns:1fr 1fr;gap:7px}.ibp-card{min-height:82px;padding:9px}.ibp-card-icon{width:26px;height:26px}.ibp-card-title{font-size:.61rem}.ibp-foot{font-size:.45rem}}@media(max-width:390px){.ibp-modules{grid-template-columns:1fr}.ibp-live{font-size:.5rem}.ibp-brand{gap:7px}.ibp-mark{width:35px;height:35px}}@media(prefers-reduced-motion:reduce){.ibp-map:after,.ibp-node,.ibp-dot{animation:none!important}.ibp-card{transition:none}}
+</style>
+  <style id="ibp-workspace-inline-styles">
+#ibp-command-center[dir="ltr"] .ibp-main,
+#ibp-command-center[dir="ltr"] .ibp-rail {
+  direction: ltr;
+}
+
+#ibp-command-center[dir="rtl"] .ibp-main,
+#ibp-command-center[dir="rtl"] .ibp-rail {
+  direction: rtl;
+}
+
+#ibp-command-center .ibp-layout {
+  direction: ltr;
+}
+
+.ibp-language-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(192, 166, 105, 0.28);
+  border-radius: 5px;
+  background: rgba(9, 16, 23, 0.88);
+  color: #d6cba9;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.ibp-language-control select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f2ead7;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ibp-language-control option {
+  background: #101820;
+  color: #f2ead7;
+}
+
+.ibp-network-console {
+  margin: 18px 0 22px;
+  color: #e6e3d8;
+}
+
+.ibp-map-data-note {
+  position: absolute;
+  inset-inline-start: 10px;
+  inset-block-end: 10px;
+  z-index: 2;
+  padding: 5px 7px;
+  border: 1px solid rgba(203, 183, 127, 0.36);
+  border-radius: 3px;
+  background: rgba(6, 12, 17, 0.82);
+  color: #d5c99f;
+  font-size: 8px;
+  letter-spacing: 0.07em;
+  pointer-events: none;
+}
+
+#ibp-command-center #ibp-map-preview {
+  position: relative;
+}
+
+.ibp-network-heading,
+.ibp-network-toolbar,
+.ibp-console-title-row,
+.ibp-battalion-card,
+.ibp-detail-top,
+.ibp-person-row,
+.ibp-feed-item,
+.ibp-quick-actions {
+  display: flex;
+  align-items: center;
+}
+
+.ibp-network-heading {
+  justify-content: space-between;
+  gap: 18px;
+  margin: 24px 0 12px;
+}
+
+.ibp-network-eyebrow,
+.ibp-network-kicker,
+.ibp-console-meta,
+.ibp-battalion-meta,
+.ibp-feed-meta {
+  color: #9b9c91;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.ibp-network-heading h2 {
+  margin: 4px 0 0;
+  color: #f1eee5;
+  font-size: clamp(17px, 2vw, 22px);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.ibp-network-toolbar {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ibp-network-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(183, 170, 137, 0.2);
+  border-radius: 4px;
+  color: #a9a899;
+  background: rgba(12, 20, 27, 0.78);
+  font-size: 10px;
+}
+
+.ibp-network-toolbar select {
+  max-width: 210px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e7e3d7;
+  font: inherit;
+}
+
+.ibp-network-toolbar option {
+  background: #101820;
+  color: #e7e3d7;
+}
+
+.ibp-console-button {
+  min-height: 34px;
+  padding: 8px 11px;
+  border: 1px solid rgba(193, 162, 90, 0.54);
+  border-radius: 4px;
+  background: rgba(193, 162, 90, 0.1);
+  color: #e5cf91;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.ibp-console-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(221, 191, 123, 0.9);
+  background: rgba(193, 162, 90, 0.18);
+}
+
+.ibp-console-button.secondary {
+  border-color: rgba(163, 174, 181, 0.23);
+  background: rgba(163, 174, 181, 0.06);
+  color: #c1c8c7;
+}
+
+.ibp-console-button.danger {
+  border-color: rgba(194, 92, 85, 0.48);
+  color: #e29a8d;
+}
+
+.ibp-console-button:disabled {
+  opacity: 0.56;
+  cursor: wait;
+  transform: none;
+}
+
+.ibp-console-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 12px 0;
+}
+
+.ibp-console-kpi {
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid rgba(153, 169, 175, 0.13);
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(21, 32, 40, 0.94), rgba(12, 19, 26, 0.9));
+}
+
+.ibp-console-kpi span {
+  display: block;
+  color: #9d9d91;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ibp-console-kpi strong {
+  display: block;
+  margin-top: 7px;
+  color: #efe8d2;
+  font: 600 22px/1 "IBM Plex Mono", "Courier New", monospace;
+}
+
+.ibp-console-kpi small {
+  display: block;
+  margin-top: 5px;
+  color: #7f8b8c;
+  font-size: 9px;
+}
+
+.ibp-network-grid,
+.ibp-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.85fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.ibp-network-panel {
+  min-width: 0;
+  border: 1px solid rgba(153, 169, 175, 0.16);
+  border-radius: 5px;
+  background: linear-gradient(155deg, rgba(18, 28, 36, 0.98), rgba(10, 17, 23, 0.98));
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.ibp-console-title-row {
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 43px;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(153, 169, 175, 0.11);
+}
+
+.ibp-console-title-row strong {
+  color: #e9e4d7;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+}
+
+.ibp-console-meta {
+  white-space: nowrap;
+}
+
+.ibp-battalion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 11px;
+}
+
+.ibp-battalion-card {
+  position: relative;
+  min-width: 0;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(161, 176, 177, 0.13);
+  border-radius: 4px;
+  background: rgba(6, 13, 18, 0.58);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.ibp-battalion-card::before {
+  position: absolute;
+  inset-block: 8px;
+  inset-inline-start: 0;
+  width: 2px;
+  background: var(--unit-color, #c7a25a);
+  content: "";
+}
+
+.ibp-battalion-card:hover,
+.ibp-battalion-card.selected {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--unit-color, #c7a25a) 56%, transparent);
+  background: rgba(29, 39, 44, 0.8);
+}
+
+.ibp-unit-symbol {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--unit-color, #c7a25a) 55%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--unit-color, #c7a25a) 12%, transparent);
+  color: var(--unit-color, #c7a25a);
+  font: 600 9px "IBM Plex Mono", "Courier New", monospace;
+}
+
+.ibp-battalion-card-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.ibp-battalion-card-copy strong,
+.ibp-battalion-card-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ibp-battalion-card-copy strong {
+  color: #e8e6dd;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ibp-battalion-card-copy small {
+  margin-top: 5px;
+  color: #929b98;
+  font-size: 9px;
+}
+
+.ibp-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgba(161, 176, 177, 0.18);
+  border-radius: 20px;
+  color: #aab2ac;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.ibp-status-pill::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #85918d;
+  content: "";
+}
+
+.ibp-status-pill.status-active::before {
+  background: #70b698;
+  box-shadow: 0 0 7px rgba(112, 182, 152, 0.6);
+}
+
+.ibp-status-pill.status-alert::before {
+  background: #d47c63;
+  box-shadow: 0 0 7px rgba(212, 124, 99, 0.6);
+}
+
+.ibp-status-pill.status-standby::before {
+  background: #d0b16d;
+}
+
+.ibp-status-pill.status-archived {
+  opacity: 0.62;
+}
+
+.ibp-empty-state {
+  padding: 24px 18px;
+  color: #929b98;
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.ibp-empty-state i {
+  display: block;
+  margin-bottom: 10px;
+  color: #8b815f;
+  font-size: 20px;
+}
+
+.ibp-battalion-detail {
+  min-height: 177px;
+  padding: 13px;
+}
+
+.ibp-detail-top {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ibp-detail-identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.ibp-detail-identity h3 {
+  margin: 0;
+  color: #f0ead9;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ibp-detail-identity p {
+  margin: 5px 0 0;
+  color: #99a09b;
+  font-size: 10px;
+}
+
+.ibp-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin: 15px 0 12px;
+}
+
+.ibp-detail-stat {
+  padding: 8px;
+  border: 1px solid rgba(153, 169, 175, 0.12);
+  border-radius: 3px;
+  background: rgba(5, 12, 17, 0.5);
+}
+
+.ibp-detail-stat span,
+.ibp-detail-stat strong {
+  display: block;
+}
+
+.ibp-detail-stat span {
+  color: #858f8d;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ibp-detail-stat strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #e4e0d5;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ibp-personnel-list {
+  display: grid;
+  gap: 5px;
+}
+
+.ibp-person-row {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(153, 169, 175, 0.09);
+}
+
+.ibp-person-identity {
+  min-width: 0;
+}
+
+.ibp-person-identity strong,
+.ibp-person-identity small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ibp-person-identity strong {
+  color: #d9ded7;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.ibp-person-identity small {
+  margin-top: 3px;
+  color: #838f8b;
+  font-size: 8px;
+}
+
+.ibp-person-presence {
+  color: #8fb8a2;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.ibp-person-presence.offline {
+  color: #76817f;
+}
+
+.ibp-command-tree {
+  padding: 13px;
+}
+
+.ibp-tree-root {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(193, 162, 90, 0.25);
+  border-radius: 4px;
+  background: rgba(193, 162, 90, 0.06);
+}
+
+.ibp-tree-root i {
+  color: #cbb77f;
+}
+
+.ibp-tree-root strong,
+.ibp-tree-root small {
+  display: block;
+}
+
+.ibp-tree-root strong {
+  color: #e8e2d1;
+  font-size: 10px;
+}
+
+.ibp-tree-root small {
+  margin-top: 3px;
+  color: #92978e;
+  font-size: 8px;
+}
+
+.ibp-tree-branch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 0 16px;
+  padding-inline-start: 10px;
+  border-inline-start: 1px solid rgba(193, 162, 90, 0.25);
+}
+
+.ibp-tree-node {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(153, 169, 175, 0.12);
+  border-radius: 3px;
+  color: #bfc7c0;
+  font-size: 9px;
+}
+
+.ibp-tree-node small {
+  display: block;
+  margin-top: 3px;
+  color: #808b87;
+  font-size: 8px;
+}
+
+.ibp-live-feed {
+  padding: 5px 12px 11px;
+}
+
+.ibp-feed-item {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 1px;
+  border-bottom: 1px solid rgba(153, 169, 175, 0.1);
+}
+
+.ibp-feed-item:last-child {
+  border-bottom: 0;
+}
+
+.ibp-feed-item-copy {
+  min-width: 0;
+}
+
+.ibp-feed-item-copy strong,
+.ibp-feed-item-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ibp-feed-item-copy strong {
+  color: #d7ded8;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.ibp-feed-item-copy small {
+  margin-top: 4px;
+  color: #858f8c;
+  font-size: 8px;
+}
+
+.ibp-quick-actions {
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(153, 169, 175, 0.12);
+  border-radius: 4px;
+  background: rgba(7, 13, 18, 0.56);
+}
+
+.ibp-quick-actions > span {
+  margin-inline-end: auto;
+  color: #909a96;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ibp-editor-modal[hidden] {
+  display: none !important;
+}
+
+.ibp-editor-modal {
+  position: fixed;
+  z-index: 10050;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 9, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.ibp-editor-dialog {
+  width: min(680px, 100%);
+  max-height: min(88vh, 800px);
+  overflow: auto;
+  border: 1px solid rgba(193, 162, 90, 0.35);
+  border-radius: 7px;
+  background: #101820;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.ibp-editor-head,
+.ibp-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid rgba(153, 169, 175, 0.12);
+}
+
+.ibp-editor-head h3 {
+  margin: 0;
+  color: #eee8d8;
+  font-size: 14px;
+}
+
+.ibp-editor-close {
+  border: 0;
+  background: transparent;
+  color: #aab0a9;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.ibp-editor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  padding: 15px 16px;
+}
+
+.ibp-editor-field {
+  display: grid;
+  gap: 5px;
+  color: #aeb4ac;
+  font-size: 9px;
+}
+
+.ibp-editor-field.full {
+  grid-column: 1 / -1;
+}
+
+.ibp-editor-field input,
+.ibp-editor-field select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgba(153, 169, 175, 0.2);
+  border-radius: 3px;
+  outline: 0;
+  background: #0a1117;
+  color: #e7e4d9;
+  font: inherit;
+  font-size: 10px;
+}
+
+.ibp-editor-field input:focus,
+.ibp-editor-field select:focus {
+  border-color: rgba(193, 162, 90, 0.72);
+}
+
+.ibp-editor-members {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  max-height: 190px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(153, 169, 175, 0.16);
+  border-radius: 3px;
+  background: rgba(4, 10, 14, 0.58);
+}
+
+.ibp-editor-member {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px;
+  color: #c4c9c0;
+  font-size: 9px;
+}
+
+.ibp-editor-member span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ibp-editor-member input {
+  flex: 0 0 auto;
+  accent-color: #c7a25a;
+}
+
+.ibp-editor-error {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  color: #e39b8c;
+  font-size: 10px;
+}
+
+.ibp-editor-foot {
+  border-top: 1px solid rgba(153, 169, 175, 0.12);
+  border-bottom: 0;
+}
+
+.ibp-editor-foot-note {
+  color: #858f8b;
+  font-size: 8px;
+}
+
+@media (max-width: 900px) {
+  .ibp-console-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ibp-network-grid,
+  .ibp-lower-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .ibp-network-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ibp-network-toolbar {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .ibp-network-toolbar label {
+    flex: 1;
+  }
+
+  .ibp-network-toolbar select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .ibp-battalion-grid,
+  .ibp-tree-branch,
+  .ibp-editor-members {
+    grid-template-columns: 1fr;
+  }
+
+  .ibp-editor-form {
+    grid-template-columns: 1fr;
+  }
+
+  .ibp-editor-field.full {
+    grid-column: auto;
+  }
+
+  .ibp-header-right {
+    flex-wrap: wrap;
+  }
+
+  .ibp-quick-actions > span {
+    flex-basis: 100%;
+  }
+}
+
+/* Language selector shown while navigating legacy IBP panels. */
+.ibp-return-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-inline: 10px;
+  padding: 5px 8px;
+  border: 1px solid rgba(193, 162, 90, 0.32);
+  border-radius: 4px;
+  background: rgba(9, 16, 23, 0.78);
+  color: #d6cba9;
+  font-size: 10px;
+}
+.ibp-return-language select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ibp-return-language option { background: #101820; color: #eee8d8; }
+.ibp-module-english { text-align: left; }
+.ibp-module-english .table-custom,
+.ibp-module-english .classified-shell { direction: ltr; }
+@media (max-width: 680px) {
+  #ibp-return-bar { flex-wrap: wrap; gap: 6px; }
+  .ibp-return-language { margin-inline: 0; }
+}
+
+</style>
 </head>
 <body>
   <div id="session-recovery-overlay" aria-live="polite" aria-modal="true" role="status"><div class="session-recovery-card"><strong><i class="fa-solid fa-shield-halved"></i> استعادة الجلسة</strong><span id="session-recovery-message">جارٍ إعادة الاتصال بالنظام...</span></div></div>
@@ -689,6 +1545,7 @@
     </div>
     <ul class="nav-list">
       <li class="nav-btn active" onclick="showPane('dashboard', this)"><i class="fa-solid fa-chart-line"></i> لوحة السيطرة</li>
+      <li id="ibp-nav" class="nav-btn" onclick="openIBPHome(this)"><i class="fa-solid fa-satellite-dish"></i> IBP // مركز قيادة القطاع</li>
       <li id="map-nav" class="nav-btn" onclick="showPane('tactical-map-view', this)"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس (GTA V)</li>
       <li id="morse-nav" class="nav-btn" onclick="openMorseTranslator()"><i class="fa-solid fa-tower-broadcast"></i> أدوات شفرة مورس</li>
       <li class="nav-btn" onclick="showPane('cases-vault', this)"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة</li>
@@ -707,6 +1564,7 @@
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>
       <li id="chief-nav" class="nav-btn" style="display: none;" onclick="showPane('chief-panel', this)"><i class="fa-solid fa-user-gear"></i> إدارة القيادة</li>
       <li id="audit-nav" class="nav-btn" style="display: none;" onclick="showPane('audit-panel', this)"><i class="fa-solid fa-clock-rotate-left"></i> السجلات اليومية</li>
+      <li id="security-nav" class="nav-btn" style="display: none;" onclick="showPane('security-panel', this)"><i class="fa-solid fa-shield-halved"></i> مركز الأمن</li>
     </ul>
     <div style="padding: 15px; border-top: 1px solid var(--border);">
       <button style="width: 100%; padding: 10px; background: var(--red-alert); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="logoutFromSystem()">تسجيل الخروج</button>
@@ -715,6 +1573,27 @@
 
   <!-- Content Area -->
   <div class="content-area">
+    <div id="ibp-return-bar" style="display:none"><button type="button" onclick="openIBPHome()">← رجوع إلى مركز IBP</button><span>IBP // LOS SANTOS SECTOR COMMAND</span><button type="button" onclick="exitIBPWorkspace()">الخروج إلى BLACK RIDGE</button></div>
+    <div id="ibp-command-center" class="view-pane"><div class="ibp-shell" dir="ltr">
+      <header class="ibp-topbar"><div class="ibp-brand"><div class="ibp-mark">IBP</div><div><div class="ibp-brand-title">INTELLIGENCE BATTALION PROGRAM</div><div class="ibp-brand-sub">LOS SANTOS SECTOR // SECURE COMMAND NETWORK</div></div></div><div class="ibp-header-right"><span class="ibp-live"><i class="ibp-dot"></i><span id="ibp-live-state">SECURE LINK</span></span><span id="ibp-clock" class="ibp-clock">--:--:--</span><button class="ibp-exit" type="button" onclick="exitIBPWorkspace()">BLACK RIDGE ↗</button></div></header>
+      <div class="ibp-layout"><aside class="ibp-rail"><div class="ibp-profile"><div class="ibp-kicker">AUTHORIZED OPERATOR</div><strong id="ibp-user-code" class="ibp-code">OPERATOR</strong><div id="ibp-user-rank" class="ibp-rank">ACCESS VERIFIED</div><div id="ibp-user-unit" class="ibp-unit">LOS SANTOS SECTOR</div></div><div class="ibp-rail-label">COMMAND CHANNELS</div>
+        <button class="ibp-link active" type="button" onclick="openIBPHome()"><i class="fa-solid fa-gauge-high"></i> مركز القيادة</button><button class="ibp-link" type="button" onclick="openIBPModule('tactical-map-view')"><i class="fa-solid fa-map"></i> خريطة القطاع</button><button class="ibp-link" data-ibp-leadership hidden type="button" onclick="openIBPModule('chief-panel')"><i class="fa-solid fa-sitemap"></i> شبكة الكتائب والقيادة</button><button class="ibp-link" type="button" onclick="openIBPModule('agents-directory')"><i class="fa-solid fa-users"></i> ملفات الأفراد</button><button class="ibp-link" data-ibp-operations hidden type="button" onclick="openIBPModule('operations')"><i class="fa-solid fa-crosshairs"></i> مركز العمليات</button><button class="ibp-link" type="button" onclick="openIBPModule('cases-vault')"><i class="fa-solid fa-box-archive"></i> أرشيف المعلومات</button><button class="ibp-link" data-ibp-audit hidden type="button" onclick="openIBPModule('audit-panel')"><i class="fa-solid fa-fingerprint"></i> BLACKBOX // السجل</button>
+      </aside><main class="ibp-main"><div class="ibp-page-head"><div><h1 class="ibp-title">مركز قيادة القطاع</h1><div class="ibp-caption">COMMAND CENTER // LOS SANTOS THEATER</div></div><span id="ibp-access-chip" class="ibp-chip">ACCESS LEVEL // OPERATOR</span></div>
+        <div class="ibp-dashboard"><section class="ibp-panel ibp-map-panel"><div class="ibp-panel-head"><span class="ibp-panel-title">SECTOR THEATER // LOS SANTOS</span><span class="ibp-panel-meta">TACTICAL OVERVIEW</span></div><div id="ibp-map-preview" class="ibp-map" role="img" aria-label="معاينة قطاع لوس سانتوس"><span class="ibp-map-label">LOS SANTOS // SECTOR GRID</span><i class="ibp-node a"></i><i class="ibp-node b"></i><i class="ibp-node c"></i><button class="ibp-map-open" type="button" onclick="openIBPModule('tactical-map-view')">فتح خريطة الانتشار ←</button></div>
+          <div class="ibp-stats"><div class="ibp-stat"><div class="ibp-stat-label">AUTHORIZED PERSONNEL</div><div id="ibp-personnel-count" class="ibp-stat-value">—</div><div class="ibp-stat-sub">أفراد ضمن صلاحية العرض</div></div><div class="ibp-stat"><div class="ibp-stat-label">VISIBLE OPERATIONS</div><div id="ibp-operation-count" class="ibp-stat-value">—</div><div class="ibp-stat-sub">عمليات حسب صلاحية الرتبة</div></div><div class="ibp-stat"><div class="ibp-stat-label">SERVICE STATUS</div><div id="ibp-service-status" class="ibp-stat-value" style="font-size:.75rem;">—</div><div class="ibp-stat-sub">حالة المشغّل الحالي</div></div></div></section>
+          <section class="ibp-panel ibp-feed"><div class="ibp-panel-head"><span class="ibp-panel-title">INTELLIGENCE CORE</span><span class="ibp-panel-meta">LIVE CHANNEL</span></div><div class="ibp-feed-row"><span class="ibp-feed-icon"><i class="fa-solid fa-shield-halved"></i></span><div class="ibp-feed-copy"><strong id="ibp-connection-title">SECURE CHANNEL</strong><span id="ibp-connection-detail">VERIFYING CONNECTION</span></div></div><div class="ibp-feed-row"><span class="ibp-feed-icon"><i class="fa-solid fa-user-shield"></i></span><div class="ibp-feed-copy"><strong>ROLE-SCOPED VIEW</strong><span id="ibp-scope-detail">AUTHORIZED DATA ONLY</span></div></div><div class="ibp-note" id="ibp-feed-note">تُعرض الوحدات والبيانات بحسب صلاحية الحساب، وتُفتح كل محطة مباشرة دون قوائم منسدلة.</div></section></div>
+        <div class="ibp-modules-head"><div class="ibp-panel-title">SYSTEM MODULES // DIRECT ACCESS</div><div class="ibp-panel-meta" style="margin-top:5px;">اختر محطة لفتحها مباشرة داخل شبكة القيادة</div></div><div class="ibp-modules">
+          <button class="ibp-card" type="button" onclick="openIBPModule('tactical-map-view')"><span class="ibp-card-icon"><i class="fa-solid fa-map-location-dot"></i></span><span><b class="ibp-card-title">DEPLOYMENT GRID</b><small class="ibp-card-desc">خريطة القطاع ومواقع المهمة</small></span><code class="ibp-card-code">01</code></button>
+          <button class="ibp-card" data-ibp-leadership hidden type="button" onclick="openIBPModule('chief-panel')"><span class="ibp-card-icon"><i class="fa-solid fa-diagram-project"></i></span><span><b class="ibp-card-title">COMMAND STRUCTURE</b><small class="ibp-card-desc">شبكة القيادة وإدارة الأفراد</small></span><code class="ibp-card-code">02</code></button>
+          <button class="ibp-card" type="button" onclick="openIBPModule('agents-directory')"><span class="ibp-card-icon"><i class="fa-solid fa-id-card"></i></span><span><b class="ibp-card-title">PERSONNEL FILES</b><small class="ibp-card-desc">الأفراد والحضور والهويات المصرح بها</small></span><code class="ibp-card-code">03</code></button>
+          <button class="ibp-card" data-ibp-operations hidden type="button" onclick="openIBPModule('operations')"><span class="ibp-card-icon"><i class="fa-solid fa-crosshairs"></i></span><span><b class="ibp-card-title">OPERATIONS CONTROL</b><small class="ibp-card-desc">المهمات والتحديثات الميدانية</small></span><code class="ibp-card-code">04</code></button>
+          <button class="ibp-card" type="button" onclick="openIBPModule('cases-vault')"><span class="ibp-card-icon"><i class="fa-solid fa-box-archive"></i></span><span><b class="ibp-card-title">INTELLIGENCE ARCHIVE</b><small class="ibp-card-desc">أرشيف القضايا والأدلة</small></span><code class="ibp-card-code">05</code></button>
+          <button class="ibp-card" type="button" onclick="openIBPModule('sos-alerts')"><span class="ibp-card-icon"><i class="fa-solid fa-tower-broadcast"></i></span><span><b class="ibp-card-title">INTELLIGENCE FEED</b><small class="ibp-card-desc">البلاغات والتنبيهات المصرح بها</small></span><code class="ibp-card-code">06</code></button>
+          <button class="ibp-card" type="button" onclick="openIBPModule('reports')"><span class="ibp-card-icon"><i class="fa-solid fa-file-lines"></i></span><span><b class="ibp-card-title">REPORTS & BRIEFINGS</b><small class="ibp-card-desc">التقارير والملخصات</small></span><code class="ibp-card-code">07</code></button>
+          <button class="ibp-card" data-ibp-audit hidden type="button" onclick="openIBPModule('audit-panel')"><span class="ibp-card-icon"><i class="fa-solid fa-fingerprint"></i></span><span><b class="ibp-card-title">BLACKBOX</b><small class="ibp-card-desc">سجل القيادة والتغييرات المصرح بها</small></span><code class="ibp-card-code">08</code></button>
+        </div><div class="ibp-foot"><span>IBP // ONE SECTOR · ONE NETWORK · COMPLETE COMMAND VISIBILITY</span><span id="ibp-data-scope">SECURE ACCESS // ROLE-BASED</span></div>
+      </main></div></div></div>
+
     
     <!-- Dashboard -->
     <div id="dashboard" class="view-pane active">
@@ -1118,11 +1997,11 @@
         </select>
         <textarea id="op-objective" class="input-field" placeholder="الهدف والتعليمات الميدانية" style="height:80px;resize:none;"></textarea>
         <input id="op-leader-code" class="input-field" placeholder="كودك العسكري كمنشئ المهمة" readonly>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;"><label for="op-agent-codes" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:0;">اختَر الأعضاء المتصلين بالخدمة للمهمة:</label><button type="button" onclick="loadOperationAgentDirectory()" style="padding:5px 9px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;font-size:.68rem;">تحديث القائمة</button></div>
-        <select id="op-agent-codes" class="input-field" multiple size="7" aria-label="اختيار أعضاء المهمة" style="min-height:150px;"><option disabled selected>اضغط تحديث القائمة لتحميل جميع أفراد Agent المعتمدين.</option></select>
-        <div style="font-size:.64rem;color:var(--text-dim);margin:-4px 0 7px;">يمكن اختيار أكثر من عضو باستخدام Ctrl أو ⌘. تظهر حالة الاتصال للقيادة؛ التكليف يبقى محفوظاً ويظهر للمشارك عند عودته حتى لو كان غير متصل الآن.</div>
-        <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
-        <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من الخريطة</button></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0;"><label for="op-agent-picker-trigger" style="display:block;color:var(--cyan-glow);font-size:.72rem;margin:0;">أفراد القطاع — جميع الرتب</label><button type="button" onclick="loadOperationAgentDirectory()" style="padding:6px 10px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:7px;cursor:pointer;font-size:.68rem;">تحديث الأفراد</button></div>
+        <div class="operation-picker" id="op-agent-picker" data-picker-key="create"><button type="button" id="op-agent-picker-trigger" class="operation-picker-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleOperationAgentPicker(this)"><span class="operation-picker-summary">اضغط تحديث الأفراد لتحميل القائمة</span><span class="operation-picker-arrow">⌄</span></button><div class="operation-picker-selected"></div><div class="operation-picker-panel" hidden><input type="search" class="operation-picker-search" placeholder="ابحث بالكود العسكري أو الرتبة" oninput="filterOperationAgentPicker(this)"><div class="operation-picker-options" role="listbox" aria-multiselectable="true"></div></div></div>
+        <div style="font-size:.64rem;color:var(--text-dim);margin:-3px 0 7px;">اختر عدة أفراد من القائمة؛ يظهر الاسم الحقيقي والكود والرتبة للقيادة.</div>
+        <div style="display:flex;gap:5px;"><input id="op-start" class="input-field" placeholder="بداية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('start')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من خريطة المهمة</button></div>
+        <div style="display:flex;gap:5px;"><input id="op-end" class="input-field" placeholder="نهاية العملية: x,y (اختياري)"><button type="button" onclick="pickOperationPoint('end')" style="min-width:105px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;cursor:pointer;">من خريطة المهمة</button></div>
         <textarea id="op-notes" class="input-field" placeholder="ملاحظات القيادة" style="height:65px;resize:none;"></textarea>
         <button type="button" class="btn-action" onclick="createTacticalOperation()">إنشاء مهمة لمرة واحدة</button>
       </div>
@@ -1132,19 +2011,34 @@
     <div id="operation-map-modal" class="modal-overlay" style="display:none;">
       <div class="auth-card" style="max-width:900px;text-align:right;">
         <div class="classified-stamp"><i class="fa-solid fa-map-location-dot"></i> OPERATION // LOS SANTOS MAP</div>
-        <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة مناطق المهمة</h3>
+        <h3 id="operation-map-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
         <p id="operation-map-help" style="font-size:.7rem;color:var(--text-dim);line-height:1.6;margin-bottom:7px;"></p>
         <div id="operation-map-tools" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;">
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker','#facc15')">علامة عامة</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal','#ef4444')">مجرمون</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people','#38bdf8')">عدد الأشخاص</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand','#facc15')">خط حر — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle','#ef4444')">دائرة — اسحب</button>
-          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle','#a855f7')">منطقة مستطيلة — اسحب</button>
+          <label style="display:flex;align-items:center;gap:6px;padding:4px 7px;background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;font-size:.68rem;cursor:pointer;">لون الرسم والعلامات <input type="color" id="operation-map-color" value="#facc15" aria-label="اختر لون الرسم" oninput="setOperationMapColor(this.value)" style="width:30px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;"></label>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('marker',getOperationMapColor())">علامة عامة</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('criminal',getOperationMapColor())">مجرمون</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#38bdf8;border:1px solid #38bdf8;" onclick="setOperationMapTool('people',getOperationMapColor())">عدد الأشخاص</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#facc15;border:1px solid #facc15;" onclick="setOperationMapTool('freehand',getOperationMapColor())">خط حر — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#ef4444;border:1px solid #ef4444;" onclick="setOperationMapTool('circle',getOperationMapColor())">دائرة — اسحب</button>
+          <button type="button" class="status-btn" style="background:#111827;color:#a855f7;border:1px solid #a855f7;" onclick="setOperationMapTool('rectangle',getOperationMapColor())">منطقة مستطيلة — اسحب</button>
           <button type="button" class="status-btn" style="background:#111827;color:#9ca3af;border:1px solid #374151;" onclick="finishOperationDrawing()">حفظ الرسم الحالي</button>
         </div>
         <div id="operation-map" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
         <button type="button" onclick="closeOperationMap()" style="width:100%;padding:9px;margin-top:8px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إغلاق الخريطة</button>
+      </div>
+    </div>
+
+    <div id="operation-point-modal" class="modal-overlay" style="display:none;z-index:10001;">
+      <div class="auth-card" style="max-width:900px;text-align:right;">
+        <div class="classified-stamp"><i class="fa-solid fa-crosshairs"></i> MISSION LOCATION</div>
+        <h3 id="operation-point-title" style="color:var(--primary-gold);margin:10px 0 6px;">خريطة المهمة</h3>
+        <p id="operation-point-help" style="font-size:.74rem;color:var(--text-dim);line-height:1.6;margin-bottom:8px;">اضغط على خريطة المهمة لتحديد الموقع؛ سيظهر دبوس المعاينة قبل اعتماد النقطة.</p>
+        <div id="operation-point-map" role="application" aria-label="خريطة المهمة لاختيار نقطة البداية أو النهاية" style="height:520px;width:100%;border:2px solid var(--primary-gold);border-radius:8px;background:#0fa8d7;"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <span id="operation-point-status" style="flex:1;min-width:190px;color:var(--text-dim);font-size:.72rem;">اختر نقطة على الخريطة.</span>
+          <button id="operation-point-confirm" type="button" class="btn-action" disabled onclick="confirmOperationPointSelection()" style="margin:0;background:var(--green-status);color:#07110a;">اعتماد الموقع</button>
+          <button type="button" onclick="closeOperationPointPicker()" style="padding:9px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;cursor:pointer;">إلغاء</button>
+        </div>
       </div>
     </div>
 
@@ -1368,10 +2262,30 @@
       </div>
     </div>
 
+    <div id="security-panel" class="view-pane">
+      <div class="classified-shell" dir="rtl">
+        <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
+        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. السجل الأمني لا يحتفظ بنص الرسائل المحظورة؛ بيانات الأسماء والتفاصيل الحساسة تظهر لـ CIA CHIEF فقط.</p>
+        <div id="security-summary" style="margin:12px 0;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
+        <div id="security-active-alerts" style="margin-top:10px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">الحسابات المقيّدة أو الموقوفة</div>
+        <div id="security-restricted-members" style="margin-top:10px;"></div>
+        <div id="security-manual-suspend" style="display:none;margin-top:12px;"></div>
+        <div class="security-line"></div>
+        <div class="classified-title" style="font-size:.78rem;">سجل الحوادث والإجراءات</div>
+        <div id="security-incident-list" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
   </div>
 
   <script>
     let currentUser = null;
+    let ibpReturnToCenter = false;
+    let ibpClockTimer = null;
     let morseAuditLogs = [];
     let activeChatMode = 'global';
     let sosTimer = null;
@@ -1394,10 +2308,13 @@
     let identityPendingUser = null;
     let serverHasChief = null;
     let auditLogs = [];
+    let securityIncidents = [];
+    let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
     let operationAgentDirectory = [];
     let bankDirectory = [];
+    let bankRankSalaries = {};
     let loginMode = 'agent';
     let supportMessages = [];
     let identityApprovalQueue = [];
@@ -1434,31 +2351,32 @@
       const passcodeEl = document.getElementById('entry-passcode');
       if (passcodeEl) {
         passcodeEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleLogin(); });
-        passcodeEl.addEventListener('input', function() {
-          const code = this.value.trim();
-          const hasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
-          if (!hasChief && code === '1531') showChiefBootstrap();
-          else if (!bootstrapMode) hideChiefBootstrap();
-        });
       }
 
       try {
         const savedName = localStorage.getItem('cia_last_login_name');
-        const savedCode = localStorage.getItem('cia_last_login_code');
         if (savedName) document.getElementById('entry-name').value = savedName;
-        if (savedCode) {
-          document.getElementById('entry-passcode').value = savedCode;
-          if (savedCode === '1531') showChiefBootstrap();
-        }
+        localStorage.removeItem('cia_last_login_code');
+        localStorage.removeItem('cia_last_member_code');
       } catch(e) {}
       updateRadioPowerUI();
     });
 
     const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
     const ciaSocket = typeof io === 'function' ? io() : null;
+    window.blackRidgeSocket = ciaSocket;
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
     let authReconnectPending = false;
+    window.blackRidgeGetNotificationSession = function() {
+      const user = currentUser;
+      return {
+        user: user ? { id: user.id || '', rank: user.rank || '' } : null,
+        authenticated: !!user && ciaSessionAuthenticated,
+        connected: !!ciaSocket && ciaSocket.connected,
+        recovering: !!user && (authReconnectPending || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected)
+      };
+    };
 
     function setSessionRecoveryVisible(visible, message) {
       const overlay = document.getElementById('session-recovery-overlay');
@@ -1560,6 +2478,26 @@
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
       });
 
+      ciaSocket.on('security:logs:result', applySecurityCenterResult);
+      ciaSocket.on('security:incident', function(incident) {
+        if (!incident || !currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+        securityIncidents = [incident, ...(securityIncidents || []).filter(item => item.id !== incident.id)].slice(0, 300);
+        renderSecurityCenter();
+        const panel = document.getElementById('security-panel');
+        if (panel && panel.classList.contains('active') && ciaSocket && ciaSocket.connected) loadSecurityCenter();
+      });
+      ciaSocket.on('security:restricted', function(result) {
+        const message = (result && result.reason) || 'تم تقييد الحساب أمنيًا. راجع القيادة.';
+        alert(message);
+        currentUser = null;
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+        } catch (e) {}
+        window.dispatchEvent(new Event('blackridge:logout'));
+        location.reload();
+      });
+
       ciaSocket.on('admin:member:result', function(result) {
         if (!result) return;
         if (!result.ok) { alert(result.message || 'تعذر تنفيذ تعديل العضو.'); return; }
@@ -1591,13 +2529,13 @@
           let savedCode = currentUser.secretCode || '';
           try {
             savedName = localStorage.getItem('cia_last_login_name') || savedName;
-            savedCode = localStorage.getItem('cia_last_login_code') || savedCode;
           } catch (e) {}
           if (savedName && savedCode) {
             ciaSocket.emit('auth:login', {
               name: savedName,
               code: savedCode,
-              resumeService: currentUser.activeService === true
+              resumeService: currentUser.activeService === true,
+              resumeSession: true
             }, function(result) {
               if (!result || !result.ok) {
                 if (authReconnectPending) completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
@@ -1731,7 +2669,8 @@
         currentUser = result.user;
         try {
           localStorage.setItem('cia_last_login_name', currentUser.name || '');
-          localStorage.setItem('cia_last_login_code', currentUser.secretCode || '');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         completeLogin();
         if (result.needsIdentity) openIdentityModal();
@@ -1827,7 +2766,6 @@
       ciaSocket.on('admin:chief-secret:result', function(result) {
         if (!result || !result.ok) { alert((result && result.message) || 'تعذر تغيير رمز القائد.'); return; }
         currentUser = result.user;
-        try { localStorage.setItem('cia_last_login_code', currentUser.secretCode || ''); } catch(e) {}
         const secretEl = document.getElementById('chief-current-secret');
         if (secretEl) secretEl.innerText = currentUser.secretCode;
         alert('تم تغيير رمز دخول القائد وحفظه على السيرفر.');
@@ -1847,10 +2785,8 @@
         if(loginCode) document.getElementById('entry-passcode').value=loginCode;
         try {
           if(name) localStorage.setItem('cia_last_login_name',name);
-          if(loginCode) {
-            localStorage.setItem('cia_last_login_code',loginCode);
-            localStorage.setItem('cia_last_member_code',loginCode);
-          }
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
         } catch(e) {}
         alert(`تم قبول شخصيتك: ${name||'—'}.\nكود الدخول الشخصي: ${loginCode||'—'}\nسجّل الدخول لإكمال هويتك، ثم انتظر اعتمادها وقدّم طلب دخول الخدمة. سيصدر الكود العسكري بعد الموافقة النهائية.`);
         currentUser = null;
@@ -2114,7 +3050,12 @@
         if (!result || !result.ok) { msg.innerText = (result && (result.error || result.message)) || 'تعذر إنشاء الحساب.'; return; }
         msg.style.color = 'var(--primary-gold)';
         msg.innerText = 'تم إنشاء الحساب والشخصية الأولى، وبانتظار اعتماد القيادة.';
-        try { localStorage.removeItem('cia_last_login_name'); localStorage.removeItem('cia_last_login_code'); localStorage.setItem('cia_account_login_name', loginName); } catch(e) {}
+        try {
+          localStorage.removeItem('cia_last_login_name');
+          localStorage.removeItem('cia_last_login_code');
+          localStorage.removeItem('cia_last_member_code');
+          localStorage.setItem('cia_account_login_name', loginName);
+        } catch(e) {}
         setTimeout(closeAccountCreateModal, 1400);
       });
     }
@@ -2194,6 +3135,7 @@
       }
       const done = () => {
         currentUser = null;
+        window.dispatchEvent(new Event('blackridge:logout'));
         location.reload();
       };
       ciaSocket.once('auth:logout:result', done);
@@ -2211,11 +3153,13 @@
       const leadershipNav = document.getElementById('chief-nav');
       if (leadershipNav) leadershipNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const opNav = document.getElementById('operations-nav');
-      if (opNav) opNav.style.display = currentUser && currentUser.serviceApproved === true ? 'flex' : 'none';
+      if (opNav) opNav.style.display = currentUser ? 'flex' : 'none';
       const chiefSecrets = document.getElementById('chief-command-secrets');
       if (chiefSecrets) chiefSecrets.style.display = currentUser.rank === 'CIA CHIEF' ? 'block' : 'none';
       const auditNav = document.getElementById('audit-nav');
       if (auditNav) auditNav.style.display = (currentUser.rank === 'CIA CHIEF' || currentUser.rank === 'SUPREME COMMANDER') ? 'flex' : 'none';
+      const securityNav = document.getElementById('security-nav');
+      if (securityNav) securityNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const leaderTools = document.getElementById('leader-self-tools');
       if (leaderTools) leaderTools.style.display = ['CIA CHIEF','SUPREME COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'block' : 'none';
       const handoverButton = document.getElementById('chief-handover-button');
@@ -2223,12 +3167,15 @@
       
       if (currentUser.radioChannel) radioChannel = currentUser.radioChannel;
       renderBank();
+      loadBankDirectory();
+      loadTacticalOperations();
       if (isTopThreeMissionRank(currentUser.rank)) loadOperationAgentDirectory();
       renderTacticalOperations();
       syncRadioChannelUI();
       updateViews();
       updateServiceUI();
       renderMorsePanels();
+      if (['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) loadSecurityCenter();
     }
 
     function setUserStatus(newStatus) {
@@ -2260,36 +3207,177 @@
 
     function isTopThreeMissionRank(rank){ return ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(rank)); }
 
-    function parsePoint(value){ const m=String(value||'').split(',').map(Number); return m.length===2 && m.every(Number.isFinite)?{lat:m[0],lng:m[1],label:String(value||'').trim()}:null; }
+    function parsePoint(value){
+      if(value&&typeof value==='object'){
+        if(value.label) value=value.label;
+        else if(Number.isFinite(Number(value.x))&&Number.isFinite(Number(value.y))) return {lat:Number(value.y),lng:Number(value.x),label:String(value.x)+','+String(value.y)};
+        else if(Number.isFinite(Number(value.lat))&&Number.isFinite(Number(value.lng))) return {lat:Number(value.lat),lng:Number(value.lng),label:String(value.lng)+','+String(value.lat)};
+      }
+      const raw=String(value||'').trim(); const parts=raw.split(',').map(Number);
+      return parts.length===2&&parts.every(Number.isFinite)?{lat:parts[1],lng:parts[0],label:raw}:null;
+    }
 
     let operationAgentRequestId = 0;
-    function setOperationAgentStatus(select, message) {
-      if (!select) return;
-      select.innerHTML = '<option disabled selected>' + esc(message) + '</option>';
+    let operationAgentSelections = { create: [] };
+
+    function setOperationAgentStatus(pickerOrId, message) {
+      const wrapper = typeof pickerOrId === 'string' ? document.getElementById(pickerOrId) : pickerOrId;
+      if (!wrapper) return;
+      wrapper.dataset.status = message;
+      const summary = wrapper.querySelector('.operation-picker-summary');
+      const options = wrapper.querySelector('.operation-picker-options');
+      if (summary) summary.textContent = message;
+      if (options) options.innerHTML = '<div class="operation-picker-empty">' + esc(message) + '</div>';
     }
 
-    function operationAgentOptionLabel(agent){
-      if(!agent.name) return '#' + esc(agent.code);
-      const connection=agent.online&&agent.activeService===true?'متصل بالخدمة':'غير متصل بالخدمة — سيظهر التكليف عند عودته';
-      return '#' + esc(agent.code) + ' — ' + esc(agent.name) + ' · ' + connection;
+    function operationAgentOptionLabel(agent) {
+      const online = agent.online && agent.activeService === true ? 'متصل بالخدمة' : 'غير متصل بالخدمة';
+      const name = normalizeRank(currentUser?.rank) === 'CIA CHIEF' && agent.name ? ' ' + String(agent.name) : '';
+      return '#' + String(agent.code || '') + name + ' ' + String(agent.rankLabel || agent.rank || '') + ' ' + online;
     }
+
+    function operationAgentPickerMarkup(key) {
+      return '<div class="operation-picker" data-picker-key="' + esc(key) + '">' +
+        '<button type="button" class="operation-picker-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleOperationAgentPicker(this)"><span class="operation-picker-summary">اختر أفراد المهمة</span><span class="operation-picker-arrow">⌄</span></button>' +
+        '<div class="operation-picker-selected"></div>' +
+        '<div class="operation-picker-panel" hidden><input type="search" class="operation-picker-search" placeholder="ابحث بالكود العسكري أو الرتبة" oninput="filterOperationAgentPicker(this)"><div class="operation-picker-options" role="listbox" aria-multiselectable="true"></div></div>' +
+        '</div>';
+    }
+
+    function renderOperationAgentPicker(wrapper) {
+      if (!wrapper) return;
+      const key = wrapper.dataset.pickerKey || 'create';
+      const chosen = Array.isArray(operationAgentSelections[key]) ? operationAgentSelections[key].map(String) : [];
+      const chosenSet = new Set(chosen);
+      const options = wrapper.querySelector('.operation-picker-options');
+      const selected = wrapper.querySelector('.operation-picker-selected');
+      const summary = wrapper.querySelector('.operation-picker-summary');
+      if (summary) {
+        summary.textContent = chosen.length
+          ? 'تم اختيار ' + chosen.length + ' من ' + operationAgentDirectory.length + ' أفراد'
+          : (operationAgentDirectory.length ? 'اختر فردًا أو أكثر من القطاع' : (wrapper.dataset.status || 'اضغط تحديث الأفراد لتحميل القائمة'));
+      }
+      if (options) {
+        options.innerHTML = operationAgentDirectory.length
+          ? operationAgentDirectory.map(agent => {
+              const code = String(agent.code || '');
+              const canSeeRealNames = normalizeRank(currentUser?.rank) === 'CIA CHIEF';
+              const name = canSeeRealNames ? String(agent.name || 'اسم غير مسجل') : '';
+              const rank = String(agent.rankLabel || agent.rank || 'رتبة غير محددة');
+              const presence = agent.online && agent.activeService === true ? 'متصل بالخدمة' : 'غير متصل أو خارج الخدمة';
+              const search = operationAgentOptionLabel(agent).toLocaleLowerCase();
+              return '<label class="operation-picker-option" data-agent-option data-search="' + esc(search) + '">' +
+                '<input type="checkbox" value="' + esc(code) + '" data-agent-code="' + esc(code) + '" ' + (chosenSet.has(code) ? 'checked' : '') + ' onchange="toggleOperationAgentSelection(this)">' +
+                '<span class="operation-picker-option-copy"><strong>#' + esc(code) + (name ? ' — ' + esc(name) : '') + '</strong><small>' + esc(rank) + ' · ' + esc(presence) + '</small></span>' +
+                '</label>';
+            }).join('')
+          : '<div class="operation-picker-empty">' + esc(wrapper.dataset.status || 'لا يوجد أفراد معتمدون حاليًا.') + '</div>';
+      }
+      if (selected) {
+        selected.innerHTML = chosen.map(code => {
+          const agent = operationAgentDirectory.find(item => String(item.code) === code);
+          const canSeeRealNames = normalizeRank(currentUser?.rank) === 'CIA CHIEF';
+          const label = agent ? (canSeeRealNames && agent.name ? agent.name : ('#' + code + ' · ' + (agent.rankLabel || 'عضو'))) : ('#' + code + ' · غير متاح');
+          return '<span class="operation-picker-chip">' + esc(label) + ' <button type="button" class="operation-picker-chip-remove" data-agent-code="' + esc(code) + '" aria-label="إزالة ' + esc(label) + '" onclick="removeOperationAgentSelection(this)">×</button></span>';
+        }).join('');
+      }
+    }
+
+    function renderOperationAgentPickers(root) {
+      const scope = root || document;
+      if (scope.matches && scope.matches('.operation-picker')) renderOperationAgentPicker(scope);
+      if (scope.querySelectorAll) scope.querySelectorAll('.operation-picker').forEach(renderOperationAgentPicker);
+    }
+
+    function toggleOperationAgentPicker(button) {
+      const wrapper = button.closest('.operation-picker');
+      if (!wrapper) return;
+      const shouldOpen = !wrapper.classList.contains('is-open');
+      document.querySelectorAll('.operation-picker.is-open').forEach(item => {
+        if (item === wrapper) return;
+        item.classList.remove('is-open');
+        const panel = item.querySelector('.operation-picker-panel');
+        const trigger = item.querySelector('.operation-picker-trigger');
+        if (panel) panel.hidden = true;
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      });
+      wrapper.classList.toggle('is-open', shouldOpen);
+      const panel = wrapper.querySelector('.operation-picker-panel');
+      if (panel) panel.hidden = !shouldOpen;
+      button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+      if (shouldOpen) {
+        const search = wrapper.querySelector('.operation-picker-search');
+        if (search) setTimeout(() => search.focus(), 0);
+      }
+    }
+
+    function filterOperationAgentPicker(input) {
+      const query = String(input.value || '').trim().toLocaleLowerCase();
+      const wrapper = input.closest('.operation-picker');
+      if (!wrapper) return;
+      wrapper.querySelectorAll('[data-agent-option]').forEach(option => {
+        option.hidden = !String(option.dataset.search || '').includes(query);
+      });
+    }
+
+    function toggleOperationAgentSelection(input) {
+      const wrapper = input.closest('.operation-picker');
+      if (!wrapper) return;
+      const key = wrapper.dataset.pickerKey || 'create';
+      const code = String(input.dataset.agentCode || input.value || '');
+      const selected = new Set(Array.isArray(operationAgentSelections[key]) ? operationAgentSelections[key].map(String) : []);
+      if (input.checked) {
+        if (!selected.has(code) && selected.size >= 50) {
+          input.checked = false;
+          return alert('يمكن اختيار 50 فردًا كحد أقصى للمهمة.');
+        }
+        selected.add(code);
+      } else {
+        selected.delete(code);
+      }
+      operationAgentSelections[key] = Array.from(selected);
+      renderOperationAgentPicker(wrapper);
+      const search = wrapper.querySelector('.operation-picker-search');
+      if (search && search.value) filterOperationAgentPicker(search);
+    }
+
+    function removeOperationAgentSelection(button) {
+      const wrapper = button.closest('.operation-picker');
+      if (!wrapper) return;
+      const key = wrapper.dataset.pickerKey || 'create';
+      const code = String(button.dataset.agentCode || '');
+      operationAgentSelections[key] = (operationAgentSelections[key] || []).map(String).filter(item => item !== code);
+      renderOperationAgentPicker(wrapper);
+    }
+
+    document.addEventListener('click', function(event) {
+      if (event.target.closest && event.target.closest('.operation-picker')) return;
+      document.querySelectorAll('.operation-picker.is-open').forEach(wrapper => {
+        wrapper.classList.remove('is-open');
+        const panel = wrapper.querySelector('.operation-picker-panel');
+        const trigger = wrapper.querySelector('.operation-picker-trigger');
+        if (panel) panel.hidden = true;
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      });
+    });
 
     function loadOperationAgentDirectory(){
-      const select = document.getElementById('op-agent-codes');
-      if (!select) return;
+      const picker = document.getElementById('op-agent-picker');
+      if (!picker) return;
       if (!currentUser || !isTopThreeMissionRank(currentUser.rank)) {
-        setOperationAgentStatus(select, 'قائمة اختيار الأعضاء متاحة للقيادة فقط.');
+        setOperationAgentStatus(picker, 'قائمة اختيار الأفراد متاحة للقيادة فقط.');
         return;
       }
       if (!ciaSocket || !ciaSocket.connected) {
-        setOperationAgentStatus(select, 'الاتصال بالخادم غير متاح؛ حدّث القائمة بعد الاتصال.');
+        setOperationAgentStatus(picker, 'الاتصال بالخادم غير متاح؛ حدّث القائمة بعد الاتصال.');
         return;
       }
       const requestId = ++operationAgentRequestId;
-      setOperationAgentStatus(select, 'جارٍ تحميل جميع أفراد Agent المعتمدين، بمن فيهم غير المتصلين...');
+      setOperationAgentStatus(picker, 'جارٍ تحميل جميع أفراد القطاع بجميع الرتب...');
       const timeout = setTimeout(function(){
-        if (requestId === operationAgentRequestId && select.options.length && select.options[0].textContent.indexOf('جارٍ تحميل') === 0) {
-          setOperationAgentStatus(select, 'لم يصل رد من الخادم؛ اضغط تحديث القائمة للمحاولة مجددًا.');
+        const summary = picker.querySelector('.operation-picker-summary');
+        if (requestId === operationAgentRequestId && summary && summary.textContent.indexOf('جارٍ تحميل') === 0) {
+          setOperationAgentStatus(picker, 'لم يصل رد من الخادم؛ اضغط تحديث الأفراد للمحاولة مجددًا.');
         }
       }, 8000);
       ciaSocket.emit('operation:agents', {}, function(result){
@@ -2297,29 +3385,64 @@
         if (requestId !== operationAgentRequestId) return;
         if (!result || !result.ok) {
           operationAgentDirectory = [];
-          setOperationAgentStatus(select, (result && result.message) || 'تعذر تحميل قائمة الأعضاء؛ اضغط تحديث القائمة للمحاولة مجددًا.');
+          setOperationAgentStatus(picker, (result && result.message) || 'تعذر تحميل القائمة؛ اضغط تحديث الأفراد للمحاولة مجددًا.');
           return;
         }
         operationAgentDirectory = Array.isArray(result.agents) ? result.agents : [];
-        select.innerHTML = operationAgentDirectory.map(agent => '<option value="' + esc(agent.code) + '">' + operationAgentOptionLabel(agent) + '</option>').join('') || '<option disabled selected>لا يوجد أفراد Agent معتمدون حاليًا.</option>';
+        delete picker.dataset.status;
+        renderOperationAgentPicker(picker);
         renderTacticalOperations();
       });
     }
+
     function saveOperationAssigneesById(operationId){
-      const select=document.getElementById('mission-assignees-'+operationId);
-      const memberCodes=Array.from(select?.selectedOptions||[]).map(option=>option.value).filter(Boolean);
-      if(!memberCodes.length) return alert('اختر Agent واحداً على الأقل.');
-      if(memberCodes.length>50) return alert('يمكن إسناد المهمة إلى 50 Agent كحد أقصى.');
+      const pickerKey='mission-'+String(operationId);
+      const memberCodes=Array.isArray(operationAgentSelections[pickerKey])?operationAgentSelections[pickerKey]:[];
+      if(!memberCodes.length) return alert('اختر فردًا واحدًا على الأقل.');
+      if(memberCodes.length>50) return alert('يمكن إسناد المهمة إلى 50 فردًا كحد أقصى.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('operation:update',{id:operationId,memberCodes},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر تحديث المكلّفين.');
+        operationAgentSelections[pickerKey]=memberCodes.slice();
         loadTacticalOperations();
         alert('تم حفظ التكليف. سيظهر للمشاركين عند عودتهم إلى الخدمة.');
       });
     }
 
     let operationPointMode = null;
-    function pickOperationPoint(mode){ operationPointMode=mode; showPane('tactical-map-view', null); setTimeout(()=>alert('اضغط على الخريطة لتحديد '+(mode==='start'?'بداية':'نهاية')+' العملية.'),250); }
+    let operationPointDraft = null;
+    let operationPointPickerMap = null;
+    let operationPointPreviewMarker = null;
+
+    function renderOperationPointPreview() {
+      if(!operationPointPickerMap||!operationPointDraft||!operationPointMode) return;
+      if(operationPointPreviewMarker){try{operationPointPickerMap.removeLayer(operationPointPreviewMarker);}catch(error){}}
+      const isStart=operationPointMode==='start'; const label=isStart?'بداية المهمة':'نهاية المهمة'; const color=isStart?'#22c55e':'#ef4444';
+      const icon=L.divIcon({className:'',html:'<div style="min-width:96px;padding:5px 8px;border:2px solid #fff;border-radius:7px;background:'+color+';color:#05070a;text-align:center;font-weight:900;box-shadow:0 0 12px '+color+';">'+esc(label)+'</div>',iconSize:[112,34],iconAnchor:[56,34]});
+      operationPointPreviewMarker=L.marker([operationPointDraft.lat,operationPointDraft.lng],{icon:icon}).addTo(operationPointPickerMap).bindPopup(label).openPopup(); operationPointPickerMap.panTo([operationPointDraft.lat,operationPointDraft.lng]);
+    }
+
+    function openOperationPointPicker(mode) {
+      if(!currentUser||!isTopThreeMissionRank(currentUser.rank)) return alert('تحديد مواقع المهمة متاح للرتب العليا الثلاث فقط.');
+      operationPointMode=mode==='end'?'end':'start'; const title=document.getElementById('operation-point-title'); const help=document.getElementById('operation-point-help'); const status=document.getElementById('operation-point-status'); const confirmButton=document.getElementById('operation-point-confirm'); const input=document.getElementById(operationPointMode==='start'?'op-start':'op-end'); const label=operationPointMode==='start'?'البداية':'النهاية';
+      if(title) title.innerText='خريطة المهمة — تحديد '+label; if(help) help.innerText='اختر '+label+' المهمة على خريطة المهمة. سيظهر الدبوس في موضعه قبل الضغط على «اعتماد الموقع».';
+      operationPointDraft=parsePoint(input&&input.value); if(status) status.textContent=operationPointDraft?'الموقع الحالي: '+operationPointDraft.lng+','+operationPointDraft.lat+' — يمكنك تعديله أو اعتماده.':'اضغط على الخريطة لوضع دبوس '+label+'.'; if(confirmButton) confirmButton.disabled=!operationPointDraft;
+      const modal=document.getElementById('operation-point-modal'); if(modal) modal.style.display='flex';
+      setTimeout(function(){
+        if(typeof L==='undefined') return alert('تعذر تحميل الخريطة؛ أعد تحميل الصفحة ثم حاول مجددًا.'); const bounds=[[0,0],[1000,1000]];
+        if(!operationPointPickerMap){
+          operationPointPickerMap=L.map('operation-point-map',{crs:L.CRS.Simple,minZoom:-2,maxZoom:3,zoomSnap:.5,zoomDelta:.5,scrollWheelZoom:false,touchZoom:false,boxZoom:false,doubleClickZoom:false,inertia:false,bounceAtZoomLimits:false,maxBounds:bounds,maxBoundsViscosity:1,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false}); L.imageOverlay(GTA_MAP_IMAGE_URLS[0],bounds).addTo(operationPointPickerMap); operationPointPickerMap.fitBounds(bounds);
+          operationPointPickerMap.on('click',function(event){if(!operationPointMode) return; operationPointDraft={lat:Math.max(0,Math.min(1000,Math.round(event.latlng.lat))),lng:Math.max(0,Math.min(1000,Math.round(event.latlng.lng)))}; const x=operationPointDraft.lng,y=operationPointDraft.lat; const target=document.getElementById('operation-point-status'); const confirm=document.getElementById('operation-point-confirm'); if(target) target.textContent='معاينة '+(operationPointMode==='start'?'بداية':'نهاية')+' المهمة عند X: '+x+'، Y: '+y+' — اضغط اعتماد الموقع للحفظ.'; if(confirm) confirm.disabled=false; renderOperationPointPreview();});
+        }
+        operationPointPickerMap.invalidateSize(); if(operationPointDraft) renderOperationPointPreview();
+      },100);
+    }
+
+    function closeOperationPointPicker() {const modal=document.getElementById('operation-point-modal');if(modal) modal.style.display='none';operationPointMode=null;operationPointDraft=null;if(operationPointPreviewMarker&&operationPointPickerMap){try{operationPointPickerMap.removeLayer(operationPointPreviewMarker);}catch(error){}}operationPointPreviewMarker=null;}
+
+    function confirmOperationPointSelection() {if(!operationPointMode||!operationPointDraft) return alert('اختر نقطة على الخريطة أولاً.');const selectedMode=operationPointMode;const input=document.getElementById(selectedMode==='start'?'op-start':'op-end');if(input) input.value=String(operationPointDraft.lng)+','+String(operationPointDraft.lat);closeOperationPointPicker();alert('تم حفظ '+(selectedMode==='start'?'بداية':'نهاية')+' المهمة على خريطة المهمة.');}
+
+    function pickOperationPoint(mode) {openOperationPointPicker(mode);}
 
     function loadTacticalOperations(){
       if(!ciaSocket || !currentUser) return;
@@ -2346,8 +3469,8 @@
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       const title=document.getElementById('op-title').value.trim();
       const objective=document.getElementById('op-objective').value.trim();
-      const memberCodes=Array.from(document.getElementById('op-agent-codes')?.selectedOptions||[]).map(option=>option.value).filter(Boolean);
-      if(!title||!objective||!memberCodes.length) return alert('أكمل اسم المهمة والهدف واختر Agent واحداً على الأقل.');
+      const memberCodes=Array.isArray(operationAgentSelections.create)?operationAgentSelections.create:[];
+      if(!title||!objective||!memberCodes.length) return alert('أكمل اسم المهمة والهدف واختر فردًا واحدًا على الأقل.');
       const payload={
         title,
         type:document.getElementById('op-type').value,
@@ -2362,7 +3485,7 @@
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر إنشاء المهمة.');
         const note=document.getElementById('op-notes').value.trim();
         const op=result.operation;
-        const finish=()=>{ document.querySelectorAll('#operation-command-box input:not(#op-leader-code),#operation-command-box textarea').forEach(el=>{el.value='';}); const agentSelect=document.getElementById('op-agent-codes'); if(agentSelect) Array.from(agentSelect.options).forEach(option=>option.selected=false); loadTacticalOperations(); };
+        const finish=()=>{ document.querySelectorAll('#operation-command-box input:not(#op-leader-code),#operation-command-box textarea').forEach(el=>{el.value='';}); operationAgentSelections.create=[]; renderOperationAgentPicker(document.getElementById('op-agent-picker')); loadTacticalOperations(); };
          if(note&&op?.id) ciaSocket.emit('operation:addNote',{id:op.id,text:note},()=>finish()); else finish();
         alert('تم إنشاء المهمة بنجاح.');
       });
@@ -2389,13 +3512,20 @@
         const border=status==='FAILED'?'var(--red-alert)':status==='COMPLETED'?'var(--green-status)':'var(--border)';
         const commandButtons=command?`<button class="btn-action" style="margin:0;padding:5px 8px;" onclick="addOperationUpdate('${esc(op.id)}')">تحديث ميداني</button><button class="btn-action" style="margin:0;padding:5px 8px;" onclick="setOperationStatus('${esc(op.id)}','IN_PROGRESS')">بدء التنفيذ</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--green-status);color:#000;" onclick="setOperationStatus('${esc(op.id)}','COMPLETED')">تمت</button><button class="btn-action" style="margin:0;padding:5px 8px;background:var(--red-alert);" onclick="setOperationStatus('${esc(op.id)}','FAILED')">فشلت</button>${rank==='CIA CHIEF'?`<button class="btn-action" style="margin:0;padding:5px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);" onclick="deleteTacticalOperation('${esc(op.id)}')">حذف</button>`:''}`:'';
         const mapButton=command?`<button class="btn-action" style="margin:0;padding:5px 8px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);" onclick="openOperationMap('${esc(op.id)}')">عرض مناطق المهمة على خريطة لوس</button>`:'';
-        const leadershipView=['CIA CHIEF','SUPREME COMMANDER'].includes(rank);
-        const crewLabel=crew.map(member=>{const name=leadershipView&&member.name?` — ${esc(member.name)}`:'';const presence=leadershipView?` · ${member.online&&member.activeService===true?'متصل بالخدمة':'غير متصل بالخدمة — يظهر له التكليف عند عودته'}`:'';const assigned=member.assignedToSelf?' — هذا التكليف مسند إليك':'';return `#${esc(member.code)}${name}${presence}${assigned}`;}).join('، ');
+        const leadershipView=isTopThreeMissionRank(rank);
+        const crewLabel=crew.map(member=>{const name=rank==='CIA CHIEF'&&member.name?' — '+esc(member.name):'';const memberRank=leadershipView&&(member.rankLabel||member.rank)?' · '+esc(member.rankLabel||member.rank):'';const presence=leadershipView?` · ${member.online&&member.activeService===true?'متصل بالخدمة':'غير متصل بالخدمة — يظهر له التكليف عند عودته'}`:'';const assigned=member.assignedToSelf?' — هذا التكليف مسند إليك':'';return '#'+esc(member.code)+name+memberRank+presence+assigned;}).join('، ');
         const notesHtml=notes.length?`<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;">${notes.slice(-5).map(note=>`<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">#${esc(note.authorCode||'—')} — ${esc(note.text||'')}</div>`).join('')}</div>`:'';
+        const statusHistory=Array.isArray(op.statusHistory)?op.statusHistory:[];
+        const statusHistoryHtml=rank==='CIA CHIEF'&&statusHistory.length
+          ? '<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:5px;"><strong style="font-size:.66rem;color:var(--primary-gold);">سجل تغيير الحالة</strong>' + statusHistory.slice(-10).reverse().map(change => '<div style="font-size:.64rem;color:var(--text-dim);margin-top:3px;">' + esc(operationStatusLabel(operationStatusCode(change.status))) + ' — ' + esc(change.actorName || ('#' + (change.actorCode || '—'))) + ' · ' + esc(change.actorRank || '') + ' · ' + esc(change.at || '') + '</div>').join('') + '</div>'
+          : '';
         const assignedCodes=crew.map(member=>String(member.code));
-        const assignmentEditor=command?(operationAgentDirectory.length?'<div style="margin-top:7px;padding:7px;border:1px solid var(--border);border-radius:5px;"><div style="font-size:.65rem;color:var(--text-dim);margin-bottom:4px;">تعديل المكلّفين — يشمل غير المتصلين</div><select id="mission-assignees-'+esc(op.id)+'" class="input-field" multiple size=4 style="margin:0;min-height:90px;">'+operationAgentDirectory.map(agent=>'<option value="'+esc(agent.code)+'" '+(assignedCodes.includes(String(agent.code))?'selected':'')+'>'+operationAgentOptionLabel(agent)+'</option>').join('')+'</select><button type="button" class="btn-action" style="margin:5px 0 0;padding:5px 8px;" data-operation-id="'+esc(op.id)+'" onclick="saveOperationAssigneesById(this.dataset.operationId)">حفظ المكلّفين</button></div>':'<button type="button" class="btn-action" style="margin:7px 0 0;padding:5px 8px;" onclick="loadOperationAgentDirectory()">تحميل قائمة الأفراد لتعديل التكليف</button>'):'';
-        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشاركون: ${crewLabel}</div>`:''}${notesHtml}${assignmentEditor}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${mapButton}${commandButtons}</div></div>`;
+        const pickerKey='mission-'+String(op.id);
+        if(!Array.isArray(operationAgentSelections[pickerKey])) operationAgentSelections[pickerKey]=assignedCodes.slice();
+        const assignmentEditor=command?(operationAgentDirectory.length?'<div style="margin-top:7px;padding:7px;border:1px solid var(--border);border-radius:8px;"><div style="font-size:.65rem;color:var(--text-dim);margin-bottom:4px;">تعديل أفراد المهمة — جميع الرتب</div>'+operationAgentPickerMarkup(pickerKey)+'<button type="button" class="btn-action" style="margin:5px 0 0;padding:5px 8px;" data-operation-id="'+esc(op.id)+'" onclick="saveOperationAssigneesById(this.dataset.operationId)">حفظ الأفراد</button></div>':'<button type="button" class="btn-action" style="margin:7px 0 0;padding:5px 8px;" onclick="loadOperationAgentDirectory()">تحميل قائمة الأفراد لتعديل التكليف</button>'):'';
+        return `<div class="card" style="margin-top:8px;border-color:${border};"><div style="display:flex;justify-content:space-between;gap:8px;"><strong style="color:var(--primary-gold);">${esc(op.missionNumber||op.id)} — ${esc(op.title||'مهمة')}</strong><span>${esc(operationStatusLabel(status))}</span></div><div style="font-size:.72rem;color:var(--text-dim);margin-top:4px;">${esc(op.type||'—')} • الخطر: ${esc(op.risk||'—')} • القائد: #${esc(op.commanderCode||op.battalionLeaderCode||'—')} • المشاركون: ${esc(crew.length||op.battalionCount||0)}</div><div style="font-size:.78rem;margin-top:5px;">${esc(op.objective||'')}</div>${crew.length?`<div style="font-size:.66rem;color:var(--cyan-glow);margin-top:5px;">المشاركون: ${crewLabel}</div>`:''}${notesHtml}${statusHistoryHtml}${assignmentEditor}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${mapButton}${commandButtons}</div></div>`;
       }).join('');
+      renderOperationAgentPickers(list);
     }
 
     function closeOperationMap(){
@@ -2411,13 +3541,26 @@
       operationDrawingLayer=null;
     }
 
+    function getOperationMapColor(){
+      const input=document.getElementById('operation-map-color');
+      const value=(input&&input.value||'').trim();
+      return /^#[0-9a-f]{6}$/i.test(value)?value:'#facc15';
+    }
+
+    function setOperationMapColor(color){
+      if(!/^#[0-9a-f]{6}$/i.test(color||'')) return;
+      if(!operationMapTool) return;
+      operationMapTool.color=color;
+      if(['freehand','circle','rectangle'].includes(operationMapTool.type)) renderOperationDrawingPreview();
+    }
+
     function setOperationMapTool(type,color){
       if(!currentUser||!ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
       if(!isTopThreeMissionRank(currentUser.rank)) return alert('عرض وتعديل خريطة المهمة متاح للرتب العليا الثلاث فقط.');
       if(operationMap&&operationMap.dragging) operationMap.dragging.enable();
       operationDrawingPointerId=null;
       operationDrawingStart=null;
-      operationMapTool={type,color};
+      operationMapTool={type,color:getOperationMapColor()};
       operationDrawingShape=type;
       operationDrawingPoints=[];
       if(operationMap) operationMap.getContainer().style.touchAction=['freehand','circle','rectangle'].includes(type)?'none':'';
@@ -2425,12 +3568,12 @@
       operationDrawingLayer=null;
       const help=document.getElementById('operation-map-help');
       const helpText={
-        marker:'اضغط نقطة لإضافة علامة عامة.',
-        criminal:'اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
-        people:'اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
-        freehand:'اسحب على الخريطة لرسم مسار حر؛ يُحفظ عند رفع إصبعك أو زر الفأرة.',
-        circle:'اسحب من مركز الدائرة إلى حافتها؛ تُحفظ تلقائياً عند رفع إصبعك.',
-        rectangle:'اسحب لرسم حدود المنطقة؛ تُحفظ تلقائياً عند رفع إصبعك.'
+        marker:'اختر اللون ثم اضغط نقطة لإضافة علامة عامة.',
+        criminal:'اختر اللون ثم اضغط نقطة وحدد عدد المجرمين أو المشتبه بهم.',
+        people:'اختر اللون ثم اضغط نقطة وأدخل عدد الأشخاص الموجودين.',
+        freehand:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم المسار؛ يُحفظ بلونه عند رفع إصبعك أو زر الفأرة.',
+        circle:'اختر اللون من منتقي لون الرسم، ثم اسحب من مركز الدائرة إلى حافتها.',
+        rectangle:'اختر اللون من منتقي لون الرسم، ثم اسحب لرسم حدود المنطقة.'
       };
       if(help) help.innerText=helpText[type]||'اختر أداة ثم استخدمها على الخريطة.';
     }
@@ -2479,7 +3622,7 @@
       if(geometry.length<2){ operationDrawingPoints=[]; return alert('اسحب مسافة أطول قليلاً لإكمال الرسم.'); }
       const points=geometry.map(p=>({x:p.lng,y:p.lat}));
       const shape=['freehand','circle','rectangle'].includes(operationDrawingShape)?operationDrawingShape:'freehand';
-      const color=operationMapTool?.color||'#111827';
+      const color=operationMapTool?.color||'#facc15';
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('operation:addDrawing',{id:operationMapOperation.id,points,color,shape},function(result){
         if(!result||!result.ok) return alert((result&&result.message)||'تعذر حفظ الرسم.');
@@ -2601,7 +3744,7 @@
       const modal=document.getElementById('operation-map-modal');
       if(modal) modal.style.display='flex';
       const title=document.getElementById('operation-map-title');
-      if(title) title.innerText=`خريطة مناطق المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
+      if(title) title.innerText=`خريطة المهمة: ${operationMapOperation.title||operationMapOperation.missionNumber||''}`;
       const command=isTopThreeMissionRank(currentUser.rank);
       const help=document.getElementById('operation-map-help');
       if(help) help.innerText='يمكنك مراجعة المواقع والرسومات وإضافة الشروحات على الخريطة.';
@@ -2708,8 +3851,9 @@
     function loadBankDirectory(){
       if(!ciaSocket||!currentUser) return;
       ciaSocket.emit('bank:get',{},function(result){
-        if(!result||!result.ok){bankDirectory=[];return;}
+        if(!result||!result.ok){bankDirectory=[];bankRankSalaries={};return;}
         bankDirectory=Array.isArray(result.users)?result.users:[];
+        bankRankSalaries=result.rankSalaries&&typeof result.rankSalaries==='object'?result.rankSalaries:{};
          const selfBank=result.self||result.bank;
          if(selfBank){
            currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:selfBank.accountNumber||'',balance:selfBank.balance??0,salary:selfBank.salary??580,lastSalaryAt:selfBank.lastSalaryAt||null,salaryClaimedToday:!!selfBank.salaryClaimedToday,frozen:!!selfBank.frozen,enabled:selfBank.enabled!==false,salaryEnabled:selfBank.salaryEnabled!==false,bankCode:selfBank.bankCode||null}};
@@ -2728,18 +3872,19 @@
       const status=bank.enabled===false?'موقوف':bank.frozen?'مجمد':'فعال';
       const color=bank.enabled===false?'var(--red-alert)':bank.frozen?'var(--primary-gold)':'var(--green-status)';
       const salaryState = bank.salaryClaimedToday ? 'تم استلام الراتب خلال آخر 24 ساعة' : 'الراتب متاح للاستلام';
+      const rankSalaryRows=['AGENT','HIGH COMMANDER','SUPREME COMMANDER','CIA CHIEF'].map(r=>`${getRankLabel(r)}: ${esc(bankRankSalaries[r]??580)}`).join(' · ');
       const bankLinked=bank.militaryCodeLinked===true||bank.accountNumber===currentUser.publicCode||bank.bankAccount===currentUser.publicCode;
       const bankLinkInput=document.getElementById('bank-account-input');
       const bankLinkButton=document.getElementById('bank-link-button');
       if(bankLinkInput){bankLinkInput.disabled=bankLinked;if(bankLinked)bankLinkInput.value=currentUser.publicCode||'';}
       if(bankLinkButton)bankLinkButton.disabled=bankLinked;
-      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:${bankLinked?'var(--green-status)':'var(--text-dim)'};">${bankLinked?'مرتبط':'اكتبه واحفظه مرة واحدة للربط'}</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div>`;
+      box.innerHTML=`<div style="font-size:.82rem;color:var(--cyan-glow);">#${esc(currentUser.publicCode)} — ${esc(getRankLabel(currentUser.rank))}</div><div style="font-size:.72rem;color:var(--primary-gold);margin-top:5px;">كود البنك العسكري: <strong>#${esc(currentUser.publicCode)}</strong> <span style="color:${bankLinked?'var(--green-status)':'var(--text-dim)'};">${bankLinked?'مرتبط':'اكتبه واحفظه مرة واحدة للربط'}</span></div><div style="font-size:1.05rem;color:var(--primary-gold);font-weight:800;margin-top:5px;">الراتب: ${esc(bank.salary??580)}</div><div style="font-size:1.05rem;color:var(--text-bright);font-weight:800;margin-top:3px;">الرصيد: ${esc(bank.balance??0)}</div><div style="margin-top:7px;font-size:.72rem;color:${color};font-weight:800;">حالة الحساب: ${status}</div><div style="margin-top:5px;font-size:.68rem;color:var(--text-dim);">${esc(salaryState)}</div><div style="margin-top:9px;padding-top:7px;border-top:1px solid var(--border);font-size:.65rem;color:var(--text-dim);line-height:1.8;"><strong style="color:var(--primary-gold);">سلم الرواتب العسكرية:</strong> ${rankSalaryRows}</div>`;
       const cmd=document.getElementById('bank-command-box'); if(cmd) cmd.style.display=canManage?'block':'none';
       const controls=document.getElementById('bank-management-controls'); if(controls) controls.style.display=canManage?'block':'none';
       const content=document.getElementById('bank-command-content'); if(!content||!canManage)return;
       const ranks=['AGENT','HIGH COMMANDER','SUPREME COMMANDER','CIA CHIEF'];
-      const options=ranks.map(r=>{const u=(bankDirectory||[]).find(x=>normalizeRank(x.rank)===r); const salary=u?.salary ?? (r===rank?bank.salary:580); const disabled=rank==='HIGH COMMANDER'&&r!=='AGENT' || rank==='SUPREME COMMANDER'&&!['AGENT','HIGH COMMANDER'].includes(r); return `<option value="${r}" ${disabled?'disabled':''}>${getRankLabel(r)} — ${esc(salary)}</option>`;}).join('');
-      const rows=(bankDirectory||[]).map(u=>`<div style="font-size:.69rem;padding:7px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:7px;align-items:center;flex-wrap:wrap;"><span>#${esc(u.code)} — ${esc(u.name||'')} — ${esc(getRankLabel(u.rank))}<br><span style="color:${u.enabled===false?'var(--red-alert)':u.frozen?'var(--primary-gold)':'var(--green-status)'};">${u.enabled===false?'موقوف':u.frozen?'مجمد':'فعال'}</span> • الرصيد: ${esc(u.balance??0)} • الراتب: ${esc(u.salary??0)}</span><button type="button" class="btn-action" style="margin:0;padding:4px 7px;width:auto;" onclick="selectBankTarget('${esc(u.code)}')">اختيار</button></div>`).join('');
+      const options=ranks.map(r=>{const u=(bankDirectory||[]).find(x=>normalizeRank(x.rank)===r); const salary=bankRankSalaries[r]??u?.salary??(r===rank?bank.salary:580); const disabled=rank==='HIGH COMMANDER'&&r!=='AGENT' || rank==='SUPREME COMMANDER'&&!['AGENT','HIGH COMMANDER'].includes(r); return `<option value="${r}" ${disabled?'disabled':''}>${getRankLabel(r)} — ${esc(salary)}</option>`;}).join('');
+      const rows=(bankDirectory||[]).map(u=>`<div style="font-size:.69rem;padding:7px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:7px;align-items:center;flex-wrap:wrap;"><span>#${esc(u.code)} — ${esc(u.name||'')} — ${esc(getRankLabel(u.rank))}<br><span style="color:${u.enabled===false?'var(--red-alert)':u.frozen?'var(--primary-gold)':'var(--green-status)'};">${u.enabled===false?'موقوف':u.frozen?'مجمد':'فعال'}</span> • الرصيد: ${esc(u.balance??0)} • الراتب: ${esc(u.salary??0)}</span><button type="button" class="btn-action" style="margin:0;padding:4px 7px;width:auto;" onclick="selectBankTarget('${esc(u.code)}')" ${u.canManage?'':'disabled'}>${u.canManage?'اختيار':'عرض فقط'}</button></div>`).join('');
       content.innerHTML=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;"><select id="salary-rank" class="input-field" style="margin:0;min-width:190px;">${options}</select><input id="salary-amount" type="number" min="0" class="input-field" style="margin:0;max-width:160px;" placeholder="السعر / الراتب"><button type="button" class="btn-action" style="margin:0;" onclick="setSalaryByRank()">حفظ راتب الرتبة</button></div><div style="font-size:.65rem;color:var(--text-dim);margin-bottom:5px;">اختَر الشخص ثم استخدم أدوات الحساب بالأسفل.</div>${rows||'<div class="identity-meta" style="padding:8px;">لا توجد حسابات أخرى متاحة لصلاحيتك.</div>'}`;
     }
 
@@ -2856,6 +4001,14 @@
       return 'rank-agent';
     }
 
+function openIBPHome(button) {ibpReturnToCenter=false;showPane('ibp-command-center',button||document.getElementById('ibp-nav'));}
+
+function openIBPModule(paneId) {if(!currentUser||!ciaSessionAuthenticated)return alert('سجّل الدخول إلى حسابك أولاً.');const target=document.getElementById(paneId);if(!target)return alert('هذه المحطة غير متاحة حالياً.');ibpReturnToCenter=true;showPane(paneId,null);if(!target.classList.contains('active'))ibpReturnToCenter=false;}
+
+function exitIBPWorkspace() {ibpReturnToCenter=false;if(ibpClockTimer){clearInterval(ibpClockTimer);ibpClockTimer=null;}const home=document.querySelector('.nav-list .nav-btn');showPane('dashboard',home);}
+
+function renderIBPWorkspace() {const root=document.getElementById('ibp-command-center');if(!root)return;const rank=currentUser&&typeof normalizeRank==='function'?normalizeRank(currentUser.rank):'OPERATOR';const leaders=['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(rank);const audit=['CIA CHIEF','SUPREME COMMANDER'].includes(rank);const operationsNav=document.getElementById('operations-nav');const canOperations=!!operationsNav&&getComputedStyle(operationsNav).display!=='none';const users=typeof registeredUsers!=='undefined'&&Array.isArray(registeredUsers)?registeredUsers:[];const operations=typeof operationsList!=='undefined'&&Array.isArray(operationsList)?operationsList:[];const put=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value);};const code=currentUser&&(currentUser.publicCode||currentUser.code||currentUser.characterCode)||'OPERATOR';put('ibp-user-code',code);put('ibp-user-rank',rank);put('ibp-user-unit',currentUser&&(currentUser.battalion||currentUser.unit)?String(currentUser.battalion||currentUser.unit):'LOS SANTOS SECTOR');put('ibp-access-chip','ACCESS LEVEL // '+rank);put('ibp-personnel-count',leaders?String(users.length).padStart(2,'0'):'01');put('ibp-operation-count',canOperations?String(operations.length).padStart(2,'0'):'—');put('ibp-service-status',currentUser&&currentUser.activeService===true?'ON DUTY':'AUTHORIZED');put('ibp-connection-title',ciaSocket&&ciaSocket.connected?'SECURE CHANNEL ACTIVE':'SECURE CHANNEL STANDBY');put('ibp-connection-detail',ciaSocket&&ciaSocket.connected?'REALTIME LINK ESTABLISHED':'WAITING FOR CONNECTION');put('ibp-scope-detail',leaders?'COMMAND VIEW // AUTHORIZED PERSONNEL':'PERSONAL VIEW // AUTHORIZED ONLY');put('ibp-live-state',ciaSocket&&ciaSocket.connected?'NETWORK ONLINE':'NETWORK STANDBY');root.querySelectorAll('[data-ibp-leadership]').forEach(el=>{el.hidden=!leaders;});root.querySelectorAll('[data-ibp-operations]').forEach(el=>{el.hidden=!canOperations;});root.querySelectorAll('[data-ibp-audit]').forEach(el=>{el.hidden=!audit;});const map=document.getElementById('ibp-map-preview');if(map&&typeof GTA_MAP_IMAGE_URLS!=='undefined'&&GTA_MAP_IMAGE_URLS&&GTA_MAP_IMAGE_URLS[0])map.style.backgroundImage='linear-gradient(rgba(5,9,14,.42),rgba(5,9,14,.64)),url('+JSON.stringify(GTA_MAP_IMAGE_URLS[0])+')';const time=document.getElementById('ibp-clock');if(time)time.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});if(document.body.classList.contains('ibp-mode')&&!ibpClockTimer)ibpClockTimer=setInterval(()=>{const clock=document.getElementById('ibp-clock');if(clock)clock.textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});},1000);}
+
     function showPane(paneId, btn) {
       if (paneId !== 'dashboard' && (!currentUser || !ciaSessionAuthenticated)) {
         alert('سجّل الدخول إلى حسابك أولاً.');
@@ -2863,6 +4016,10 @@
       }
       if (currentUser && currentUser.serviceApproved === false && !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) && paneId !== 'dashboard') {
         alert('أكمل الموافقات الثلاث من لوحة الحالة قبل دخول أقسام الخدمة.');
+        return;
+      }
+      if (paneId === 'security-panel' && (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)))) {
+        alert('مركز الأمن متاح للقيادة الأمنية فقط.');
         return;
       }
       if (paneId === 'morse-translator-view' && currentUser && currentUser.serviceApproved === false) {
@@ -2878,12 +4035,19 @@
       const pane = document.getElementById(paneId);
       if (pane) pane.classList.add('active');
       if (btn) btn.classList.add('active');
+      const isIBPHome = paneId === 'ibp-command-center';
+      if (isIBPHome) ibpReturnToCenter = false;
+      document.body.classList.toggle('ibp-mode', isIBPHome || ibpReturnToCenter);
+      const ibpReturnBar = document.getElementById('ibp-return-bar');
+      if (ibpReturnBar) ibpReturnBar.style.display = ibpReturnToCenter && !isIBPHome ? 'flex' : 'none';
+      if (isIBPHome) setTimeout(renderIBPWorkspace, 0);
       if (document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
 
       if (paneId === 'tactical-map-view') setTimeout(function(){ initGTAMap(); }, 250);
       if (paneId === 'sos-history-map-view') setTimeout(function(){ initSOSHistoryMap(); }, 50);
       if (paneId === 'bank') setTimeout(loadBankDirectory, 50);
       if (paneId === 'operations') setTimeout(function(){ loadTacticalOperations(); loadOperationAgentDirectory(); }, 50);
+      if (paneId === 'security-panel') setTimeout(loadSecurityCenter, 50);
       updateViews();
     }
 
@@ -2898,10 +4062,16 @@
       renderCasesList();
       renderBank();
       renderTacticalOperations();
+      renderIBPWorkspace();
       renderSupportPanel();
       if (currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) {
         renderChiefPanel();
         renderDailyAuditLogs();
+        renderSecurityCenter();
+      } else {
+        const securityNav = document.getElementById('security-nav');
+        if (securityNav) securityNav.style.display = 'none';
+        renderSecurityCenter();
       }
     }
 
@@ -2926,6 +4096,134 @@
           return `<div class="audit-log-item"><div class="audit-log-title">مباشرة ${esc(r.dayKey||'')}</div><div class="audit-log-meta">#${esc(r.userCode||'')} — ${esc(r.userName||'')}<br>البداية: ${esc(start)}<br>النهاية: ${esc(end)}<br>الراتب: ${r.salaryPaid ? 'تم الصرف' : 'مؤهل / لم يُصرف'}</div></div>`;
         }).join('') : '<div class="identity-meta" style="text-align:center;padding:15px;">لا توجد سجلات مباشرة بعد.</div>';
       }
+    }
+
+    function applySecurityCenterResult(result) {
+      if (!result || !result.ok) return;
+      securityIncidents = Array.isArray(result.incidents) ? result.incidents : [];
+      unreadSecurityNotificationCount = Number(result.unreadSecurityNotifications) || 0;
+      renderSecurityCenter();
+    }
+
+    function loadSecurityCenter() {
+      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!ciaSocket || !ciaSocket.connected) return;
+      ciaSocket.emit('security:getLogs', {}, function(result) {
+        if (!result || !result.ok) {
+          if (result && result.message) alert(result.message);
+          return;
+        }
+        applySecurityCenterResult(result);
+      });
+    }
+
+    function renderSecurityCenter() {
+      const root = document.getElementById('security-panel');
+      if (!root) return;
+      const allowed = !!currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank));
+      if (!allowed) {
+        ['security-summary','security-active-alerts','security-restricted-members','security-manual-suspend','security-incident-list'].forEach(id => {
+          const box = document.getElementById(id);
+          if (box) box.innerHTML = '';
+        });
+        return;
+      }
+      const chief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      const allMembers = Array.isArray(registeredUsers) ? registeredUsers : [];
+      const restricted = allMembers.filter(user => user && (user.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(user.securityStatus)));
+      const currentStatusFor = incident => allMembers.find(user =>
+        (incident.userId && user.id === incident.userId) ||
+        (incident.publicCode && user.publicCode === incident.publicCode)
+      );
+      const activeAlerts = (securityIncidents || []).filter(incident => {
+        if (incident.status === 'REVIEW_REQUIRED') return true;
+        if (!['SUSPENDED','SECURITY_RESTRICTED'].includes(incident.status)) return false;
+        const member = currentStatusFor(incident);
+        return !!member && (member.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(member.securityStatus));
+      }).slice(0, 30);
+      const restored = (securityIncidents || []).filter(incident => incident.action === 'MEMBER_RESTORED').length;
+      const summary = document.getElementById('security-summary');
+      if (summary) summary.innerHTML = `
+        <div style="display:flex;gap:9px;flex-wrap:wrap;">
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">تنبيهات غير مقروءة</div><div style="font-size:1.35rem;color:#facc15;font-weight:900;">${unreadSecurityNotificationCount}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">حالات مفتوحة</div><div style="font-size:1.35rem;color:#f87171;font-weight:900;">${activeAlerts.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">أعضاء موقوفون أو مقيّدون</div><div style="font-size:1.35rem;color:#fbbf24;font-weight:900;">${restricted.length}</div></div>
+          <div class="audit-log-item" style="flex:1;min-width:140px;"><div class="audit-log-title">عمليات استعادة مسجلة</div><div style="font-size:1.35rem;color:#4ade80;font-weight:900;">${restored}</div></div>
+        </div>`;
+
+      const describe = incident => {
+        const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        const who = incident.userName
+          ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}`
+          : incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد';
+        const actor = incident.actorName || incident.actorCode;
+        const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
+        return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
+          <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
+          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
+          ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
+        </div>`;
+      };
+      const alertsBox = document.getElementById('security-active-alerts');
+      if (alertsBox) alertsBox.innerHTML = activeAlerts.length
+        ? activeAlerts.map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حالات أمنية مفتوحة.</div>';
+
+      const restrictedBox = document.getElementById('security-restricted-members');
+      if (restrictedBox) {
+        restrictedBox.innerHTML = restricted.length
+          ? restricted.map(user => `<div class="audit-log-item"><div class="audit-log-title">${esc(user.name || user.publicCode || 'عضو')}</div>
+              <div class="audit-log-meta">#${esc(user.publicCode || '—')} · ${esc(user.rank || 'AGENT')} · ${esc(user.securityStatus || (user.suspended ? 'SUSPENDED' : 'RESTRICTED'))}</div>
+              ${user.suspensionReason ? `<div class="audit-log-details">${esc(user.suspensionReason)}</div>` : ''}
+              ${chief ? `<button type="button" class="btn-main" data-security-restore="${esc(user.id)}" style="margin-top:8px;background:#166534;">استعادة بواسطة CIA CHIEF</button>` : ''}
+            </div>`).join('')
+          : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حسابات مقيّدة أو موقوفة.</div>';
+      }
+      root.querySelectorAll('[data-security-restore]').forEach(button => {
+        button.onclick = () => restoreSecurityMember(button.dataset.securityRestore);
+      });
+
+      const manual = document.getElementById('security-manual-suspend');
+      if (manual) {
+        manual.style.display = chief ? 'block' : 'none';
+        if (chief) {
+          const candidates = allMembers.filter(user => user && user.id !== currentUser.id && user.securityStatus === 'ACTIVE' && user.suspended !== true);
+          manual.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="security-suspend-target" class="input-field" style="flex:1;min-width:180px;">
+              <option value="">اختر عضوًا للإيقاف الأمني</option>
+              ${candidates.map(user => `<option value="${esc(user.id)}">${esc(user.name || user.publicCode || 'عضو')} — #${esc(user.publicCode || '—')}</option>`).join('')}
+            </select>
+            <input id="security-suspend-reason" class="input-field" maxlength="300" placeholder="سبب الإيقاف — لا تضع نص الرسالة أو كلمة مرور">
+            <button type="button" class="btn-main" onclick="suspendSecurityMemberFromPanel()" style="background:#991b1b;">إيقاف أمني</button>
+          </div>`;
+        }
+      }
+
+      const incidentsBox = document.getElementById('security-incident-list');
+      if (incidentsBox) incidentsBox.innerHTML = securityIncidents.length
+        ? securityIncidents.slice(0, 100).map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حوادث مسجلة.</div>';
+    }
+
+    function suspendSecurityMemberFromPanel() {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      const userId = document.getElementById('security-suspend-target')?.value || '';
+      const reason = (document.getElementById('security-suspend-reason')?.value || '').trim();
+      if (!userId || !reason) return alert('اختر عضوًا واكتب سبب الإيقاف.');
+      if (!confirm('سيُمنع العضو من تسجيل الدخول حتى يراجعه CIA CHIEF. هل تريد المتابعة؟')) return;
+      ciaSocket.emit('security:suspendMember', { userId, reason }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر إيقاف العضو.');
+        loadSecurityCenter();
+      });
+    }
+
+    function restoreSecurityMember(userId) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected) return;
+      if (!confirm('سيُرفع الإيقاف الأمني، لكن الحساب سيبقى خارج الخدمة حتى يبدأ العضو الخدمة بنفسه. تأكيد الاستعادة؟')) return;
+      ciaSocket.emit('security:restoreMember', { userId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذرت استعادة العضو.');
+        loadSecurityCenter();
+      });
     }
 
     function updateServiceUI() {
@@ -3116,8 +4414,7 @@
       if (!currentUser || !ciaSessionAuthenticated) return alert('سجّل الدخول إلى حسابك أولاً لاستخدام المترجم.');
       if (!ciaSocket || !ciaSocket.connected) return alert('جارٍ استعادة اتصال الحساب؛ انتظر حتى يكتمل الربط.');
       if (currentUser.serviceApproved === false) return alert('اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.');
-      if (currentUser.activeService !== true) return alert('سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.');
-      const direction = document.getElementById('morse-mode')?.value || 'encode';
+            const direction = document.getElementById('morse-mode')?.value || 'encode';
       const text = document.getElementById('morse-input')?.value.trim() || '';
       const resultBox = document.getElementById('morse-result');
       const output = document.getElementById('morse-result-text');
@@ -3396,16 +4693,6 @@
               ? "تم إضافة المقر الرئيسي بنجاح."
               : "تم إضافة المقر الاحتياطي بنجاح."
           );
-          return;
-        }
-
-        if(operationPointMode && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))){
-          if(myMapLocationPickerEnabled){myMapLocationPickerEnabled=false;updateMyMapLocationPickerButton();}
-          const targetInput=document.getElementById(operationPointMode==='start'?'op-start':'op-end');
-          if(targetInput) targetInput.value = `${x},${y}`;
-          const selected=operationPointMode; operationPointMode=null;
-          alert(`تم تحديد ${selected==='start'?'بداية':'نهاية'} العملية: ${x},${y}`);
-          showPane('operations', null);
           return;
         }
 
@@ -4304,7 +5591,7 @@
           const canChangeTargetRank = u.id !== (currentUser && currentUser.id) && (actorRank === 'CIA CHIEF' && normalizedRank !== 'CIA CHIEF' || actorRank === 'SUPREME COMMANDER' && !['CIA CHIEF','SUPREME COMMANDER'].includes(normalizedRank));
           const rankButton = canChangeTargetRank ? '<button type="button" onclick="manageRank(' + index + ')" style="padding:3px 6px;background:var(--cyan-glow);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">ترقية / تنزيل</button>' : '';
           const kickButton = canManageTarget ? '<button type="button" onclick="kickMember(' + index + ')" title="فصل العضو مع الاحتفاظ ببياناته" style="padding:3px 6px;background:var(--red-alert);color:#fff;border:none;cursor:pointer;border-radius:3px;">فصل من الخدمة</button>' : '';
-          const serviceButton = u.status === 'مفصول' ? (canManageTarget ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">إعادة للخدمة</button>' : '') : rankButton + ' ' + kickButton;
+          const serviceButton = u.status === 'مفصول' ? (actorRank === 'CIA CHIEF' ? '<button type="button" onclick="reactivateMember(' + index + ')" style="padding:3px 6px;background:var(--green-status);color:#000;font-weight:bold;border:none;cursor:pointer;border-radius:3px;">استعادة أمنية</button>' : '') : rankButton + ' ' + kickButton;
           const codeCell = u.publicCode ? '#' + esc(u.publicCode) : '<span style="color:var(--primary-gold);">بانتظار اعتماد الخدمة</span>';
           return '<tr><td style="font-weight:bold;color:var(--cyan-glow);">' + codeCell + '</td><td>' + esc(u.name) + '</td><td><span class="badge-rank ' + getRankBadge(normalizedRank) + '">' + esc(getRankLabel(normalizedRank)) + '</span></td><td>' + (u.online ? '<span class="presence-online">متصل</span>' : '<span class="presence-offline">غير متصل</span>') + '</td><td>' + editCodeBtn + ' ' + serviceButton + '</td></tr>';
         }).join('');
@@ -4470,12 +5757,10 @@
     }
 
     function reactivateMember(index) {
-      if (!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
       const member = registeredUsers[index];
       if (!member) return;
-      ciaSocket.emit('admin:reactivateMember', { memberId: member.id }, function(result) {
-        if (!result || !result.ok) alert((result && result.message) || 'تعذر إعادة العضو للخدمة.');
-      });
+      restoreSecurityMember(member.id);
     }
 
     function kickMember(index) {
@@ -4980,5 +6265,1409 @@
 })();
 })();
 </script>
+  <script id="ibp-workspace-inline-script">
+(function () {
+  "use strict";
+
+  const text = {
+    ar: {
+      language: "لغة الواجهة",
+      home: "مركز القيادة",
+      map: "خريطة القطاع",
+      network: "شبكة الكتائب والقيادة",
+      personnel: "ملفات الأفراد",
+      operations: "مركز العمليات",
+      archive: "أرشيف المعلومات",
+      audit: "السجل القيادي",
+      title: "مركز قيادة القطاع",
+      caption: "مركز القيادة // قطاع لوس سانتوس",
+      access: "مستوى الصلاحية",
+      personnelScope: "أفراد ضمن صلاحية العرض",
+      operationsScope: "عمليات حسب صلاحية الرتبة",
+      serviceScope: "حالة المشغّل الحالي",
+      mapOpen: "فتح خريطة الانتشار ←",
+      feedNote: "تُعرض البيانات بحسب صلاحية الحساب. لا يعرض هذا المركز مواقع ميدانية غير متاحة للنظام.",
+      modulesSub: "اختر محطة لفتحها داخل شبكة القيادة",
+      cardDescriptions: [
+        "خريطة القطاع ومواقع المهمة",
+        "شبكة القيادة وإدارة الأفراد",
+        "الأفراد والحضور والهويات المصرح بها",
+        "المهمات والتحديثات الميدانية",
+        "أرشيف القضايا والأدلة",
+        "البلاغات والتنبيهات المصرح بها",
+        "التقارير والملخصات",
+        "سجل القيادة والتغييرات المصرح بها"
+      ],
+      scopeFooter: "دخول آمن // بحسب الرتبة",
+      workspaceTitle: "شبكة القيادة والاستخبارات",
+      workspaceEyebrow: "إدارة التشكيلات • صورة تشغيلية مصرح بها",
+      selectUnit: "الكتيبة المحددة",
+      filter: "تصفية",
+      allUnits: "جميع الكتائب",
+      createUnit: "＋ إنشاء كتيبة",
+      activeUnits: "كتائب غير مؤرشفة",
+      assignedPeople: "أفراد ضمن الكتائب الظاهرة",
+      onlinePeople: "متصلون بالتطبيق",
+      visibleOperations: "عمليات ظاهرة",
+      battalionNetwork: "شبكة الكتائب",
+      visibleUnits: "كتائب ضمن صلاحيتك",
+      battalionDetail: "ملف الكتيبة",
+      chooseUnit: "اختر كتيبة لعرض تفاصيلها",
+      commandTree: "تسلسل القيادة",
+      selectedUnit: "الكتيبة المحددة",
+      commander: "قائد الكتيبة",
+      members: "الأفراد",
+      sector: "القطاع",
+      status: "الحالة",
+      operationsFeed: "موجز العمليات",
+      noVisibleOperations: "لا توجد عمليات ظاهرة حالياً.",
+      restrictedOperations: "مركز العمليات غير متاح لهذه الرتبة.",
+      noUnits: "لا توجد كتائب ظاهرة لحسابك بعد.",
+      noUnitsManager: "يمكن للمخوّلين إنشاء الكتيبة الأولى وربط الأفراد بها.",
+      noUnitsMember: "ستظهر هنا الكتائب المرتبطة بحسابك أو المتاحة لرتبتك.",
+      loadError: "تعذر تحميل بيانات الكتائب. أعد المحاولة بعد التحقق من اتصال الخدمة.",
+      loading: "جارٍ تحميل البيانات…",
+      noPersonnel: "لا يوجد أفراد مرتبطون بهذه الكتيبة.",
+      online: "متصل",
+      offline: "غير متصل",
+      onDuty: "على رأس الخدمة",
+      authorized: "مصرّح",
+      notAuthorized: "غير متاح",
+      openMap: "فتح خريطة القطاع",
+      openOperations: "فتح مركز العمليات",
+      openArchive: "فتح الأرشيف",
+      edit: "تعديل",
+      editBattalion: "تعديل بيانات الكتيبة",
+      createBattalion: "إنشاء كتيبة",
+      nameAr: "اسم الكتيبة بالعربية",
+      nameEn: "اسم الكتيبة بالإنجليزية",
+      sectorName: "اسم القطاع",
+      symbol: "الرمز",
+      unitColor: "لون التمييز",
+      commanderField: "قائد الكتيبة",
+      noCommander: "بدون قائد محدد",
+      assignedMembers: "الأفراد المعيّنون",
+      noAssignablePeople: "لا توجد قائمة أفراد متاحة لهذا الحساب.",
+      statusActive: "نشطة",
+      statusAlert: "تنبيه",
+      statusStandby: "استعداد",
+      statusArchived: "مؤرشفة",
+      filterActive: "نشطة",
+      filterAlert: "تنبيه",
+      filterStandby: "استعداد",
+      filterArchived: "مؤرشفة",
+      save: "حفظ التغييرات",
+      cancel: "إلغاء",
+      archiveWarning: "الأرشفة لا تحذف البيانات، ويمكن إعادة تفعيل الكتيبة لاحقاً.",
+      requiredName: "أدخل اسماً عربياً أو إنجليزياً للكتيبة.",
+      saved: "تم حفظ الكتيبة.",
+      saveError: "تعذر حفظ الكتيبة. تحقق من البيانات والصلاحيات.",
+      statusOperation: "حالة العملية",
+      operationUnknown: "غير محددة",
+      secureChannel: "قناة القيادة",
+      noCommanderData: "لم يُحدد قائد",
+      memberCount: "عدد الأفراد",
+      updatedFromServer: "محدّث من الخادم",
+      notLiveTracking: "لا يوجد تتبع جغرافي حي",
+      statusConnection: "حالة الاتصال",
+      archiveConfirm: "سيؤدي حفظ الحالة المؤرشفة إلى إيقاف إسناد أفراد جدد لهذه الكتيبة. متابعة؟",
+      errors: {
+        "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.",
+        "يجب أن يكون قائد الكتيبة من الرتب القيادية.": "يجب اختيار قائد من الرتب القيادية.",
+        "رمز قائد الكتيبة غير صالح.": "رمز قائد الكتيبة غير صالح.",
+        "تعذر التحقق من أحد أكواد الأفراد المختارين.": "تعذر التحقق من أحد أكواد الأفراد المختارين.",
+        "أدخل اسم الكتيبة بالعربية أو الإنجليزية.": "أدخل اسماً عربياً أو إنجليزياً للكتيبة."
+      }
+    },
+    en: {
+      language: "Interface language",
+      home: "Command center",
+      map: "Sector map",
+      network: "Battalion command network",
+      personnel: "Personnel files",
+      operations: "Operations center",
+      archive: "Intelligence archive",
+      audit: "Command audit",
+      title: "Sector command center",
+      caption: "COMMAND CENTER // LOS SANTOS SECTOR",
+      access: "ACCESS LEVEL",
+      personnelScope: "Personnel visible to your rank",
+      operationsScope: "Operations visible to your rank",
+      serviceScope: "Current operator status",
+      mapOpen: "Open deployment map ←",
+      feedNote: "Data is scoped to your account permissions. This console does not show field locations the system does not provide.",
+      modulesSub: "Choose a station to open within the command network",
+      cardDescriptions: [
+        "Sector map and mission locations",
+        "Command network and personnel assignment",
+        "Personnel, attendance, and authorized identities",
+        "Missions and field updates",
+        "Case and evidence archive",
+        "Authorized alerts and reports",
+        "Reports and briefings",
+        "Command activity and permitted changes"
+      ],
+      scopeFooter: "SECURE ACCESS // ROLE-SCOPED",
+      workspaceTitle: "Intelligence command network",
+      workspaceEyebrow: "Unit management • authorized operational view",
+      selectUnit: "Selected battalion",
+      filter: "Filter",
+      allUnits: "All battalions",
+      createUnit: "＋ Create battalion",
+      activeUnits: "Non-archived battalions",
+      assignedPeople: "People in visible battalions",
+      onlinePeople: "App-connected personnel",
+      visibleOperations: "Visible operations",
+      battalionNetwork: "Battalion network",
+      visibleUnits: "Battalions in your scope",
+      battalionDetail: "Battalion file",
+      chooseUnit: "Select a battalion to view its details",
+      commandTree: "Command structure",
+      selectedUnit: "Selected unit",
+      commander: "Battalion commander",
+      members: "Personnel",
+      sector: "Sector",
+      status: "Status",
+      operationsFeed: "Operations feed",
+      noVisibleOperations: "No visible operations right now.",
+      restrictedOperations: "The operations center is not available at this rank.",
+      noUnits: "No battalions are visible to this account yet.",
+      noUnitsManager: "Authorized leaders can create the first battalion and assign personnel.",
+      noUnitsMember: "Battalions assigned to your account or available to your rank will appear here.",
+      loadError: "Battalion data could not be loaded. Check the service connection and retry.",
+      loading: "Loading data…",
+      noPersonnel: "No personnel are assigned to this battalion.",
+      online: "Online",
+      offline: "Offline",
+      onDuty: "On duty",
+      authorized: "Authorized",
+      notAuthorized: "Unavailable",
+      openMap: "Open sector map",
+      openOperations: "Open operations center",
+      openArchive: "Open archive",
+      edit: "Edit",
+      editBattalion: "Edit battalion",
+      createBattalion: "Create battalion",
+      nameAr: "Battalion name in Arabic",
+      nameEn: "Battalion name in English",
+      sectorName: "Sector name",
+      symbol: "Unit symbol",
+      unitColor: "Accent color",
+      commanderField: "Battalion commander",
+      noCommander: "No commander selected",
+      assignedMembers: "Assigned personnel",
+      noAssignablePeople: "No personnel roster is available to this account.",
+      statusActive: "Active",
+      statusAlert: "Alert",
+      statusStandby: "Standby",
+      statusArchived: "Archived",
+      filterActive: "Active",
+      filterAlert: "Alert",
+      filterStandby: "Standby",
+      filterArchived: "Archived",
+      save: "Save changes",
+      cancel: "Cancel",
+      archiveWarning: "Archiving does not delete data. The battalion can be reactivated later.",
+      requiredName: "Enter an Arabic or English battalion name.",
+      saved: "Battalion saved.",
+      saveError: "Battalion could not be saved. Check the data and your permissions.",
+      statusOperation: "Operation status",
+      operationUnknown: "Not specified",
+      secureChannel: "Command channel",
+      noCommanderData: "No commander assigned",
+      memberCount: "Personnel",
+      updatedFromServer: "Updated from server",
+      notLiveTracking: "No live geographic tracking",
+      statusConnection: "Connection",
+      archiveConfirm: "Saving as archived will prevent new personnel assignments to this battalion. Continue?",
+      errors: {
+        "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "A selected person is already assigned to another active battalion.",
+        "يجب أن يكون قائد الكتيبة من الرتب القيادية.": "Choose a commander with a leadership rank.",
+        "رمز قائد الكتيبة غير صالح.": "The commander code is not valid.",
+        "تعذر التحقق من أحد أكواد الأفراد المختارين.": "One of the selected personnel codes could not be verified.",
+        "أدخل اسم الكتيبة بالعربية أو الإنجليزية.": "Enter an Arabic or English battalion name."
+      }
+    }
+  };
+
+  const state = {
+    language: "ar",
+    languageTouched: false,
+    identity: "",
+    battalions: [],
+    assignablePersonnel: [],
+    canManage: false,
+    selectedId: "",
+    filter: "ALL",
+    loading: false,
+    error: "",
+    saving: false,
+    lastBattalionRequest: 0,
+    lastOperationsRequest: 0,
+    operations: [],
+    operationsLoading: false,
+    operationsError: "",
+    mounted: false
+  };
+
+  const root = () => document.getElementById("ibp-command-center");
+  const locale = () => text[state.language] || text.ar;
+  const t = (key) => locale()[key] || text.en[key] || key;
+  const esc = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+  })[char]);
+  const safeColor = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || "")) ? value : "#c7a25a";
+  const current = () => typeof currentUser !== "undefined" && currentUser ? currentUser : null;
+  const socket = () => typeof ciaSocket !== "undefined" && ciaSocket ? ciaSocket : null;
+  const connected = () => {
+    const s = socket();
+    return !!(s && s.connected);
+  };
+  const isAuthenticated = () => {
+    return !!(current() && (typeof ciaSessionAuthenticated === "undefined" || ciaSessionAuthenticated));
+  };
+  const userCode = () => {
+    const user = current();
+    return user && (user.publicCode || user.code || user.characterCode) || "";
+  };
+  const statusLabel = (status) => {
+    const key = {
+      ACTIVE: "statusActive",
+      ALERT: "statusAlert",
+      STANDBY: "statusStandby",
+      ARCHIVED: "statusArchived"
+    }[String(status || "").toUpperCase()] || "statusActive";
+    return t(key);
+  };
+
+  function canSeeOperations() {
+    const nav = document.getElementById("operations-nav");
+    if (!nav) return false;
+    return getComputedStyle(nav).display !== "none" && !nav.hidden;
+  }
+
+  function mount() {
+    const shell = root();
+    if (!shell) return;
+    if (!shell.querySelector("#ibp-language-select")) {
+      const header = shell.querySelector(".ibp-header-right");
+      if (header) {
+        const control = document.createElement("label");
+        control.className = "ibp-language-control";
+        control.innerHTML = `<span data-ibp-lang-label></span><select id="ibp-language-select" aria-label="Interface language"><option value="ar">العربية</option><option value="en">English</option></select>`;
+        header.insertBefore(control, header.firstChild);
+      }
+    }
+
+    if (!shell.querySelector("#ibp-network-console")) {
+      const dashboard = shell.querySelector(".ibp-dashboard");
+      if (dashboard) {
+        dashboard.insertAdjacentHTML("afterend", `
+          <section id="ibp-network-console" class="ibp-network-console" aria-live="polite">
+            <div class="ibp-network-heading">
+              <div>
+                <div class="ibp-network-eyebrow" data-ibp-i18n="workspaceEyebrow"></div>
+                <h2 data-ibp-i18n="workspaceTitle"></h2>
+              </div>
+              <div class="ibp-network-toolbar">
+                <label><span data-ibp-i18n="selectUnit"></span>
+                  <select id="ibp-battalion-select" aria-label="Selected battalion"></select>
+                </label>
+                <label><span data-ibp-i18n="filter"></span>
+                  <select id="ibp-battalion-filter" aria-label="Filter battalions"></select>
+                </label>
+                <button id="ibp-create-battalion" class="ibp-console-button" type="button" hidden></button>
+              </div>
+            </div>
+            <div class="ibp-console-kpis">
+              <div class="ibp-console-kpi"><span data-ibp-i18n="activeUnits"></span><strong id="ibp-kpi-units">—</strong><small data-ibp-i18n="updatedFromServer"></small></div>
+              <div class="ibp-console-kpi"><span data-ibp-i18n="assignedPeople"></span><strong id="ibp-kpi-people">—</strong><small data-ibp-i18n="personnelScope"></small></div>
+              <div class="ibp-console-kpi"><span data-ibp-i18n="onlinePeople"></span><strong id="ibp-kpi-online">—</strong><small data-ibp-i18n="statusConnection"></small></div>
+              <div class="ibp-console-kpi"><span data-ibp-i18n="visibleOperations"></span><strong id="ibp-kpi-operations">—</strong><small data-ibp-i18n="operationsScope"></small></div>
+            </div>
+            <div class="ibp-network-grid">
+              <section class="ibp-network-panel">
+                <div class="ibp-console-title-row"><strong data-ibp-i18n="battalionNetwork"></strong><span id="ibp-network-count" class="ibp-console-meta"></span></div>
+                <div id="ibp-battalion-grid" class="ibp-battalion-grid"></div>
+              </section>
+              <section class="ibp-network-panel">
+                <div class="ibp-console-title-row"><strong data-ibp-i18n="battalionDetail"></strong><span id="ibp-detail-status" class="ibp-console-meta"></span></div>
+                <div id="ibp-battalion-detail" class="ibp-battalion-detail"></div>
+              </section>
+            </div>
+            <div class="ibp-lower-grid">
+              <section class="ibp-network-panel">
+                <div class="ibp-console-title-row"><strong data-ibp-i18n="commandTree"></strong><span id="ibp-tree-unit" class="ibp-console-meta"></span></div>
+                <div id="ibp-command-tree" class="ibp-command-tree"></div>
+              </section>
+              <section class="ibp-network-panel">
+                <div class="ibp-console-title-row"><strong data-ibp-i18n="operationsFeed"></strong><span id="ibp-feed-state" class="ibp-console-meta"></span></div>
+                <div id="ibp-live-feed" class="ibp-live-feed"></div>
+              </section>
+            </div>
+            <div class="ibp-quick-actions">
+              <span data-ibp-i18n="secureChannel"></span>
+              <button class="ibp-console-button secondary" type="button" data-ibp-open="tactical-map-view" data-ibp-i18n="openMap"></button>
+              <button class="ibp-console-button secondary" type="button" data-ibp-open="operations" data-ibp-ops-action hidden data-ibp-i18n="openOperations"></button>
+              <button class="ibp-console-button secondary" type="button" data-ibp-open="cases-vault" data-ibp-i18n="openArchive"></button>
+            </div>
+          </section>
+          <div id="ibp-editor-modal" class="ibp-editor-modal" hidden>
+            <section class="ibp-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="ibp-editor-title">
+              <div class="ibp-editor-head">
+                <h3 id="ibp-editor-title"></h3>
+                <button id="ibp-editor-close" class="ibp-editor-close" type="button" aria-label="Close">×</button>
+              </div>
+              <form id="ibp-editor-form" class="ibp-editor-form">
+                <input id="ibp-editor-id" type="hidden">
+                <label class="ibp-editor-field"><span data-ibp-i18n="nameAr"></span><input id="ibp-editor-name-ar" maxlength="100" autocomplete="off"></label>
+                <label class="ibp-editor-field"><span data-ibp-i18n="nameEn"></span><input id="ibp-editor-name-en" maxlength="100" autocomplete="off"></label>
+                <label class="ibp-editor-field"><span data-ibp-i18n="sectorName"></span><input id="ibp-editor-sector" maxlength="100" autocomplete="off"></label>
+                <label class="ibp-editor-field"><span data-ibp-i18n="symbol"></span><input id="ibp-editor-symbol" maxlength="16" autocomplete="off"></label>
+                <label class="ibp-editor-field"><span data-ibp-i18n="unitColor"></span><input id="ibp-editor-color" type="color" value="#c7a25a"></label>
+                <label class="ibp-editor-field"><span data-ibp-i18n="status"></span><select id="ibp-editor-status"></select></label>
+                <label class="ibp-editor-field full"><span data-ibp-i18n="commanderField"></span><select id="ibp-editor-commander"></select></label>
+                <div class="ibp-editor-field full"><span data-ibp-i18n="assignedMembers"></span><div id="ibp-editor-members" class="ibp-editor-members"></div></div>
+                <div id="ibp-editor-error" class="ibp-editor-error" role="alert"></div>
+              </form>
+              <div class="ibp-editor-foot">
+                <span class="ibp-editor-foot-note" data-ibp-i18n="archiveWarning"></span>
+                <div><button id="ibp-editor-cancel" class="ibp-console-button secondary" type="button"></button> <button id="ibp-editor-save" class="ibp-console-button" type="submit" form="ibp-editor-form"></button></div>
+              </div>
+            </section>
+          </div>
+        `);
+      }
+    }
+
+    const mapPreview = shell.querySelector("#ibp-map-preview");
+    if (mapPreview && !mapPreview.querySelector(".ibp-map-data-note")) {
+      const note = document.createElement("span");
+      note.className = "ibp-map-data-note";
+      mapPreview.append(note);
+    }
+
+    if (!state.mounted) {
+      document.addEventListener("click", handleClick);
+      document.addEventListener("change", handleChange);
+      document.addEventListener("submit", handleSubmit);
+      document.addEventListener("keydown", handleKeydown);
+      state.mounted = true;
+    }
+    applyLanguage();
+    syncIdentity();
+    render();
+  }
+
+  function applyLanguage() {
+    const shell = root();
+    if (!shell) return;
+    shell.dir = state.language === "ar" ? "rtl" : "ltr";
+    shell.lang = state.language;
+    const languageSelect = shell.querySelector("#ibp-language-select");
+    if (languageSelect) {
+      languageSelect.value = state.language;
+      languageSelect.setAttribute("aria-label", t("language"));
+    }
+    const languageLabel = shell.querySelector("[data-ibp-lang-label]");
+    if (languageLabel) languageLabel.textContent = t("language");
+    shell.querySelectorAll("[data-ibp-i18n]").forEach((element) => {
+      const key = element.getAttribute("data-ibp-i18n");
+      if (key) element.textContent = t(key);
+    });
+
+    const navLabels = {
+      openIBPHome: "home",
+      "openIBPModule('tactical-map-view')": "map",
+      "openIBPModule('chief-panel')": "network",
+      "openIBPModule('agents-directory')": "personnel",
+      "openIBPModule('operations')": "operations",
+      "openIBPModule('cases-vault')": "archive",
+      "openIBPModule('audit-panel')": "audit"
+    };
+    shell.querySelectorAll(".ibp-rail .ibp-link").forEach((button) => {
+      const key = navLabels[button.getAttribute("onclick")];
+      if (!key) return;
+      const icon = button.querySelector("i");
+      button.replaceChildren();
+      if (icon) button.append(icon);
+      button.append(document.createTextNode(` ${t(key)}`));
+    });
+
+    const title = shell.querySelector(".ibp-title");
+    if (title) title.textContent = t("title");
+    const caption = shell.querySelector(".ibp-caption");
+    if (caption) caption.textContent = t("caption");
+    const access = shell.querySelector("#ibp-access-chip");
+    if (access) {
+      const rank = current() && typeof normalizeRank === "function" ? normalizeRank(current().rank) : "OPERATOR";
+      access.textContent = `${t("access")} // ${rank}`;
+    }
+    const railLabel = shell.querySelector(".ibp-rail-label");
+    if (railLabel) railLabel.textContent = state.language === "ar" ? "قنوات القيادة" : "COMMAND CHANNELS";
+    const statSub = shell.querySelectorAll(".ibp-stat-sub");
+    if (statSub[0]) statSub[0].textContent = t("personnelScope");
+    if (statSub[1]) statSub[1].textContent = t("operationsScope");
+    if (statSub[2]) statSub[2].textContent = t("serviceScope");
+    const mapOpen = shell.querySelector(".ibp-map-open");
+    if (mapOpen) mapOpen.textContent = t("mapOpen");
+    const note = shell.querySelector("#ibp-feed-note");
+    if (note) note.textContent = t("feedNote");
+    const moduleSub = shell.querySelector(".ibp-modules-head .ibp-panel-meta");
+    if (moduleSub) moduleSub.textContent = t("modulesSub");
+    const descriptions = shell.querySelectorAll(".ibp-card-desc");
+    descriptions.forEach((el, index) => {
+      const description = locale().cardDescriptions[index];
+      if (description) el.textContent = description;
+    });
+    const footerScope = shell.querySelector("#ibp-data-scope");
+    if (footerScope) footerScope.textContent = t("scopeFooter");
+    const mapNote = shell.querySelector(".ibp-map-data-note");
+    if (mapNote) mapNote.textContent = t("notLiveTracking");
+    const liveLabel = shell.querySelector("#ibp-live-state");
+    if (liveLabel && !connected()) liveLabel.textContent = state.language === "ar" ? "الشبكة في وضع الاستعداد" : "NETWORK STANDBY";
+    const modal = shell.querySelector("#ibp-editor-modal");
+    if (modal) modal.setAttribute("aria-label", t("createBattalion"));
+  }
+
+  function syncIdentity() {
+    const user = current();
+    const id = user ? String(user.id || user.publicCode || user.code || "") : "";
+    if (id !== state.identity) {
+      state.identity = id;
+      state.battalions = [];
+      state.assignablePersonnel = [];
+      state.canManage = false;
+      state.selectedId = "";
+      state.loading = false;
+      state.error = "";
+      state.lastBattalionRequest = 0;
+      state.lastOperationsRequest = 0;
+      state.operations = [];
+      state.operationsError = "";
+      state.languageTouched = false;
+    }
+    if (!state.languageTouched && user && (user.ibpLanguage === "ar" || user.ibpLanguage === "en")) {
+      state.language = user.ibpLanguage;
+    }
+    if (!user && !state.languageTouched) state.language = "ar";
+  }
+
+  function requestBattalions(force) {
+    const shell = root();
+    if (!shell || !document.body.classList.contains("ibp-mode") || !isAuthenticated()) return;
+    const s = socket();
+    if (!s || !s.connected || state.loading) return;
+    if (!force && Date.now() - state.lastBattalionRequest < 15000) return;
+    state.lastBattalionRequest = Date.now();
+    state.loading = true;
+    state.error = "";
+    render();
+    s.emit("ibp:battalions:list", {}, (result) => {
+      state.loading = false;
+      if (!result || !result.ok) {
+        state.error = result && result.message || t("loadError");
+        render();
+        return;
+      }
+      state.battalions = Array.isArray(result.battalions) ? result.battalions : [];
+      state.assignablePersonnel = Array.isArray(result.assignablePersonnel) ? result.assignablePersonnel : [];
+      state.canManage = result.canManage === true;
+      if (!state.battalions.some((unit) => String(unit.id) === state.selectedId)) {
+        state.selectedId = state.battalions[0] ? String(state.battalions[0].id) : "";
+      }
+      render();
+    });
+  }
+
+  function requestOperations(force) {
+    if (!document.body.classList.contains("ibp-mode") || !canSeeOperations() || !isAuthenticated()) return;
+    const s = socket();
+    if (!s || !s.connected || state.operationsLoading) return;
+    if (!force && Date.now() - state.lastOperationsRequest < 15000) return;
+    state.lastOperationsRequest = Date.now();
+    state.operationsLoading = true;
+    s.emit("operation:list", {}, (result) => {
+      state.operationsLoading = false;
+      if (!result || !result.ok) {
+        state.operationsError = result && result.message || "";
+        renderFeed();
+        return;
+      }
+      state.operations = Array.isArray(result.operations) ? result.operations.slice(0, 12) : [];
+      state.operationsError = "";
+      render();
+    });
+  }
+
+  function selectedUnit() {
+    return state.battalions.find((unit) => String(unit.id) === state.selectedId) || null;
+  }
+
+  function visibleUnits() {
+    if (state.filter === "ALL") return state.battalions;
+    return state.battalions.filter((unit) => String(unit.status || "ACTIVE").toUpperCase() === state.filter);
+  }
+
+  function renderFilters() {
+    const shell = root();
+    if (!shell) return;
+    const filter = shell.querySelector("#ibp-battalion-filter");
+    const selected = shell.querySelector("#ibp-battalion-select");
+    if (filter) {
+      filter.innerHTML = [
+        ["ALL", t("allUnits")],
+        ["ACTIVE", t("filterActive")],
+        ["ALERT", t("filterAlert")],
+        ["STANDBY", t("filterStandby")],
+        ["ARCHIVED", t("filterArchived")]
+      ].map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+      filter.value = state.filter;
+    }
+    if (selected) {
+      selected.innerHTML = state.battalions.length
+        ? state.battalions.map((unit) => `<option value="${esc(unit.id)}">${esc(state.language === "ar" ? unit.nameAr || unit.nameEn : unit.nameEn || unit.nameAr)} · ${esc(statusLabel(unit.status))}</option>`).join("")
+        : `<option value="">${esc(t("noUnits"))}</option>`;
+      selected.value = state.selectedId;
+      selected.disabled = !state.battalions.length;
+    }
+  }
+
+  function renderKpis() {
+    const shell = root();
+    if (!shell) return;
+    const activeUnits = state.battalions.filter((unit) => String(unit.status || "ACTIVE").toUpperCase() !== "ARCHIVED").length;
+    const people = new Map();
+    state.battalions.forEach((unit) => {
+      (Array.isArray(unit.members) ? unit.members : []).forEach((member) => {
+        const code = String(member.publicCode || "").toUpperCase();
+        if (code) people.set(code, member);
+      });
+    });
+    const online = [...people.values()].filter((person) => person.online).length;
+    const visibleOperations = canSeeOperations() ? state.operations.length : null;
+    const set = (id, value) => {
+      const element = shell.querySelector(`#${id}`);
+      if (element) element.textContent = value == null ? "—" : String(value).padStart(2, "0");
+    };
+    set("ibp-kpi-units", activeUnits);
+    set("ibp-kpi-people", people.size);
+    set("ibp-kpi-online", online);
+    set("ibp-kpi-operations", visibleOperations);
+  }
+
+  function renderCards() {
+    const shell = root();
+    if (!shell) return;
+    const grid = shell.querySelector("#ibp-battalion-grid");
+    const count = shell.querySelector("#ibp-network-count");
+    const create = shell.querySelector("#ibp-create-battalion");
+    if (create) {
+      create.hidden = !state.canManage;
+      create.textContent = t("createUnit");
+    }
+    const operationsButton = shell.querySelector("[data-ibp-ops-action]");
+    if (operationsButton) operationsButton.hidden = !canSeeOperations();
+    if (count) count.textContent = `${state.battalions.length} ${t("visibleUnits")}`;
+    if (!grid) return;
+
+    if (state.loading && !state.battalions.length) {
+      grid.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-circle-notch fa-spin"></i>${esc(t("loading"))}</div>`;
+      return;
+    }
+    if (state.error && !state.battalions.length) {
+      grid.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-triangle-exclamation"></i>${esc(state.error)} <button class="ibp-console-button secondary" type="button" data-ibp-refresh>${esc(state.language === "ar" ? "إعادة المحاولة" : "Retry")}</button></div>`;
+      return;
+    }
+    if (!state.battalions.length) {
+      const message = state.canManage ? t("noUnitsManager") : t("noUnitsMember");
+      grid.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-diagram-project"></i><strong>${esc(t("noUnits"))}</strong><br>${esc(message)}</div>`;
+      return;
+    }
+    const units = visibleUnits();
+    if (!units.length) {
+      grid.innerHTML = `<div class="ibp-empty-state">${esc(state.language === "ar" ? "لا توجد كتائب بهذه الحالة." : "No battalions match this status filter.")}</div>`;
+      return;
+    }
+    grid.innerHTML = units.map((unit) => {
+      const color = safeColor(unit.color);
+      const selected = String(unit.id) === state.selectedId;
+      const members = Array.isArray(unit.members) ? unit.members : [];
+      const unitName = state.language === "ar" ? unit.nameAr || unit.nameEn : unit.nameEn || unit.nameAr;
+      const sector = unit.sector || (state.language === "ar" ? "القطاع غير محدد" : "Sector not set");
+      return `<button class="ibp-battalion-card${selected ? " selected" : ""}" type="button" data-unit-id="${esc(unit.id)}" style="--unit-color:${color}" aria-pressed="${selected}">
+        <span class="ibp-unit-symbol">${esc(unit.symbol || "UNIT")}</span>
+        <span class="ibp-battalion-card-copy"><strong>${esc(unitName || "—")}</strong><small>${esc(sector)} · ${members.length} ${esc(t("members"))}</small></span>
+        <span class="ibp-status-pill status-${esc(String(unit.status || "ACTIVE").toLowerCase())}">${esc(statusLabel(unit.status))}</span>
+      </button>`;
+    }).join("");
+  }
+
+  function renderDetail() {
+    const shell = root();
+    if (!shell) return;
+    const detail = shell.querySelector("#ibp-battalion-detail");
+    const tree = shell.querySelector("#ibp-command-tree");
+    const treeUnit = shell.querySelector("#ibp-tree-unit");
+    const detailStatus = shell.querySelector("#ibp-detail-status");
+    const unit = selectedUnit();
+    if (!unit) {
+      if (detail) detail.innerHTML = `<div class="ibp-empty-state"><i class="fa-regular fa-folder-open"></i>${esc(t("chooseUnit"))}</div>`;
+      if (tree) tree.innerHTML = `<div class="ibp-empty-state">${esc(t("chooseUnit"))}</div>`;
+      if (treeUnit) treeUnit.textContent = "";
+      if (detailStatus) detailStatus.textContent = "";
+      return;
+    }
+    const name = state.language === "ar" ? unit.nameAr || unit.nameEn : unit.nameEn || unit.nameAr;
+    const color = safeColor(unit.color);
+    const members = Array.isArray(unit.members) ? unit.members : [];
+    const commander = members.find((person) => String(person.publicCode || "").toUpperCase() === String(unit.commanderCode || "").toUpperCase());
+    if (detailStatus) detailStatus.textContent = statusLabel(unit.status);
+    if (detail) {
+      const commanderLabel = commander
+        ? commander.name || `#${commander.publicCode}`
+        : unit.commanderName || (unit.commanderCode ? `#${unit.commanderCode}` : t("noCommanderData"));
+      const people = members.length
+        ? members.map((person) => {
+          const displayName = person.name || `#${person.publicCode || ""}`;
+          const presence = person.activeService ? t("onDuty") : person.online ? t("online") : t("offline");
+          return `<div class="ibp-person-row">
+            <div class="ibp-person-identity"><strong>${esc(displayName)}</strong><small>${esc(person.rankLabel || person.rank || "")} · #${esc(person.publicCode || "")}</small></div>
+            <span class="ibp-person-presence${person.online ? "" : " offline"}">${esc(presence)}</span>
+          </div>`;
+        }).join("")
+        : `<div class="ibp-empty-state">${esc(t("noPersonnel"))}</div>`;
+      detail.innerHTML = `
+        <div class="ibp-detail-top">
+          <div class="ibp-detail-identity">
+            <span class="ibp-unit-symbol" style="--unit-color:${color}">${esc(unit.symbol || "UNIT")}</span>
+            <div><h3>${esc(name || "—")}</h3><p>${esc(unit.sector || "—")} · ${esc(t("memberCount"))}: ${members.length}</p></div>
+          </div>
+          ${state.canManage ? `<button class="ibp-console-button secondary" type="button" data-ibp-edit="${esc(unit.id)}">${esc(t("edit"))}</button>` : ""}
+        </div>
+        <div class="ibp-detail-stats">
+          <div class="ibp-detail-stat"><span>${esc(t("commander"))}</span><strong>${esc(commanderLabel)}</strong></div>
+          <div class="ibp-detail-stat"><span>${esc(t("sector"))}</span><strong>${esc(unit.sector || "—")}</strong></div>
+          <div class="ibp-detail-stat"><span>${esc(t("status"))}</span><strong>${esc(statusLabel(unit.status))}</strong></div>
+        </div>
+        <div class="ibp-personnel-list">${people}</div>`;
+    }
+    if (treeUnit) treeUnit.textContent = name || "";
+    if (tree) {
+      const commanderLabel = commander
+        ? commander.name || `#${commander.publicCode}`
+        : unit.commanderName || (unit.commanderCode ? `#${unit.commanderCode}` : t("noCommanderData"));
+      const nodes = members
+        .filter((person) => String(person.publicCode || "").toUpperCase() !== String(unit.commanderCode || "").toUpperCase())
+        .map((person) => `<div class="ibp-tree-node">${esc(person.name || `#${person.publicCode || ""}`)}<small>${esc(person.rankLabel || person.rank || "")} · #${esc(person.publicCode || "")}</small></div>`)
+        .join("");
+      tree.innerHTML = `<div class="ibp-tree-root"><i class="fa-solid fa-shield-halved"></i><div><strong>${esc(commanderLabel)}</strong><small>${esc(t("commander"))} · ${esc(unit.symbol || "UNIT")}</small></div></div>${nodes ? `<div class="ibp-tree-branch">${nodes}</div>` : `<div class="ibp-empty-state">${esc(t("noPersonnel"))}</div>`}`;
+    }
+  }
+
+  function operationStatus(operation) {
+    const status = String(operation && operation.status || "").toUpperCase();
+    const map = {
+      PLANNED: state.language === "ar" ? "مخططة" : "Planned",
+      IN_PROGRESS: state.language === "ar" ? "قيد التنفيذ" : "In progress",
+      COMPLETED: state.language === "ar" ? "مكتملة" : "Completed",
+      FAILED: state.language === "ar" ? "فشلت" : "Failed",
+      CANCELLED: state.language === "ar" ? "ملغاة" : "Cancelled"
+    };
+    return map[status] || operation && operation.status || t("operationUnknown");
+  }
+
+  function renderFeed() {
+    const shell = root();
+    if (!shell) return;
+    const feed = shell.querySelector("#ibp-live-feed");
+    const feedState = shell.querySelector("#ibp-feed-state");
+    if (!feed) return;
+    if (!canSeeOperations()) {
+      if (feedState) feedState.textContent = t("notAuthorized");
+      feed.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-lock"></i>${esc(t("restrictedOperations"))}</div>`;
+      return;
+    }
+    if (state.operationsLoading && !state.operations.length) {
+      if (feedState) feedState.textContent = t("loading");
+      feed.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-circle-notch fa-spin"></i>${esc(t("loading"))}</div>`;
+      return;
+    }
+    if (state.operationsError && !state.operations.length) {
+      if (feedState) feedState.textContent = state.language === "ar" ? "تعذر التحديث" : "Update failed";
+      feed.innerHTML = `<div class="ibp-empty-state">${esc(state.operationsError)} <button class="ibp-console-button secondary" type="button" data-ibp-refresh-operations>${esc(state.language === "ar" ? "إعادة المحاولة" : "Retry")}</button></div>`;
+      return;
+    }
+    if (!state.operations.length) {
+      if (feedState) feedState.textContent = t("statusOperation");
+      feed.innerHTML = `<div class="ibp-empty-state"><i class="fa-solid fa-wave-square"></i>${esc(t("noVisibleOperations"))}</div>`;
+      return;
+    }
+    if (feedState) feedState.textContent = `${state.operations.length} ${state.language === "ar" ? "عملية" : "items"}`;
+    feed.innerHTML = state.operations.slice(0, 6).map((operation) => {
+      const title = operation.title || operation.name || operation.type || "—";
+      const type = operation.type || (state.language === "ar" ? "عملية" : "Operation");
+      const commander = operation.commanderCode ? `#${operation.commanderCode}` : "";
+      return `<div class="ibp-feed-item"><div class="ibp-feed-item-copy"><strong>${esc(title)}</strong><small>${esc(type)}${commander ? ` · ${esc(commander)}` : ""}</small></div><span class="ibp-status-pill">${esc(operationStatus(operation))}</span></div>`;
+    }).join("");
+  }
+
+  function render() {
+    const shell = root();
+    if (!shell) return;
+    applyLanguage();
+    renderFilters();
+    renderKpis();
+    renderCards();
+    renderDetail();
+    renderFeed();
+  }
+
+  function openEditor(id) {
+    if (!state.canManage) return;
+    const shell = root();
+    const modal = shell && shell.querySelector("#ibp-editor-modal");
+    const form = shell && shell.querySelector("#ibp-editor-form");
+    if (!modal || !form) return;
+    const unit = id ? state.battalions.find((item) => String(item.id) === String(id)) : null;
+    form.reset();
+    shell.querySelector("#ibp-editor-id").value = unit ? unit.id : "";
+    shell.querySelector("#ibp-editor-name-ar").value = unit && unit.nameAr || "";
+    shell.querySelector("#ibp-editor-name-en").value = unit && unit.nameEn || "";
+    shell.querySelector("#ibp-editor-sector").value = unit && unit.sector || "";
+    shell.querySelector("#ibp-editor-symbol").value = unit && unit.symbol || "";
+    shell.querySelector("#ibp-editor-color").value = safeColor(unit && unit.color);
+    shell.querySelector("#ibp-editor-title").textContent = unit ? t("editBattalion") : t("createBattalion");
+    shell.querySelector("#ibp-editor-error").textContent = "";
+    const statusSelect = shell.querySelector("#ibp-editor-status");
+    statusSelect.innerHTML = [
+      ["ACTIVE", t("statusActive")],
+      ["ALERT", t("statusAlert")],
+      ["STANDBY", t("statusStandby")],
+      ["ARCHIVED", t("statusArchived")]
+    ].map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+    statusSelect.value = unit && unit.status || "ACTIVE";
+
+    const selectedMembers = new Set(unit ? (unit.members || []).map((member) => String(member.publicCode).toUpperCase()) : []);
+    const commanderSelect = shell.querySelector("#ibp-editor-commander");
+    const candidates = state.assignablePersonnel.slice().sort((a, b) => String(a.publicCode).localeCompare(String(b.publicCode)));
+    commanderSelect.innerHTML = `<option value="">${esc(t("noCommander"))}</option>` + candidates.map((person) => {
+      const label = `${person.name ? `${person.name} · ` : ""}#${person.publicCode} · ${person.rankLabel || person.rank || ""}`;
+      return `<option value="${esc(person.publicCode)}">${esc(label)}</option>`;
+    }).join("");
+    commanderSelect.value = unit && unit.commanderCode || "";
+    const members = shell.querySelector("#ibp-editor-members");
+    members.innerHTML = candidates.length ? candidates.map((person) => {
+      const code = String(person.publicCode || "");
+      const checked = selectedMembers.has(code.toUpperCase()) ? " checked" : "";
+      const label = `${person.name ? `${person.name} · ` : ""}#${code} · ${person.rankLabel || person.rank || ""}`;
+      return `<label class="ibp-editor-member"><input type="checkbox" name="ibp-member" value="${esc(code)}"${checked}><span>${esc(label)}</span></label>`;
+    }).join("") : `<span>${esc(t("noAssignablePeople"))}</span>`;
+    shell.querySelector("#ibp-editor-save").textContent = t("save");
+    shell.querySelector("#ibp-editor-cancel").textContent = t("cancel");
+    modal.hidden = false;
+    shell.querySelector("#ibp-editor-name-ar").focus();
+  }
+
+  function closeEditor() {
+    const modal = root() && root().querySelector("#ibp-editor-modal");
+    if (modal) modal.hidden = true;
+    state.saving = false;
+  }
+
+  function handleClick(event) {
+    const shell = root();
+    if (!shell) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+
+    const lang = target.closest("#ibp-language-select");
+    if (lang) return;
+    const unitCard = target.closest("[data-unit-id]");
+    if (unitCard) {
+      state.selectedId = unitCard.getAttribute("data-unit-id") || "";
+      render();
+      return;
+    }
+    const create = target.closest("#ibp-create-battalion");
+    if (create) {
+      openEditor("");
+      return;
+    }
+    const edit = target.closest("[data-ibp-edit]");
+    if (edit) {
+      openEditor(edit.getAttribute("data-ibp-edit"));
+      return;
+    }
+    if (target.closest("#ibp-editor-close, #ibp-editor-cancel")) {
+      closeEditor();
+      return;
+    }
+    if (target.closest("#ibp-editor-modal") && !target.closest(".ibp-editor-dialog")) {
+      closeEditor();
+      return;
+    }
+    const refresh = target.closest("[data-ibp-refresh]");
+    if (refresh) {
+      requestBattalions(true);
+      return;
+    }
+    const refreshOperations = target.closest("[data-ibp-refresh-operations]");
+    if (refreshOperations) {
+      requestOperations(true);
+      return;
+    }
+    const openModule = target.closest("[data-ibp-open]");
+    if (openModule) {
+      if (typeof openIBPModule === "function") openIBPModule(openModule.getAttribute("data-ibp-open"));
+    }
+  }
+
+  function handleChange(event) {
+    const shell = root();
+    if (!shell) return;
+    const target = event.target;
+    if (target && target.id === "ibp-language-select") {
+      setLanguage(target.value);
+      return;
+    }
+    if (target && target.id === "ibp-battalion-select") {
+      state.selectedId = target.value;
+      render();
+      return;
+    }
+    if (target && target.id === "ibp-battalion-filter") {
+      state.filter = target.value;
+      render();
+    }
+  }
+
+  function setLanguage(language) {
+    if (language !== "ar" && language !== "en") return;
+    const previous = state.language;
+    state.language = language;
+    state.languageTouched = true;
+    const user = current();
+    if (user) user.ibpLanguage = language;
+    render();
+    const s = socket();
+    if (s && s.connected && isAuthenticated()) {
+      s.emit("ibp:user-language:set", { language }, (result) => {
+        if (!result || !result.ok) {
+          state.language = previous;
+          state.languageTouched = false;
+          if (user) user.ibpLanguage = previous;
+          render();
+          showToast(result && result.message || t("saveError"), true);
+        }
+      });
+    } else if (user) {
+      state.language = previous;
+      state.languageTouched = false;
+      user.ibpLanguage = previous;
+      render();
+      showToast(state.language === "ar" ? "تعذر الاتصال لحفظ اللغة." : "Language could not be saved while offline.", true);
+    }
+  }
+
+  function showToast(message, isError) {
+    const shell = root();
+    if (!shell) return;
+    let toast = shell.querySelector("#ibp-workspace-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "ibp-workspace-toast";
+      toast.setAttribute("role", "status");
+      toast.style.cssText = "position:fixed;z-index:10060;inset-inline-end:18px;bottom:18px;max-width:min(420px,calc(100vw - 36px));padding:11px 14px;border:1px solid rgba(193,162,90,.4);border-radius:4px;background:#101820;color:#e9e5da;font-size:11px;box-shadow:0 12px 32px rgba(0,0,0,.4);";
+      document.body.append(toast);
+    }
+    toast.style.borderColor = isError ? "rgba(194,92,85,.7)" : "rgba(193,162,90,.4)";
+    toast.textContent = message;
+    toast.hidden = false;
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(() => { toast.hidden = true; }, 3200);
+  }
+
+  function handleSubmit(event) {
+    if (event.target && event.target.id === "ibp-editor-form") {
+      event.preventDefault();
+      saveBattalion();
+    }
+  }
+
+  function handleKeydown(event) {
+    if (event.key === "Escape") closeEditor();
+  }
+
+  function saveBattalion() {
+    const shell = root();
+    const s = socket();
+    if (!shell || !s || !s.connected || !state.canManage || state.saving) {
+      showToast(t("saveError"), true);
+      return;
+    }
+    const nameAr = shell.querySelector("#ibp-editor-name-ar").value.trim();
+    const nameEn = shell.querySelector("#ibp-editor-name-en").value.trim();
+    if (!nameAr && !nameEn) {
+      shell.querySelector("#ibp-editor-error").textContent = t("requiredName");
+      shell.querySelector("#ibp-editor-name-ar").focus();
+      return;
+    }
+    const status = shell.querySelector("#ibp-editor-status").value;
+    if (status === "ARCHIVED" && shell.querySelector("#ibp-editor-id").value && !window.confirm(t("archiveConfirm"))) return;
+    const memberCodes = [...shell.querySelectorAll('input[name="ibp-member"]:checked')].map((input) => input.value);
+    const payload = {
+      id: shell.querySelector("#ibp-editor-id").value || undefined,
+      nameAr,
+      nameEn,
+      sector: shell.querySelector("#ibp-editor-sector").value.trim(),
+      symbol: shell.querySelector("#ibp-editor-symbol").value.trim(),
+      status,
+      color: safeColor(shell.querySelector("#ibp-editor-color").value),
+      commanderCode: shell.querySelector("#ibp-editor-commander").value,
+      memberCodes
+    };
+    state.saving = true;
+    const saveButton = shell.querySelector("#ibp-editor-save");
+    saveButton.disabled = true;
+    saveButton.textContent = state.language === "ar" ? "جارٍ الحفظ…" : "Saving…";
+    shell.querySelector("#ibp-editor-error").textContent = "";
+    s.emit("ibp:battalion:save", payload, (result) => {
+      state.saving = false;
+      saveButton.disabled = false;
+      saveButton.textContent = t("save");
+      if (!result || !result.ok || !result.battalion) {
+        const raw = result && result.message || t("saveError");
+        shell.querySelector("#ibp-editor-error").textContent = locale().errors[raw] || raw;
+        return;
+      }
+      const saved = result.battalion;
+      const existingIndex = state.battalions.findIndex((unit) => String(unit.id) === String(saved.id));
+      if (existingIndex >= 0) state.battalions.splice(existingIndex, 1, saved);
+      else state.battalions.unshift(saved);
+      state.selectedId = String(saved.id);
+      state.lastBattalionRequest = Date.now();
+      closeEditor();
+      render();
+      showToast(t("saved"), false);
+    });
+  }
+
+  function hookRenderer() {
+    const base = window.renderIBPWorkspace;
+    if (typeof base !== "function" || base.__ibpNetworkWrapped) return;
+    const wrapped = function () {
+      const result = base.apply(this, arguments);
+      mount();
+      const shouldLoad = document.body.classList.contains("ibp-mode");
+      if (shouldLoad) {
+        requestBattalions(false);
+        requestOperations(false);
+      }
+      return result;
+    };
+    wrapped.__ibpNetworkWrapped = true;
+    window.renderIBPWorkspace = wrapped;
+  }
+
+  function attachSocketListeners() {
+    const s = socket();
+    if (!s || s.__ibpNetworkListeners) return;
+    s.__ibpNetworkListeners = true;
+    s.on("ibp:battalions:update", (payload) => {
+      if (!payload || !Array.isArray(payload.battalions)) return;
+      state.battalions = payload.battalions;
+      if (!state.battalions.some((unit) => String(unit.id) === state.selectedId)) {
+        state.selectedId = state.battalions[0] ? String(state.battalions[0].id) : "";
+      }
+      render();
+    });
+    s.on("connect", () => {
+      state.lastBattalionRequest = 0;
+      state.lastOperationsRequest = 0;
+      if (document.body.classList.contains("ibp-mode")) {
+        requestBattalions(true);
+        requestOperations(true);
+      }
+    });
+  }
+
+  function boot() {
+    hookRenderer();
+    attachSocketListeners();
+    mount();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+</script>
+  <script id="ibp-legacy-i18n-inline-script">
+(function () {
+  "use strict";
+
+  const arToEn = {
+    "← رجوع إلى مركز IBP": "← Back to IBP Command Center",
+    "الخروج إلى BLACK RIDGE": "Exit to BLACK RIDGE",
+    "خريطة لوس سانتوس التفاعلية (Los Santos GTA V)": "Interactive Los Santos Map (GTA V)",
+    "اضغط زر «تحديد موقعي» ثم اختر نقطة واحدة على الخريطة؛ استخدم زر الإزالة لمسح موقعك. حركة الخريطة محدودة لتجنب الانزلاق والتكبير العرضي.": "Choose “Set my location,” then select one point on the map. Use Remove to clear your saved location. Map movement is limited to prevent accidental panning and zooming.",
+    "إزالة موقعي من الخريطة": "Remove my map location",
+    "تحديد موقعي بالضغط على الخريطة": "Set my location by clicking the map",
+    "جارٍ تجهيز الخريطة التفاعلية...": "Loading the interactive map…",
+    "إدارة مواقع الأعضاء — CIA CHIEF وSenior وHigh Commander": "Manage member locations — CIA CHIEF, Senior, and High Commander",
+    "إزالة الموقع المحدد": "Remove selected location",
+    "خريطة لوس سانتوس التفاعلية — نفس خلفية خريطة الاستغاثة.": "Interactive Los Santos map — uses the same background as the emergency map.",
+    "اختر العضو لإزالة موقعه": "Select a member to remove their location",
+    "خريطة لوس سانتوس التفاعلية": "Interactive Los Santos map",
+    "أرشيف القضايا والأدلة (Cases Vault)": "Cases and Evidence Archive",
+    "توثيق قضية جديدة / دليل ميداني": "Document a new case / field evidence",
+    "حفظ القضية بالأرشيف": "Save case to archive",
+    "القضايا الموثقة بالأرشيف": "Archived cases",
+    "عنوان القضية / الملاحقة": "Case / investigation title",
+    "رقم المركبة المدنية / أرقام السناد المشاركين": "Civilian vehicle number / supporting personnel codes",
+    "تفاصيل القضية والأحداث والأدلة...": "Case details, events, and evidence…",
+    "رابط صورة / مقطع فيديو للدليل (اختياري)": "Evidence image or video link (optional)",
+    "بلاغات الطوارئ S.O.S": "Emergency SOS alerts",
+    "جميع البلاغات المحفوظة تظهر لكل العناصر. الحذف متاح فقط لـ CIA CHIEF و Senior Commander CIA.": "Saved alerts are visible to all personnel. Only CIA CHIEF and Senior Commander CIA can delete them.",
+    "عرض البلاغات على خريطة الاستغاثة": "View alerts on the SOS map",
+    "سجل التقارير والعمليات الميدانية": "Field reports and operations log",
+    "إضافة تقرير جديد": "Add a new report",
+    "📷 رفع صورة من الجهاز": "📷 Upload an image from this device",
+    "🔒 تقرير سري للغاية (يظهر فقط للقائد CIA CHIEF)": "🔒 Top secret report (visible only to CIA CHIEF)",
+    "رفع التقرير للقيادة": "Submit report to command",
+    "التقارير المسجلة": "Submitted reports",
+    "عنوان التقرير / موضوع العملية": "Report title / operation subject",
+    "تفاصيل التقرير الاستخباراتي الميداني...": "Field intelligence report details…",
+    "رابط صورة الدليل / التقرير (اختياري)": "Evidence or report image link (optional)",
+    "دليل العملاء وحالة الحضور الميدانية": "Personnel directory and field attendance",
+    "الكود الظاهر": "Public code",
+    "الاسم (حسب الصلاحية)": "Name (subject to access level)",
+    "الرتبة": "Rank",
+    "حالة الخدمة": "Service status",
+    "المهمات الميدانية — Tactical Operations": "Field Operations",
+    "إنشاء مهمة ميدانية": "Create field operation",
+    "مراقبة": "Surveillance",
+    "مداهمة": "Raid",
+    "حماية شخصية": "Close protection",
+    "جمع أدلة": "Evidence collection",
+    "منخفض": "Low",
+    "متوسط": "Medium",
+    "مرتفع": "High",
+    "حرج": "Critical",
+    "أفراد القطاع — جميع الرتب": "Sector personnel — all ranks",
+    "تحديث الأفراد": "Refresh personnel",
+    "اضغط تحديث الأفراد لتحميل القائمة": "Select Refresh personnel to load the list",
+    "اختر عدة أفراد من القائمة؛ يظهر الاسم الحقيقي والكود والرتبة للقيادة.": "Select one or more people. Real names, codes, and ranks are shown to authorized command roles.",
+    "من خريطة المهمة": "From operation map",
+    "إنشاء مهمة لمرة واحدة": "Create one-time operation",
+    "المهمات المسندة / المسجلة": "Assigned / recorded operations",
+    "خريطة المهمة": "Operation map",
+    "لون الرسم والعلامات": "Drawing and marker color",
+    "علامة عامة": "General marker",
+    "مجرمون": "Suspects",
+    "عدد الأشخاص": "Number of people",
+    "خط حر — اسحب": "Freehand — drag",
+    "دائرة — اسحب": "Circle — drag",
+    "منطقة مستطيلة — اسحب": "Rectangle — drag",
+    "حفظ الرسم الحالي": "Save current drawing",
+    "إغلاق الخريطة": "Close map",
+    "اضغط على خريطة المهمة لتحديد الموقع؛ سيظهر دبوس المعاينة قبل اعتماد النقطة.": "Click the operation map to choose a location. A preview pin appears before you confirm it.",
+    "اختر نقطة على الخريطة.": "Select a point on the map.",
+    "اعتماد الموقع": "Confirm location",
+    "إلغاء": "Cancel",
+    "اسم المهمة": "Operation name",
+    "الهدف والتعليمات الميدانية": "Objective and field instructions",
+    "كودك العسكري كمنشئ المهمة": "Your service code as operation creator",
+    "ابحث بالكود العسكري أو الرتبة": "Search by service code or rank",
+    "بداية العملية: x,y (اختياري)": "Operation start: x,y (optional)",
+    "نهاية العملية: x,y (اختياري)": "Operation end: x,y (optional)",
+    "ملاحظات القيادة": "Command notes",
+    "اختر لون الرسم": "Choose drawing color",
+    "خريطة المهمة لاختيار نقطة البداية أو النهاية": "Operation map for choosing a start or end point",
+    "هوية دخول القيادة": "Command sign-in credentials",
+    "كود الدخول الشخصي الحالي:": "Current personal sign-in code:",
+    "رمز الحفظ الرسمي للتأسيس فقط:": "Official setup code (initial setup only):",
+    "تغيير كود دخولي": "Change my sign-in code",
+    "تغيير كودي العسكري": "Change my service code",
+    "تعديل بياناتي الإضافية": "Edit my additional details",
+    "رمز الحفظ الرسمي مخصص للتأسيس فقط ولا يظهر في الدخول اليومي. كود الدخول هو الكود الشخصي الذي اختاره القائد ويمكن تغييره من هنا.": "The official setup code is for initial setup only and is not used for daily sign-in. The personal sign-in code can be changed here.",
+    "المرحلة الأولى: قبول الشخصية": "Stage 1: Character approval",
+    "الاسم المطلوب": "Requested name",
+    "كود طلب القبول": "Admission request code",
+    "الإجراء": "Action",
+    "طلبات اعتماد الهوية": "Identity approval requests",
+    "الشخصية": "Character",
+    "الهوية المقدمة": "Submitted identity",
+    "المرحلة الثالثة: طلب دخول الخدمة وإصدار الكود العسكري": "Stage 3: Service access request and service code",
+    "لا يظهر الطلب هنا إلا بعد اعتماد الشخصية والهوية. موافقة CIA CHIEF تفتح الخدمة وتصدر الكود العسكري.": "Requests appear here after character and identity approval. CIA CHIEF approval enables service access and issues a service code.",
+    "الهوية": "Identity",
+    "طلبات شخصيات الأعضاء": "Member character requests",
+    "صاحب الحساب": "Account holder",
+    "الشخصية المطلوبة": "Requested character",
+    "إدارة الأعضاء": "Personnel management",
+    "الكود": "Code",
+    "الاسم": "Name",
+    "الحضور": "Attendance",
+    "سلم الرتب المعتمد": "Approved rank ladder",
+    "القائد يستطيع ترقية وتنزيل الرتبة وفصل العضو. Senior Commander CIA يملك صلاحيات قيادية محدودة تشمل إدارة الرتب والفصل والوصول إلى الهويات السرية، دون صلاحيات القائد الحساسة.": "The chief can promote, demote, or dismiss members. Senior Commander CIA has limited command permissions, including rank management, dismissal, and access to classified identities, but not the chief’s sensitive controls.",
+    "الهويات العامة — إدارة القيادة": "Public identities — command management",
+    "الهويات الخاصة للقيادات": "Classified identities for command",
+    "السجل القيادي يعرض الأكواد فقط للقيادات العليا. أسماء الأشخاص لا تظهر هنا. تفاصيل الهوية الخاصة الكاملة متاحة لـ CIA CHIEF و Senior Commander CIA فقط.": "The command roster shows codes only to senior leadership. Names are not shown here. Full classified identity details are available only to CIA CHIEF and Senior Commander CIA.",
+    "السجلات اليومية": "Daily activity logs",
+    "سجل قيادي سري يوضح الدخول والخروج والترقيات والتنزيلات والفصل واعتماد الأعضاء. يظهر فقط لـ CIA CHIEF و Senior Commander CIA.": "A classified command log of sign-ins, sign-outs, promotions, demotions, dismissals, and member approvals. Visible only to CIA CHIEF and Senior Commander CIA.",
+    "سجل المباشرة اليومية": "Daily duty records",
+    "لا توجد سجلات يومية حتى الآن.": "There are no daily records yet.",
+    "لا توجد سجلات مباشرة بعد.": "There are no duty records yet.",
+    "مباشرة": "Duty started",
+    "غير محدد": "Not specified",
+    "مباشر الآن": "Active now",
+    "تم الصرف": "Paid",
+    "مؤهل / لم يُصرف": "Eligible / unpaid",
+    "قيد التنفيذ": "In progress",
+    "مخططة": "Planned",
+    "تمت": "Completed",
+    "مكتملة": "Completed",
+    "فشلت": "Failed",
+    "ملغاة": "Cancelled",
+    "إنشاء المهمات متاح للرتب العليا الثلاث فقط.": "Creating operations is limited to the three highest ranks.",
+    "أكمل اسم المهمة والهدف واختر فردًا واحدًا على الأقل.": "Enter an operation name and objective, and select at least one person.",
+    "تم إنشاء المهمة بنجاح.": "Operation created successfully.",
+    "تعذر تحميل المهمات.": "Could not load operations.",
+    "الاتصال بالسيرفر غير متاح.": "The server connection is unavailable.",
+    "يجب تسجيل الدخول إلى حسابك أولاً.": "Sign in to your account first.",
+    "يجب تسجيل الدخول إلى الخدمة أولاً.": "Sign in to the service first.",
+    "هذه المحطة غير متاحة حالياً.": "This module is not available right now.",
+    "أكمل الموافقات الثلاث من لوحة الحالة قبل دخول أقسام الخدمة.": "Complete the three approvals on the status panel before entering service sections.",
+    "اعتماد الهوية من القيادة مطلوب قبل استخدام مورس.": "Command identity approval is required before using Morse.",
+    "سجّل الدخول للخدمة أولاً لاستخدام شفرة مورس.": "Sign in to service before using Morse.",
+    "الخريطة جاهزة — فعّل زر تحديد الموقع ثم اختر نقطة. للقيادات، اختر عضواً لإزالة موقعه.": "Map ready — enable location selection and choose a point. Command roles can select a member to remove their location.",
+    "تعذر تحميل أداة الخريطة؛ أعد تحميل الصفحة ثم حاول مرة أخرى.": "The map library could not be loaded. Reload the page and try again.",
+    "تعذر تحميل صورة الخريطة؛ تحقق من اتصال الإنترنت ثم أعد فتح الصفحة.": "The map image could not be loaded. Check the internet connection and reopen the page.",
+    "أدخل اسماً عربياً أو إنجليزياً للكتيبة.": "Enter a battalion name in Arabic or English.",
+    "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "A selected person is already assigned to another active battalion.",
+    "يجب أن يكون قائد الكتيبة من الرتب القيادية.": "Choose a commander with a leadership rank.",
+    "رمز قائد الكتيبة غير صالح.": "The commander code is not valid.",
+    "تعذر التحقق من أحد أكواد الأفراد المختارين.": "One of the selected personnel codes could not be verified."
+  };
+
+  const enToAr = Object.create(null);
+  Object.entries(arToEn).forEach(([ar, en]) => {
+    if (!enToAr[en]) enToAr[en] = ar;
+  });
+  const textState = new WeakMap();
+  const attributeState = new WeakMap();
+  let observer = null;
+  let scheduled = false;
+
+  function language() {
+    const select = document.getElementById("ibp-language-select");
+    return select && select.value === "en" ? "en" : "ar";
+  }
+
+  function translate(value, lang) {
+    const source = String(value == null ? "" : value);
+    const trimmed = source.trim();
+    const leading = source.match(/^\s*/)[0];
+    const trailing = source.match(/\s*$/)[0];
+    if (lang === "en") {
+      if (Object.prototype.hasOwnProperty.call(arToEn, trimmed)) return leading + arToEn[trimmed] + trailing;
+      return source;
+    }
+    if (Object.prototype.hasOwnProperty.call(enToAr, trimmed)) return leading + enToAr[trimmed] + trailing;
+    return source;
+  }
+
+  function activePane() {
+    if (!document.body.classList.contains("ibp-mode")) return null;
+    const pane = document.querySelector(".view-pane.active");
+    if (!pane || pane.id === "ibp-command-center") return null;
+    return pane;
+  }
+
+  function localizeTextNode(node, lang) {
+    if (!node || !node.parentElement || !activePane()?.contains(node.parentElement)) return;
+    const parent = node.parentElement.closest("script,style,textarea,input,select,option,code,pre");
+    if (parent) return;
+    const current = node.nodeValue;
+    const prior = textState.get(node);
+    const source = prior && current === prior.last ? prior.source : current;
+    const localized = translate(source, lang);
+    textState.set(node, { source, last: localized });
+    if (localized !== current) node.nodeValue = localized;
+  }
+
+  function localizeAttribute(element, attribute, lang) {
+    const pane = activePane();
+    if (!pane || !element || !pane.contains(element)) return;
+    const current = element.getAttribute(attribute);
+    if (!current) return;
+    let records = attributeState.get(element);
+    if (!records) {
+      records = new Map();
+      attributeState.set(element, records);
+    }
+    const prior = records.get(attribute);
+    const source = prior && current === prior.last ? prior.source : current;
+    const localized = translate(source, lang);
+    records.set(attribute, { source, last: localized });
+    if (localized !== current) element.setAttribute(attribute, localized);
+  }
+
+  function localizeSubtree(node, lang) {
+    if (!node) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      localizeTextNode(node, lang);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+    const pane = activePane();
+    if (!pane) return;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : null;
+    if (element && !pane.contains(element) && element !== pane) return;
+    if (element) {
+      ["placeholder", "title", "aria-label", "alt"].forEach((attribute) => localizeAttribute(element, attribute, lang));
+    }
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let textNode;
+    while ((textNode = walker.nextNode())) localizeTextNode(textNode, lang);
+    if (element) {
+      element.querySelectorAll("[placeholder],[title],[aria-label],[alt]").forEach((child) => {
+        ["placeholder", "title", "aria-label", "alt"].forEach((attribute) => localizeAttribute(child, attribute, lang));
+      });
+    }
+  }
+
+  function setDirectionAndTranslate() {
+    const lang = language();
+    const pane = activePane();
+    if (pane) {
+      pane.dir = lang === "ar" ? "rtl" : "ltr";
+      pane.classList.toggle("ibp-module-english", lang === "en");
+      localizeSubtree(pane, lang);
+    }
+    const bar = document.getElementById("ibp-return-bar");
+    if (bar) {
+      bar.dir = lang === "ar" ? "rtl" : "ltr";
+      const buttons = bar.querySelectorAll("button");
+      if (buttons[0]) buttons[0].textContent = lang === "ar" ? "← رجوع إلى مركز IBP" : "← Back to IBP Command Center";
+      if (buttons[buttons.length - 1]) buttons[buttons.length - 1].textContent = lang === "ar" ? "الخروج إلى BLACK RIDGE" : "Exit to BLACK RIDGE";
+      const label = bar.querySelector(".ibp-return-language-label");
+      if (label) label.textContent = lang === "ar" ? "لغة الواجهة" : "Interface language";
+      const select = bar.querySelector("#ibp-return-language-select");
+      if (select) {
+        select.value = lang;
+        select.setAttribute("aria-label", lang === "ar" ? "لغة الواجهة" : "Interface language");
+      }
+    }
+  }
+
+  function scheduleLocalization() {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(() => {
+      scheduled = false;
+      setDirectionAndTranslate();
+    });
+  }
+
+  function setLanguage(value) {
+    const lang = value === "en" ? "en" : "ar";
+    const mainSelect = document.getElementById("ibp-language-select");
+    if (mainSelect && mainSelect.value !== lang) {
+      mainSelect.value = lang;
+      mainSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    scheduleLocalization();
+  }
+
+  function ensureReturnLanguageControl() {
+    const bar = document.getElementById("ibp-return-bar");
+    if (!bar || bar.querySelector("#ibp-return-language-select")) return;
+    const control = document.createElement("label");
+    control.className = "ibp-return-language";
+    control.innerHTML = `<span class="ibp-return-language-label"></span><select id="ibp-return-language-select"><option value="ar">العربية</option><option value="en">English</option></select>`;
+    const anchor = bar.querySelector("span");
+    bar.insertBefore(control, anchor || null);
+    const select = control.querySelector("select");
+    select.addEventListener("change", () => setLanguage(select.value));
+    setDirectionAndTranslate();
+  }
+
+  function handleLanguageChange(event) {
+    if (event.target && event.target.id === "ibp-language-select") scheduleLocalization();
+  }
+
+  function scanMutation(record) {
+    if (!activePane()) return;
+    if (record.type === "characterData") {
+      localizeTextNode(record.target, language());
+      return;
+    }
+    if (record.type === "attributes") {
+      localizeAttribute(record.target, record.attributeName, language());
+      return;
+    }
+    record.addedNodes.forEach((node) => localizeSubtree(node, language()));
+  }
+
+  function installObserver() {
+    if (observer || !window.MutationObserver) return;
+    const target = document.querySelector(".content-area") || document.body;
+    observer = new MutationObserver((records) => {
+      records.forEach(scanMutation);
+      ensureReturnLanguageControl();
+      scheduleLocalization();
+    });
+    observer.observe(target, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "placeholder", "title", "aria-label", "alt"]
+    });
+  }
+
+  function translatePrompt(kind, original) {
+    if (!document.body.classList.contains("ibp-mode")) return original;
+    return translate(String(original == null ? "" : original), language());
+  }
+
+  function installBrowserPromptTranslations() {
+    if (!window.__ibpLegacyPromptTranslations) {
+      window.__ibpLegacyPromptTranslations = true;
+      const alertFn = window.alert;
+      const confirmFn = window.confirm;
+      const promptFn = window.prompt;
+      window.alert = function (message) {
+        return alertFn.call(window, translatePrompt("alert", message));
+      };
+      window.confirm = function (message) {
+        return confirmFn.call(window, translatePrompt("confirm", message));
+      };
+      window.prompt = function (message, defaultValue) {
+        return promptFn.call(window, translatePrompt("prompt", message), defaultValue);
+      };
+    }
+  }
+
+  function boot() {
+    ensureReturnLanguageControl();
+    installObserver();
+    installBrowserPromptTranslations();
+    document.addEventListener("change", handleLanguageChange);
+    setDirectionAndTranslate();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+</script>
+  <script src="/notifications-client.js"></script>
 </body>
 </html>

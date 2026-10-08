@@ -11,15 +11,19 @@ const TYPES = [
   ['OFFICIAL MEMORANDUM', 'Memorandum', 'An internal memorandum between authorized offices.'],
   ['SECURITY NOTICE', 'Security Notice', 'A security instruction or controlled notification.'],
   ['CLASSIFIED REPORT', 'Classified Report', 'A report for audiences with the required clearance.'],
-  ['SECTOR BRIEFING', 'Sector Briefing', 'A structured briefing prepared for sector leadership.']
+  ['SECTOR BRIEFING', 'Sector Briefing', 'A structured briefing prepared for sector leadership.'],
+  ['OPERATION ORDER', 'Operation Order', 'A controlled operational order for authorized recipients.'],
+  ['INTELLIGENCE REPORT', 'Intelligence Report', 'A structured intelligence report with a classification.'],
+  ['ADMINISTRATIVE ORDER', 'Administrative Order', 'An official administrative instruction.'],
+  ['OFFICIAL LETTER', 'Official Letter', 'Formal correspondence issued by the document authority.']
 ];
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
 const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
 const ROLE_PERMISSIONS = {
   AGENT: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS'],
   SENIOR: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'VIEW_SIGNER_ROLE'],
-  COMMANDER: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_REAL_SIGNER_IDENTITY'],
-  ADMIN: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_REAL_SIGNER_IDENTITY']
+  COMMANDER: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_SIGNER_IDENTITY'],
+  ADMIN: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_SIGNER_IDENTITY']
 };
 
 const COPY = {
@@ -50,7 +54,8 @@ const COPY = {
     tryFilters: 'عدّل البحث أو المرشحات، أو أنشئ وثيقة جديدة.', pendingTitle: 'بانتظار المراجعة والاعتماد',
     nothingPending: 'لا توجد وثائق تنتظر الإجراء', pendingHint: 'ستظهر هنا الوثائق المرسلة للاعتماد.',
     issuedTitle: 'الوثائق الصادرة', issuedAt: 'تاريخ الإصدار', noIssued: 'لا توجد وثائق صادرة',
-    issuedHint: 'الوثائق المعتمدة والموقعة ستظهر هنا.', templateTitle: 'قوالب رسمية جاهزة',
+    issuedHint: 'الوثائق المعتمدة والموقعة ستظهر هنا.', draftsTitle: 'مسودات الوثائق', noDrafts: 'لا توجد مسودات',
+    draftsHint: 'ستظهر هنا الوثائق التي لم تُرسل بعد للمراجعة.', templateTitle: 'قوالب رسمية جاهزة',
     templateCaption: 'اختر نوع الوثيقة؛ يتولى النظام التنسيق والترقيم والتصنيف.',
     verifyTitle: 'التحقق من وثيقة رسمية', verifyCaption: 'أدخل رقم الوثيقة أو رمز التحقق لفحص سجل الإصدار وسلامة التوقيع.',
     verifyNow: 'تحقق الآن', integrity: 'سلامة الوثيقة',
@@ -61,8 +66,13 @@ const COPY = {
     noAudit: 'لا توجد أحداث متاحة', auditHint: 'يتطلب عرض هذا السجل صلاحية تدقيق مناسبة.',
     usersTitle: 'مستخدمو النظام والصلاحيات', addUser: 'إضافة مستخدم',
     usersCopy: 'صلاحيات API مفروضة على الخادم. إخفاء عناصر الواجهة ليس بديلاً عن التفويض.',
-    privacyTitle: 'خصوصية هوية الموقّع', privacyCopy: 'تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_REAL_SIGNER_IDENTITY.',
+    privacyTitle: 'خصوصية هوية الموقّع', privacyCopy: 'تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_SIGNER_IDENTITY.',
     signatureModel: 'نموذج التوقيع', recordModel: 'سجل النسخ', auditModel: 'سجل التدقيق',
+    signatureDialogTitle: 'التوقيع الرسمي بخط اليد', signatureDialogHint: 'ارسم توقيعك بنفسك بإصبعك أو القلم أو الفأرة. سيُضمّن الرسم في النسخة الصادرة ويُربط ببصمتها.',
+    signatureClear: 'مسح التوقيع', signatureCancel: 'إلغاء', signatureConfirm: 'توقيع وإصدار الوثيقة',
+    signatureEmpty: 'ارسم توقيعك داخل الإطار قبل الإصدار.', signaturePending: 'التوقيع مطلوب عند الإصدار',
+    issuedUtc: 'تاريخ ووقت الإصدار · UTC', documentIdLabel: 'معرّف الوثيقة', authorizationLevelLabel: 'مستوى التصريح',
+    signerSignatureAlt: 'التوقيع اليدوي للمُصدر', signatureRecorded: 'توقيع يدوي مسجل في وقت الإصدار',
     footerNote: 'وثائق مستقلة · تحقق من الصلاحية قبل المشاركة', signIn: 'تسجيل الدخول', firstSetup: 'الإعداد الأولي',
     authSubtitle: 'نظام الوثائق الرسمية للقطاعات', username: 'اسم المستخدم', password: 'كلمة المرور',
     firstSetupRequired: 'إنشاء قائد النظام الأول', setupHint: 'يتطلب OSD_BOOTSTRAP_CODE مضبوطاً على الخادم. لا ترسل الرمز في المحادثة.',
@@ -126,6 +136,7 @@ const COPY = {
     pendingTitle: 'Pending Review & Approval', nothingPending: 'Nothing is waiting for action',
     pendingHint: 'Documents submitted for approval appear here.', issuedTitle: 'Issued Documents',
     issuedAt: 'ISSUED AT', noIssued: 'No issued documents', issuedHint: 'Approved and signed documents appear here.',
+    draftsTitle: 'Document Drafts', noDrafts: 'No drafts yet', draftsHint: 'Documents not yet submitted for approval appear here.',
     templateTitle: 'Official Templates', templateCaption: 'Choose a document type; formatting, numbering and classification are handled for you.',
     verifyTitle: 'Verify an Official Document', verifyCaption: 'Enter a document number or verification code to check the issue record and signature integrity.',
     verifyNow: 'Verify Now', integrity: 'Document Integrity',
@@ -137,8 +148,13 @@ const COPY = {
     usersTitle: 'System Users & Permissions', addUser: 'Add User',
     usersCopy: 'API permissions are enforced server-side. Hiding UI controls is not authorization.',
     privacyTitle: 'Signer Identity Privacy',
-    privacyCopy: 'Signer identity is kept in the issue record, but responses conceal the real name unless the viewer has VIEW_REAL_SIGNER_IDENTITY.',
+    privacyCopy: 'Signer identity is kept in the issue record, but responses conceal the real name unless the viewer has VIEW_SIGNER_IDENTITY.',
     signatureModel: 'Signature Model', recordModel: 'Version Record', auditModel: 'Audit Record',
+    signatureDialogTitle: 'Handwritten Official Signature', signatureDialogHint: 'Draw your own signature with a finger, stylus, or mouse. The drawing is embedded in the issued version and included in its integrity signature.',
+    signatureClear: 'Clear Signature', signatureCancel: 'Cancel', signatureConfirm: 'Sign & Issue Document',
+    signatureEmpty: 'Draw your signature in the box before issuing.', signaturePending: 'Signature required at issue',
+    issuedUtc: 'ISSUED AT · UTC', documentIdLabel: 'DOCUMENT ID', authorizationLevelLabel: 'AUTHORIZATION LEVEL',
+    signerSignatureAlt: 'Issuer handwritten signature', signatureRecorded: 'Handwritten signature recorded at issue',
     footerNote: 'Independent records · Verify access before sharing', signIn: 'Sign In', firstSetup: 'Initial Setup',
     authSubtitle: 'Official Sector Documents System', username: 'Username', password: 'Password',
     firstSetupRequired: 'Create the first system commander',
@@ -177,6 +193,7 @@ const PAGE_TEXT = {
   center: ['centerEyebrow', 'مركز الوثائق الرسمية', 'إدارة الوثائق الرسمية المصرح لك بالوصول إليها.'],
   create: ['createEyebrow', 'إنشاء وثيقة رسمية', 'أدخل المعلومات الأساسية؛ يتولى النظام الترقيم والتنسيق.'],
   archive: ['archiveEyebrow', 'أرشيف الوثائق', 'ابحث في الوثائق المتاحة حسب صلاحيتك.'],
+  drafts: ['archiveEyebrow', 'مسودات الوثائق', 'تابع الوثائق التي لم تُرسل بعد للمراجعة.'],
   pending: ['pendingEyebrow', 'بانتظار المراجعة والاعتماد', 'اعتمد الوثائق المرسلة أو أعدها لمسار المراجعة.'],
   issued: ['issuedEyebrow', 'الوثائق الصادرة', 'نسخ رسمية صدرت بتوقيع مسجل على الخادم.'],
   templates: ['templatesEyebrow', 'قوالب رسمية جاهزة', 'اختر نوع الوثيقة؛ يتولى النظام التنسيق والترقيم والتصنيف.'],
@@ -251,6 +268,18 @@ function formatDate(value, withTime = false) {
   }).format(date);
 }
 
+function formatUtcTimestamp(value) {
+  if (!value) return state.language === 'ar' ? 'يُنشأ عند الإصدار' : 'GENERATED ON ISSUE';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  const formatted = new Intl.DateTimeFormat(state.language === 'ar' ? 'en-GB' : 'en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23', timeZone: 'UTC'
+  }).format(date).toUpperCase();
+  return `${formatted} UTC`;
+}
+
 function updateClock() {
   const now = new Date();
   $('#clock').textContent = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
@@ -282,6 +311,7 @@ function renderPageHeading() {
     center: ['Official Documents Center', 'Manage official documents available to your account.'],
     create: ['Create Official Document', 'Enter the essential details; OSD applies the official format.'],
     archive: ['Document Archive', 'Search records available at your clearance.'],
+    drafts: ['Document Drafts', 'Manage documents that have not yet been submitted for approval.'],
     pending: ['Pending Review & Approval', 'Review documents submitted to the approval queue.'],
     issued: ['Issued Documents', 'Official versions signed and recorded on the server.'],
     templates: ['Official Templates', 'Choose a type; OSD handles formatting and numbering.'],
@@ -315,6 +345,7 @@ function actionCell(document) {
 function filteredDocuments(status = '') {
   let documents = state.documents.slice();
   if (status) documents = documents.filter((doc) => doc.status === status);
+  if (state.page === 'drafts') documents = documents.filter((doc) => doc.status === 'DRAFT');
   if (state.page === 'archive') {
     const search = $('#archiveSearch')?.value.trim().toLowerCase() || '';
     const type = $('#filterType')?.value || '';
@@ -353,6 +384,11 @@ function renderRows() {
   $('#issuedRows').innerHTML = issued.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${escapeHtml(formatDate(doc.issuedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
   $('#issuedCount').textContent = `${issued.length} ISSUED`;
   $('#issuedEmpty').classList.toggle('visible', !issued.length);
+
+  const drafts = docs.filter((doc) => doc.status === 'DRAFT');
+  $('#draftRows').innerHTML = drafts.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
+  $('#draftCount').textContent = `${drafts.length} DRAFT${drafts.length === 1 ? '' : 'S'}`;
+  $('#draftEmpty').classList.toggle('visible', !drafts.length);
 }
 
 async function loadDocuments() {
@@ -402,6 +438,23 @@ function renderPreview(documentData = null) {
   $('#previewSector').textContent = String(data.sector || 'LOS SANTOS SECTOR').toUpperCase();
   $('#previewRecipient').textContent = data.recipient ? `TO: ${data.recipient}` : 'TO: AUTHORIZED RECIPIENT';
   $('#previewBody').textContent = data.body?.text || data.body || (state.language === 'ar' ? 'سيظهر محتوى الوثيقة هنا عند إكمال النموذج.' : 'Your document content will appear here as you complete the form.');
+  $('#previewNumber').textContent = data.documentNumber || (state.language === 'ar' ? 'يُنشأ عند الإصدار' : 'GENERATED ON ISSUE');
+  $('#previewDate').textContent = formatUtcTimestamp(data.issuedAt);
+  $('#previewDocumentId').textContent = data.id || (state.language === 'ar' ? 'يُنشأ عند الحفظ' : 'GENERATED ON SAVE');
+  $('#previewAuthorizationLevel').textContent = data.signature?.authorizationLevel || data.authorizationLevel || data.classification || '—';
+  $('#previewVersion').textContent = data.version || 'DRAFT';
+  $('#previewVerificationCode').textContent = data.verificationCode || (state.language === 'ar' ? 'يُنشأ عند الإصدار' : 'GENERATED ON ISSUE');
+  $('#previewSigner').textContent = data.signature?.display || (data.signature ? t('publicSigner') : t('signaturePending'));
+  $('#previewSignatureCaption').textContent = data.signature?.signatureImage ? t('signatureRecorded') : t('signaturePending');
+  const signatureImage = data.signature?.signatureImage;
+  const image = $('#previewSignature');
+  if (typeof signatureImage === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(signatureImage)) {
+    image.src = signatureImage;
+    image.hidden = false;
+  } else {
+    image.removeAttribute('src');
+    image.hidden = true;
+  }
 }
 
 function renderTemplates() {
@@ -456,6 +509,7 @@ function showDocument(document) {
       ${fieldMeta(t('verificationCode'), document.verificationCode)}
       ${fieldMeta(t('signer'), signer)}
     </div>
+    ${document.signature?.signatureImage ? `<img class="dialog-signature" src="${escapeHtml(document.signature.signatureImage)}" alt="${escapeHtml(t('signerSignatureAlt'))}">` : ''}
     <div class="dialog-copy">${escapeHtml(body || (state.language === 'ar' ? 'لا يوجد محتوى نصي في هذه الوثيقة.' : 'No document text is available.'))}</div>
     ${document.revokedReason ? `<p class="dialog-copy"><b>${escapeHtml(t('revoke'))}:</b> ${escapeHtml(document.revokedReason)}</p>` : ''}
   `;
@@ -526,7 +580,10 @@ async function actOnDocument(action, id) {
     issueDocument: ['POST', `/documents/${id}/issue`, null, t('issuedMessage')],
     archiveDocument: ['POST', `/documents/${id}/archive`, null, t('archivedMessage')]
   };
-  if (action === 'issueDocument' && !window.confirm(t('confirmIssue'))) return;
+  if (action === 'issueDocument') {
+    openSignatureDialog(id);
+    return;
+  }
   if (action === 'approveDocument' && !window.confirm(t('confirmApprove'))) return;
   if (action === 'revokeDocument') {
     const reason = window.prompt(t('confirmRevoke'));
@@ -547,6 +604,108 @@ async function actOnDocument(action, id) {
   }
 }
 
+let signingDocumentId = null;
+let signatureHasStroke = false;
+let signatureDistance = 0;
+let signatureLastPoint = null;
+const signatureCanvas = $('#signatureCanvas');
+const signatureContext = signatureCanvas.getContext('2d');
+
+function resizeSignatureCanvas() {
+  const rect = signatureCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, 3);
+  signatureCanvas.width = Math.round(rect.width * ratio);
+  signatureCanvas.height = Math.round(rect.height * ratio);
+  signatureContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+  signatureContext.fillStyle = '#f2efe6';
+  signatureContext.fillRect(0, 0, rect.width, rect.height);
+  signatureContext.lineWidth = 2.6;
+  signatureContext.lineCap = 'round';
+  signatureContext.lineJoin = 'round';
+  signatureContext.strokeStyle = '#20231f';
+}
+
+function clearSignature() {
+  resizeSignatureCanvas();
+  signatureHasStroke = false;
+  signatureDistance = 0;
+  signatureLastPoint = null;
+}
+
+function openSignatureDialog(id) {
+  const document = state.documents.find((entry) => entry.id === id);
+  if (!document || document.status !== 'APPROVED' || !can('SIGN_DOCUMENTS') || !can('ISSUE_DOCUMENTS')) {
+    return toast(t('noPermission'), 'error');
+  }
+  signingDocumentId = id;
+  $('#signatureDocumentNumber').textContent = document.documentNumber;
+  $('#signatureModal').hidden = false;
+  clearSignature();
+  requestAnimationFrame(() => signatureCanvas.focus());
+}
+
+function signaturePoint(event) {
+  const rect = signatureCanvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+signatureCanvas.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 && event.pointerType === 'mouse') return;
+  event.preventDefault();
+  signatureCanvas.setPointerCapture(event.pointerId);
+  const point = signaturePoint(event);
+  signatureContext.beginPath();
+  signatureContext.arc(point.x, point.y, 1.3, 0, Math.PI * 2);
+  signatureContext.fillStyle = '#20231f';
+  signatureContext.fill();
+  signatureContext.beginPath();
+  signatureContext.moveTo(point.x, point.y);
+  signatureLastPoint = point;
+});
+
+signatureCanvas.addEventListener('pointermove', (event) => {
+  if (!signatureCanvas.hasPointerCapture(event.pointerId)) return;
+  event.preventDefault();
+  const point = signaturePoint(event);
+  signatureDistance += Math.hypot(point.x - signatureLastPoint.x, point.y - signatureLastPoint.y);
+  signatureLastPoint = point;
+  signatureContext.lineTo(point.x, point.y);
+  signatureContext.stroke();
+  if (signatureDistance > 8) signatureHasStroke = true;
+});
+
+function stopSignatureStroke(event) {
+  if (signatureCanvas.hasPointerCapture(event.pointerId)) signatureCanvas.releasePointerCapture(event.pointerId);
+}
+signatureCanvas.addEventListener('pointerup', stopSignatureStroke);
+signatureCanvas.addEventListener('pointercancel', stopSignatureStroke);
+
+async function confirmSignatureAndIssue() {
+  if (!signingDocumentId || !signatureHasStroke) return toast(t('signatureEmpty'), 'error');
+  const issueButton = $('[data-action="confirmSignature"]');
+  issueButton.disabled = true;
+  try {
+    const signatureImage = signatureCanvas.toDataURL('image/png');
+    await request(`/documents/${encodeURIComponent(signingDocumentId)}/issue`, {
+      method: 'POST',
+      body: JSON.stringify({ signatureImage })
+    });
+    const issuedId = signingDocumentId;
+    signingDocumentId = null;
+    $('#signatureModal').hidden = true;
+    $('#documentModal').hidden = true;
+    await loadDocuments();
+    toast(t('issuedMessage'));
+    const issued = state.documents.find((document) => document.id === issuedId);
+    if (issued) showDocument(issued);
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    issueButton.disabled = false;
+  }
+}
+
 async function shareDocument(id) {
   try {
     const result = await request(`/documents/${encodeURIComponent(id)}/share`, {
@@ -561,17 +720,7 @@ async function shareDocument(id) {
 
 function printDocument(document) {
   const paper = $('#livePreview');
-  renderPreview({
-    type: document.type, title: document.title, sector: document.sector,
-    classification: document.classification, recipient: document.recipient, body: document.body
-  });
-  $('#previewNumber').textContent = document.documentNumber;
-  $('#previewDate').textContent = formatDate(document.issuedAt, true).toUpperCase();
-  $('#previewVersion').textContent = document.version;
-  const code = $('.paper-code b');
-  if (code) code.textContent = document.verificationCode;
-  const ribbon = $('.paper-signature b');
-  if (ribbon) ribbon.textContent = document.signature?.display || t('publicSigner');
+  renderPreview(document);
   paper.classList.add('print-document');
   window.print();
   window.setTimeout(() => paper.classList.remove('print-document'), 900);
@@ -718,7 +867,7 @@ async function showShareDocument(token) {
   $('#documentModal').hidden = false;
   $('#modalTitle').textContent = doc.title;
   $('#modalNumber').textContent = doc.documentNumber;
-  $('#modalContent').innerHTML = `<div class="dialog-meta-grid">${fieldMeta(t('fileNo'), doc.documentNumber)}${fieldMeta(t('classificationCol'), doc.classification)}${fieldMeta(t('versionLabel'), doc.version)}${fieldMeta(t('signer'), 'AUTHORIZED COMMAND')}</div><div class="dialog-copy">${escapeHtml(doc.body?.text || 'Verification-only access')}</div>`;
+  $('#modalContent').innerHTML = `<div class="dialog-meta-grid">${fieldMeta(t('fileNo'), doc.documentNumber)}${fieldMeta(t('classificationCol'), doc.classification)}${fieldMeta(t('versionLabel'), doc.version)}${fieldMeta(t('signer'), 'AUTHORIZED COMMAND')}</div>${doc.signature?.signatureImage ? `<img class="dialog-signature" src="${escapeHtml(doc.signature.signatureImage)}" alt="${escapeHtml(t('signerSignatureAlt'))}">` : ''}<div class="dialog-copy">${escapeHtml(doc.body?.text || 'Verification-only access')}</div>`;
   $('#modalActions').innerHTML = `<button class="button button-quiet" data-action="closeModal">${escapeHtml(t('close'))}</button>${result.permissions.includes('VERIFY') ? `<button class="button button-outline" data-action="verifyShared" data-code="${escapeHtml(doc.verificationCode)}">${escapeHtml(t('verifyNow'))}</button>` : ''}${result.permissions.includes('DOWNLOAD') ? `<button class="button button-primary" data-action="printShared">${escapeHtml(t('print'))}</button>` : ''}`;
 }
 
@@ -831,6 +980,11 @@ document.addEventListener('click', async (event) => {
       showAuth(true);
       location.reload();
     } else if (action === 'closeModal') $('#documentModal').hidden = true;
+    else if (action === 'clearSignature') clearSignature();
+    else if (action === 'cancelSignature') {
+      signingDocumentId = null;
+      $('#signatureModal').hidden = true;
+    } else if (action === 'confirmSignature') await confirmSignatureAndIssue();
     else if (action === 'viewDocument') await openDocument(id);
     else if (action === 'editDraft') editDraft(id);
     else if (action === 'amendDocument') await createAmendment(id);
@@ -861,6 +1015,19 @@ document.addEventListener('click', async (event) => {
       await verifyIdentifier(target.dataset.code);
     } else if (action === 'printShared' && state.shareDocument) printDocument(state.shareDocument);
   } catch (error) { toast(error.message, 'error'); }
+});
+
+$('#signatureModal').addEventListener('click', (event) => {
+  if (event.target === $('#signatureModal')) {
+    signingDocumentId = null;
+    $('#signatureModal').hidden = true;
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#signatureModal').hidden) {
+    signingDocumentId = null;
+    $('#signatureModal').hidden = true;
+  }
 });
 
 document.addEventListener('change', async (event) => {

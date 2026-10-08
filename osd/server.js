@@ -7,13 +7,14 @@ const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 
 const DOCUMENT_TYPES = [
   'OFFICIAL DIRECTIVE', 'COMMAND ORDER', 'SECTOR NOTICE', 'ADMINISTRATIVE DOCUMENT',
   'OPERATIONAL REPORT', 'AUTHORIZATION DOCUMENT', 'OFFICIAL MEMORANDUM',
-  'SECURITY NOTICE', 'CLASSIFIED REPORT', 'SECTOR BRIEFING'
+  'SECURITY NOTICE', 'CLASSIFIED REPORT', 'SECTOR BRIEFING', 'OPERATION ORDER',
+  'INTELLIGENCE REPORT', 'ADMINISTRATIVE ORDER', 'OFFICIAL LETTER'
 ];
 const ALL_PERMISSIONS = [
   'VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL',
   'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS',
   'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL',
-  'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_REAL_SIGNER_IDENTITY'
+  'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_SIGNER_IDENTITY', 'VIEW_REAL_SIGNER_IDENTITY'
 ];
 const ROLE_DEFAULTS = Object.freeze({
   AGENT: {
@@ -26,11 +27,11 @@ const ROLE_DEFAULTS = Object.freeze({
   },
   COMMANDER: {
     clearance: 'TOP SECRET',
-    permissions: [...ALL_PERMISSIONS.filter((permission) => permission !== 'MANAGE_USERS'), 'MANAGE_USERS']
+    permissions: [...ALL_PERMISSIONS.filter((permission) => permission !== 'MANAGE_USERS' && permission !== 'VIEW_REAL_SIGNER_IDENTITY'), 'MANAGE_USERS']
   },
   ADMIN: {
     clearance: 'TOP SECRET',
-    permissions: [...ALL_PERMISSIONS]
+    permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'VIEW_REAL_SIGNER_IDENTITY')
   }
 });
 const SESSION_HOURS = 8;
@@ -146,6 +147,68 @@ function cleanText(value, max = 500) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 }
 
+const MAX_SIGNATURE_IMAGE_BYTES = 256 * 1024;
+
+function pngCrc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function normalizeSignatureImage(value) {
+  const match = typeof value === 'string' && /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match) throw Object.assign(new Error('A drawn PNG signature is required.'), { status: 400 });
+  const bytes = Buffer.from(match[1], 'base64');
+  if (bytes.length > MAX_SIGNATURE_IMAGE_BYTES || bytes.length < 64 || bytes.toString('base64') !== match[1]) {
+    throw Object.assign(new Error('The signature image is invalid or too large.'), { status: 400 });
+  }
+  const pngHeader = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!bytes.subarray(0, 8).equals(pngHeader)) {
+    throw Object.assign(new Error('The signature must be a valid PNG image.'), { status: 400 });
+  }
+  let offset = 8;
+  let hasHeader = false;
+  let hasImageData = false;
+  let hasEnd = false;
+  let width = 0;
+  let height = 0;
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    const chunkEnd = offset + 12 + length;
+    if (chunkEnd > bytes.length) {
+      throw Object.assign(new Error('The signature image is truncated.'), { status: 400 });
+    }
+    const actualCrc = bytes.readUInt32BE(offset + 8 + length);
+    const expectedCrc = pngCrc32(bytes.subarray(offset + 4, offset + 8 + length));
+    if (actualCrc !== expectedCrc) {
+      throw Object.assign(new Error('The signature image failed its PNG integrity check.'), { status: 400 });
+    }
+    if (!hasHeader) {
+      if (type !== 'IHDR' || length !== 13) {
+        throw Object.assign(new Error('The signature image is invalid.'), { status: 400 });
+      }
+      width = bytes.readUInt32BE(offset + 8);
+      height = bytes.readUInt32BE(offset + 12);
+      hasHeader = true;
+    }
+    if (type === 'IDAT') hasImageData = true;
+    offset = chunkEnd;
+    if (type === 'IEND') {
+      hasEnd = length === 0;
+      break;
+    }
+  }
+  if (!hasHeader || !hasImageData || !hasEnd || offset !== bytes.length ||
+      width < 300 || width > 2400 || height < 100 || height > 900) {
+    throw Object.assign(new Error('The signature image has invalid dimensions or content.'), { status: 400 });
+  }
+  return value;
+}
+
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value instanceof Date) return value.toISOString();
@@ -209,8 +272,9 @@ function canReadClassification(user, classification) {
 
 function safeDocument(row, user, options = {}) {
   const signature = row.signature && typeof row.signature === 'object' ? row.signature : null;
-  const seeIdentity = hasPermission(user, 'VIEW_REAL_SIGNER_IDENTITY');
+  const seeIdentity = hasPermission(user, 'VIEW_SIGNER_IDENTITY') || hasPermission(user, 'VIEW_REAL_SIGNER_IDENTITY');
   const seeRole = hasPermission(user, 'VIEW_SIGNER_ROLE');
+  const seeSignatureImage = hasPermission(user, 'DOWNLOAD_DOCUMENTS') || seeIdentity;
   const revoked = row.status === 'REVOKED' || !!row.revoked_at;
   const expired = row.status === 'ISSUED' && row.expires_at && new Date(row.expires_at).getTime() <= Date.now();
   const result = {
@@ -236,6 +300,8 @@ function safeDocument(row, user, options = {}) {
       display: seeIdentity ? signature.signerName : seeRole ? 'COMMANDER / AUTHORIZED SIGNATURE' : 'AUTHORIZED COMMAND',
       signedAt: signature.signedAt,
       role: seeIdentity || seeRole ? signature.signerRole : undefined,
+      authorizationLevel: signature.authorizationLevel,
+      signatureImage: seeSignatureImage ? signature.signatureImage : undefined,
       identityVisible: seeIdentity
     } : null,
     integrityHash: row.integrity_hash || null
@@ -803,6 +869,15 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
         await client.query('ROLLBACK');
         return res.status(503).json({ error: 'Set OSD_SIGNING_SECRET to at least 32 random bytes before issuing signed documents.' });
       }
+      let signatureImage = null;
+      if (options.issue) {
+        try {
+          signatureImage = normalizeSignatureImage(req.body?.signatureImage);
+        } catch (error) {
+          await client.query('ROLLBACK');
+          return res.status(error.status || 400).json({ error: error.message });
+        }
+      }
       const fields = ['status=$2', 'updated_at=NOW()'];
       const params = [document.id, to];
       if (options.issue) {
@@ -819,7 +894,10 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
           recipient: document.recipient,
           version: document.version,
           issuedAt: signedAt,
-          expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null
+          expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null,
+          authorizationLevel: req.osdUser.clearance,
+          timeZone: 'UTC',
+          signatureImage
         };
         const signaturePayload = { snapshot: issuedSnapshot, signerId: req.osdUser.id, signedAt };
         const signature = signPayload(signaturePayload, env.OSD_SIGNING_SECRET);
@@ -827,7 +905,9 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
           signerId: req.osdUser.id,
           signerName: req.osdUser.displayName,
           signerRole: req.osdUser.role,
+          authorizationLevel: req.osdUser.clearance,
           signedAt,
+          signatureImage,
           signature,
           signaturePayload
         };
@@ -850,7 +930,9 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
         actorLabel: req.osdUser.role,
         action,
         version: document.version,
-        metadata: options.revoke ? { reason: cleanText(req.body?.reason, 1000) } : {}
+        metadata: options.revoke
+          ? { reason: cleanText(req.body?.reason, 1000) }
+          : options.issue ? { signatureImageHash: sha256(signatureImage.slice(signatureImage.indexOf(',') + 1)) } : {}
       });
       await client.query('COMMIT');
       const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
@@ -928,6 +1010,9 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
       issuedAt: document.issued_at ? new Date(document.issued_at).toISOString() : null,
       expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null
     };
+    if (Object.hasOwn(snapshot, 'authorizationLevel')) currentSnapshot.authorizationLevel = document.signature.authorizationLevel;
+    if (Object.hasOwn(snapshot, 'timeZone')) currentSnapshot.timeZone = snapshot.timeZone;
+    if (Object.hasOwn(snapshot, 'signatureImage')) currentSnapshot.signatureImage = document.signature.signatureImage;
     const payload = document.signature.signaturePayload;
     const expected = payload ? signPayload(payload, env.OSD_SIGNING_SECRET) : '';
     if (!payload || canonicalJson(snapshot) !== canonicalJson(payload.snapshot) ||
@@ -1026,7 +1111,13 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
           text: document.issued_snapshot?.body?.text || '',
           references: document.issued_snapshot?.body?.references || []
         } : undefined,
-        signer: 'AUTHORIZED COMMAND'
+        signer: 'AUTHORIZED COMMAND',
+        signature: document.share_permissions.includes('DOWNLOAD') ? {
+          display: 'AUTHORIZED COMMAND',
+          signedAt: document.signature?.signedAt,
+          authorizationLevel: document.signature?.authorizationLevel,
+          signatureImage: document.signature?.signatureImage
+        } : undefined
       },
       permissions: document.share_permissions
     });
@@ -1184,6 +1275,7 @@ module.exports = {
   createOsdRouter,
   nextMinorVersion,
   normalizeDocument,
+  normalizeSignatureImage,
   safeEqual,
   safeDocument,
   sectorCode,
