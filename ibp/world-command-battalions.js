@@ -23,10 +23,19 @@
   const state = {
     page: '',
     battalions: [],
+    reports: [],
+    attendanceHistory: [],
+    attendanceHistoryUnit: '',
+    attendanceFromDate: '',
+    attendanceToDate: '',
     canCreate: false,
     selectedId: '',
     mode: '',
     polygon: [],
+    pendingMovePoint: null,
+    showMovementHistory: false,
+    selectedReportId: '',
+    reportDraft: null,
     viewport: { x: 0, y: 0, w: 1000, h: 700 },
     loading: false,
     refreshing: false,
@@ -61,7 +70,8 @@
     '.br2-empty{padding:26px 16px;color:var(--br2-muted);font-size:12px;text-align:center;border:1px dashed var(--br2-line);border-radius:8px;line-height:1.7}.br2-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.br2-info{padding:10px;border:1px solid var(--br2-line);border-radius:7px;background:rgba(255,255,255,.015);min-width:0}.br2-info span{display:block;color:var(--br2-muted);font:9px "DM Mono",monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}.br2-info b{display:block;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.br2-section{margin-top:14px}.br2-section-title{font:500 9px "DM Mono",monospace;color:#abb6a8;letter-spacing:.16em;border-bottom:1px solid var(--br2-line);padding-bottom:7px;margin:0 0 8px}.br2-member{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(206,216,200,.07);font-size:11px}.br2-member small{color:var(--br2-muted);font:9px "DM Mono",monospace}.br2-online{color:#80d7a5}.br2-report{padding:7px 0;border-bottom:1px solid rgba(206,216,200,.07);font-size:10px;line-height:1.5}.br2-report small{display:block;color:var(--br2-muted);font:9px "DM Mono",monospace;margin-top:3px}',
     '.br2-map-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:11px}.br2-map-layout{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(235px,.75fr);gap:12px;align-items:start}.br2-map-frame{position:relative;overflow:hidden;border:1px solid rgba(199,213,184,.18);border-radius:10px;background:#17211d;min-height:420px;box-shadow:0 18px 45px rgba(0,0,0,.2)}.br2-map-svg{display:block;width:100%;height:auto;min-height:420px;touch-action:none;cursor:grab}.br2-map-svg.dragging{cursor:grabbing}.br2-map-grid{stroke:#d1d9c9;stroke-opacity:.09}.br2-map-water{fill:#1d3335}.br2-map-land{fill:#28342b;stroke:#88927f;stroke-opacity:.38;stroke-width:2}.br2-map-park{fill:#354638;stroke:#8a9d7e;stroke-opacity:.25}.br2-map-road-major{fill:none;stroke:#d2c59c;stroke-opacity:.6;stroke-width:5}.br2-map-road-minor{fill:none;stroke:#b7c0ad;stroke-opacity:.34;stroke-width:2}.br2-map-road-line{fill:none;stroke:#243029;stroke-width:1}.br2-map-label{fill:#b2bdad;font:11px \"DM Mono\",monospace;letter-spacing:2px;opacity:.8}.br2-map-water-label{fill:#8eafae;font:10px \"DM Mono\",monospace;letter-spacing:3px;opacity:.75}.br2-map-coord{fill:#b5c1b4;font:9px \"DM Mono\",monospace;opacity:.8}.br2-marker{cursor:pointer}.br2-marker:hover{filter:brightness(1.25)}.br2-marker-label{font:700 11px Inter,Arial,sans-serif;paint-order:stroke;stroke:#101613;stroke-width:3px;stroke-linejoin:round}.br2-trail{fill:none;stroke-width:4;stroke-linecap:round;stroke-dasharray:7 6;opacity:.6}.br2-area{stroke-width:2;stroke-dasharray:5 4}.br2-map-hint{min-height:25px;color:#d0c49f;font:10px \"DM Mono\",monospace;padding:7px 2px}.br2-map-panel{max-height:680px;overflow:auto}.br2-zoom{margin-left:auto;display:flex;gap:5px}',
     '.br2-modal{position:fixed;z-index:99999;inset:0;background:rgba(3,6,4,.78);display:flex;align-items:center;justify-content:center;padding:18px}.br2-modal[hidden]{display:none}.br2-modal-card{width:min(720px,100%);max-height:92vh;overflow:auto;background:#111914;border:1px solid rgba(209,218,200,.22);border-radius:12px;box-shadow:0 20px 80px #000;padding:18px}.br2-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.br2-field{display:flex;flex-direction:column;gap:6px;color:#b4beb3;font:9px \"DM Mono\",monospace;letter-spacing:.08em}.br2-field.full{grid-column:1/-1}.br2-input,.br2-select,.br2-textarea{width:100%;border:1px solid var(--br2-line);border-radius:6px;background:#0c120e;color:#f0f1e9;padding:9px;font:12px Inter,Arial,sans-serif;min-height:37px}.br2-textarea{min-height:82px;resize:vertical}.br2-input[type=color]{padding:3px;height:38px}.br2-form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}.br2-form-error{color:#ff9e91;font-size:11px;min-height:18px;margin-top:7px}.br2-toast{position:fixed;z-index:100000;bottom:20px;left:50%;transform:translateX(-50%);background:#16211a;color:#e7ede2;border:1px solid rgba(209,218,200,.2);border-radius:8px;padding:11px 15px;font-size:12px;box-shadow:0 9px 30px #000;max-width:min(90vw,520px)}.br2-toast[hidden]{display:none}.br2-loading{color:#bdc7b8;font:10px \"DM Mono\",monospace;padding:16px;text-align:center}',
-    '@media(max-width:950px){.br2-layout,.br2-map-layout{grid-template-columns:1fr}.br2-map-frame,.br2-map-svg{min-height:330px}.br2-map-panel{max-height:none}}@media(max-width:580px){.br2-info-grid,.br2-form-grid{grid-template-columns:1fr}.br2-field.full{grid-column:auto}.br2-map-frame,.br2-map-svg{min-height:270px}.br2-toolbar{align-items:flex-start}}'
+    '@media(max-width:950px){.br2-layout,.br2-map-layout{grid-template-columns:1fr}.br2-map-frame,.br2-map-svg{min-height:330px}.br2-map-panel{max-height:none}}@media(max-width:580px){.br2-info-grid,.br2-form-grid{grid-template-columns:1fr}.br2-field.full{grid-column:auto}.br2-map-frame,.br2-map-svg{min-height:270px}.br2-toolbar{align-items:flex-start}}',
+    '.br2-dashboard-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.br2-table-wrap{overflow:auto;border:1px solid var(--br2-line);border-radius:7px}.br2-table{width:100%;border-collapse:collapse;min-width:640px;font-size:10px}.br2-table th,.br2-table td{padding:8px 9px;border-bottom:1px solid rgba(206,216,200,.08);text-align:left;white-space:nowrap}.br2-table th{color:#a9b5a6;font:9px "DM Mono",monospace;letter-spacing:.08em;background:#141d18}.br2-table td{color:#d9dfd6}.br2-table tr:last-child td{border-bottom:0}.br2-table .br2-online{font-weight:700}.br2-history-row{padding:8px 0;border-bottom:1px solid rgba(206,216,200,.07);font-size:10px;line-height:1.6}.br2-history-row:last-child{border-bottom:0}.br2-report-marker{cursor:pointer}.br2-report-marker:hover{filter:brightness(1.3)}.br2-area-current{color:#d1c297}@media(max-width:700px){.br2-dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
   ].join('');
 
   function injectStyles() {
@@ -118,7 +128,7 @@
     if (!content || !title || !description) return false;
     state.page = page;
     title.textContent = page === 'map' ? 'LOS SANTOS BATTALION MAP' : 'BATTALION COMMAND';
-    description.textContent = page === 'map' ? 'خريطة الكتائب · Movement, deployment and authorized battalion locations.' : 'Battalion organization, commanders, members and unit records.';
+    description.textContent = page === 'map' ? 'خريطة الكتائب · Movement history trails, report markers and authorized locations.' : 'Battalion dashboard, movement history, attendance and scoped reports.';
     if (live) live.textContent = 'LIVE · SERVER-SCOPED DATA';
     document.querySelectorAll('.brw-nav-button').forEach((button) => {
       button.classList.toggle('active', button.getAttribute('data-br-page') === page);
@@ -130,8 +140,9 @@
     if (state.loading) return;
     state.loading = true;
     try {
-      const result = await rpc('ibp:phase2:list', {});
+      const result = await rpc('ibp:phase3:dashboard', {});
       state.battalions = Array.isArray(result.battalions) ? result.battalions : [];
+      state.reports = Array.isArray(result.reports) ? result.reports : [];
       state.canCreate = !!result.canCreate;
       if (!state.battalions.some((unit) => String(unit.id) === String(state.selectedId))) {
         state.selectedId = state.battalions[0] ? state.battalions[0].id : '';
@@ -182,16 +193,80 @@
       (String(person.publicCode || person.code || '').toUpperCase() === String(unit.deputyCode || '').toUpperCase() ? ' <small>· DEPUTY</small>' : '') +
       '</span><small class="' + (person.online ? 'br2-online' : '') + '">' + (person.online ? 'ONLINE' : 'OFFLINE') + '</small></div>').join('');
   }
+  function durationText(value) {
+    const total = Math.max(0, Math.floor(Number(value || 0) / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    return hours + 'h ' + minutes + 'm';
+  }
+  function reportsFor(unit) {
+    return state.reports.filter((report) => String(report.battalionId) === String(unit.id));
+  }
+  function movementHistoryMarkup(unit) {
+    const moves = Array.isArray(unit.movementHistory) ? unit.movementHistory.slice().reverse() : [];
+    if (!moves.length) return '<div class="br2-subtitle">No movement history has been recorded.</div>';
+    return moves.map((move) => '<div class="br2-history-row"><b>' + escapeHtml(pointText(move.from)) + ' → ' + escapeHtml(pointText(move.to)) + '</b><br><span>' +
+      escapeHtml(move.actorCode || '—') + ' · ' + dateText(move.at) + '</span><br><span>' + escapeHtml(move.reason || 'Reason not recorded') + '</span></div>').join('');
+  }
+  function reportLog(unit) {
+    const rows = reportsFor(unit);
+    if (!rows.length) return '<div class="br2-subtitle">No battalion reports have been recorded.</div>';
+    return rows.map((report) => '<div class="br2-history-row"><b>' + escapeHtml(report.reportId || report.id) + ' · ' + escapeHtml(report.type) + '</b> <span class="br2-chip">' + escapeHtml(report.priority) + '</span><br>' +
+      '<span>' + escapeHtml(report.authorName || report.authorCode || '—') + ' · ' + dateText(report.createdAt) + ' · ' + escapeHtml(report.status) + '</span><br>' +
+      '<span>' + escapeHtml(pointText(report.location)) + ' · ' + escapeHtml(report.description) + '</span></div>').join('');
+  }
+  function attendanceTable(rows) {
+    if (!rows.length) return '<div class="br2-subtitle">No attendance records match this date range.</div>';
+    return '<div class="br2-table-wrap"><table class="br2-table"><thead><tr><th>PUBLIC CODE</th><th>NAME</th><th>RANK</th><th>BATTALION</th><th>STATUS</th><th>LOGIN</th><th>LOGOUT</th><th>DURATION</th><th>LAST SEEN</th></tr></thead><tbody>' +
+      rows.map((entry) => '<tr><td>' + escapeHtml(entry.publicCode) + '</td><td>' + escapeHtml(entry.name || '—') + '</td><td>' + escapeHtml(entry.rank || '—') + '</td><td>' + escapeHtml(entry.battalionCode || '—') + '</td><td class="' + (entry.status === 'ONLINE' ? 'br2-online' : '') + '">' + escapeHtml(entry.status) + '</td><td>' + dateText(entry.loginAt) + '</td><td>' + dateText(entry.logoutAt) + '</td><td>' + durationText(entry.durationMs) + '</td><td>' + dateText(entry.lastSeenAt) + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  }
+  function dashboardPanel(unit) {
+    if (!unit) return '';
+    const dashboard = unit.dashboard || {};
+    const area = unit.operationArea
+      ? unit.operationArea.type === 'CIRCLE' ? 'CIRCLE · RADIUS ' + Number(unit.operationArea.radius) : 'POLYGON · ' + (unit.operationArea.points || []).length + ' POINTS'
+      : 'NOT SET';
+    const roster = dashboard.attendanceRoster || [];
+    const currentHistory = state.attendanceHistoryUnit === String(unit.id) ? state.attendanceHistory : [];
+    const draft = state.reportDraft && String(state.reportDraft.battalionId) === String(unit.id) ? state.reportDraft : {};
+    const reportTypes = ['PATROL REPORT', 'MOVEMENT REPORT', 'INCIDENT REPORT', 'OPERATION REPORT', 'PERSONNEL REPORT', 'SECURITY REPORT', 'OTHER'];
+    const reportTypeOptions = reportTypes.map((value) => '<option' + (draft.type === value ? ' selected' : '') + '>' + value + '</option>').join('');
+    const attendance = dashboard.canManage ? '<div class="br2-section"><h3 class="br2-section-title">ATTENDANCE · CURRENT ROSTER</h3>' +
+      attendanceTable(roster.map((entry) => Object.assign({ durationMs: entry.totalSessionMs }, entry))) +
+      '<form id="br2-attendance-filter" class="br2-toolbar" style="margin-top:10px"><input type="hidden" name="battalionId" value="' + escapeHtml(unit.id) + '">' +
+      '<label class="br2-field">FROM<input class="br2-input" type="date" name="fromDate" value="' + escapeHtml(state.attendanceFromDate) + '"></label>' +
+      '<label class="br2-field">TO<input class="br2-input" type="date" name="toDate" value="' + escapeHtml(state.attendanceToDate) + '"></label>' +
+      '<button class="br2-button" type="submit">SEARCH ATTENDANCE HISTORY</button></form>' +
+      (state.attendanceHistoryUnit === String(unit.id) ? '<div class="br2-section">' + attendanceTable(currentHistory) + '</div>' : '') + '</div>' : '';
+    const reportCreate = dashboard.canManage ? '<div class="br2-section"><h3 class="br2-section-title">CREATE BATTALION REPORT</h3>' +
+      '<form id="br2-report-form" data-battalion-id="' + escapeHtml(unit.id) + '"><div class="br2-form-grid">' +
+      '<label class="br2-field">REPORT TYPE<select class="br2-select" name="type">' + reportTypeOptions + '</select></label>' +
+      '<label class="br2-field">PRIORITY<select class="br2-select" name="priority"><option' + (draft.priority === 'LOW' ? ' selected' : '') + '>LOW</option><option' + (!draft.priority || draft.priority === 'NORMAL' ? ' selected' : '') + '>NORMAL</option><option' + (draft.priority === 'HIGH' ? ' selected' : '') + '>HIGH</option><option' + (draft.priority === 'CRITICAL' ? ' selected' : '') + '>CRITICAL</option></select></label>' +
+      '<label class="br2-field">STATUS<select class="br2-select" name="status"><option' + (!draft.status || draft.status === 'OPEN' ? ' selected' : '') + '>OPEN</option><option' + (draft.status === 'IN_PROGRESS' ? ' selected' : '') + '>IN_PROGRESS</option><option' + (draft.status === 'CLOSED' ? ' selected' : '') + '>CLOSED</option></select></label>' +
+      '<div class="br2-field">LOCATION<div class="br2-subtitle">' + escapeHtml(pointText(draft.location)) + '</div><button class="br2-button" type="button" data-br2-action="pick-report-location">PICK LOCATION ON MAP</button></div>' +
+      '<label class="br2-field full">DESCRIPTION<textarea class="br2-textarea" name="description" maxlength="3000" required>' + escapeHtml(draft.description || '') + '</textarea></label></div>' +
+      '<div class="br2-form-actions"><button class="br2-button primary" type="submit">SAVE REPORT</button></div><div class="br2-form-error" id="br2-report-error"></div></form></div>' : '';
+    return '<section class="br2-card" style="margin-top:14px"><div class="br2-card-head"><div><div class="br2-kicker">PHASE 3 · BATTALION OPERATIONS</div><h2>' + escapeHtml(unit.name || unit.code) + ' DASHBOARD</h2></div><span class="br2-chip">' + Number(unit.onlineMembers || 0) + ' ONLINE</span></div><div class="br2-card-body">' +
+      '<div class="br2-dashboard-grid"><div class="br2-info"><span>ONLINE MEMBERS</span><b>' + Number(unit.onlineMembers || 0) + ' / ' + Number(unit.memberCount || 0) + '</b></div>' +
+      '<div class="br2-info"><span>TODAY ATTENDANCE</span><b>' + (dashboard.canManage ? Number(dashboard.todayAttendanceCount || 0) : '—') + '</b></div>' +
+      '<div class="br2-info"><span>ACTIVE OPERATIONS</span><b>' + Number(dashboard.activeOperations || 0) + '</b></div>' +
+      '<div class="br2-info"><span>CURRENT LOCATION</span><b>' + escapeHtml(pointText(dashboard.currentLocation || unit.mapPosition)) + '</b></div>' +
+      '<div class="br2-info"><span>CURRENT AREA</span><b class="br2-area-current">' + escapeHtml(area) + '</b></div></div>' +
+      '<div class="br2-section"><h3 class="br2-section-title">RECENT MOVEMENTS</h3>' + (dashboard.recentMovements && dashboard.recentMovements.length ? dashboard.recentMovements.map((move) => '<div class="br2-history-row"><b>' + escapeHtml(pointText(move.from)) + ' → ' + escapeHtml(pointText(move.to)) + '</b><br><span>' + escapeHtml(move.actorCode || '—') + ' · ' + dateText(move.at) + ' · ' + escapeHtml(move.reason || 'Reason not recorded') + '</span></div>').join('') : '<div class="br2-subtitle">No recent movement records.</div>') +
+      (unit.canManage ? '<div class="br2-form-actions"><button class="br2-button" type="button" data-br2-action="open-movement-history">VIEW FULL MOVEMENT HISTORY ON MAP</button></div>' : '') + '</div>' +
+      '<div class="br2-section"><h3 class="br2-section-title">BATTALION REPORTS · ' + reportsFor(unit).length + '</h3>' + reportLog(unit) + '</div>' +
+      attendance + reportCreate + '</div></section>';
+  }
   function unitDetails(unit, mapMode) {
     if (!unit) return '<div class="br2-empty">Select a battalion to view its authorized command panel.</div>';
     const area = unit.operationArea ? (unit.operationArea.type === 'CIRCLE' ? 'CIRCLE · RADIUS ' + unit.operationArea.radius : 'POLYGON · ' + (unit.operationArea.points || []).length + ' POINTS') : 'NOT SET';
     const location = pointText(unit.mapPosition);
     const operation = unit.currentOperation ? escapeHtml(unit.currentOperation.name) + ' · ' + escapeHtml(unit.currentOperation.status) : 'NO ACTIVE OPERATION';
-    const reports = Array.isArray(unit.reports) && unit.reports.length
-      ? unit.reports.map((report) => '<div class="br2-report"><b>' + escapeHtml(report.title) + '</b><small>' + escapeHtml(report.classification) + ' · ' + dateText(report.createdAt) + '</small></div>').join('')
-      : '<div class="br2-subtitle">No linked battalion reports in the visible scope.</div>';
+    const reports = reportsFor(unit).slice(0, 5).map((report) => '<div class="br2-report"><b>' + escapeHtml(report.reportId || report.id) + ' · ' + escapeHtml(report.type) + '</b><small>' + escapeHtml(report.priority) + ' · ' + dateText(report.createdAt) + '</small></div>').join('') ||
+      '<div class="br2-subtitle">No battalion reports in the visible scope.</div>';
     const move = unit.lastMovement
-      ? escapeHtml(unit.lastMovement.actorCode || '—') + ' · ' + dateText(unit.lastMovement.at) + '<br><small>FROM ' + escapeHtml(pointText(unit.lastMovement.from)) + ' → TO ' + escapeHtml(pointText(unit.lastMovement.to)) + '</small>'
+      ? escapeHtml(unit.lastMovement.actorCode || '—') + ' · ' + dateText(unit.lastMovement.at) + '<br><small>FROM ' + escapeHtml(pointText(unit.lastMovement.from)) + ' → TO ' + escapeHtml(pointText(unit.lastMovement.to)) + '<br>REASON · ' + escapeHtml(unit.lastMovement.reason || 'Reason not recorded') + '</small>'
       : 'NO RECORDED MOVEMENT';
     return '<div class="br2-card-head"><div><div class="br2-kicker">BATTALION COMMAND</div><h2 class="br2-title">' + escapeHtml(unit.name || unit.code) + '</h2><p class="br2-subtitle">' + escapeHtml(unit.code) + ' · ' + escapeHtml(unit.sector || 'SECTOR —') + '</p></div>' + emblemSvg(unit.emblem, unit.color, 46) + '</div>' +
       '<div class="br2-card-body"><div class="br2-info-grid">' +
@@ -202,16 +277,18 @@
       '<div class="br2-info"><span>STATUS</span><b><i class="br2-dot ' + statusTone(unit.status) + '"></i> ' + escapeHtml(unit.status || 'ACTIVE') + '</b></div><div class="br2-info"><span>LAST UPDATE</span><b>' + dateText(unit.updatedAt) + '</b></div></div>' +
       (unit.description ? '<div class="br2-section"><h3 class="br2-section-title">BATTALION DESCRIPTION</h3><div class="br2-subtitle">' + escapeHtml(unit.description) + '</div></div>' : '') +
       '<div class="br2-section"><h3 class="br2-section-title">LAST MOVEMENT · ACTOR & TIME</h3><div class="br2-subtitle">' + move + '</div></div>' +
+      '<div class="br2-section"><h3 class="br2-section-title">MOVEMENT HISTORY · ' + (unit.movementHistory || []).length + ' RECORDS</h3>' + movementHistoryMarkup(unit) + '</div>' +
       '<div class="br2-section"><h3 class="br2-section-title">BATTALION MEMBERS</h3>' + memberRows(unit) + '</div>' +
       '<div class="br2-section"><h3 class="br2-section-title">LINKED BATTALION REPORTS</h3>' + reports + '</div>' +
       (unit.canManage ? '<div class="br2-section br2-toolbar"><button class="br2-button primary" type="button" data-br2-action="edit">EDIT BATTALION</button>' +
-        (mapMode ? '<button class="br2-button" type="button" data-br2-action="set-location">SET BATTALION LOCATION</button><button class="br2-button" type="button" data-br2-action="start-circle">DRAW CIRCLE AREA</button><button class="br2-button" type="button" data-br2-action="start-polygon">DRAW POLYGON AREA</button>' +
+        (mapMode ? '<button class="br2-button" type="button" data-br2-action="set-location">SET BATTALION LOCATION</button><button class="br2-button" type="button" data-br2-action="start-circle">DRAW CIRCLE AREA</button><button class="br2-button" type="button" data-br2-action="start-polygon">DRAW POLYGON AREA</button><button class="br2-button" type="button" data-br2-action="open-movement-history">TOGGLE MOVEMENT HISTORY ON MAP</button>' +
           (unit.operationArea ? '<button class="br2-button danger" type="button" data-br2-action="clear-area">CLEAR AREA</button>' : '') : '') +
         (mapMode && unit.operationArea && unit.operationArea.type === 'POLYGON' ? '<button class="br2-button" type="button" data-br2-action="start-polygon">REDRAW POLYGON</button>' : '') +
         '</div>' : '') +
       (mapMode && state.mode ? '<div class="br2-map-hint">' + escapeHtml(modeHint()) + '</div>' : '') +
       (mapMode && state.mode === 'circle' ? '<label class="br2-field br2-section">AREA RADIUS · ' + Number(document.getElementById('br2-radius') && document.getElementById('br2-radius').value || 85) + '<input id="br2-radius" class="br2-input" type="range" min="20" max="300" value="85"></label>' : '') +
       (mapMode && state.mode === 'polygon' ? '<div class="br2-section br2-toolbar"><span class="br2-chip">' + state.polygon.length + ' POINTS</span><button class="br2-button primary" type="button" data-br2-action="finish-polygon"' + (state.polygon.length < 3 ? ' disabled' : '') + '>SAVE POLYGON</button><button class="br2-button" type="button" data-br2-action="cancel-draw">CANCEL</button></div>' : '') +
+      (mapMode && state.mode === 'location-confirm' && state.pendingMovePoint ? '<form id="br2-movement-form" class="br2-section"><div class="br2-subtitle">NEW LOCATION · ' + escapeHtml(pointText(state.pendingMovePoint)) + '</div><label class="br2-field">REASON FOR MOVEMENT<textarea class="br2-textarea" name="reason" maxlength="500" required></textarea></label><div class="br2-form-actions"><button class="br2-button" type="button" data-br2-action="cancel-draw">CANCEL</button><button class="br2-button primary" type="submit">SAVE MOVEMENT</button></div></form>' : '') +
       (mapMode && !unit.canManage ? '<div class="br2-map-hint">READ ONLY · Location and area editing is restricted to this battalion’s commander and authorized command.</div>' : '') +
       (mapMode ? '<div class="br2-section"><button class="br2-button" type="button" data-br2-action="open-command">OPEN BATTALION COMMAND</button></div>' : '') +
       '</div>';
@@ -224,7 +301,7 @@
       '<div class="br2-toolbar"><input class="br2-input" style="width:190px" type="search" data-br2-search placeholder="Search units" value="' + escapeHtml(state.search) + '">' +
       (state.canCreate ? '<button class="br2-button primary" type="button" data-br2-action="create">CREATE BATTALION</button>' : '') + '</div></div>' +
       '<div class="br2-layout"><section class="br2-card"><div class="br2-card-head"><h2>VISIBLE BATTALIONS</h2><span class="br2-chip">' + state.battalions.length + ' UNITS</span></div>' + battalionList() + '</section>' +
-      '<section class="br2-card" id="br2-detail">' + unitDetails(current, false) + '</section></div></div>';
+      '<section class="br2-card" id="br2-detail">' + unitDetails(current, false) + '</section></div>' + dashboardPanel(current) + '</div>';
     renderSideSummary();
   }
   function mapBase() {
@@ -238,7 +315,7 @@
       '<path class="br2-map-road-minor" d="M53 300 159 274 269 294 371 254 478 283 579 239 691 259 803 220 918 247M80 380 188 351 298 376 405 332 515 365 623 324 737 353 848 301 958 322M124 655 223 618 334 633 444 585 560 604 671 566 786 588 895 551M153 175 354 190 518 167 710 197 899 167M186 687 372 676 538 668 713 678 905 650"/>' +
       '<text class="br2-map-water-label" x="52" y="55">PACIFIC COAST</text><text class="br2-map-label" x="108" y="340">VESPUCCI</text><text class="br2-map-label" x="287" y="280">LITTLE SEOUL</text><text class="br2-map-label" x="405" y="368">DOWNTOWN</text><text class="br2-map-label" x="580" y="280">EAST LOS SANTOS</text><text class="br2-map-label" x="714" y="456">MIRROR PARK</text><text class="br2-map-label" x="830" y="270">VINEWOOD</text><text class="br2-map-label" x="524" y="624">AIRPORT CORRIDOR</text>' +
       '<text class="br2-map-coord" x="20" y="680">LOS SANTOS · BATTALION GRID</text><text class="br2-map-coord" x="875" y="680">NORTH ↑</text>' +
-      '<rect id="br2-map-hit" x="0" y="0" width="1000" height="700" fill="transparent" pointer-events="all"/><g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>';
+      '<rect id="br2-map-hit" x="0" y="0" width="1000" height="700" fill="transparent" pointer-events="all"/><g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-report-markers"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>';
   }
   function areaMarkup(unit) {
     if (!unit.operationArea) return '';
@@ -257,13 +334,22 @@
     const trails = document.getElementById('br2-trails');
     const ops = document.getElementById('br2-operations');
     const markers = document.getElementById('br2-markers');
+    const reportMarkers = document.getElementById('br2-report-markers');
     const draft = document.getElementById('br2-draft');
-    if (!areas || !trails || !ops || !markers || !draft) return;
+    if (!areas || !trails || !ops || !markers || !reportMarkers || !draft) return;
     areas.innerHTML = state.battalions.map(areaMarkup).join('');
     trails.innerHTML = state.battalions.map((unit) => {
+      if (state.showMovementHistory && String(unit.id) !== String(state.selectedId)) return '';
       const color = safeColor(unit.color);
-      return (unit.movementHistory || []).slice(-4).map((move) => move.from && move.to
-        ? '<path class="br2-trail" stroke="' + color + '" d="M' + move.from.x + ' ' + move.from.y + ' L' + move.to.x + ' ' + move.to.y + '"/>' : '').join('');
+      const history = Array.isArray(unit.movementHistory) ? unit.movementHistory : [];
+      const shown = state.showMovementHistory ? history : history.slice(-4);
+      const segments = shown.map((move) => move.from && move.to
+        ? '<path class="br2-trail" stroke="' + color + '" d="M' + Number(move.from.x) + ' ' + Number(move.from.y) + ' L' + Number(move.to.x) + ' ' + Number(move.to.y) + '"><title>' + escapeHtml(move.actorCode || '') + ' · ' + dateText(move.at) + ' · ' + escapeHtml(move.reason || 'Reason not recorded') + '</title></path>'
+        : '').join('');
+      const locations = state.showMovementHistory ? shown.filter((move) => move.to).map((move) =>
+        '<circle cx="' + Number(move.to.x) + '" cy="' + Number(move.to.y) + '" r="5" fill="' + color + '" stroke="#101713" stroke-width="2"><title>' + escapeHtml(pointText(move.to)) + ' · ' + escapeHtml(move.reason || 'Reason not recorded') + '</title></circle>'
+      ).join('') : '';
+      return segments + locations;
     }).join('');
     ops.innerHTML = state.battalions.map((unit) => {
       const op = unit.currentOperation;
@@ -283,6 +369,11 @@
         '<circle cx="13" cy="-13" r="4" fill="' + (unit.status === 'ALERT' ? '#fa8d6b' : unit.status === 'STANDBY' ? '#929d94' : '#84d6a6') + '" stroke="#101713" stroke-width="2"/>' +
         '<text class="br2-marker-label" x="0" y="35" text-anchor="middle" fill="' + color + '">' + escapeHtml(unit.name || unit.code) + '</text><title>' + escapeHtml(unit.code) + ' · ' + escapeHtml(unit.status) + '</title></g>';
     }).join('');
+    reportMarkers.innerHTML = state.reports.filter((report) => report.location).map((report) => {
+      const unit = state.battalions.find((item) => String(item.id) === String(report.battalionId));
+      const color = safeColor(unit && unit.color);
+      return '<g class="br2-report-marker" data-br2-report="' + escapeHtml(report.id) + '" transform="translate(' + Number(report.location.x) + ' ' + Number(report.location.y) + ')"><path d="M0-15C-9-15-13-9-13-2c0 9 13 23 13 23S13 7 13-2C13-9 9-15 0-15Z" fill="' + color + '" stroke="#101713" stroke-width="2"/><circle cy="-3" r="6" fill="#101713"/><text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="7" font-weight="700">R</text><title>' + escapeHtml(report.reportId || report.id) + ' · ' + escapeHtml(report.type) + ' · ' + escapeHtml(report.priority) + '</title></g>';
+    }).join('');
     const pts = state.polygon.map((point) => Number(point.x) + ',' + Number(point.y)).join(' ');
     draft.innerHTML = state.mode === 'polygon' && state.polygon.length
       ? '<polyline points="' + pts + '" fill="none" stroke="#f3e6bd" stroke-width="3" stroke-dasharray="6 5"/>' +
@@ -300,16 +391,20 @@
   }
   function modeHint() {
     if (state.mode === 'location') return 'SET BATTALION LOCATION · Select a point on the map.';
+    if (state.mode === 'location-confirm') return 'LOCATION SELECTED · Enter the movement reason in the battalion panel.';
+    if (state.mode === 'report-location') return 'REPORT LOCATION · Select a point to add it to the report.';
     if (state.mode === 'circle') return 'AREA OF OPERATION · Choose a radius, then select a center point.';
     if (state.mode === 'polygon') return 'AREA OF OPERATION · Click to add vertices; save after at least three points.';
     return '';
   }
-  async function saveLocation(unit, point) {
+  async function saveLocation(unit, point, reason) {
     if (!unit || !unit.canManage) return notify('This battalion is read-only for your account.', true);
     try {
-      await rpc('ibp:phase2:location', { battalionId: unit.id, position: point });
+      await rpc('ibp:phase2:location', { battalionId: unit.id, position: point, reason });
       state.mode = '';
       state.polygon = [];
+      state.pendingMovePoint = null;
+      state.showMovementHistory = true;
       notify('Battalion location saved and shared with authorized users.');
       await refresh(false);
     } catch (error) { notify(error.message, true); }
@@ -339,7 +434,7 @@
       svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, w, h].join(' '));
     }, { passive: false });
     svg.addEventListener('pointerdown', (event) => {
-      if (event.target.closest('[data-br2-unit]')) return;
+      if (event.target.closest('[data-br2-unit], [data-br2-report]')) return;
       drag = { x: event.clientX, y: event.clientY, start: Object.assign({}, state.viewport) };
       moved = false;
     });
@@ -362,7 +457,16 @@
     svg.addEventListener('click', async (event) => {
       const marker = event.target.closest('[data-br2-unit]');
       if (marker) {
+        state.selectedReportId = '';
         state.selectedId = marker.getAttribute('data-br2-unit');
+        renderMap();
+        return;
+      }
+      const reportMarker = event.target.closest('[data-br2-report]');
+      if (reportMarker) {
+        state.selectedReportId = reportMarker.getAttribute('data-br2-report');
+        const report = state.reports.find((item) => String(item.id) === String(state.selectedReportId));
+        if (report) state.selectedId = report.battalionId;
         renderMap();
         return;
       }
@@ -372,7 +476,20 @@
       if (!unit || !unit.canManage) return notify('Select a battalion you are authorized to manage.', true);
       const point = mapPoint(svg, event);
       if (!point) return;
-      if (state.mode === 'location') return saveLocation(unit, point);
+      if (state.mode === 'location') {
+        state.pendingMovePoint = point;
+        state.mode = 'location-confirm';
+        return renderMap();
+      }
+      if (state.mode === 'report-location') {
+        state.reportDraft = Object.assign({}, state.reportDraft, { location: point });
+        state.mode = '';
+        state.selectedId = state.reportDraft.battalionId;
+        state.page = 'battalions';
+        renderBattalions();
+        notify('Map location added to the report draft. Save the report to persist it.');
+        return;
+      }
       if (state.mode === 'circle') {
         const radiusInput = document.getElementById('br2-radius');
         return saveArea(unit, { type: 'CIRCLE', center: point, radius: Number(radiusInput && radiusInput.value || 85) });
@@ -389,17 +506,19 @@
     const panel = document.getElementById('br2-map-panel');
     if (!panel) return;
     const unit = selected();
+    const report = state.reports.find((item) => String(item.id) === String(state.selectedReportId));
     const options = state.battalions.map((item) => '<option value="' + escapeHtml(item.id) + '"' + (String(item.id) === String(state.selectedId) ? ' selected' : '') + '>' + escapeHtml(item.code + ' · ' + (item.name || item.code)) + '</option>').join('');
     panel.innerHTML = '<div class="br2-card-head"><div><div class="br2-kicker">MAP ACCESS</div><h2>AUTHORIZED BATTALIONS</h2></div></div><div class="br2-card-body">' +
       (state.battalions.length ? '<label class="br2-field">SELECT BATTALION<select class="br2-select" id="br2-map-select">' + options + '</select></label>' : '<div class="br2-empty">No battalion data is visible in your account’s authorized scope.</div>') +
       '<div class="br2-map-hint" id="br2-map-hint">' + escapeHtml(state.mode ? modeHint() : 'Select a marker or unit to view its battalion panel.') + '</div></div>' +
-      (unit ? '<section class="br2-card" style="margin-top:10px">' + unitDetails(unit, true) + '</section>' : '');
+      (unit ? '<section class="br2-card" style="margin-top:10px">' + unitDetails(unit, true) + '</section>' : '') +
+      (report ? '<section class="br2-card" style="margin-top:10px"><div class="br2-card-head"><h2>' + escapeHtml(report.reportId || report.id) + ' · ' + escapeHtml(report.type) + '</h2><span class="br2-chip">' + escapeHtml(report.priority) + '</span></div><div class="br2-card-body"><p class="br2-subtitle">' + escapeHtml(report.authorName || report.authorCode || '—') + ' · ' + dateText(report.createdAt) + '</p><p class="br2-subtitle">' + escapeHtml(report.status) + ' · ' + escapeHtml(pointText(report.location)) + '</p><p class="br2-subtitle">' + escapeHtml(report.description) + '</p></div></section>' : '');
   }
   function renderMap() {
     if (!header('map')) return;
     const content = contentNode();
     content.innerHTML = '<div class="br2"><div class="br2-toolbar"><div><div class="br2-kicker">LOS SANTOS BATTALION MAP</div><p class="br2-subtitle">خريطة الكتائب · Pan, zoom, locations, areas and movement trails.</p></div><span class="br2-chip"><i class="br2-dot"></i> SOCKET.IO · AUTHORIZED DATA</span></div>' +
-      '<div class="br2-map-toolbar"><button class="br2-button" type="button" data-br2-action="zoom-in">ZOOM IN</button><button class="br2-button" type="button" data-br2-action="zoom-out">ZOOM OUT</button><button class="br2-button" type="button" data-br2-action="reset-map">RESET VIEW</button><div class="br2-zoom"><span class="br2-chip">' + state.battalions.length + ' VISIBLE UNITS</span></div></div>' +
+      '<div class="br2-map-toolbar"><button class="br2-button" type="button" data-br2-action="zoom-in">ZOOM IN</button><button class="br2-button" type="button" data-br2-action="zoom-out">ZOOM OUT</button><button class="br2-button" type="button" data-br2-action="reset-map">RESET VIEW</button><button class="br2-button' + (state.showMovementHistory ? ' primary' : '') + '" type="button" data-br2-action="open-movement-history">' + (state.showMovementHistory ? 'HIDE FULL MOVEMENT HISTORY' : 'SHOW FULL MOVEMENT HISTORY') + '</button><div class="br2-zoom"><span class="br2-chip">' + state.battalions.length + ' VISIBLE UNITS · ' + state.reports.filter((report) => report.location).length + ' REPORT PINS</span></div></div>' +
       '<div class="br2-map-layout"><div><div class="br2-map-frame">' + mapBase() + '</div><div class="br2-map-hint" id="br2-map-mode-hint">' + escapeHtml(state.mode ? modeHint() : 'Select a battalion marker to open its command panel. Use wheel or drag to navigate.') + '</div></div>' +
       '<aside class="br2-card br2-map-panel" id="br2-map-panel"></aside></div></div>';
     const svg = document.getElementById('br2-map-svg');
@@ -468,6 +587,50 @@
       if (error) error.textContent = reason.message;
     }
   }
+  async function submitMovement(form) {
+    const unit = selected();
+    const reason = String(new FormData(form).get('reason') || '').trim();
+    if (!unit || !state.pendingMovePoint || !reason) return;
+    const error = form.querySelector('.br2-form-error');
+    try {
+      await saveLocation(unit, state.pendingMovePoint, reason);
+    } catch (reasonError) {
+      if (error) error.textContent = reasonError.message;
+    }
+  }
+  async function submitReport(form) {
+    const unit = state.battalions.find((item) => String(item.id) === String(form.getAttribute('data-battalion-id')));
+    if (!unit || !unit.canManage) return notify('You cannot create reports for this battalion.', true);
+    const values = Object.fromEntries(new FormData(form).entries());
+    state.reportDraft = Object.assign({}, state.reportDraft, values, { battalionId: unit.id });
+    const error = document.getElementById('br2-report-error');
+    if (error) error.textContent = '';
+    try {
+      await rpc('ibp:phase3:report:create', Object.assign({}, values, {
+        battalionId: unit.id,
+        location: state.reportDraft.location || null
+      }));
+      state.reportDraft = null;
+      state.selectedId = unit.id;
+      notify('Battalion report saved. Authorized users can see its map pin.');
+      await refresh(false);
+    } catch (reason) {
+      if (error) error.textContent = reason.message;
+    }
+  }
+  async function searchAttendance(form) {
+    const values = Object.fromEntries(new FormData(form).entries());
+    state.attendanceFromDate = values.fromDate || '';
+    state.attendanceToDate = values.toDate || '';
+    try {
+      const result = await rpc('ibp:phase3:attendance:history', values);
+      state.attendanceHistory = Array.isArray(result.attendance) ? result.attendance : [];
+      state.attendanceHistoryUnit = String(values.battalionId || '');
+      renderBattalions();
+    } catch (reason) {
+      notify(reason.message, true);
+    }
+  }
   async function action(name, target) {
     const unit = selected();
     if (name === 'create') return openEditor(null);
@@ -479,8 +642,27 @@
     }
     if (name === 'set-location') {
       if (!unit || !unit.canManage) return notify('You cannot move this battalion.', true);
-      state.mode = 'location'; state.polygon = []; renderMap();
+      state.mode = 'location'; state.pendingMovePoint = null; state.polygon = []; renderMap();
       return notify('Choose a point on the map to save the new location.');
+    }
+    if (name === 'pick-report-location') {
+      if (!unit || !unit.canManage) return notify('You cannot create reports for this battalion.', true);
+      const form = document.getElementById('br2-report-form');
+      const values = form ? Object.fromEntries(new FormData(form).entries()) : {};
+      state.reportDraft = Object.assign({}, state.reportDraft, values, {
+        battalionId: unit.id,
+        location: state.reportDraft && state.reportDraft.location || null
+      });
+      state.selectedId = unit.id;
+      state.mode = 'report-location';
+      renderMap();
+      return notify('Choose a map point to add as the report location.');
+    }
+    if (name === 'open-movement-history') {
+      state.showMovementHistory = state.page === 'map' ? !state.showMovementHistory : true;
+      state.selectedReportId = '';
+      renderMap();
+      return;
     }
     if (name === 'start-circle') {
       if (!unit || !unit.canManage) return notify('You cannot edit this battalion area.', true);
@@ -497,7 +679,10 @@
       return saveArea(unit, { type: 'POLYGON', points: state.polygon.slice() });
     }
     if (name === 'cancel-draw') {
-      state.mode = ''; state.polygon = []; return renderMap();
+      const wasReportLocation = state.mode === 'report-location';
+      state.mode = ''; state.pendingMovePoint = null; state.polygon = [];
+      if (wasReportLocation) { state.page = 'battalions'; return renderBattalions(); }
+      return renderMap();
     }
     if (name === 'clear-area') {
       if (!unit || !unit.canManage || !window.confirm('Clear this battalion’s saved area of operation?')) return;
@@ -527,6 +712,7 @@
       const page = pageButton.getAttribute('data-br-page');
       if (page === 'battalions' || page === 'map') {
         event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+        state.selectedReportId = '';
         if (page === 'map') renderMap(); else renderBattalions();
         refresh(false);
       }
@@ -536,6 +722,7 @@
     if (selectButton) {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
       state.selectedId = selectButton.getAttribute('data-br2-select');
+      state.selectedReportId = '';
       if (state.page === 'map') renderMap(); else renderBattalions();
       return;
     }
@@ -545,11 +732,36 @@
     action(button.getAttribute('data-br2-action'), button);
   }
   function onSubmit(event) {
-    if (!event.target || event.target.id !== 'br2-battalion-form') return;
+    if (!event.target) return;
+    const id = event.target.id;
+    if (!['br2-battalion-form', 'br2-movement-form', 'br2-report-form', 'br2-attendance-filter'].includes(id)) return;
     event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-    submitEditor(event.target);
+    if (id === 'br2-battalion-form') submitEditor(event.target);
+    else if (id === 'br2-movement-form') submitMovement(event.target);
+    else if (id === 'br2-report-form') submitReport(event.target);
+    else searchAttendance(event.target);
+  }
+  function onChange(event) {
+    const reportForm = event.target.closest('#br2-report-form');
+    if (reportForm) {
+      state.reportDraft = Object.assign({}, state.reportDraft, Object.fromEntries(new FormData(reportForm).entries()), {
+        battalionId: reportForm.getAttribute('data-battalion-id'),
+        location: state.reportDraft && state.reportDraft.location || null
+      });
+    }
+    if (event.target.id !== 'br2-map-select') return;
+    state.selectedId = event.target.value;
+    state.selectedReportId = '';
+    renderMap();
   }
   function onInput(event) {
+    const reportForm = event.target.closest('#br2-report-form');
+    if (reportForm) {
+      state.reportDraft = Object.assign({}, state.reportDraft, Object.fromEntries(new FormData(reportForm).entries()), {
+        battalionId: reportForm.getAttribute('data-battalion-id'),
+        location: state.reportDraft && state.reportDraft.location || null
+      });
+    }
     if (event.target.matches('[data-br2-search]')) {
       state.search = event.target.value || '';
       const active = document.activeElement === event.target;
@@ -569,6 +781,7 @@
     document.addEventListener('click', onClick, true);
     document.addEventListener('submit', onSubmit, true);
     document.addEventListener('input', onInput, true);
+    document.addEventListener('change', onChange, true);
     const channel = socket();
     if (channel) {
       channel.on('state:update', () => {

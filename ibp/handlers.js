@@ -167,19 +167,20 @@ function registerIBPSocket(socket, ctx) {
       .slice(0, 5)
       .map((item) => ({ id: item.id, title: clean(item.title, 140), classification: item.classification || 'INTERNAL', createdAt: item.createdAt || '' }));
     const movements = (Array.isArray(unit.movementHistory) ? unit.movementHistory : [])
-      .slice(-20)
       .map((item) => ({
         at: item.at || '',
         actorCode: clean(item.actorCode, 100),
         from: phase2Point(item.from),
-        to: phase2Point(item.to)
+        to: phase2Point(item.to),
+        reason: clean(item.reason, 500)
       }));
     const lastMovement = unit.lastMovement && typeof unit.lastMovement === 'object'
       ? {
         at: unit.lastMovement.at || '',
         actorCode: clean(unit.lastMovement.actorCode, 100),
         from: phase2Point(unit.lastMovement.from),
-        to: phase2Point(unit.lastMovement.to)
+        to: phase2Point(unit.lastMovement.to),
+        reason: clean(unit.lastMovement.reason, 500)
       }
       : movements[movements.length - 1] || null;
     const base = safeUnit(unit, viewer);
@@ -220,6 +221,121 @@ function registerIBPSocket(socket, ctx) {
       other.commanderCode || '',
       other.deputyCode || ''
     ].some((memberCode) => clean(memberCode, 100).toUpperCase() === code(person)));
+  }
+  const BATTALION_REPORT_TYPES = new Set([
+    'PATROL REPORT', 'MOVEMENT REPORT', 'INCIDENT REPORT', 'OPERATION REPORT',
+    'PERSONNEL REPORT', 'SECURITY REPORT', 'OTHER'
+  ]);
+  const BATTALION_REPORT_PRIORITIES = new Set(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']);
+  const BATTALION_REPORT_STATUSES = new Set(['OPEN', 'IN_PROGRESS', 'CLOSED']);
+  function battalionMemberCodes(unit) {
+    return [...new Set([
+      ...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []),
+      unit.commanderCode || '',
+      unit.deputyCode || ''
+    ].map((value) => clean(value, 100).toUpperCase()).filter(Boolean))];
+  }
+  function safeBattalionReport(report) {
+    const author = ctx.ibpResolveCode(report.authorCode);
+    const createdAt = report.createdAt || '';
+    return {
+      id: report.id,
+      reportId: report.reportId || report.id,
+      battalionId: report.battalionId,
+      battalionCode: report.battalionCode || '',
+      authorCode: report.authorCode || '',
+      authorName: clean(report.authorName || author && (author.identity && author.identity.fullName || author.name), 160),
+      type: report.type || 'OTHER',
+      priority: report.priority || 'NORMAL',
+      location: phase2Point(report.location),
+      description: clean(report.description, 3000),
+      createdAt,
+      status: BATTALION_REPORT_STATUSES.has(String(report.status || '').toUpperCase()) ? String(report.status).toUpperCase() : 'OPEN'
+    };
+  }
+  function battalionAttendanceRoster(unit) {
+    const attendance = Array.isArray(state().cia_battalion_attendance) ? state().cia_battalion_attendance : [];
+    const nowMs = Date.parse(ctx.now());
+    return battalionMemberCodes(unit).map((memberCode) => {
+      const person = ctx.ibpResolveCode(memberCode);
+      if (!person) return null;
+      const session = attendance.find((item) =>
+        item.userId === person.id && String(item.battalionId) === String(unit.id) && item.status === 'ONLINE' && !item.logoutAt
+      );
+      const latest = attendance.find((item) =>
+        item.userId === person.id && String(item.battalionId) === String(unit.id)
+      );
+      const started = Date.parse(session && session.loginAt || person.lastLoginAt || '');
+      const elapsed = session && Number.isFinite(started) && Number.isFinite(nowMs) ? Math.max(0, nowMs - started) : null;
+      return {
+        publicCode: person.publicCode || memberCode,
+        name: clean(person.identity && person.identity.fullName || person.name, 160),
+        rank: ctx.normalizeRank(person.rank),
+        battalionId: unit.id,
+        battalionCode: unit.code || unit.id,
+        loginAt: session && session.loginAt || person.lastLoginAt || '',
+        logoutAt: person.online ? '' : latest && latest.logoutAt || person.lastLogoutAt || '',
+        status: person.online ? 'ONLINE' : 'OFFLINE',
+        lastSeenAt: person.lastSeenAt || latest && latest.lastSeenAt || person.lastLogoutAt || '',
+        totalSessionMs: person.online ? elapsed : Number(latest && latest.durationMs || 0)
+      };
+    }).filter(Boolean);
+  }
+  function phase3Dashboard(unit, viewer) {
+    const canManage = phase2CanManage(viewer, unit);
+    const movementHistory = Array.isArray(unit.movementHistory) ? unit.movementHistory : [];
+    const reportRows = records('cia_battalion_reports')
+      .filter((report) => String(report.battalionId) === String(unit.id))
+      .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
+      .map(safeBattalionReport);
+    const operations = records('ibp_operations').filter((operation) =>
+      String(operation.battalionId) === String(unit.id) &&
+      !['COMPLETE', 'CANCELLED', 'ARCHIVED'].includes(String(operation.status || '').toUpperCase())
+    );
+    const today = String(ctx.now()).slice(0, 10);
+    const todayAttendance = (Array.isArray(state().cia_battalion_attendance) ? state().cia_battalion_attendance : [])
+      .filter((entry) => String(entry.battalionId) === String(unit.id) && String(entry.loginAt || '').slice(0, 10) === today);
+    const attendance = canManage ? battalionAttendanceRoster(unit) : [];
+    return {
+      canManage,
+      onlineCount: attendance.filter((entry) => entry.status === 'ONLINE').length,
+      offlineCount: attendance.filter((entry) => entry.status === 'OFFLINE').length,
+      todayAttendanceCount: new Set(todayAttendance.map((entry) => clean(entry.publicCode, 100).toUpperCase()).filter(Boolean)).size,
+      activeOperations: operations.length,
+      currentLocation: phase2Point(unit.mapPosition),
+      currentArea: phase2Area(unit.operationArea || unit.areaOfOperation),
+      recentMovements: movementHistory.slice(-5).reverse().map((item) => ({
+        at: item.at || '',
+        actorCode: clean(item.actorCode, 100),
+        from: phase2Point(item.from),
+        to: phase2Point(item.to),
+        reason: clean(item.reason, 500)
+      })),
+      recentReports: reportRows.slice(0, 5),
+      attendanceRoster: attendance
+    };
+  }
+  function safeAttendanceHistory(entry) {
+    const person = ctx.ibpResolveCode(entry.publicCode);
+    const loginAt = entry.loginAt || '';
+    const logoutAt = entry.logoutAt || '';
+    const started = Date.parse(loginAt);
+    const ended = logoutAt ? Date.parse(logoutAt) : Date.parse(ctx.now());
+    const durationMs = entry.durationMs != null && Number.isFinite(Number(entry.durationMs))
+      ? Number(entry.durationMs)
+      : Number.isFinite(started) && Number.isFinite(ended) ? Math.max(0, ended - started) : 0;
+    return {
+      id: entry.id,
+      publicCode: entry.publicCode || '',
+      name: clean(entry.memberName || person && (person.identity && person.identity.fullName || person.name), 160),
+      rank: clean(entry.rank || person && ctx.normalizeRank(person.rank), 80),
+      battalionCode: entry.battalionCode || '',
+      loginAt,
+      logoutAt,
+      lastSeenAt: entry.lastSeenAt || logoutAt || loginAt,
+      status: entry.status === 'ONLINE' && !logoutAt ? 'ONLINE' : 'OFFLINE',
+      durationMs
+    };
   }
 
   socket.on('ibp:auth:issue', (payload, cb) => {
@@ -335,6 +451,87 @@ function registerIBPSocket(socket, ctx) {
       permissions: { view: true, create: ctx.canManageIBPBattalions(actor), sectorWide: senior(actor) }
     });
   });
+  socket.on('ibp:phase3:dashboard', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const visibleUnits = units().filter((unit) => unit.status !== 'ARCHIVED' && phase2CanView(actor, unit));
+    const battalions = visibleUnits.map((unit) => ({
+      ...phase2SafeUnit(unit, actor),
+      dashboard: phase3Dashboard(unit, actor)
+    }));
+    const visibleIds = new Set(visibleUnits.map((unit) => String(unit.id)));
+    const reports = records('cia_battalion_reports')
+      .filter((report) => visibleIds.has(String(report.battalionId)))
+      .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
+      .map(safeBattalionReport);
+    return reply(cb, {
+      ok: true,
+      battalions,
+      reports,
+      canCreate: ctx.canManageIBPBattalions(actor),
+      permissions: { view: true, create: ctx.canManageIBPBattalions(actor), sectorWide: senior(actor) }
+    });
+  });
+  socket.on('ibp:phase3:attendance:history', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
+    if (!battalion || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية عرض سجل حضور هذه الكتيبة.');
+    const fromDate = clean(payload && payload.fromDate, 10);
+    const toDate = clean(payload && payload.toDate, 10);
+    const validDate = (value) => {
+      if (!value) return true;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const [year, month, day] = value.split('-').map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+    };
+    if (!validDate(fromDate) || !validDate(toDate) || (fromDate && toDate && fromDate > toDate)) {
+      return fail(cb, 'نطاق التاريخ غير صالح.');
+    }
+    const rows = (Array.isArray(state().cia_battalion_attendance) ? state().cia_battalion_attendance : [])
+      .filter((entry) => {
+        if (String(entry.battalionId) !== String(battalion.id)) return false;
+        const day = String(entry.loginAt || '').slice(0, 10);
+        return (!fromDate || day >= fromDate) && (!toDate || day <= toDate);
+      })
+      .sort((left, right) => String(right.loginAt || '').localeCompare(String(left.loginAt || '')))
+      .map(safeAttendanceHistory);
+    return reply(cb, { ok: true, attendance: rows });
+  });
+  socket.on('ibp:phase3:report:create', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
+    if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) {
+      return fail(cb, 'إنشاء التقارير متاح لقائد الكتيبة والقيادة المخولة فقط.');
+    }
+    const type = clean(payload && payload.type, 40).toUpperCase();
+    const priority = clean(payload && payload.priority, 20).toUpperCase();
+    const status = clean(payload && payload.status, 20).toUpperCase() || 'OPEN';
+    const description = clean(payload && payload.description, 3000);
+    const suppliedLocation = payload && payload.location;
+    const location = suppliedLocation ? phase2Point(suppliedLocation) : null;
+    if (!BATTALION_REPORT_TYPES.has(type) || !BATTALION_REPORT_PRIORITIES.has(priority) ||
+        !BATTALION_REPORT_STATUSES.has(status) || !description || (suppliedLocation && !location)) {
+      return fail(cb, 'تحقق من نوع التقرير وأولويته وحالته ووصفه وموقعه.');
+    }
+    const at = ctx.now();
+    const reportId = ctx.makeId('BTR');
+    const report = {
+      id: reportId,
+      reportId,
+      battalionId: battalion.id,
+      battalionCode: battalion.code || battalion.id,
+      authorCode: actor.publicCode || '',
+      authorName: clean(actor.identity && actor.identity.fullName || actor.name, 160),
+      type,
+      priority,
+      location,
+      description,
+      createdAt: at,
+      status
+    };
+    records('cia_battalion_reports').unshift(report);
+    return persist(actor, 'إنشاء تقرير كتيبة', report.reportId + ' · ' + report.type, null, cb, { report: safeBattalionReport(report) });
+  });
   socket.on('ibp:phase2:create', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
     if (!ctx.canManageIBPBattalions(actor)) return fail(cb, 'إنشاء الكتائب غير متاح ضمن نطاق صلاحيتك.');
@@ -448,16 +645,18 @@ function registerIBPSocket(socket, ctx) {
     const actor = gate(cb); if (!actor) return;
     const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
     const position = phase2Point(payload && (payload.position || payload));
+    const reason = clean(payload && payload.reason, 500);
     if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية نقل هذه الكتيبة.');
     if (!position) return fail(cb, 'إحداثيات الموقع غير صالحة.');
+    if (!reason) return fail(cb, 'أدخل سبب نقل الكتيبة.');
     const at = ctx.now();
-    const movement = { at, actorCode: actor.publicCode || '', from: phase2Point(battalion.mapPosition), to: position };
-    battalion.movementHistory = [...(Array.isArray(battalion.movementHistory) ? battalion.movementHistory : []).slice(-39), movement];
+    const movement = { at, actorCode: actor.publicCode || '', from: phase2Point(battalion.mapPosition), to: position, reason };
+    battalion.movementHistory = [...(Array.isArray(battalion.movementHistory) ? battalion.movementHistory : []), movement];
     battalion.lastMovement = movement;
     battalion.mapPosition = position;
     battalion.updatedAt = at;
     battalion.updatedByCode = actor.publicCode || '';
-    return persist(actor, 'نقل موقع كتيبة', (battalion.code || battalion.id) + ' · ' + position.x + ',' + position.y, null, cb, { battalion: phase2SafeUnit(battalion, actor) });
+    return persist(actor, 'نقل موقع كتيبة', (battalion.code || battalion.id) + ' · ' + position.x + ',' + position.y + ' · ' + reason, null, cb, { battalion: phase2SafeUnit(battalion, actor) });
   });
   socket.on('ibp:phase2:area', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;

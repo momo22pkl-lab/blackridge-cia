@@ -30,6 +30,7 @@ const { canRestoreSecurityMember, inspectMessage } = require('./security-moderat
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
+const { recordBattalionLogin, recordBattalionLogout } = require('./ibp/attendance');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -1600,6 +1601,7 @@ function markLogin(socket, user, options = {}) {
     user.lastSeenAt = sessionStartedAt;
     user.loginCount += 1;
     user.lastLoginAt = sessionStartedAt;
+    recordBattalionLogin(state, user, sessionStartedAt, makeId);
 
     addAuditLog(
       'تسجيل الدخول',
@@ -1644,6 +1646,7 @@ function markLogout(socket) {
     user.radioOnline = false;
     user.lastLogoutAt = now();
     user.lastSeenAt = user.lastLogoutAt;
+    recordBattalionLogout(state, user, user.lastLogoutAt);
 
     addAuditLog(
       'تسجيل الخروج',
