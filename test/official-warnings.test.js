@@ -8,6 +8,7 @@ function makeHarness(initialActor, people) {
   let nextId = 0;
   const handlers = new Map();
   const rows = [];
+  const audits = [];
   const store = {
     async listForUser(options) {
       const matched = rows.filter((row) => row.userId === options.userId && (!options.type || row.type === options.type))
@@ -21,6 +22,7 @@ function makeHarness(initialActor, people) {
     getAuthenticatedUser: () => actor,
     getUsers: () => people,
     getNotificationsStore: () => store,
+    recordAudit: async (...entry) => { audits.push(entry); },
     isChief: (user) => !!user && String(user.rank).toUpperCase() === 'CIA CHIEF',
     normalizeRank: (rank) => String(rank || 'AGENT').toUpperCase(),
     rankLabel: (rank) => String(rank || 'Agent'),
@@ -43,6 +45,7 @@ function makeHarness(initialActor, people) {
   registerOfficialWarnings(socket, context);
   return {
     rows,
+    audits,
     setActor(value) { actor = value; },
     call(event, payload = {}) {
       const handler = handlers.get(event);
@@ -73,6 +76,8 @@ test('issued warnings persist for an offline recipient and can be loaded after a
   assert.equal(created.ok, true);
   assert.equal(h.rows[0].userId, 'agent-1');
   assert.equal(h.rows[0].status, 'SENT');
+  assert.equal(h.audits[0][0], 'إصدار تحذير رسمي');
+  assert.equal(h.audits[0][2].id, 'agent-1');
   h.setActor(agent);
   const inbox = await h.call('official-warning:list', { limit: 50, offset: 0 });
   assert.equal(inbox.ok, true);
@@ -100,6 +105,9 @@ test('a permitted justification is saved for its issuing chief and cannot be dup
   assert.equal(h.rows[0].type, 'WARNING_RESPONSE');
   assert.equal(h.rows[0].userId, 'chief-1');
   assert.equal(h.rows[0].metadata.responseText, 'أوضح أنني اتبعت الإجراء المعتمد.');
+  assert.equal(h.audits[1][0], 'استلام تبرير تحذير رسمي');
+  assert.equal(h.audits[1][1].id, 'agent-1');
+  assert.equal(h.audits[1][2].id, 'chief-1');
   const duplicate = await h.call('official-warning:respond', { warningId: created.warning.warningId, response: 'محاولة إرسال ثانية.' });
   assert.equal(duplicate.ok, false);
   h.setActor(chief);
