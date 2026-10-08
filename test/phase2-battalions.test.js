@@ -195,11 +195,17 @@ test('invalid colors, emblems, and coordinates are rejected without mutation', a
   const harness = makeHarness(people[3]);
   const color = await harness.invoke('ibp:phase2:update', { battalionId: 'bat-alpha', color: 'url(javascript:alert(1))' });
   const emblem = await harness.invoke('ibp:phase2:update', { battalionId: 'bat-alpha', emblem: '<script>' });
+  const mixed = await harness.invoke('ibp:phase2:update', {
+    battalionId: 'bat-alpha', name: 'Must not partially apply', color: '#123456', memberCodes: ['BRAVO-1']
+  });
   const point = await harness.invoke('ibp:phase2:location', { battalionId: 'bat-alpha', x: -1, y: 7000 });
   assert.equal(color.ok, false);
   assert.equal(emblem.ok, false);
+  assert.equal(mixed.ok, false);
   assert.equal(point.ok, false);
+  assert.equal(harness.state.cia_battalions[0].name, 'Alpha');
   assert.equal(harness.state.cia_battalions[0].color, '#55aacc');
+  assert.deepEqual(harness.state.cia_battalions[0].memberCodes, ['ALPHA-1', 'DEPUTY-1', 'MEMBER-1']);
   assert.equal(harness.metrics.saves, 0);
 });
 

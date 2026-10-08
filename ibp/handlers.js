@@ -397,37 +397,38 @@ function registerIBPSocket(socket, ctx) {
     const actor = gate(cb); if (!actor) return;
     const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
     if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية إدارة هذه الكتيبة.');
+    const patch = {};
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'name')) {
       const name = clean(payload.name, 100);
       if (!name) return fail(cb, 'اسم الكتيبة مطلوب.');
-      battalion.name = name; battalion.nameAr = name; battalion.nameEn = name;
+      patch.name = name; patch.nameAr = name; patch.nameEn = name;
     }
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'color')) {
       if (!/^#[\da-f]{6}$/i.test(String(payload.color || ''))) return fail(cb, 'لون الكتيبة غير صالح.');
-      battalion.color = payload.color;
+      patch.color = payload.color;
     }
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'emblem')) {
       const emblem = String(payload.emblem || '').toUpperCase();
       if (!PHASE2_EMBLEMS.has(emblem)) return fail(cb, 'الشعار المختار غير معتمد.');
-      battalion.emblem = emblem; battalion.symbol = emblem;
+      patch.emblem = emblem; patch.symbol = emblem;
     }
-    if (Object.prototype.hasOwnProperty.call(payload || {}, 'description')) battalion.description = clean(payload.description, 1000);
-    if (Object.prototype.hasOwnProperty.call(payload || {}, 'radioChannel')) battalion.radioChannel = clean(payload.radioChannel, 80);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'description')) patch.description = clean(payload.description, 1000);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'radioChannel')) patch.radioChannel = clean(payload.radioChannel, 80);
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'status')) {
       const status = String(payload.status || '').toUpperCase();
       if (!PHASE2_STATUSES.has(status)) return fail(cb, 'حالة الكتيبة غير صالحة.');
-      battalion.status = status;
+      patch.status = status;
     }
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'memberCodes')) {
-      const requested = Array.isArray(payload.memberCodes) ? payload.memberCodes : String(payload.memberCodes || '').split(/[\s,;]+/);
+      const requested = (Array.isArray(payload.memberCodes) ? payload.memberCodes : String(payload.memberCodes || '').split(/[\s,;]+/))
+        .filter((memberCode) => !!clean(memberCode, 100));
       const nextMembers = new Map();
       const preservedCodes = (Array.isArray(battalion.memberCodes) ? battalion.memberCodes : []).filter((memberCode) => {
         const person = ctx.ibpResolveCode(memberCode);
-        return !person || person.suspended || person.approved === false || person.serviceApproved === false;
+        return !!clean(memberCode, 100) && (!person || person.suspended || person.approved === false || person.serviceApproved === false);
       });
       for (const memberCode of preservedCodes) nextMembers.set(clean(memberCode, 100).toUpperCase(), memberCode);
       for (const value of requested) {
-        if (!clean(value, 100)) continue;
         const person = ctx.ibpResolveCode(value);
         if (!person || !phase2PersonIsAssignable(person, battalion)) return fail(cb, 'تأكد أن كل فرد معتمد وغير معيّن في كتيبة أخرى.');
         nextMembers.set(code(person), person.publicCode);
@@ -436,8 +437,9 @@ function registerIBPSocket(socket, ctx) {
         const person = ctx.ibpResolveCode(leaderCode);
         if (person) nextMembers.set(code(person), person.publicCode);
       }
-      battalion.memberCodes = [...nextMembers.values()];
+      patch.memberCodes = [...nextMembers.values()];
     }
+    Object.assign(battalion, patch);
     battalion.updatedAt = ctx.now();
     battalion.updatedByCode = actor.publicCode || '';
     return persist(actor, 'تعديل بيانات كتيبة', (battalion.code || battalion.id) + ' · ' + (actor.publicCode || ''), null, cb, { battalion: phase2SafeUnit(battalion, actor) });
