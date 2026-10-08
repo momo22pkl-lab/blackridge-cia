@@ -117,6 +117,74 @@ test('search and category filters are bounded and do not return another user’s
   assert.deepEqual((await store.listForUser({ userId: 'agent-a', category: 'invalid' })).rows, []);
 });
 
+test('official warnings and replies retain up to 3000 characters without changing other notification limits', async () => {
+  const { store } = makeStore();
+  const longText = 'x'.repeat(3000);
+  const created = await store.createMany([
+    { ...notification('warning-long', 'agent-a', 'CRITICAL', 'WARNING'), message: longText },
+    { ...notification('reply-long', 'chief-a', 'HIGH', 'WARNING_RESPONSE'), message: longText },
+    { ...notification('message-long', 'agent-a', 'NOTICE', 'MESSAGE'), message: longText }
+  ]);
+  assert.equal(created.find((row) => row.id === 'warning-long').message.length, 3000);
+  assert.equal(created.find((row) => row.id === 'reply-long').message.length, 3000);
+  assert.equal(created.find((row) => row.id === 'message-long').message.length, 1000);
+});
+
+test('CIA CHIEF warning history and justification updates use the existing notifications store', async () => {
+  const { store, getRows } = makeStore();
+  await store.createMany([
+    { ...notification('warning-a', 'agent-a', 'CRITICAL', 'WARNING'), relatedId: 'wrn-a', metadata: { allowJustification: false } },
+    { ...notification('warning-b', 'agent-b', 'CRITICAL', 'WARNING'), relatedId: 'wrn-b', metadata: { allowJustification: true } },
+    notification('other', 'agent-a', 'NOTICE', 'MESSAGE')
+  ]);
+
+  const page = await store.listOfficialWarnings({ limit: 1 });
+  assert.equal(page.rows.length, 1);
+  assert.equal(page.hasMore, true);
+  const updated = await store.setOfficialWarningJustification('wrn-a', true);
+  assert.equal(updated.userId, 'agent-a');
+  assert.equal(updated.metadata.allowJustification, true);
+  assert.equal(getRows().find((row) => row.relatedId === 'wrn-b').metadata.allowJustification, true);
+  assert.equal(await store.setOfficialWarningJustification('missing', true), null);
+});
+
+test('PostgreSQL warning history and permission changes target only warning notification rows', async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes('UPDATE notifications')) {
+        return {
+          rows: [{
+            id: 'warning-db',
+            user_id: 'agent-db',
+            type: 'WARNING',
+            title: 'تحذير رسمي',
+            message: 'محتوى التحذير',
+            priority: 'CRITICAL',
+            status: 'SENT',
+            created_at: new Date().toISOString(),
+            related_id: 'warning-id-db',
+            metadata: { warningId: 'warning-id-db', allowJustification: true }
+          }]
+        };
+      }
+      return { rows: [] };
+    }
+  };
+  const store = new NotificationsStore(pool);
+  const page = await store.listOfficialWarnings({ limit: 20, offset: 0 });
+  assert.deepEqual(page.rows, []);
+  const updated = await store.setOfficialWarningJustification('warning-id-db', true);
+  assert.equal(updated.userId, 'agent-db');
+  assert.equal(updated.metadata.allowJustification, true);
+  assert.match(calls[0].sql, /WHERE type = 'WARNING'/);
+  assert.deepEqual(calls[0].params, [21, 0]);
+  assert.match(calls[1].sql, /WHERE type = 'WARNING' AND related_id = \$1/);
+  assert.equal(calls[1].params[0], 'warning-id-db');
+  assert.equal(calls[1].params[1], true);
+});
+
 test('PostgreSQL queries initialize the schema and scope reads and mutations to the owning user', async () => {
   const calls = [];
   const pool = {

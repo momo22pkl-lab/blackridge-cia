@@ -79,12 +79,13 @@ function boundedOffset(value) {
 }
 
 function cleanRecord(record) {
+  const type = String(record.type || 'SYSTEM').toUpperCase().slice(0, 40);
   return {
     id: String(record.id || ''),
     user_id: String(record.userId || ''),
-    type: String(record.type || 'SYSTEM').toUpperCase().slice(0, 40),
+    type,
     title: String(record.title || '').slice(0, 180),
-    message: String(record.message || '').slice(0, 1000),
+    message: String(record.message || '').slice(0, ['WARNING', 'WARNING_RESPONSE'].includes(type) ? 3000 : 1000),
     priority: ['CRITICAL', 'HIGH', 'NOTICE', 'SYSTEM'].includes(String(record.priority || '').toUpperCase())
       ? String(record.priority).toUpperCase()
       : 'NOTICE',
@@ -217,6 +218,53 @@ class NotificationsStore {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const page = allRows.slice(offset, offset + limit + 1);
     return { rows: page.slice(0, limit), hasMore: page.length > limit };
+  }
+
+  async listOfficialWarnings(options = {}) {
+    const limit = boundedLimit(options.limit);
+    const offset = boundedOffset(options.offset);
+    if (this.pool) {
+      const result = await this.pool.query(
+        `SELECT * FROM notifications
+         WHERE type = 'WARNING'
+         ORDER BY created_at DESC, id DESC
+         LIMIT $1 OFFSET $2`,
+        [limit + 1, offset]
+      );
+      const mapped = (result.rows || []).map(toClientRow);
+      return { rows: mapped.slice(0, limit), hasMore: mapped.length > limit };
+    }
+    const allRows = (this.getFallbackRows() || [])
+      .filter((row) => row.type === 'WARNING')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const page = allRows.slice(offset, offset + limit + 1);
+    return { rows: page.slice(0, limit), hasMore: page.length > limit };
+  }
+
+  async setOfficialWarningJustification(warningId, allowJustification) {
+    const id = String(warningId || '');
+    if (!id) return null;
+    if (this.pool) {
+      const result = await this.pool.query(
+        `UPDATE notifications
+         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{allowJustification}', to_jsonb($2::boolean), true)
+         WHERE type = 'WARNING' AND related_id = $1
+         RETURNING *`,
+        [id, allowJustification === true]
+      );
+      return toClientRow(result.rows?.[0]);
+    }
+    let updated = null;
+    const rows = (this.getFallbackRows() || []).map((row) => {
+      if (row.type !== 'WARNING' || row.relatedId !== id) return row;
+      updated = {
+        ...row,
+        metadata: { ...(row.metadata || {}), allowJustification: allowJustification === true }
+      };
+      return updated;
+    });
+    if (updated) this.setFallbackRows(rows);
+    return updated;
   }
 
   fallbackMatchesCategory(row, category) {

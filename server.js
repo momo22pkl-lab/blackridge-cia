@@ -350,7 +350,7 @@ async function publishNotifications(recipients, details = {}) {
     userId: user.id,
     type: clean(details.type || 'SYSTEM', 40).toUpperCase(),
     title: clean(details.title || 'BLACK RIDGE INTELLIGENCE', 180),
-    message: clean(details.message || '', 1000),
+    message: clean(details.message || '', ['WARNING', 'WARNING_RESPONSE'].includes(String(details.type || '').toUpperCase()) ? 3000 : 1000),
     priority,
     status: (sessions.get(user.id)?.size || 0) > 0 ? 'DELIVERED' : 'SENT',
     sourceUserId: source?.id || null,
@@ -2571,6 +2571,12 @@ io.on(
         addAuditLog(action, actor, target, details);
         await saveState();
         emitState();
+      },
+      notifyWarningRecipient: (userId, event, payload) => {
+        for (const socketId of sessions.get(userId) || []) {
+          const targetSocket = io.sockets.sockets.get(socketId);
+          if (targetSocket) targetSocket.emit(event, payload);
+        }
       }
     });
 

@@ -15,6 +15,17 @@ function makeHarness(initialActor, people) {
         .filter((row) => !options.search || row.relatedId === options.search || JSON.stringify(row.metadata).includes(options.search));
       const offset = options.offset || 0;
       return { rows: matched.slice(offset, offset + (options.limit || 50)), hasMore: false };
+    },
+    async listOfficialWarnings(options = {}) {
+      const matched = rows.filter((row) => row.type === 'WARNING');
+      const offset = options.offset || 0;
+      return { rows: matched.slice(offset, offset + (options.limit || 50)), hasMore: false };
+    },
+    async setOfficialWarningJustification(warningId, allowJustification) {
+      const row = rows.find((item) => item.type === 'WARNING' && item.relatedId === warningId);
+      if (!row) return null;
+      row.metadata.allowJustification = allowJustification === true;
+      return row;
     }
   };
   const socket = { on: (event, handler) => handlers.set(event, handler) };
@@ -120,4 +131,32 @@ test('another leadership rank cannot read the chief response inbox', async () =>
   const h = makeHarness(senior, [chief, agent, senior]);
   const result = await h.call('official-warning:responses:list');
   assert.equal(result.ok, false);
+});
+
+test('only CIA CHIEF can change justification permission after issue, and the state is updated', async () => {
+  const h = makeHarness(chief, [chief, agent]);
+  const created = await h.call('official-warning:create', {
+    targetUserId: 'agent-1',
+    warningType: 'أمني',
+    content: 'تم إصدار التحذير مع منع التبرير.',
+    allowJustification: false
+  });
+  const denied = await h.call('official-warning:set-justification', {
+    warningId: created.warning.warningId,
+    allowJustification: true
+  });
+  assert.equal(denied.ok, true);
+  assert.equal(denied.warning.allowJustification, true);
+  assert.equal(h.audits.at(-1)[0], 'السماح بتبرير تحذير');
+
+  h.setActor(agent);
+  const unauthorized = await h.call('official-warning:set-justification', {
+    warningId: created.warning.warningId,
+    allowJustification: false
+  });
+  assert.equal(unauthorized.ok, false);
+  h.setActor(chief);
+  const issued = await h.call('official-warning:issued:list');
+  assert.equal(issued.ok, true);
+  assert.equal(issued.warnings[0].allowJustification, true);
 });

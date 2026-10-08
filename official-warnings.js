@@ -99,6 +99,31 @@ function registerOfficialWarnings(socket, context) {
     }
   });
 
+  socket.on('official-warning:issued:list', async (payload, callback) => {
+    const auth = requireChief(callback);
+    if (auth.error) return auth.error;
+    try {
+      const result = await store().listOfficialWarnings({
+        limit: Math.max(1, Math.min(50, Number(payload && payload.limit) || 50)),
+        offset: Math.max(0, Math.min(1000000, Number(payload && payload.offset) || 0))
+      });
+      const peopleById = new Map(users().map((person) => [person.id, person]));
+      const warnings = result.rows.map((row) => {
+        const person = peopleById.get(row.userId);
+        return {
+          ...warningView(row),
+          recipientId: row.userId,
+          recipientName: text(person && (person.identity && person.identity.fullName || person.name) || row.metadata?.recipientName || '', 120),
+          recipientCode: text(person && person.publicCode || row.metadata?.recipientCode || '', 100),
+          recipientRank: text(person && context.rankLabel(person.rank) || row.metadata?.recipientRank || '', 80)
+        };
+      });
+      return send(callback, { ok: true, warnings, hasMore: result.hasMore });
+    } catch (error) {
+      return fail(callback, 'تعذر تحميل سجل التحذيرات الصادرة.');
+    }
+  });
+
   socket.on('official-warning:create', async (payload, callback) => {
     const auth = requireChief(callback);
     if (auth.error) return auth.error;
@@ -127,17 +152,46 @@ function registerOfficialWarnings(socket, context) {
           warningContent: content,
           allowJustification: payload && payload.allowJustification === true,
           issuerId: auth.current.id,
-          recipientCode: target.publicCode || ''
+          recipientCode: target.publicCode || '',
+          recipientName: target.identity && target.identity.fullName || target.name || '',
+          recipientRank: context.rankLabel(target.rank)
         }
       });
       if (!Array.isArray(created) || !created.length) return fail(callback, 'تعذر حفظ التحذير وإرساله.');
       if (typeof context.recordAudit === 'function') {
-        try { await context.recordAudit('إصدار تحذير رسمي', auth.current, target, warningId + ' // ' + warningType + ' // تبرير: ' + (payload && payload.allowJustification === true ? 'مسموح' : 'ممنوع')); }
-        catch (auditError) { console.error('[BLACK RIDGE] Official warning audit write failed:', auditError.message); }
+        await context.recordAudit('إصدار تحذير رسمي', auth.current, target, warningId + ' // ' + warningType + ' // تبرير: ' + (payload && payload.allowJustification === true ? 'مسموح' : 'ممنوع'));
       }
       return send(callback, { ok: true, warning: warningView(created[0]) });
     } catch (error) {
       return fail(callback, 'تعذر حفظ التحذير وإرساله.');
+    }
+  });
+
+  socket.on('official-warning:set-justification', async (payload, callback) => {
+    const auth = requireChief(callback);
+    if (auth.error) return auth.error;
+    const warningId = text(payload && payload.warningId, 120);
+    if (!warningId) return fail(callback, 'معرف التحذير غير موجود.');
+    const allowJustification = payload && payload.allowJustification === true;
+    try {
+      const updated = await store().setOfficialWarningJustification(warningId, allowJustification);
+      if (!updated) return fail(callback, 'التحذير غير موجود.');
+      const target = users().find((person) => person.id === updated.userId);
+      if (typeof context.recordAudit === 'function') {
+        await context.recordAudit(
+          allowJustification ? 'السماح بتبرير تحذير' : 'منع تبرير تحذير',
+          auth.current,
+          target || null,
+          `تم ${allowJustification ? 'السماح' : 'المنع'} بالتبرير للتحذير ${warningId}.`
+        );
+      }
+      const result = { ok: true, warning: warningView(updated) };
+      if (target && typeof context.notifyWarningRecipient === 'function') {
+        context.notifyWarningRecipient(target.id, 'official-warning:justification:changed', result);
+      }
+      return send(callback, result);
+    } catch (error) {
+      return fail(callback, 'تعذر تحديث صلاحية التبرير.');
     }
   });
 
@@ -175,8 +229,7 @@ function registerOfficialWarnings(socket, context) {
       });
       if (!Array.isArray(created) || !created.length) return fail(callback, 'تعذر حفظ التبرير وإرساله للقائد.');
       if (typeof context.recordAudit === 'function') {
-        try { await context.recordAudit('استلام تبرير تحذير رسمي', current, issuer, warningId + ' // ' + (current.publicCode || '')); }
-        catch (auditError) { console.error('[BLACK RIDGE] Official warning response audit write failed:', auditError.message); }
+        await context.recordAudit('استلام تبرير تحذير رسمي', current, issuer, warningId + ' // ' + (current.publicCode || ''));
       }
       return send(callback, { ok: true, message: 'تم حفظ التبرير وإرساله للقائد.' });
     } catch (error) {

@@ -82,6 +82,65 @@
       if (result && result.ok) renderResponses(result.responses || []);
     });
   }
+  function renderIssuedWarnings(warnings) {
+    const root = $('ow-issued-list');
+    if (!root) return;
+    root.replaceChildren();
+    if (!warnings || !warnings.length) {
+      const empty = document.createElement('p');
+      empty.className = 'ow-empty';
+      empty.textContent = 'لا توجد تحذيرات صادرة.';
+      root.appendChild(empty);
+      return;
+    }
+    warnings.forEach((warning) => {
+      const card = document.createElement('article');
+      card.className = 'ow-response-item';
+      const meta = document.createElement('div');
+      meta.className = 'ow-response-meta';
+      const person = document.createElement('span');
+      person.textContent = [warning.recipientName, warning.recipientCode, warning.recipientRank].filter(Boolean).join(' · ') || 'فرد';
+      const date = document.createElement('time');
+      date.textContent = warning.createdAt ? new Date(warning.createdAt).toLocaleString('ar-JO') : '';
+      meta.append(person, date);
+      const content = document.createElement('div');
+      content.className = 'ow-response-text';
+      content.textContent = (warning.warningType || 'تحذير رسمي') + ' — ' + (warning.content || '');
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'ow-secondary-button';
+      toggle.textContent = warning.allowJustification ? 'منع التبرير' : 'السماح بالتبرير';
+      toggle.addEventListener('click', () => {
+        const connection = socket();
+        if (!connection || !connection.connected) {
+          setStatus('تعذر الاتصال بالخادم؛ لم تتغير صلاحية التبرير.', true);
+          return;
+        }
+        toggle.disabled = true;
+        connection.emit('official-warning:set-justification', {
+          warningId: warning.warningId,
+          allowJustification: !warning.allowJustification
+        }, (result) => {
+          toggle.disabled = false;
+          if (!result || !result.ok) {
+            setStatus(result && result.message || 'تعذر تحديث صلاحية التبرير.', true);
+            return;
+          }
+          loadIssuedWarnings();
+          setStatus(result.warning.allowJustification ? 'تم السماح بالتبرير.' : 'تم منع التبرير.', false);
+        });
+      });
+      card.append(meta, content, toggle);
+      root.appendChild(card);
+    });
+  }
+  function loadIssuedWarnings() {
+    const connection = socket();
+    if (!connection || !connection.connected) return;
+    connection.emit('official-warning:issued:list', { limit: 50, offset: 0 }, (result) => {
+      if (result && result.ok) renderIssuedWarnings(result.warnings || []);
+    });
+  }
   function normalizedWarning(row) {
     const metadata = row && row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
     return {
@@ -138,12 +197,18 @@
     const closeButton = $('ow-warning-close'); closeButton.disabled = false;
     overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false');
     closeButton.focus();
+    const connection = socket();
+    if (connection && connection.connected) {
+      connection.emit('notification:read', { id: warning.id }, (result) => {
+        if (result && result.ok && activeWarning && activeWarning.id === warning.id) {
+          activeWarning.readAt = result.notification && result.notification.readAt || new Date().toISOString();
+        }
+      });
+    }
   }
   function markReadAndClose() {
     if (!activeWarning) return;
-    const current = activeWarning; activeWarning = null;
-    const connection = socket();
-    if (connection && connection.connected) connection.emit('notification:read', { id: current.id }, () => {});
+    activeWarning = null;
     const overlay = $('ow-warning-overlay');
     if (overlay) { overlay.classList.remove('is-open'); overlay.setAttribute('aria-hidden', 'true'); }
     showNextWarning();
@@ -186,7 +251,7 @@
     if (nextKey === sessionKey) return;
     sessionKey = nextKey;
     loadWarnings();
-    if (chief(current)) { loadPeople(); loadResponses(); }
+    if (chief(current)) { loadPeople(); loadResponses(); loadIssuedWarnings(); }
   }
   const connection = socket();
   if (connection) {
@@ -195,6 +260,20 @@
       if (!row) return;
       if (row.type === 'WARNING') enqueueWarning(row);
       if (row.type === 'WARNING_RESPONSE' && chief(session())) loadResponses();
+    });
+    socket.on('official-warning:justification:changed', (data) => {
+      if (!data?.warning) return;
+      const changed = data.warning;
+      for (const item of queue) {
+        if (item.warningId === changed.warningId) item.allowJustification = changed.allowJustification === true;
+      }
+      if (activeWarning && activeWarning.warningId === changed.warningId) {
+        activeWarning.allowJustification = changed.allowJustification === true;
+        $('ow-reply-form').hidden = !activeWarning.allowJustification;
+        $('ow-reply-submit').hidden = !activeWarning.allowJustification;
+        $('ow-no-reply-message').hidden = activeWarning.allowJustification;
+        if (!activeWarning.allowJustification) $('ow-reply-text').value = '';
+      }
     });
   }
   const target = $('ow-target');
@@ -220,8 +299,11 @@
       form.elements.warningType.value = '';
       form.elements.allowJustification.checked = true;
       loadResponses();
+      loadIssuedWarnings();
     });
   });
+  const refreshIssued = $('ow-refresh-issued');
+  if (refreshIssued) refreshIssued.addEventListener('click', loadIssuedWarnings);
   const refresh = $('ow-refresh-responses');
   if (refresh) refresh.addEventListener('click', loadResponses);
   window.addEventListener('blackridge:logout', () => { sessionKey = ''; syncSession(); });
