@@ -475,3 +475,20 @@
   buildUI();
   installSocketHandlers();
 })();
+
+(function loadWorldCommandBattalionPhase2() {
+  'use strict';
+  if (window.__brWorldBattalionPhase2Loader) return;
+  window.__brWorldBattalionPhase2Loader = true;
+  const attach = () => {
+    if (window.__brWorldBattalionPhase2Script) return;
+    window.__brWorldBattalionPhase2Script = true;
+    const script = document.createElement('script');
+    script.src = '/world-command-battalions.js';
+    script.async = true;
+    script.onerror = () => { window.__brWorldBattalionPhase2Script = false; };
+    document.head.appendChild(script);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach, { once: true });
+  else attach();
+})();

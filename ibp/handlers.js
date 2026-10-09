@@ -107,6 +107,120 @@ function registerIBPSocket(socket, ctx) {
   }
   function gate(cb) { const actor = user(); return actor ? actor : (fail(cb, 'يجب تسجيل الدخول إلى IBP أولاً.'), null); }
   function pruneSessions() { const now = Date.now(); for (const [token, entry] of sessions) if (entry.expiresAt <= now) sessions.delete(token); }
+  const PHASE2_EMBLEMS = new Set(['SHIELD', 'EAGLE', 'WOLF', 'LION', 'FALCON', 'STAR', 'SWORD', 'COMMAND', 'SPECIAL']);
+  const PHASE2_STATUSES = new Set(['ACTIVE', 'ALERT', 'STANDBY']);
+  function phase2CanView(person, unit) {
+    return !!person && !!unit && (
+      inUnitScope(person, unit) ||
+      clean(unit.deputyCode, 100).toUpperCase() === code(person)
+    );
+  }
+  function phase2CanManage(person, unit) {
+    return !!person && !!unit && (
+      (ctx.canManageIBPBattalions(person) && canManageUnit(person, unit)) ||
+      (!!code(person) && clean(unit.commanderCode, 100).toUpperCase() === code(person))
+    );
+  }
+  function phase2Point(value) {
+    if (!value || typeof value !== 'object') return null;
+    const x = Number(value.x);
+    const y = Number(value.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1000 || y < 0 || y > 700) return null;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+  function phase2Area(value) {
+    if (!value || typeof value !== 'object') return null;
+    const type = String(value.type || '').toUpperCase();
+    if (type === 'CIRCLE') {
+      const center = phase2Point(value.center);
+      const radius = Number(value.radius);
+      if (!center || !Number.isFinite(radius) || radius < 10 || radius > 500) return null;
+      return { type, center, radius: Math.round(radius) };
+    }
+    if (type === 'POLYGON' && Array.isArray(value.points) && value.points.length >= 3 && value.points.length <= 60) {
+      const points = value.points.map(phase2Point);
+      if (points.some((point) => !point)) return null;
+      return { type, points };
+    }
+    return null;
+  }
+  function phase2SafeUnit(unit, viewer) {
+    const membersByCode = new Map();
+    const linkedCodes = [...new Set([
+      ...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []),
+      unit.commanderCode || '',
+      unit.deputyCode || ''
+    ].map((value) => clean(value, 100).toUpperCase()).filter(Boolean))];
+    linkedCodes.forEach((memberCode) => {
+      const person = ctx.ibpResolveCode(memberCode);
+      if (person && (scopedUser(viewer, person) || clean(unit.deputyCode, 100).toUpperCase() === code(viewer))) {
+        membersByCode.set(memberCode, safePerson(person, viewer));
+      }
+    });
+    const commander = ctx.ibpResolveCode(unit.commanderCode);
+    const deputy = ctx.ibpResolveCode(unit.deputyCode);
+    const activeOperations = records('ibp_operations')
+      .filter((item) => String(item.battalionId) === String(unit.id) && !['COMPLETE', 'CANCELLED', 'ARCHIVED'].includes(item.status))
+      .slice(0, 1);
+    const visibleReports = records('ibp_reports')
+      .filter((item) => String(item.battalionId) === String(unit.id) && classificationAllowed(viewer, item.classification))
+      .slice(0, 5)
+      .map((item) => ({ id: item.id, title: clean(item.title, 140), classification: item.classification || 'INTERNAL', createdAt: item.createdAt || '' }));
+    const movements = (Array.isArray(unit.movementHistory) ? unit.movementHistory : [])
+      .slice(-20)
+      .map((item) => ({
+        at: item.at || '',
+        actorCode: clean(item.actorCode, 100),
+        from: phase2Point(item.from),
+        to: phase2Point(item.to)
+      }));
+    const lastMovement = unit.lastMovement && typeof unit.lastMovement === 'object'
+      ? {
+        at: unit.lastMovement.at || '',
+        actorCode: clean(unit.lastMovement.actorCode, 100),
+        from: phase2Point(unit.lastMovement.from),
+        to: phase2Point(unit.lastMovement.to)
+      }
+      : movements[movements.length - 1] || null;
+    const base = safeUnit(unit, viewer);
+    return {
+      ...base,
+      name: clean(unit.name || unit.nameAr || unit.nameEn || unit.code, 100),
+      mapPosition: phase2Point(unit.mapPosition),
+      color: /^#[\da-f]{6}$/i.test(unit.color || '') ? unit.color : '#c7a25a',
+      emblem: PHASE2_EMBLEMS.has(String(unit.emblem || unit.symbol || '').toUpperCase()) ? String(unit.emblem || unit.symbol).toUpperCase() : 'SHIELD',
+      description: clean(unit.description, 1000),
+      radioChannel: clean(unit.radioChannel, 80),
+      operationArea: phase2Area(unit.operationArea || unit.areaOfOperation),
+      members: [...membersByCode.values()],
+      memberCount: linkedCodes.length,
+      onlineMembers: linkedCodes.reduce((sum, memberCode) => {
+        const person = ctx.ibpResolveCode(memberCode);
+        return sum + (person && person.online ? 1 : 0);
+      }, 0),
+      commanderName: commander ? safePerson(commander, viewer).name : '',
+      deputyName: deputy ? safePerson(deputy, viewer).name : '',
+      currentOperation: activeOperations[0] ? {
+        name: clean(activeOperations[0].name || activeOperations[0].title || activeOperations[0].operationCode, 140),
+        status: clean(activeOperations[0].status, 40),
+        position: phase2Point(activeOperations[0].position)
+      } : null,
+      reports: visibleReports,
+      lastMovement,
+      movementHistory: movements,
+      canManage: phase2CanManage(viewer, unit),
+      canManageStructure: ctx.canManageIBPBattalions(viewer),
+      updatedAt: unit.updatedAt || null
+    };
+  }
+  function phase2PersonIsAssignable(person, unit) {
+    if (!person || person.suspended || person.approved === false || person.serviceApproved === false) return false;
+    return !units().some((other) => String(other.id) !== String(unit && unit.id || '') && other.status !== 'ARCHIVED' && [
+      ...(Array.isArray(other.memberCodes) ? other.memberCodes : []),
+      other.commanderCode || '',
+      other.deputyCode || ''
+    ].some((memberCode) => clean(memberCode, 100).toUpperCase() === code(person)));
+  }
 
   socket.on('ibp:auth:issue', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -207,6 +321,157 @@ function registerIBPSocket(socket, ctx) {
       { role: 'CIA CHIEF', scope: 'Sector-wide', battalions: 'Manage', operations: 'Manage', audit: 'Sector-wide' }
     ];
     return reply(cb, { ok: true, roleLabel: role, scopeDescription: senior(actor) ? 'Sector-wide authorized scope.' : level >= 2 ? 'Command-linked units and operations.' : 'Personal and assigned-unit records only.', effective, roles });
+  });
+
+  socket.on('ibp:phase2:list', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalions = units()
+      .filter((unit) => unit.status !== 'ARCHIVED' && phase2CanView(actor, unit))
+      .map((unit) => phase2SafeUnit(unit, actor));
+    return reply(cb, {
+      ok: true,
+      battalions,
+      canCreate: ctx.canManageIBPBattalions(actor),
+      permissions: { view: true, create: ctx.canManageIBPBattalions(actor), sectorWide: senior(actor) }
+    });
+  });
+  socket.on('ibp:phase2:create', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    if (!ctx.canManageIBPBattalions(actor)) return fail(cb, 'إنشاء الكتائب غير متاح ضمن نطاق صلاحيتك.');
+    const codeValue = clean(payload && payload.code, 32).toUpperCase().replace(/\s+/g, '-');
+    const name = clean(payload && payload.name, 100);
+    const sector = clean(payload && payload.sector, 100);
+    if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(codeValue) || !name || !sector) {
+      return fail(cb, 'أدخل اسم الكتيبة ورمزًا فريدًا والقطاع.');
+    }
+    if (units().some((unit) => String(unit.code || '').toUpperCase() === codeValue)) return fail(cb, 'رمز الكتيبة مستخدم بالفعل.');
+    const commander = ctx.ibpResolveCode(payload && payload.commanderCode);
+    const deputy = payload && payload.deputyCode ? ctx.ibpResolveCode(payload.deputyCode) : null;
+    if (!commander || !phase2PersonIsAssignable(commander, null)) return fail(cb, 'اختر قائدًا معتمدًا غير معيّن في كتيبة أخرى.');
+    if (payload && payload.deputyCode && (!deputy || deputy.id === commander.id || !phase2PersonIsAssignable(deputy, null))) {
+      return fail(cb, 'اختر نائبًا معتمدًا غير القائد وغير معيّن في كتيبة أخرى.');
+    }
+    const color = /^#[\da-f]{6}$/i.test(payload && payload.color || '') ? payload.color : '#c7a25a';
+    const emblem = String(payload && payload.emblem || 'SHIELD').toUpperCase();
+    if (!PHASE2_EMBLEMS.has(emblem)) return fail(cb, 'الشعار المختار غير معتمد.');
+    const requestedMembers = Array.isArray(payload && payload.memberCodes)
+      ? payload.memberCodes
+      : String(payload && payload.memberCodes || '').split(/[\s,;]+/).filter(Boolean);
+    const memberCodes = new Map([[code(commander), commander.publicCode]]);
+    if (deputy) memberCodes.set(code(deputy), deputy.publicCode);
+    for (const value of requestedMembers) {
+      const person = ctx.ibpResolveCode(value);
+      if (!person || !phase2PersonIsAssignable(person, null)) return fail(cb, 'تأكد أن كل فرد معتمد وغير معيّن في كتيبة أخرى.');
+      memberCodes.set(code(person), person.publicCode);
+    }
+    const at = ctx.now();
+    const battalion = {
+      id: ctx.makeId('BAT'),
+      code: codeValue,
+      name,
+      nameAr: name,
+      nameEn: name,
+      sector,
+      status: PHASE2_STATUSES.has(String(payload && payload.status || '').toUpperCase()) ? String(payload.status).toUpperCase() : 'ACTIVE',
+      color,
+      symbol: emblem,
+      emblem,
+      commanderCode: commander.publicCode,
+      deputyCode: deputy ? deputy.publicCode : '',
+      memberCodes: [...memberCodes.values()],
+      description: clean(payload && payload.description, 1000),
+      radioChannel: clean(payload && payload.radioChannel, 80),
+      mapPosition: null,
+      operationArea: null,
+      movementHistory: [],
+      history: [],
+      createdAt: at,
+      createdByCode: actor.publicCode || '',
+      updatedAt: at,
+      updatedByCode: actor.publicCode || ''
+    };
+    records('cia_battalions').unshift(battalion);
+    return persist(actor, 'إنشاء كتيبة', codeValue + ' · ' + name, null, cb, { battalion: phase2SafeUnit(battalion, actor) });
+  });
+  socket.on('ibp:phase2:update', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
+    if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية إدارة هذه الكتيبة.');
+    const patch = {};
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'name')) {
+      const name = clean(payload.name, 100);
+      if (!name) return fail(cb, 'اسم الكتيبة مطلوب.');
+      patch.name = name; patch.nameAr = name; patch.nameEn = name;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'color')) {
+      if (!/^#[\da-f]{6}$/i.test(String(payload.color || ''))) return fail(cb, 'لون الكتيبة غير صالح.');
+      patch.color = payload.color;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'emblem')) {
+      const emblem = String(payload.emblem || '').toUpperCase();
+      if (!PHASE2_EMBLEMS.has(emblem)) return fail(cb, 'الشعار المختار غير معتمد.');
+      patch.emblem = emblem; patch.symbol = emblem;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'description')) patch.description = clean(payload.description, 1000);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'radioChannel')) patch.radioChannel = clean(payload.radioChannel, 80);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'status')) {
+      const status = String(payload.status || '').toUpperCase();
+      if (!PHASE2_STATUSES.has(status)) return fail(cb, 'حالة الكتيبة غير صالحة.');
+      patch.status = status;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'memberCodes')) {
+      const requested = (Array.isArray(payload.memberCodes) ? payload.memberCodes : String(payload.memberCodes || '').split(/[\s,;]+/))
+        .filter((memberCode) => !!clean(memberCode, 100));
+      const nextMembers = new Map();
+      const preservedCodes = (Array.isArray(battalion.memberCodes) ? battalion.memberCodes : []).filter((memberCode) => {
+        const person = ctx.ibpResolveCode(memberCode);
+        return !!clean(memberCode, 100) && (!person || person.suspended || person.approved === false || person.serviceApproved === false);
+      });
+      for (const memberCode of preservedCodes) nextMembers.set(clean(memberCode, 100).toUpperCase(), memberCode);
+      for (const value of requested) {
+        const person = ctx.ibpResolveCode(value);
+        if (!person || !phase2PersonIsAssignable(person, battalion)) return fail(cb, 'تأكد أن كل فرد معتمد وغير معيّن في كتيبة أخرى.');
+        nextMembers.set(code(person), person.publicCode);
+      }
+      for (const leaderCode of [battalion.commanderCode, battalion.deputyCode]) {
+        const person = ctx.ibpResolveCode(leaderCode);
+        if (person) nextMembers.set(code(person), person.publicCode);
+      }
+      patch.memberCodes = [...nextMembers.values()];
+    }
+    Object.assign(battalion, patch);
+    battalion.updatedAt = ctx.now();
+    battalion.updatedByCode = actor.publicCode || '';
+    return persist(actor, 'تعديل بيانات كتيبة', (battalion.code || battalion.id) + ' · ' + (actor.publicCode || ''), null, cb, { battalion: phase2SafeUnit(battalion, actor) });
+  });
+  socket.on('ibp:phase2:location', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
+    const position = phase2Point(payload && (payload.position || payload));
+    if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية نقل هذه الكتيبة.');
+    if (!position) return fail(cb, 'إحداثيات الموقع غير صالحة.');
+    const at = ctx.now();
+    const movement = { at, actorCode: actor.publicCode || '', from: phase2Point(battalion.mapPosition), to: position };
+    battalion.movementHistory = [...(Array.isArray(battalion.movementHistory) ? battalion.movementHistory : []).slice(-39), movement];
+    battalion.lastMovement = movement;
+    battalion.mapPosition = position;
+    battalion.updatedAt = at;
+    battalion.updatedByCode = actor.publicCode || '';
+    return persist(actor, 'نقل موقع كتيبة', (battalion.code || battalion.id) + ' · ' + position.x + ',' + position.y, null, cb, { battalion: phase2SafeUnit(battalion, actor) });
+  });
+  socket.on('ibp:phase2:area', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
+    if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية تعديل منطقة انتشار هذه الكتيبة.');
+    let area = null;
+    if (!(payload && payload.clear === true)) {
+      area = phase2Area(payload);
+      if (!area) return fail(cb, 'تعذر حفظ المنطقة. تحقق من النوع ونقاط الرسم أو نصف القطر.');
+    }
+    battalion.operationArea = area;
+    battalion.updatedAt = ctx.now();
+    battalion.updatedByCode = actor.publicCode || '';
+    return persist(actor, area ? 'تحديث منطقة انتشار كتيبة' : 'مسح منطقة انتشار كتيبة', (battalion.code || battalion.id), null, cb, { battalion: phase2SafeUnit(battalion, actor) });
   });
 
   socket.on('ibp:battalion:transfer', (payload, cb) => {
