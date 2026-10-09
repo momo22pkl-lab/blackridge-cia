@@ -37,7 +37,7 @@ const CATEGORY_SQL = Object.freeze({
   sos: " AND type = 'SOS'",
   operations: " AND type = 'OPERATION'",
   finance: " AND type IN ('SALARY', 'TRANSACTION', 'FINANCE')",
-  system: " AND type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM')"
+  system: " AND type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE')"
 });
 
 function number(value) {
@@ -79,12 +79,13 @@ function boundedOffset(value) {
 }
 
 function cleanRecord(record) {
+  const type = String(record.type || 'SYSTEM').toUpperCase().slice(0, 40);
   return {
     id: String(record.id || ''),
     user_id: String(record.userId || ''),
-    type: String(record.type || 'SYSTEM').toUpperCase().slice(0, 40),
+    type,
     title: String(record.title || '').slice(0, 180),
-    message: String(record.message || '').slice(0, 1000),
+    message: String(record.message || '').slice(0, ['WARNING', 'WARNING_RESPONSE'].includes(type) ? 3000 : 1000),
     priority: ['CRITICAL', 'HIGH', 'NOTICE', 'SYSTEM'].includes(String(record.priority || '').toUpperCase())
       ? String(record.priority).toUpperCase()
       : 'NOTICE',
@@ -219,6 +220,53 @@ class NotificationsStore {
     return { rows: page.slice(0, limit), hasMore: page.length > limit };
   }
 
+  async listOfficialWarnings(options = {}) {
+    const limit = boundedLimit(options.limit);
+    const offset = boundedOffset(options.offset);
+    if (this.pool) {
+      const result = await this.pool.query(
+        `SELECT * FROM notifications
+         WHERE type = 'WARNING'
+         ORDER BY created_at DESC, id DESC
+         LIMIT $1 OFFSET $2`,
+        [limit + 1, offset]
+      );
+      const mapped = (result.rows || []).map(toClientRow);
+      return { rows: mapped.slice(0, limit), hasMore: mapped.length > limit };
+    }
+    const allRows = (this.getFallbackRows() || [])
+      .filter((row) => row.type === 'WARNING')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const page = allRows.slice(offset, offset + limit + 1);
+    return { rows: page.slice(0, limit), hasMore: page.length > limit };
+  }
+
+  async setOfficialWarningJustification(warningId, allowJustification) {
+    const id = String(warningId || '');
+    if (!id) return null;
+    if (this.pool) {
+      const result = await this.pool.query(
+        `UPDATE notifications
+         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{allowJustification}', to_jsonb($2::boolean), true)
+         WHERE type = 'WARNING' AND related_id = $1
+         RETURNING *`,
+        [id, allowJustification === true]
+      );
+      return toClientRow(result.rows?.[0]);
+    }
+    let updated = null;
+    const rows = (this.getFallbackRows() || []).map((row) => {
+      if (row.type !== 'WARNING' || row.relatedId !== id) return row;
+      updated = {
+        ...row,
+        metadata: { ...(row.metadata || {}), allowJustification: allowJustification === true }
+      };
+      return updated;
+    });
+    if (updated) this.setFallbackRows(rows);
+    return updated;
+  }
+
   fallbackMatchesCategory(row, category) {
     if (!Object.prototype.hasOwnProperty.call(CATEGORY_SQL, category)) return false;
     if (category === 'critical') return row.priority === 'CRITICAL';
@@ -226,7 +274,7 @@ class NotificationsStore {
     if (category === 'sos') return row.type === 'SOS';
     if (category === 'operations') return row.type === 'OPERATION';
     if (category === 'finance') return ['SALARY', 'TRANSACTION', 'FINANCE'].includes(row.type);
-    if (category === 'system') return ['CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM'].includes(row.type);
+    if (category === 'system') return ['CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE'].includes(row.type);
     return category === 'all';
   }
 
@@ -244,7 +292,7 @@ class NotificationsStore {
            COUNT(*) FILTER (WHERE type = 'SOS')::int AS sos,
            COUNT(*) FILTER (WHERE type = 'OPERATION')::int AS operations,
            COUNT(*) FILTER (WHERE type IN ('SALARY', 'TRANSACTION', 'FINANCE'))::int AS finance,
-           COUNT(*) FILTER (WHERE type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM'))::int AS system,
+           COUNT(*) FILTER (WHERE type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE'))::int AS system,
            COUNT(*) FILTER (WHERE read_at IS NULL)::int AS unread,
             COUNT(*) FILTER (WHERE read_at IS NULL AND priority = 'CRITICAL')::int AS "unreadCritical",
             COUNT(*) FILTER (WHERE read_at IS NULL AND type = 'SECURITY')::int AS "unreadSecurity"

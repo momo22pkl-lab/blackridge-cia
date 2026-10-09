@@ -32,6 +32,7 @@ const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
+const { registerOfficialWarnings } = require('./official-warnings');
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -87,6 +88,8 @@ app.use('/api/osd', osdRouter);
 const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
+  '/official-warnings.css': 'official-warnings.css',
+  '/official-warnings-client.js': 'official-warnings-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js')
 });
@@ -289,6 +292,9 @@ function notificationCanReach(user, details) {
     return !!targetUserId && user.id === targetUserId;
   }
   if (details.type === 'SOS') return user.id !== sourceUserId;
+  if (details.type === 'WARNING' || details.type === 'WARNING_RESPONSE') {
+    return !!targetUserId && user.id === targetUserId;
+  }
   if (details.type === 'OPERATION') {
     const ownCode = clean(user.publicCode, 100).toUpperCase();
     const memberCodes = Array.isArray(details.memberCodes) ? details.memberCodes : [];
@@ -353,7 +359,7 @@ async function publishNotifications(recipients, details = {}) {
     userId: user.id,
     type: clean(details.type || 'SYSTEM', 40).toUpperCase(),
     title: clean(details.title || 'BLACK RIDGE INTELLIGENCE', 180),
-    message: clean(details.message || '', 1000),
+    message: clean(details.message || '', ['WARNING', 'WARNING_RESPONSE'].includes(String(details.type || '').toUpperCase()) ? 3000 : 1000),
     priority,
     status: (sessions.get(user.id)?.size || 0) > 0 ? 'DELIVERED' : 'SENT',
     sourceUserId: source?.id || null,
@@ -2560,6 +2566,28 @@ io.on(
       });
       return socket;
     };
+
+    registerOfficialWarnings(socket, {
+      getAuthenticatedUser: () => requireSocketUser(socket),
+      getUsers: () => state.cia_users,
+      getNotificationsStore: () => notificationsStore,
+      isChief,
+      normalizeRank,
+      rankLabel,
+      publishNotifications,
+      makeId,
+      recordAudit: async (action, actor, target, details) => {
+        addAuditLog(action, actor, target, details);
+        await saveState();
+        emitState();
+      },
+      notifyWarningRecipient: (userId, event, payload) => {
+        for (const socketId of sessions.get(userId) || []) {
+          const targetSocket = io.sockets.sockets.get(socketId);
+          if (targetSocket) targetSocket.emit(event, payload);
+        }
+      }
+    });
 
     socket.emit(
       'state:update',
