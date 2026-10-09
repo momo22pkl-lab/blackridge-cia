@@ -30,6 +30,83 @@ const INDEX_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, created_at DESC) WHERE read_at IS NULL'
 ];
 
+const OFFICIAL_WARNING_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS official_warnings (
+    warning_id TEXT PRIMARY KEY,
+    notification_id TEXT NOT NULL UNIQUE REFERENCES notifications(id) ON DELETE RESTRICT,
+    recipient_user_id TEXT NOT NULL,
+    issuer_user_id TEXT NOT NULL,
+    warning_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    allow_justification BOOLEAN NOT NULL DEFAULT FALSE,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    read_at TIMESTAMPTZ
+  );
+  CREATE INDEX IF NOT EXISTS idx_official_warnings_recipient_issued
+    ON official_warnings (recipient_user_id, issued_at DESC, warning_id DESC);
+  CREATE INDEX IF NOT EXISTS idx_official_warnings_issuer_issued
+    ON official_warnings (issuer_user_id, issued_at DESC, warning_id DESC);
+  CREATE TABLE IF NOT EXISTS official_warning_responses (
+    warning_id TEXT PRIMARY KEY REFERENCES official_warnings(warning_id) ON DELETE RESTRICT,
+    notification_id TEXT NOT NULL UNIQUE REFERENCES notifications(id) ON DELETE RESTRICT,
+    responder_user_id TEXT NOT NULL,
+    issuer_user_id TEXT NOT NULL,
+    response TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_official_warning_responses_issuer_created
+    ON official_warning_responses (issuer_user_id, created_at DESC, warning_id DESC)
+`;
+
+const BACKFILL_OFFICIAL_WARNINGS_SQL = `
+  INSERT INTO official_warnings
+    (warning_id, notification_id, recipient_user_id, issuer_user_id, warning_type, content, allow_justification, issued_at, read_at)
+  SELECT warning_id, notification_id, recipient_user_id, issuer_user_id, warning_type, content, allow_justification, issued_at, read_at
+  FROM (
+    SELECT DISTINCT ON (warning_id)
+      COALESCE(NULLIF(n.metadata->>'warningId', ''), NULLIF(n.related_id, ''), n.id) AS warning_id,
+      n.id AS notification_id,
+      n.user_id AS recipient_user_id,
+      COALESCE(NULLIF(n.metadata->>'issuerId', ''), NULLIF(n.source_user_id, ''), 'legacy-unknown') AS issuer_user_id,
+      COALESCE(NULLIF(n.metadata->>'warningType', ''), 'أخرى') AS warning_type,
+      COALESCE(NULLIF(n.metadata->>'warningContent', ''), n.message, '') AS content,
+      lower(COALESCE(n.metadata->>'allowJustification', 'false')) = 'true' AS allow_justification,
+      n.created_at AS issued_at,
+      n.read_at
+    FROM notifications n
+    WHERE n.type = 'WARNING'
+    ORDER BY warning_id, n.created_at ASC, n.id ASC
+  ) legacy_warnings
+  ON CONFLICT (warning_id) DO NOTHING
+`;
+
+const BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL = `
+  INSERT INTO official_warning_responses
+    (warning_id, notification_id, responder_user_id, issuer_user_id, response, created_at)
+  SELECT warning_id, notification_id, responder_user_id, issuer_user_id, response, created_at
+  FROM (
+    SELECT DISTINCT ON (w.warning_id)
+      w.warning_id,
+      n.id AS notification_id,
+      COALESCE(NULLIF(n.source_user_id, ''), 'legacy-unknown') AS responder_user_id,
+      n.user_id AS issuer_user_id,
+      COALESCE(NULLIF(n.metadata->>'responseText', ''), n.message, '') AS response,
+      n.created_at
+    FROM notifications n
+    JOIN official_warnings w
+      ON w.warning_id = COALESCE(NULLIF(n.metadata->>'warningId', ''), NULLIF(n.related_id, ''))
+    WHERE n.type = 'WARNING_RESPONSE'
+    ORDER BY w.warning_id, n.created_at ASC, n.id ASC
+  ) legacy_responses
+  ON CONFLICT (warning_id) DO NOTHING
+`;
+
+function warningConflict(message) {
+  const error = new Error(message);
+  error.code = 'BLACKRIDGE_WARNING_CONFLICT';
+  return error;
+}
+
 const CATEGORY_SQL = Object.freeze({
   all: '',
   critical: " AND priority = 'CRITICAL'",
@@ -110,6 +187,93 @@ class NotificationsStore {
     if (!this.pool) return;
     await this.pool.query(CREATE_TABLE_SQL);
     for (const sql of INDEX_SQL) await this.pool.query(sql);
+    await this.pool.query(OFFICIAL_WARNING_SCHEMA_SQL);
+    await this.pool.query(BACKFILL_OFFICIAL_WARNINGS_SQL);
+    await this.pool.query(BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL);
+  }
+
+  async withTransaction(callback) {
+    const client = typeof this.pool.connect === 'function' ? await this.pool.connect() : this.pool;
+    const transactional = client !== this.pool;
+    try {
+      if (transactional) await client.query('BEGIN');
+      const result = await callback(client);
+      if (transactional) await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      if (transactional) {
+        try { await client.query('ROLLBACK'); } catch (_rollbackError) {}
+      }
+      throw error;
+    } finally {
+      if (transactional && typeof client.release === 'function') client.release();
+    }
+  }
+
+  async persistOfficialWarningRecord(client, row) {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const warningId = String(metadata.warningId || row.related_id || '');
+    const issuerId = String(metadata.issuerId || row.source_user_id || '');
+    if (!warningId || !row.user_id || !issuerId) {
+      throw warningConflict('Official warning is missing its recipient, issuer, or identifier.');
+    }
+    const result = await client.query(
+      `INSERT INTO official_warnings
+        (warning_id, notification_id, recipient_user_id, issuer_user_id, warning_type, content, allow_justification, issued_at, read_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (warning_id) DO NOTHING
+       RETURNING warning_id`,
+      [
+        warningId,
+        row.id,
+        row.user_id,
+        issuerId,
+        String(metadata.warningType || 'أخرى').slice(0, 40),
+        String(metadata.warningContent || row.message || '').slice(0, 3000),
+        metadata.allowJustification === true,
+        row.created_at,
+        row.read_at || null
+      ]
+    );
+    if (!result.rows?.length) throw warningConflict('This official warning already exists.');
+  }
+
+  async persistOfficialWarningResponse(client, row) {
+    const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const warningId = String(metadata.warningId || row.related_id || '');
+    if (!warningId || !row.user_id || !row.source_user_id) {
+      throw warningConflict('Official warning response is missing its warning, recipient, or sender.');
+    }
+
+    const warningResult = await client.query(
+      `SELECT warning_id, recipient_user_id, issuer_user_id, allow_justification
+       FROM official_warnings WHERE warning_id = $1 FOR UPDATE`,
+      [warningId]
+    );
+    const warning = warningResult.rows?.[0];
+    if (!warning ||
+        warning.recipient_user_id !== row.source_user_id ||
+        warning.issuer_user_id !== row.user_id ||
+        warning.allow_justification !== true) {
+      throw warningConflict('The official warning does not permit this response.');
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO official_warning_responses
+        (warning_id, notification_id, responder_user_id, issuer_user_id, response, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (warning_id) DO NOTHING
+       RETURNING warning_id`,
+      [
+        warningId,
+        row.id,
+        row.source_user_id,
+        row.user_id,
+        String(metadata.responseText || row.message || '').slice(0, 3000),
+        row.created_at
+      ]
+    );
+    if (!inserted.rows?.length) throw warningConflict('A response has already been recorded for this official warning.');
   }
 
   async createMany(records) {
@@ -119,21 +283,32 @@ class NotificationsStore {
     if (!safeRecords.length) return [];
 
     if (this.pool) {
-      const result = await this.pool.query(
-        `INSERT INTO notifications
-          (id, user_id, type, title, message, priority, status, created_at, delivered_at,
-           source_user_id, source_code, related_id, metadata)
-         SELECT n.id, n.user_id, n.type, n.title, n.message, n.priority, n.status, NOW(),
-                CASE WHEN n.status = 'DELIVERED' THEN NOW() ELSE NULL END,
-                n.source_user_id, n.source_code, n.related_id, COALESCE(n.metadata, '{}'::jsonb)
-         FROM jsonb_to_recordset($1::jsonb) AS n(
-           id TEXT, user_id TEXT, type TEXT, title TEXT, message TEXT, priority TEXT, status TEXT,
-           source_user_id TEXT, source_code TEXT, related_id TEXT, metadata JSONB
-         )
-         RETURNING *`,
-        [JSON.stringify(safeRecords)]
-      );
-      return (result.rows || []).map(toClientRow);
+      try {
+        return await this.withTransaction(async (client) => {
+          const result = await client.query(
+            `INSERT INTO notifications
+              (id, user_id, type, title, message, priority, status, created_at, delivered_at,
+               source_user_id, source_code, related_id, metadata)
+             SELECT n.id, n.user_id, n.type, n.title, n.message, n.priority, n.status, NOW(),
+                    CASE WHEN n.status = 'DELIVERED' THEN NOW() ELSE NULL END,
+                    n.source_user_id, n.source_code, n.related_id, COALESCE(n.metadata, '{}'::jsonb)
+             FROM jsonb_to_recordset($1::jsonb) AS n(
+               id TEXT, user_id TEXT, type TEXT, title TEXT, message TEXT, priority TEXT, status TEXT,
+               source_user_id TEXT, source_code TEXT, related_id TEXT, metadata JSONB
+             )
+             RETURNING *`,
+            [JSON.stringify(safeRecords)]
+          );
+          for (const row of result.rows || []) {
+            if (row.type === 'WARNING') await this.persistOfficialWarningRecord(client, row);
+            if (row.type === 'WARNING_RESPONSE') await this.persistOfficialWarningResponse(client, row);
+          }
+          return (result.rows || []).map(toClientRow);
+        });
+      } catch (error) {
+        if (error.code === 'BLACKRIDGE_WARNING_CONFLICT') return [];
+        throw error;
+      }
     }
 
     const stamp = new Date().toISOString();
@@ -220,14 +395,55 @@ class NotificationsStore {
     return { rows: page.slice(0, limit), hasMore: page.length > limit };
   }
 
+  async listWarningsForUser(options = {}) {
+    const userId = String(options.userId || '');
+    if (!userId) return { rows: [], hasMore: false };
+    const limit = boundedLimit(options.limit);
+    const offset = boundedOffset(options.offset);
+    if (this.pool) {
+      const result = await this.pool.query(
+        `SELECT n.* FROM official_warnings w
+         JOIN notifications n ON n.id = w.notification_id
+         WHERE w.recipient_user_id = $1 AND n.user_id = $1 AND n.type = 'WARNING'
+         ORDER BY w.issued_at DESC, w.warning_id DESC
+         LIMIT $2 OFFSET $3`,
+        [userId, limit + 1, offset]
+      );
+      const mapped = (result.rows || []).map(toClientRow);
+      return { rows: mapped.slice(0, limit), hasMore: mapped.length > limit };
+    }
+    return this.listForUser({ ...options, type: 'WARNING' });
+  }
+
+  async listWarningResponsesForIssuer(options = {}) {
+    const userId = String(options.userId || '');
+    if (!userId) return { rows: [], hasMore: false };
+    const limit = boundedLimit(options.limit);
+    const offset = boundedOffset(options.offset);
+    if (this.pool) {
+      const result = await this.pool.query(
+        `SELECT n.* FROM official_warning_responses r
+         JOIN notifications n ON n.id = r.notification_id
+         WHERE r.issuer_user_id = $1 AND n.user_id = $1 AND n.type = 'WARNING_RESPONSE'
+         ORDER BY r.created_at DESC, r.warning_id DESC
+         LIMIT $2 OFFSET $3`,
+        [userId, limit + 1, offset]
+      );
+      const mapped = (result.rows || []).map(toClientRow);
+      return { rows: mapped.slice(0, limit), hasMore: mapped.length > limit };
+    }
+    return this.listForUser({ userId, type: 'WARNING_RESPONSE', limit, offset });
+  }
+
   async listOfficialWarnings(options = {}) {
     const limit = boundedLimit(options.limit);
     const offset = boundedOffset(options.offset);
     if (this.pool) {
       const result = await this.pool.query(
-        `SELECT * FROM notifications
-         WHERE type = 'WARNING'
-         ORDER BY created_at DESC, id DESC
+        `SELECT n.* FROM official_warnings w
+         JOIN notifications n ON n.id = w.notification_id
+         WHERE n.type = 'WARNING'
+         ORDER BY w.issued_at DESC, w.warning_id DESC
          LIMIT $1 OFFSET $2`,
         [limit + 1, offset]
       );
@@ -245,14 +461,25 @@ class NotificationsStore {
     const id = String(warningId || '');
     if (!id) return null;
     if (this.pool) {
-      const result = await this.pool.query(
-        `UPDATE notifications
-         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{allowJustification}', to_jsonb($2::boolean), true)
-         WHERE type = 'WARNING' AND related_id = $1
-         RETURNING *`,
-        [id, allowJustification === true]
-      );
-      return toClientRow(result.rows?.[0]);
+      return this.withTransaction(async (client) => {
+        const warning = await client.query(
+          'SELECT notification_id FROM official_warnings WHERE warning_id = $1 FOR UPDATE',
+          [id]
+        );
+        if (!warning.rows?.length) return null;
+        await client.query(
+          'UPDATE official_warnings SET allow_justification = $2 WHERE warning_id = $1',
+          [id, allowJustification === true]
+        );
+        const result = await client.query(
+          `UPDATE notifications
+           SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{allowJustification}', to_jsonb($2::boolean), true)
+           WHERE id = $1 AND type = 'WARNING'
+           RETURNING *`,
+          [warning.rows[0].notification_id, allowJustification === true]
+        );
+        return toClientRow(result.rows?.[0]);
+      });
     }
     let updated = null;
     const rows = (this.getFallbackRows() || []).map((row) => {
@@ -384,15 +611,24 @@ class NotificationsStore {
 
   async markRead(userId, id) {
     if (this.pool) {
-      const result = await this.pool.query(
-        `UPDATE notifications
-         SET read_at = COALESCE(read_at, NOW()),
-             status = CASE WHEN status = 'ACKNOWLEDGED' THEN status ELSE 'SEEN' END
-         WHERE user_id = $1 AND id = $2
-         RETURNING *`,
-        [String(userId || ''), String(id || '')]
-      );
-      return toClientRow(result.rows?.[0]);
+      return this.withTransaction(async (client) => {
+        const result = await client.query(
+          `UPDATE notifications
+           SET read_at = COALESCE(read_at, NOW()),
+               status = CASE WHEN status = 'ACKNOWLEDGED' THEN status ELSE 'SEEN' END
+           WHERE user_id = $1 AND id = $2
+           RETURNING *`,
+          [String(userId || ''), String(id || '')]
+        );
+        const row = result.rows?.[0];
+        if (row?.type === 'WARNING') {
+          await client.query(
+            'UPDATE official_warnings SET read_at = COALESCE(read_at, $2) WHERE notification_id = $1',
+            [row.id, row.read_at]
+          );
+        }
+        return toClientRow(row);
+      });
     }
     return this.updateFallback(userId, (row) => row.id === String(id || ''), (row, stamp) => {
       row.readAt = row.readAt || stamp;
@@ -402,15 +638,26 @@ class NotificationsStore {
 
   async markAllRead(userId) {
     if (this.pool) {
-      const result = await this.pool.query(
-        `UPDATE notifications
-         SET read_at = COALESCE(read_at, NOW()),
-             status = CASE WHEN status = 'ACKNOWLEDGED' THEN status ELSE 'SEEN' END
-         WHERE user_id = $1 AND read_at IS NULL
-         RETURNING id`,
-        [String(userId || '')]
-      );
-      return (result.rows || []).length;
+      return this.withTransaction(async (client) => {
+        const result = await client.query(
+          `UPDATE notifications
+           SET read_at = COALESCE(read_at, NOW()),
+               status = CASE WHEN status = 'ACKNOWLEDGED' THEN status ELSE 'SEEN' END
+           WHERE user_id = $1 AND read_at IS NULL
+           RETURNING id`,
+          [String(userId || '')]
+        );
+        if (result.rows?.length) {
+          await client.query(
+            `UPDATE official_warnings w
+             SET read_at = COALESCE(w.read_at, n.read_at)
+             FROM notifications n
+             WHERE n.id = w.notification_id AND n.user_id = $1 AND n.read_at IS NOT NULL`,
+            [String(userId || '')]
+          );
+        }
+        return (result.rows || []).length;
+      });
     }
     const ownId = String(userId || '');
     const stamp = new Date().toISOString();
@@ -460,4 +707,11 @@ class NotificationsStore {
   }
 }
 
-module.exports = { NotificationsStore, CREATE_TABLE_SQL, INDEX_SQL };
+module.exports = {
+  NotificationsStore,
+  CREATE_TABLE_SQL,
+  INDEX_SQL,
+  OFFICIAL_WARNING_SCHEMA_SQL,
+  BACKFILL_OFFICIAL_WARNINGS_SQL,
+  BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL
+};
