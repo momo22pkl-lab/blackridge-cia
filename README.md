@@ -24,7 +24,7 @@ OSD is a separate document system at `/osd/`, with independent tables and accoun
 
 ## Intelligence notification center
 
-On startup, the server creates the `notifications` table and its indexes in the configured PostgreSQL database. This is an automatic, additive schema migration; no manual SQL or new environment variables are required. Keep `DATABASE_URL` configured for durable notifications on Render. Without it, local development falls back to the existing JSON state file.
+On startup, the server creates the `notifications` table and its indexes in the configured PostgreSQL database. Official warnings and their one-time replies also have dedicated `official_warnings` and `official_warning_responses` tables; existing warning notification rows are backfilled idempotently and retained. Warning delivery still uses the notification center, while the dedicated tables provide the canonical warning history and enforce one response per warning. These are automatic, additive schema migrations; no manual SQL or new environment variables are required. Keep `DATABASE_URL` configured for durable notifications and warnings on Render. Without it, local development falls back to the existing JSON state file.
 
 Notifications are scoped to the authenticated server-side user ID. The Socket.IO API supports counts, paged/searchable lists, missed-event summaries, mark-read, and acknowledgement of critical alerts. Reading a critical alert does not acknowledge it. The client adds a responsive notification center, critical unread banner, live toasts, and a welcome-back brief. `npm test` also exercises per-user isolation and notification state transitions.
 

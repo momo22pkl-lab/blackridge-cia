@@ -64,12 +64,15 @@ function registerOfficialWarnings(socket, context) {
     const current = actor();
     if (!current) return fail(callback, 'يجب تسجيل الدخول.');
     try {
-      const result = await store().listForUser({
+      const warningStore = store();
+      const options = {
         userId: current.id,
-        type: 'WARNING',
         limit: Math.max(1, Math.min(50, Number(payload && payload.limit) || 50)),
         offset: Math.max(0, Math.min(1000000, Number(payload && payload.offset) || 0))
-      });
+      };
+      const result = typeof warningStore.listWarningsForUser === 'function'
+        ? await warningStore.listWarningsForUser(options)
+        : await warningStore.listForUser({ ...options, type: 'WARNING' });
       return send(callback, { ok: true, warnings: result.rows.map(warningView), hasMore: result.hasMore });
     } catch (error) {
       return fail(callback, 'تعذر تحميل التحذيرات الرسمية.');
@@ -80,7 +83,11 @@ function registerOfficialWarnings(socket, context) {
     const auth = requireChief(callback);
     if (auth.error) return auth.error;
     try {
-      const result = await store().listForUser({ userId: auth.current.id, type: 'WARNING_RESPONSE', limit: 50, offset: 0 });
+      const warningStore = store();
+      const options = { userId: auth.current.id, limit: 50, offset: 0 };
+      const result = typeof warningStore.listWarningResponsesForIssuer === 'function'
+        ? await warningStore.listWarningResponsesForIssuer(options)
+        : await warningStore.listForUser({ ...options, type: 'WARNING_RESPONSE' });
       const responses = result.rows.map((row) => {
         const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
         return {

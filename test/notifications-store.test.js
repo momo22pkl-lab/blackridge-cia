@@ -2,7 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { NotificationsStore, CREATE_TABLE_SQL, INDEX_SQL } = require('../notifications-store');
+const {
+  NotificationsStore,
+  CREATE_TABLE_SQL,
+  INDEX_SQL,
+  OFFICIAL_WARNING_SCHEMA_SQL,
+  BACKFILL_OFFICIAL_WARNINGS_SQL,
+  BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL
+} = require('../notifications-store');
 
 function makeStore() {
   let rows = [];
@@ -31,6 +38,17 @@ test('creates a durable notifications table and the requested lookup indexes', (
   for (const column of ['user_id', 'created_at', 'read_at', 'priority', 'type']) {
     assert.ok(INDEX_SQL.some((sql) => sql.includes(`(${column}`) || sql.includes(`(${column},`)), `missing index on ${column}`);
   }
+});
+
+test('creates independent warning and reply tables and idempotently backfills existing notification records', () => {
+  assert.match(OFFICIAL_WARNING_SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS official_warnings/);
+  assert.match(OFFICIAL_WARNING_SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS official_warning_responses/);
+  assert.match(OFFICIAL_WARNING_SCHEMA_SQL, /warning_id TEXT PRIMARY KEY REFERENCES official_warnings/);
+  assert.match(OFFICIAL_WARNING_SCHEMA_SQL, /notification_id TEXT NOT NULL UNIQUE REFERENCES notifications/);
+  assert.match(BACKFILL_OFFICIAL_WARNINGS_SQL, /ON CONFLICT \(warning_id\) DO NOTHING/);
+  assert.match(BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL, /ON CONFLICT \(warning_id\) DO NOTHING/);
+  assert.match(BACKFILL_OFFICIAL_WARNINGS_SQL, /FROM notifications n\s+WHERE n\.type = 'WARNING'/);
+  assert.match(BACKFILL_OFFICIAL_WARNING_RESPONSES_SQL, /WHERE n\.type = 'WARNING_RESPONSE'/);
 });
 
 test('notification pages, counts, and summaries are isolated to the authenticated user id', async () => {
@@ -130,7 +148,7 @@ test('official warnings and replies retain up to 3000 characters without changin
   assert.equal(created.find((row) => row.id === 'message-long').message.length, 1000);
 });
 
-test('CIA CHIEF warning history and justification updates use the existing notifications store', async () => {
+test('CIA CHIEF warning history and justification updates preserve notification delivery rows', async () => {
   const { store, getRows } = makeStore();
   await store.createMany([
     { ...notification('warning-a', 'agent-a', 'CRITICAL', 'WARNING'), relatedId: 'wrn-a', metadata: { allowJustification: false } },
@@ -153,6 +171,9 @@ test('PostgreSQL warning history and permission changes target only warning noti
   const pool = {
     async query(sql, params = []) {
       calls.push({ sql, params });
+      if (sql.includes('SELECT notification_id FROM official_warnings')) {
+        return { rows: [{ notification_id: 'warning-db' }] };
+      }
       if (sql.includes('UPDATE notifications')) {
         return {
           rows: [{
@@ -178,11 +199,110 @@ test('PostgreSQL warning history and permission changes target only warning noti
   const updated = await store.setOfficialWarningJustification('warning-id-db', true);
   assert.equal(updated.userId, 'agent-db');
   assert.equal(updated.metadata.allowJustification, true);
-  assert.match(calls[0].sql, /WHERE type = 'WARNING'/);
+  assert.match(calls[0].sql, /FROM official_warnings w/);
   assert.deepEqual(calls[0].params, [21, 0]);
-  assert.match(calls[1].sql, /WHERE type = 'WARNING' AND related_id = \$1/);
-  assert.equal(calls[1].params[0], 'warning-id-db');
-  assert.equal(calls[1].params[1], true);
+  assert.match(calls[1].sql, /SELECT notification_id FROM official_warnings WHERE warning_id = \$1 FOR UPDATE/);
+  assert.deepEqual(calls[1].params, ['warning-id-db']);
+  assert.match(calls[2].sql, /UPDATE official_warnings SET allow_justification = \$2 WHERE warning_id = \$1/);
+  assert.deepEqual(calls[2].params, ['warning-id-db', true]);
+  assert.match(calls[3].sql, /WHERE id = \$1 AND type = 'WARNING'/);
+  assert.deepEqual(calls[3].params, ['warning-db', true]);
+});
+
+test('PostgreSQL warning responses are persisted once in the canonical table and duplicates roll back', async () => {
+  const warnings = new Map();
+  const responses = new Set();
+  const notifications = [];
+  const pool = {
+    async query() { return { rows: [] }; },
+    async connect() {
+      const pendingWarnings = [];
+      const pendingResponses = [];
+      const pendingNotifications = [];
+      return {
+        async query(sql, params = []) {
+          if (sql === 'BEGIN' || sql === 'COMMIT') {
+            if (sql === 'COMMIT') {
+              for (const item of pendingWarnings) warnings.set(item.warning_id, item);
+              for (const item of pendingResponses) responses.add(item);
+              notifications.push(...pendingNotifications);
+            }
+            return { rows: [] };
+          }
+          if (sql === 'ROLLBACK') return { rows: [] };
+          if (sql.includes('INSERT INTO notifications')) {
+            const entries = JSON.parse(params[0]);
+            const rows = entries.map((entry) => ({
+              id: entry.id,
+              user_id: entry.user_id,
+              type: entry.type,
+              title: entry.title,
+              message: entry.message,
+              priority: entry.priority,
+              status: entry.status,
+              created_at: new Date().toISOString(),
+              delivered_at: null,
+              read_at: null,
+              acknowledged_at: null,
+              source_user_id: entry.source_user_id,
+              source_code: entry.source_code,
+              related_id: entry.related_id,
+              metadata: entry.metadata
+            }));
+            pendingNotifications.push(...rows);
+            return { rows };
+          }
+          if (sql.includes('INSERT INTO official_warnings')) {
+            const [warningId, notificationId, recipientId, issuerId, warningType, content, allow] = params;
+            if (warnings.has(warningId)) return { rows: [] };
+            const record = {
+              warning_id: warningId,
+              notification_id: notificationId,
+              recipient_user_id: recipientId,
+              issuer_user_id: issuerId,
+              warning_type: warningType,
+              content,
+              allow_justification: allow
+            };
+            pendingWarnings.push(record);
+            return { rows: [{ warning_id: warningId }] };
+          }
+          if (sql.includes('SELECT warning_id, recipient_user_id, issuer_user_id, allow_justification')) {
+            const warningId = params[0];
+            return { rows: warnings.has(warningId) ? [warnings.get(warningId)] : [] };
+          }
+          if (sql.includes('INSERT INTO official_warning_responses')) {
+            const warningId = params[0];
+            if (responses.has(warningId) || pendingResponses.includes(warningId)) return { rows: [] };
+            pendingResponses.push(warningId);
+            return { rows: [{ warning_id: warningId }] };
+          }
+          return { rows: [] };
+        },
+        release() {}
+      };
+    }
+  };
+  const store = new NotificationsStore(pool);
+  const warning = await store.createMany([{
+    ...notification('warning-db-1', 'agent-db', 'CRITICAL', 'WARNING'),
+    sourceUserId: 'chief-db',
+    relatedId: 'wrn-db-1',
+    metadata: { warningId: 'wrn-db-1', warningType: 'أمني', warningContent: 'تفاصيل التحذير', issuerId: 'chief-db', allowJustification: true }
+  }]);
+  assert.equal(warning.length, 1);
+  assert.equal(warnings.get('wrn-db-1').recipient_user_id, 'agent-db');
+
+  const response = {
+    ...notification('response-db-1', 'chief-db', 'HIGH', 'WARNING_RESPONSE'),
+    sourceUserId: 'agent-db',
+    relatedId: 'wrn-db-1',
+    metadata: { warningId: 'wrn-db-1', responseText: 'التبرير المسجل' }
+  };
+  assert.equal((await store.createMany([response])).length, 1);
+  assert.equal((await store.createMany([{ ...response, id: 'response-db-2' }])).length, 0);
+  assert.deepEqual([...responses], ['wrn-db-1']);
+  assert.equal(notifications.filter((row) => row.type === 'WARNING_RESPONSE').length, 1);
 });
 
 test('PostgreSQL queries initialize the schema and scope reads and mutations to the owning user', async () => {
@@ -218,5 +338,9 @@ test('PostgreSQL queries initialize the schema and scope reads and mutations to 
   }
   assert.match(updates[3].sql, /priority = 'CRITICAL'/);
   assert.ok(calls.some(({ sql }) => sql.includes('CREATE TABLE IF NOT EXISTS notifications')));
-  assert.equal(calls.filter(({ sql }) => sql.includes('CREATE INDEX IF NOT EXISTS')).length, INDEX_SQL.length);
+  assert.equal(calls.filter(({ sql }) => sql.includes('CREATE INDEX IF NOT EXISTS')).length, INDEX_SQL.length + 1);
+  assert.ok(calls.some(({ sql }) => sql.includes('CREATE TABLE IF NOT EXISTS official_warnings')));
+  assert.ok(calls.some(({ sql }) => sql.includes('CREATE TABLE IF NOT EXISTS official_warning_responses')));
+  assert.ok(calls.some(({ sql }) => sql.includes('INSERT INTO official_warnings')));
+  assert.ok(calls.some(({ sql }) => sql.includes('INSERT INTO official_warning_responses')));
 });
