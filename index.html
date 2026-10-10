@@ -129,6 +129,10 @@
     .nav-btn { padding: 12px 20px; display: flex; align-items: center; gap: 12px; color: var(--text-dim); cursor: pointer; border-right: 3px solid transparent; font-size: 0.85rem; }
     .nav-btn.active { background: rgba(245, 158, 11, 0.1); color: var(--text-bright); border-right-color: var(--primary-gold); }
     .nav-btn i { color: var(--primary-gold); width: 20px; }
+    .nav-btn.nav-link { padding: 0; border-right: 0; }
+    .nav-btn.nav-link > a { width: 100%; padding: 12px 20px; display: flex; align-items: center; gap: 12px; color: var(--text-dim); text-decoration: none; border-right: 3px solid transparent; }
+    .nav-btn.nav-link > a:hover, .nav-btn.nav-link > a:focus-visible { color: var(--text-bright); background: rgba(245, 158, 11, 0.08); border-right-color: var(--primary-gold); }
+    .nav-btn.nav-link > a i { color: var(--primary-gold); width: 20px; }
 
     /* Content Area */
     .content-area { flex: 1; padding: 15px; overflow-y: auto; position: relative; z-index: 1; }
@@ -1823,6 +1827,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li id="operations-nav" class="nav-btn" style="display:none;" onclick="showPane('operations', this)"><i class="fa-solid fa-crosshairs"></i> المهمات الميدانية</li>
       <li id="bank-nav" class="nav-btn" onclick="showPane('bank', this)"><i class="fa-solid fa-building-columns"></i> البنك والراتب</li>
       <li class="nav-btn" onclick="showPane('reports', this)"><i class="fa-solid fa-file-contract"></i> التقارير والعمليات</li>
+      <li class="nav-btn nav-link"><a href="/osd/" aria-label="فتح نظام الوثائق الرسمية"><i class="fa-solid fa-file-shield" aria-hidden="true"></i><span>الوثائق الرسمية</span></a></li>
       <li class="nav-btn" onclick="showPane('agents-directory', this)"><i class="fa-solid fa-user-secret"></i> دليل الأعضاء والحضور</li>
       <li class="nav-btn" onclick="showPane('identity-directory', this)"><i class="fa-solid fa-id-card"></i> الهويات العامة</li>
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>

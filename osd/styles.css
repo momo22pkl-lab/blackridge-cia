@@ -516,3 +516,174 @@ html[dir="ltr"] .paper-preview { direction: ltr; }
   .print-document .paper-content { font-size: 11pt; }
   .print-document .paper-footer { position: absolute; inset: auto 18mm 15mm; }
 }
+
+/* BLACK RIDGE interface refresh — keeps the existing OSD pages and print flow. */
+@media screen {
+  :root {
+    color-scheme: dark;
+    --bg: #020914;
+    --panel: #061321;
+    --panel-raised: #081726;
+    --line: rgba(22, 50, 74, .86);
+    --line-strong: #23435c;
+    --text: #dbe8f7;
+    --muted: #83a0bd;
+    --dim: #5f7c98;
+    --gold: #c9a34d;
+    --gold-soft: rgba(201, 163, 77, .12);
+    --blue: #1d8bc2;
+    --sans: Tahoma, Arial, sans-serif;
+    --arabic: Tahoma, Arial, sans-serif;
+    background: #020914;
+  }
+  body {
+    background:
+      radial-gradient(ellipse at 48% 0, #0c2942 0, transparent 42%),
+      #020914;
+    font-size: 13px;
+  }
+  .topbar {
+    min-height: 74px;
+    height: auto;
+    gap: 16px;
+    padding-inline: 22px;
+    border-bottom-color: #16324a;
+    background: rgba(2, 8, 18, .97);
+  }
+  .brand { min-width: 250px; gap: 12px; }
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+    border: 2px solid var(--gold);
+    border-radius: 50%;
+    color: #142342;
+    background: radial-gradient(circle, #f4f1e8 0 25%, #132d68 26% 68%, #d6b34d 69%);
+  }
+  .brand-mark svg { width: 31px; height: 31px; color: #142342; }
+  .brand-copy strong {
+    color: #dbe8f7;
+    font: 700 16px/1.15 Georgia, "Times New Roman", serif;
+    letter-spacing: .12em;
+  }
+  .brand-copy small {
+    color: #91aeca;
+    font: 600 8px/1.4 var(--mono);
+    letter-spacing: .09em;
+  }
+  .top-context { color: #89a5bf; }
+  .top-context-dot { background: var(--gold); }
+  .live-state { color: #9bb7d0; }
+  .icon-button { background: #03101d; }
+  .workspace { min-height: calc(100vh - 74px); }
+  .sidebar {
+    border-inline-end-color: #16324a;
+    background: linear-gradient(180deg, rgba(8, 23, 38, .97), rgba(3, 11, 20, .96));
+  }
+  .sidebar-label { color: var(--gold); }
+  .nav-item { color: #9bb2cc; }
+  .nav-item:hover { background: rgba(29, 56, 77, .48); color: #e4edf7; }
+  .nav-item.active {
+    color: #f1d28b;
+    border-color: rgba(201, 163, 77, .48);
+    background: linear-gradient(90deg, rgba(29, 56, 77, .8), rgba(201, 163, 77, .08));
+  }
+  .nav-current { background: var(--gold); }
+  .nav-icon { color: #83a0bd; }
+  .sidebar-status {
+    border-color: rgba(29, 139, 194, .25);
+    background: rgba(4, 18, 31, .7);
+  }
+  .main-area { padding-top: 20px; }
+  .page-toolbar {
+    min-height: 96px;
+    align-items: center;
+    padding: 18px 20px;
+    border: 1px solid #16324a;
+    border-radius: 8px;
+    background:
+      radial-gradient(ellipse at 70% 0, rgba(18, 52, 81, .78), transparent 55%),
+      linear-gradient(110deg, #071421, #030a13);
+  }
+  .eyebrow { color: var(--gold); letter-spacing: .13em; }
+  .page-heading h1 { color: #e5eef8; font-size: 21px; }
+  .page-heading p { color: #8fa9c3; line-height: 1.7; }
+  .classification-chip { border-color: rgba(201, 163, 77, .38); color: #f1d28b; }
+  .button-primary {
+    border-color: #c9a34d;
+    color: #15120b;
+    background: linear-gradient(120deg, #c9a34d, #e3c778);
+  }
+  .button-outline { border-color: #6d5c34; color: #f1d28b; background: rgba(201, 163, 77, .08); }
+  .button-quiet { border-color: #23435c; color: #aac4dc; background: #061522; }
+  .panel, .stat-card, .template-card {
+    border-color: #16324a;
+    border-radius: 8px;
+    background: linear-gradient(155deg, #081726, #030b14);
+  }
+  .panel-head { border-bottom-color: rgba(22, 50, 74, .72); }
+  .panel-head h2 { color: #dbe8f7; }
+  .panel-kicker { color: #83a0bd; }
+  .creator-layout { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 12px; }
+  .creator-panel { border-color: #16324a; }
+  .form-field { color: #94b0ca; font-size: 10px; }
+  .form-field input, .form-field select, .form-field textarea,
+  .filter-bar input, .filter-bar select, .verify-form input,
+  .auth-form input, .user-form input, .user-form select {
+    border-color: #1c3c55;
+    border-radius: 5px;
+    color: #dbe8f7;
+    background: #020d18;
+  }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus,
+  .filter-bar input:focus, .filter-bar select:focus, .verify-form input:focus,
+  .auth-form input:focus, .user-form input:focus, .user-form select:focus {
+    border-color: var(--blue);
+    outline-color: var(--blue);
+  }
+  .form-field input::placeholder, .form-field textarea::placeholder { color: #7893ad; }
+  .form-callout { border-color: rgba(29, 139, 194, .28); background: rgba(29, 139, 194, .07); }
+  .paper-preview {
+    border: 5px double #9d967f;
+    box-shadow: 0 5px 24px rgba(0, 0, 0, .45);
+  }
+  .auth-screen {
+    background:
+      radial-gradient(ellipse at 48% 0, rgba(12, 41, 66, .75), transparent 42%),
+      #020914;
+  }
+  .auth-card {
+    border-color: #23435c;
+    border-radius: 8px;
+    background: linear-gradient(155deg, #081726, #030b14);
+  }
+  .auth-emblem { color: var(--gold); }
+}
+
+@media screen and (max-width: 650px) {
+  .workspace { display: block; }
+  .sidebar {
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    padding: 7px 8px;
+    border-inline-end: 0;
+    border-bottom: 1px solid #16324a;
+    background: rgba(3, 11, 20, .98);
+  }
+  .side-nav { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+  .nav-item {
+    width: auto;
+    min-width: max-content;
+    min-height: 37px;
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 0 9px;
+  }
+  .nav-item > span:not(.nav-icon):not(.nav-current) { display: inline; }
+  .nav-current { inset-inline-start: 5px; inset-inline-end: 5px; top: auto; bottom: 1px; width: auto; height: 2px; }
+  .settings-link { margin: 5px 0 0; }
+  .main-area { width: 100%; padding: 12px 10px 9px; }
+  .page-toolbar { padding: 14px; }
+  .creator-layout { grid-template-columns: minmax(0, 1fr); }
+  .preview-column { width: 100%; max-width: 680px; }
+}
