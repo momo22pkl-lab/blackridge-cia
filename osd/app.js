@@ -718,12 +718,59 @@ async function shareDocument(id) {
   } catch (error) { toast(error.message, 'error'); }
 }
 
-function printDocument(document) {
-  const paper = $('#livePreview');
-  renderPreview(document);
+async function waitForPrintAssets(root) {
+  if (document.fonts?.ready) await document.fonts.ready;
+  const images = [...root.querySelectorAll('img')].filter((image) => image.hasAttribute('src') && !image.hidden);
+  await Promise.all(images.map(async (image) => {
+    if (!image.complete) {
+      await new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          cleanup();
+          reject(new Error('A document image did not finish loading.'));
+        }, 15000);
+        const cleanup = () => {
+          window.clearTimeout(timer);
+          image.removeEventListener('load', loaded);
+          image.removeEventListener('error', failed);
+        };
+        const loaded = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error('A document image failed to load.')) };
+        image.addEventListener('load', loaded, { once: true });
+        image.addEventListener('error', failed, { once: true });
+        if (image.complete) loaded();
+      });
+    }
+    if (!image.naturalWidth) throw new Error('A document image failed to load.');
+    if (typeof image.decode === 'function') await image.decode();
+  }));
+}
+
+async function printDocument(documentData) {
+  const source = $('#livePreview');
+  if (!source) throw new Error('The official document preview is unavailable.');
+  renderPreview(documentData);
+
+  const printRoot = document.createElement('div');
+  printRoot.className = 'osd-print-root';
+  printRoot.setAttribute('aria-hidden', 'true');
+  const paper = source.cloneNode(true);
+  paper.removeAttribute('id');
   paper.classList.add('print-document');
-  window.print();
-  window.setTimeout(() => paper.classList.remove('print-document'), 900);
+  paper.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+  printRoot.append(paper);
+  document.body.append(printRoot);
+
+  const cleanup = () => printRoot.remove();
+  window.addEventListener('afterprint', cleanup, { once: true });
+  try {
+    await waitForPrintAssets(printRoot);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.print();
+  } catch (error) {
+    window.removeEventListener('afterprint', cleanup);
+    cleanup();
+    throw error;
+  }
 }
 
 async function verifyIdentifier(identifier, resultTarget = $('#verifyResult')) {
@@ -992,7 +1039,7 @@ document.addEventListener('click', async (event) => {
     else if (action === 'shareDocument') await shareDocument(id);
     else if (action === 'printDocument') {
       const result = await request(`/documents/${encodeURIComponent(id)}/download`, { method: 'POST', body: '{}' });
-      printDocument(result.document);
+      await printDocument(result.document);
     } else if (action === 'showAudit') await loadAudit(id);
     else if (action === 'showVersions') await showVersions(id);
     else if (action === 'openUserForm') openUserForm();
@@ -1013,7 +1060,7 @@ document.addEventListener('click', async (event) => {
       setPage('verify');
       $('#verifyInput').value = target.dataset.code;
       await verifyIdentifier(target.dataset.code);
-    } else if (action === 'printShared' && state.shareDocument) printDocument(state.shareDocument);
+    } else if (action === 'printShared' && state.shareDocument) await printDocument(state.shareDocument);
   } catch (error) { toast(error.message, 'error'); }
 });
 
@@ -1035,7 +1082,7 @@ document.addEventListener('change', async (event) => {
   if (target) await userAction('changeUserRole', target.dataset.id, target.value);
 });
 
-window.addEventListener('afterprint', () => $('#livePreview')?.classList.remove('print-document'));
+
 initSelects();
 renderTemplates();
 setInterval(updateClock, 1000);
