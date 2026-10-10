@@ -505,16 +505,61 @@ html[dir="ltr"] .paper-preview { direction: ltr; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+@media screen {
+  .osd-print-root { position: fixed; top: 0; left: -100000px; width: 210mm; pointer-events: none; }
+}
+
 @media print {
   @page { size: A4; margin: 10mm; }
-  body { color: #222; background: #fff; }
+  html, body { width: 100%; min-height: 100%; margin: 0; color: #222; background: #fff; }
+  body > :not(.osd-print-root) { display: none !important; }
   body * { visibility: hidden !important; }
-  .print-document, .print-document * { visibility: visible !important; }
-  .print-document { position: absolute; inset: 0; width: 100%; min-height: 270mm; padding: 18mm; border: 1px solid #ccc; background: #f4f2eb; color: #222; }
-  .print-document .paper-preview { display: block; min-height: 260mm; border-color: #444; box-shadow: none; }
-  .print-document .paper-preview::before { border-color: #666; }
-  .print-document .paper-content { font-size: 11pt; }
-  .print-document .paper-footer { position: absolute; inset: auto 18mm 15mm; }
+  .osd-print-root, .osd-print-root * { visibility: visible !important; }
+  .osd-print-root {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
+    width: auto !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    color: #222 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .osd-print-root .print-document {
+    position: relative !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: 277mm !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    padding: 18mm !important;
+    overflow: visible !important;
+    border: 5px double #9d967f !important;
+    border-color: #444 !important;
+    background: linear-gradient(135deg, #f0eee7, #e8e5dc) !important;
+    color: #252522 !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .osd-print-root .paper-preview::before { border-color: #666; }
+  .osd-print-root .paper-content { font-size: 11pt; overflow-wrap: anywhere; }
+  .osd-print-root .paper-footer { position: static !important; margin-top: auto; }
+  .osd-print-root .paper-brand,
+  .osd-print-root .paper-ribbon,
+  .osd-print-root .paper-meta,
+  .osd-print-root .paper-type,
+  .osd-print-root .paper-signature,
+  .osd-print-root .paper-code,
+  .osd-print-root .paper-footer { break-inside: avoid; page-break-inside: avoid; }
 }
 
 /* BLACK RIDGE interface refresh — keeps the existing OSD pages and print flow. */
