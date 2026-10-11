@@ -303,6 +303,9 @@ app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) return res.status(400).json({ error: 'حجم ملف التقرير أكبر من المسموح أو الملف غير صالح.' });
   return res.status(500).json({ error: 'حدث خطأ داخلي. راجع سجل الخادم.' });
 });
+app.get('/brand-seal.jpg', (_req, res) => {
+  res.sendFile(path.join(PUBLIC, 'blackridge-official-seal.jpg'));
+});
 app.use(express.static(PUBLIC));
 app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC, 'index.html')));
 
