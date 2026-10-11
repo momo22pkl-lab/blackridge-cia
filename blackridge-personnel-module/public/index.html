@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d14">
+  <title>BLACKRIDGE CITY CIA | Personnel Actions</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="top-line"></div>
+    <header class="header">
+      <div class="brand-wrap"><div class="brand-mark">BR</div><div><div class="brand">BLACKRIDGE <span>CITY</span> <i>|</i> CIA</div><div class="brand-sub">PERSONNEL CONTROL SYSTEM <b>•</b> DEMO MODULE</div></div></div>
+      <div class="header-controls">
+        <label>رتبة المعاينة <select id="role-select"><option value="CIA CHIEF">CIA CHIEF — القائد</option><option value="SENIOR COMMANDER">SENIOR COMMANDER</option><option value="HIGH COMMANDER">HIGH COMMANDER</option><option value="AGENT">AGENT</option></select></label>
+        <label>حساب المعاينة <select id="code-select"><option value="AG-1042">AG-1042</option></select></label>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar"><div class="side-label">القائمة الرئيسية</div><nav id="main-nav"></nav><div class="sidebar-note"><span class="live-dot"></span> نظام إجراءات الأفراد<div class="small-muted">وضع الاختبار المحلي</div></div></aside>
+      <main id="main-content" class="main-content" tabindex="-1"><div class="loading">جاري تحميل النظام...</div></main>
+    </div>
+    <footer class="footer"><span>BLACKRIDGE CITY CIA</span><span>نسخة تجريبية — البيانات والأسماء وهمية</span></footer>
+  </div>
+  <div id="modal-root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
