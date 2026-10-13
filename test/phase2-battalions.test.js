@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { registerIBPSocket } = require('../ibp/handlers');
 const { registerPages } = require('../ibp/pages');
 
@@ -40,7 +42,7 @@ function baseState() {
   };
 }
 
-function makeHarness(actor, state = baseState()) {
+function makeHarness(actor, state = baseState(), options = {}) {
   const listeners = new Map();
   const metrics = { saves: 0, broadcasts: 0, audits: 0, ids: 0 };
   const socket = {
@@ -61,8 +63,14 @@ function makeHarness(actor, state = baseState()) {
     ibpResolveCode: (value) => state.cia_users.find((person) => String(person.publicCode).toUpperCase() === String(value || '').trim().toUpperCase()) || null,
     now: () => '2026-10-07T10:00:00.000Z',
     makeId: (prefix) => prefix + '-TEST-' + (++metrics.ids),
-    addAuditLog: () => { metrics.audits += 1; },
-    saveState: () => { metrics.saves += 1; return Promise.resolve(); },
+    addAuditLog: (action, user, target, details) => {
+      metrics.audits += 1;
+      state.cia_audit_logs.unshift({ action, actorCode: user && user.publicCode || '', targetId: target && target.id || null, details });
+    },
+    saveState: () => {
+      metrics.saves += 1;
+      return options.failSave ? Promise.reject(new Error('test persistence failure')) : Promise.resolve();
+    },
     emitState: () => { metrics.broadcasts += 1; }
   };
   registerIBPSocket(socket, ctx);
@@ -223,4 +231,143 @@ test('the Phase 2 client asset is registered by the existing IBP page router', (
   });
   assert.equal(type, 'application/javascript');
   assert.ok(file.endsWith('/ibp/world-command-battalions.js'));
+});
+
+test('battalion commanders can create deduplicated, persisted reports for their own unit', async () => {
+  const commander = makeHarness(people[3]);
+  const payload = {
+    requestId: 'report-request-001',
+    title: 'West perimeter update',
+    summary: 'Patrol coverage completed.',
+    text: 'No incidents recorded.',
+    battalionId: 'bat-alpha',
+    classification: 'INTERNAL',
+    status: 'SUBMITTED'
+  };
+  const first = await commander.invoke('ibp:report:create', payload);
+  const duplicate = await commander.invoke('ibp:report:create', payload);
+  assert.equal(first.ok, true);
+  assert.equal(first.report.reportNumber, 'RPT-TEST-1');
+  assert.equal(first.report.battalionCode, 'ALPHA');
+  assert.equal(first.report.status, 'SUBMITTED');
+  assert.equal(first.report.authorCode, 'ALPHA-1');
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.deduplicated, true);
+  assert.equal(commander.state.ibp_reports.length, 1);
+  assert.equal(commander.metrics.saves, 1);
+  assert.equal(commander.metrics.audits, 1);
+});
+
+test('ordinary agents can read only scoped reports and cannot create reports', async () => {
+  const state = baseState();
+  state.ibp_reports = [
+    { id: 'RPT-ALPHA', title: 'Alpha patrol', text: 'Scoped details', status: 'SUBMITTED', authorCode: 'ALPHA-1', battalionId: 'bat-alpha', battalionCode: 'ALPHA', classification: 'INTERNAL', createdAt: '2026-10-01T10:00:00.000Z' },
+    { id: 'RPT-BRAVO', title: 'Bravo patrol', text: 'Private details', status: 'SUBMITTED', authorCode: 'BRAVO-1', battalionId: 'bat-bravo', battalionCode: 'BRAVO', classification: 'INTERNAL', createdAt: '2026-10-02T10:00:00.000Z' },
+    { id: 'RPT-SECRET', title: 'Classified', text: 'Restricted', status: 'SUBMITTED', authorCode: 'ALPHA-1', battalionId: 'bat-alpha', battalionCode: 'ALPHA', classification: 'SECRET', createdAt: '2026-10-03T10:00:00.000Z' }
+  ];
+  const member = makeHarness(people[5], state);
+  const list = await member.invoke('ibp:reports:list', {});
+  const create = await member.invoke('ibp:report:create', {
+    title: 'Unauthorized report', text: 'Agents are read-only.', battalionId: 'bat-alpha'
+  });
+  assert.deepEqual(list.reports.map((report) => report.id), ['RPT-ALPHA']);
+  assert.equal(list.canCreate, false);
+  assert.equal(create.ok, false);
+  assert.equal(member.state.ibp_reports.length, 3);
+  assert.equal(member.metrics.saves, 0);
+});
+
+test('report list filters are applied only after server-side scope and classification checks', async () => {
+  const state = baseState();
+  state.ibp_reports = [
+    { id: 'RPT-A1', title: 'West patrol', text: 'Foot patrol', status: 'SUBMITTED', authorCode: 'ALPHA-1', battalionId: 'bat-alpha', battalionCode: 'ALPHA', classification: 'INTERNAL', createdAt: '2026-10-01T10:00:00.000Z' },
+    { id: 'RPT-A2', title: 'West review', text: 'Review notes', status: 'IN_REVIEW', authorCode: 'ALPHA-1', battalionId: 'bat-alpha', battalionCode: 'ALPHA', classification: 'INTERNAL', createdAt: '2026-10-02T10:00:00.000Z' },
+    { id: 'RPT-B1', title: 'East patrol', text: 'Not in scope', status: 'SUBMITTED', authorCode: 'BRAVO-1', battalionId: 'bat-bravo', battalionCode: 'BRAVO', classification: 'INTERNAL', createdAt: '2026-10-03T10:00:00.000Z' }
+  ];
+  const member = makeHarness(people[5], state);
+  const filtered = await member.invoke('ibp:reports:list', { battalionId: 'bat-alpha', status: 'IN_REVIEW', query: 'review' });
+  const hidden = await member.invoke('ibp:reports:list', { battalionId: 'bat-bravo' });
+  assert.deepEqual(filtered.reports.map((report) => report.id), ['RPT-A2']);
+  assert.deepEqual(hidden.reports, []);
+});
+
+test('report status workflow allows unit commanders to submit for review but reserves decisions to senior command', async () => {
+  const commander = makeHarness(people[3]);
+  const created = await commander.invoke('ibp:report:create', {
+    title: 'Field report', text: 'Review this record.', battalionId: 'bat-alpha'
+  });
+  const reportId = created.report.id;
+  const review = await commander.invoke('ibp:report:update', { id: reportId, status: 'IN_REVIEW' });
+  const unauthorizedApproval = await commander.invoke('ibp:report:update', { id: reportId, status: 'APPROVED' });
+  assert.equal(review.ok, true);
+  assert.equal(review.report.status, 'IN_REVIEW');
+  assert.equal(unauthorizedApproval.ok, false);
+  const senior = makeHarness(people[1], commander.state);
+  const approved = await senior.invoke('ibp:report:update', { id: reportId, status: 'APPROVED' });
+  assert.equal(approved.ok, true);
+  assert.equal(approved.report.status, 'APPROVED');
+  const immutable = await senior.invoke('ibp:report:update', { id: reportId, title: 'Changed after approval' });
+  assert.equal(immutable.ok, false);
+  assert.equal(senior.state.ibp_reports[0].title, 'Field report');
+});
+
+test('report owners can edit and delete drafts; deletion is audited and persisted', async () => {
+  const commander = makeHarness(people[3]);
+  const created = await commander.invoke('ibp:report:create', {
+    title: 'Working draft', text: 'Initial text', battalionId: 'bat-alpha', status: 'DRAFT'
+  });
+  const edited = await commander.invoke('ibp:report:update', {
+    id: created.report.id, title: 'Updated draft', text: 'Revised text'
+  });
+  assert.equal(edited.ok, true);
+  assert.equal(edited.report.title, 'Updated draft');
+  assert.equal(edited.report.text, 'Revised text');
+  const deleted = await commander.invoke('ibp:report:delete', { id: created.report.id });
+  assert.equal(deleted.ok, true);
+  assert.equal(commander.state.ibp_reports.length, 0);
+  assert.equal(commander.metrics.audits, 3);
+  assert.equal(commander.metrics.saves, 3);
+});
+
+test('report creation rejects duplicate request IDs with a different author and invalid classifications', async () => {
+  const commander = makeHarness(people[3]);
+  const first = await commander.invoke('ibp:report:create', {
+    requestId: 'shared-request-001', title: 'First report', text: 'Original', battalionId: 'bat-alpha'
+  });
+  const invalidClassification = await commander.invoke('ibp:report:create', {
+    title: 'Overclassified report', text: 'Not allowed', battalionId: 'bat-alpha', classification: 'TOP SECRET'
+  });
+  const invalidStatus = await commander.invoke('ibp:report:create', {
+    title: 'Invalid state', text: 'No status mutation', battalionId: 'bat-alpha', status: 'APPROVED'
+  });
+  assert.equal(first.ok, true);
+  assert.equal(invalidClassification.ok, false);
+  assert.equal(invalidStatus.ok, false);
+  assert.equal(commander.state.ibp_reports.length, 1);
+});
+
+test('failed report persistence rolls back both the report and its audit row', async () => {
+  const harness = makeHarness(people[3], baseState(), { failSave: true });
+  const result = await harness.invoke('ibp:report:create', {
+    requestId: 'report-save-failure-01',
+    title: 'Uncommitted report',
+    text: 'This must not remain in state after the failed save.',
+    battalionId: 'bat-alpha',
+    classification: 'INTERNAL'
+  });
+  assert.equal(result.ok, false);
+  assert.equal(harness.state.ibp_reports.length, 0);
+  assert.equal(harness.state.cia_audit_logs.length, 0);
+  assert.equal(harness.metrics.broadcasts, 0);
+});
+
+test('military reports open inside the existing IBP center, while CIA reports and bank panes remain present', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(index, /id="ibp-command-center"/);
+  assert.match(index, /data-ibp-feature-open="reports"/);
+  assert.match(index, /id="ibp-reports-module"/);
+  assert.match(index, /id="reports"/);
+  assert.match(index, /id="bank"/);
+  assert.match(index, /ibp:reports:list/);
+  assert.doesNotMatch(index, /onclick="openIBPModule\('reports'\)"/);
 });
