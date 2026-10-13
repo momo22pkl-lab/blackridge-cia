@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111d">
+  <meta name="description" content="نموذج واجهة تجريبي مستقل لنظام تحذيرات BLACKRIDGE CITY.">
+  <title>BLACKRIDGE CITY | نظام التحذيرات</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111d;
+      --bg-deep: #050b13;
+      --sidebar: #091522;
+      --panel: #0c1928;
+      --panel-raised: #101f30;
+      --line: rgba(170, 187, 204, .12);
+      --line-strong: rgba(197, 160, 86, .24);
+      --gold: #c4a05a;
+      --gold-bright: #e1bf78;
+      --text: #edf1f4;
+      --muted: #8291a2;
+      --faint: #5d6e80;
+      --red: #e26b6b;
+      --red-soft: rgba(226, 107, 107, .13);
+      --green: #68b89a;
+      --blue: #79a9ce;
+      --sidebar-width: 264px;
+      font-family: "IBM Plex Sans Arabic", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--bg); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 78% -12%, rgba(42, 70, 91, .18), transparent 42%),
+        linear-gradient(155deg, #091522 0%, var(--bg) 43%, #060d16 100%);
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--gold-bright);
+      outline-offset: 2px;
+    }
+    .ambient-grid {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: .16;
+      background-image: linear-gradient(rgba(159, 178, 196, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(159, 178, 196, .035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, black, transparent 70%);
+    }
+    .sidebar {
+      position: fixed;
+      inset: 0 0 0 auto;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      width: var(--sidebar-width);
+      padding: 20px 15px 14px;
+      overflow-y: auto;
+      background: linear-gradient(180deg, rgba(10, 22, 35, .98), rgba(7, 17, 28, .99));
+      border-left: 1px solid var(--line);
+      box-shadow: -15px 0 50px rgba(0, 0, 0, .12);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 3px 5px 21px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      flex: 0 0 43px;
+      color: var(--gold-bright);
+      background: linear-gradient(145deg, rgba(196, 160, 90, .17), rgba(196, 160, 90, .035));
+      border: 1px solid rgba(196, 160, 90, .4);
+      border-radius: 12px 4px 12px 4px;
+      font-size: 18px;
+      box-shadow: inset 0 0 18px rgba(196, 160, 90, .06);
+    }
+    .brand-name {
+      margin: 0;
+      color: #f3f0e9;
+      font: 700 13px/1.35 "IBM Plex Sans Arabic", sans-serif;
+      letter-spacing: .09em;
+      direction: ltr;
+      text-align: right;
+    }
+    .brand-subtitle { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .class-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 17px 3px 10px;
+      color: #aa8e59;
+      font: 600 9px/1.4 "IBM Plex Sans Arabic", sans-serif;
+      letter-spacing: .13em;
+      direction: ltr;
+    }
+    .class-chip::before { width: 5px; height: 5px; content: ""; background: var(--gold); border-radius: 50%; box-shadow: 0 0 8px rgba(196, 160, 90, .8); }
+    .nav-label {
+      margin: 13px 9px 8px;
+      color: #617386;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+    }
+    .nav-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+    .nav-item {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      gap: 11px;
+      min-height: 43px;
+      padding: 0 12px;
+      color: #9aabba;
+      text-align: right;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color .18s ease, background .18s ease, border-color .18s ease;
+      font-size: 12px;
+    }
+    .nav-item i { width: 17px; color: #718397; text-align: center; font-size: 13px; }
+    .nav-item:hover { color: #f0eee7; background: rgba(255,255,255,.035); }
+    .nav-item.active {
+      color: #eadbb9;
+      background: linear-gradient(90deg, rgba(196, 160, 90, .04), rgba(196, 160, 90, .13));
+      border-color: rgba(196, 160, 90, .17);
+    }
+    .nav-item.active::after {
+      position: absolute;
+      top: 9px;
+      right: -1px;
+      bottom: 9px;
+      width: 2px;
+      content: "";
+      background: var(--gold);
+      box-shadow: 0 0 9px rgba(196, 160, 90, .5);
+    }
+    .nav-item.active i { color: var(--gold-bright); }
+    .sidebar-bottom { margin-top: auto; padding-top: 16px; }
+    .demo-note {
+      padding: 12px 12px 11px;
+      color: #8c9aaa;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 10px;
+      line-height: 1.8;
+    }
+    .demo-note i { margin-left: 5px; color: var(--gold); }
+    .sidebar-version { display: flex; justify-content: space-between; margin: 12px 3px 0; color: #5e7184; font: 9px/1.5 ui-monospace, monospace; }
+    .main {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      margin-right: var(--sidebar-width);
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 68px;
+      padding: 0 clamp(20px, 4vw, 54px);
+      background: rgba(7, 17, 29, .83);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+    }
+    .topbar-right, .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .topbar-path { color: var(--muted); font-size: 11px; }
+    .topbar-path strong { color: #e8e9e8; font-weight: 500; }
+    .topbar-divider { width: 1px; height: 17px; background: var(--line); }
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #a8baae;
+      font-size: 10px;
+    }
+    .live-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 9px rgba(104,184,154,.65); }
+    .prototype-tag {
+      padding: 5px 9px;
+      color: var(--gold-bright);
+      background: rgba(196, 160, 90, .08);
+      border: 1px solid rgba(196, 160, 90, .22);
+      border-radius: 3px;
+      font: 600 9px/1.4 "IBM Plex Sans Arabic", sans-serif;
+    }
+    .icon-button {
+      display: inline-grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      color: #9aabba;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .icon-button:hover { color: var(--gold-bright); border-color: var(--line-strong); }
+    .mobile-menu { display: none; }
+    .content { width: min(1500px, 100%); margin: auto; padding: 33px clamp(20px, 4vw, 54px) 55px; }
+    .page-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 23px;
+    }
+    .eyebrow { margin-bottom: 7px; color: var(--gold); font: 600 9px/1.5 ui-monospace, monospace; letter-spacing: .16em; direction: ltr; text-align: right; }
+    h1 { margin: 0; color: #f1f2f1; font-size: clamp(22px, 2.3vw, 29px); line-height: 1.35; font-weight: 600; letter-spacing: -.025em; }
+    .page-description { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+    .heading-actions { display: flex; align-items: center; gap: 9px; }
+    .date-stamp { color: #8191a2; font: 10px/1.5 ui-monospace, monospace; direction: ltr; }
+    .button-primary, .button-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 37px;
+      padding: 0 13px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: transform .16s ease, filter .16s ease;
+    }
+    .button-primary { color: #10151a; background: linear-gradient(135deg, #d6b76f, #b8924c); border: 1px solid #d7b66c; }
+    .button-secondary { color: #c7d0d8; background: rgba(255,255,255,.025); border: 1px solid var(--line); }
+    .button-primary:hover, .button-secondary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .hero {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 142px;
+      padding: 25px 28px;
+      overflow: hidden;
+      background: linear-gradient(108deg, rgba(17, 35, 50, .96), rgba(13, 27, 41, .96) 56%, rgba(21, 35, 47, .8));
+      border: 1px solid rgba(176, 191, 203, .15);
+      border-radius: 7px;
+      box-shadow: 0 16px 44px rgba(0,0,0,.16);
+    }
+    .hero::before {
+      position: absolute;
+      top: -90px;
+      left: 13%;
+      width: 280px;
+      height: 280px;
+      content: "";
+      border: 1px solid rgba(196,160,90,.10);
+      border-radius: 50%;
+      box-shadow: 0 0 0 27px rgba(196,160,90,.018), 0 0 0 55px rgba(196,160,90,.014), 0 0 0 85px rgba(196,160,90,.01);
+    }
+    .hero-copy { position: relative; z-index: 1; max-width: 640px; }
+    .hero-kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #c2a566; font-size: 10px; }
+    .hero-kicker i { font-size: 10px; }
+    .hero h2 { margin: 0; color: #f1f1ed; font-size: clamp(17px, 2vw, 22px); font-weight: 600; }
+    .hero p { margin: 7px 0 0; color: #9babba; font-size: 11px; line-height: 1.8; }
+    .hero-seal {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 70px;
+      height: 70px;
+      flex: 0 0 70px;
+      margin: 0 22px;
+      color: rgba(220, 190, 126, .84);
+      border: 1px solid rgba(196,160,90,.38);
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 5px rgba(196,160,90,.035), 0 0 24px rgba(196,160,90,.07);
+      font-size: 23px;
+    }
+    .hero-seal::before, .hero-seal::after { position: absolute; content: ""; border: 1px solid rgba(196,160,90,.2); border-radius: 50%; }
+    .hero-seal::before { inset: 5px; }
+    .hero-seal::after { inset: -6px; border-style: dashed; opacity: .48; }
+    .section-label { display: flex; align-items: center; gap: 9px; margin: 24px 0 13px; color: #dce2e7; font-size: 12px; font-weight: 600; }
+    .section-label i { color: var(--gold); font-size: 12px; }
+    .section-label small { color: var(--muted); font-size: 10px; font-weight: 400; }
+    .section-line { flex: 1; height: 1px; margin-right: 3px; background: linear-gradient(90deg, transparent, var(--line)); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 17px; }
+    .stat-card {
+      position: relative;
+      min-height: 109px;
+      padding: 15px 16px;
+      overflow: hidden;
+      background: linear-gradient(145deg, rgba(14, 28, 43, .96), rgba(10, 22, 35, .96));
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .stat-card::after { position: absolute; left: -18px; bottom: -38px; width: 90px; height: 90px; content: ""; border: 1px solid rgba(196,160,90,.08); border-radius: 50%; box-shadow: 0 0 0 12px rgba(196,160,90,.018); }
+    .stat-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+    .stat-label { color: #9ba9b6; font-size: 10px; }
+    .stat-icon { display: grid; place-items: center; width: 28px; height: 28px; color: var(--gold-bright); background: rgba(196,160,90,.09); border: 1px solid rgba(196,160,90,.13); border-radius: 5px; font-size: 11px; }
+    .stat-card.danger .stat-icon { color: var(--red); background: var(--red-soft); border-color: rgba(226,107,107,.2); }
+    .stat-card.safe .stat-icon { color: var(--green); background: rgba(104,184,154,.09); border-color: rgba(104,184,154,.18); }
+    .stat-value { margin-top: 9px; color: #f0f2f2; font: 600 26px/1 ui-monospace, monospace; direction: ltr; text-align: right; }
+    .stat-foot { margin-top: 7px; color: #66798b; font-size: 9px; }
+    .overview-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(270px, .8fr); gap: 13px; margin-top: 14px; }
+    .panel {
+      min-width: 0;
+      background: linear-gradient(145deg, rgba(13, 27, 42, .92), rgba(10, 21, 33, .96));
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 49px; padding: 0 15px; border-bottom: 1px solid var(--line); }
+    .panel-title { display: flex; align-items: center; gap: 8px; color: #dfe4e8; font-size: 11px; font-weight: 600; }
+    .panel-title i { color: var(--gold); font-size: 11px; }
+    .panel-caption { color: #75879a; font-size: 9px; }
+    .latest-list { display: grid; }
+    .latest-item {
+      display: grid;
+      grid-template-columns: 31px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(170,187,204,.07);
+      transition: background .16s ease;
+    }
+    .latest-item:last-child { border-bottom: 0; }
+    .latest-item:hover { background: rgba(255,255,255,.025); }
+    .latest-icon { display: grid; place-items: center; width: 30px; height: 30px; color: var(--red); background: var(--red-soft); border: 1px solid rgba(226,107,107,.16); border-radius: 5px; font-size: 11px; }
+    .latest-icon.low { color: var(--blue); background: rgba(121,169,206,.09); border-color: rgba(121,169,206,.16); }
+    .latest-title { overflow: hidden; color: #dbe1e5; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .latest-meta { margin-top: 3px; color: #728396; font: 9px/1.5 ui-monospace, sans-serif; direction: ltr; text-align: right; }
+    .latest-date { color: #77899a; font: 9px/1.5 ui-monospace, monospace; direction: ltr; }
+    .signal-body { padding: 15px; }
+    .signal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 13px; color: #a7b3bf; font-size: 10px; }
+    .signal-row:last-of-type { margin-bottom: 0; }
+    .signal-number { color: #e5e8e9; font: 600 11px ui-monospace, monospace; direction: ltr; }
+    .signal-track { height: 4px; margin-top: 7px; overflow: hidden; background: #172637; border-radius: 9px; }
+    .signal-fill { height: 100%; background: linear-gradient(90deg, #927747, #d2b36d); border-radius: inherit; }
+    .signal-fill.red { background: linear-gradient(90deg, #973f48, #df7474); }
+    .signal-fill.green { background: linear-gradient(90deg, #3a806f, #78c0a0); }
+    .signal-footnote { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 11px; color: #738699; border-top: 1px solid var(--line); font-size: 9px; }
+    .signal-footnote i { color: var(--green); font-size: 8px; }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(210px, 1.5fr) repeat(4, minmax(115px, 1fr));
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .search-box, .filter-select {
+      width: 100%;
+      height: 35px;
+      color: #cbd4dc;
+      background: #091522;
+      border: 1px solid rgba(170,187,204,.14);
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .search-box { padding: 0 11px; }
+    .search-box::placeholder { color: #687c8e; }
+    .filter-select { padding: 0 8px; cursor: pointer; }
+    .table-scroll { overflow-x: auto; scrollbar-color: #344557 transparent; scrollbar-width: thin; }
+    .warning-table { width: 100%; min-width: 1010px; border-collapse: collapse; text-align: right; }
+    .warning-table th {
+      padding: 11px 13px;
+      color: #718396;
+      background: rgba(255,255,255,.012);
+      border-bottom: 1px solid var(--line);
+      font-size: 9px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .warning-table td {
+      padding: 11px 13px;
+      color: #cad2da;
+      border-bottom: 1px solid rgba(170,187,204,.07);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .warning-table tbody tr { cursor: pointer; transition: background .14s ease; }
+    .warning-table tbody tr:hover { background: rgba(196,160,90,.045); }
+    .warning-table tbody tr:last-child td { border-bottom: 0; }
+    .warning-id { color: #d0b36f; font: 600 10px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .person-name { color: #e3e7e9; font-weight: 500; }
+    .person-code { color: #8495a5; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .severity, .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      font-size: 9px;
+    }
+    .severity::before, .status::before { width: 5px; height: 5px; content: ""; border-radius: 50%; background: currentColor; }
+    .severity.critical { color: #f08a8a; background: rgba(226,107,107,.1); border-color: rgba(226,107,107,.2); }
+    .severity.high { color: #d7a466; background: rgba(215,164,102,.1); border-color: rgba(215,164,102,.2); }
+    .severity.medium { color: #c4b06f; background: rgba(196,176,111,.08); border-color: rgba(196,176,111,.17); }
+    .severity.low { color: #85aac5; background: rgba(121,169,206,.09); border-color: rgba(121,169,206,.18); }
+    .status.active { color: #e0a568; background: rgba(224,165,104,.08); border-color: rgba(224,165,104,.18); }
+    .status.closed { color: #7cbd9f; background: rgba(104,184,154,.08); border-color: rgba(104,184,154,.18); }
+    .date-cell { color: #91a0ae !important; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 0 13px; color: #75879a; border-top: 1px solid var(--line); font-size: 9px; }
+    .table-footer strong { color: #bdc7ce; font: 500 10px ui-monospace, monospace; }
+    .empty-state { padding: 34px 12px; color: var(--muted); text-align: center; font-size: 11px; }
+    .empty-state i { display: block; margin-bottom: 10px; color: #65798c; font-size: 20px; }
+    .placeholder-card {
+      display: grid;
+      place-items: center;
+      min-height: 340px;
+      padding: 28px;
+      text-align: center;
+      background: linear-gradient(145deg, rgba(13,27,42,.94), rgba(9,19,31,.98));
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .placeholder-icon { display: grid; place-items: center; width: 55px; height: 55px; margin: 0 auto 16px; color: var(--gold); background: rgba(196,160,90,.08); border: 1px solid rgba(196,160,90,.2); border-radius: 50%; font-size: 19px; }
+    .placeholder-card h2 { margin: 0; color: #e8ebeb; font-size: 17px; font-weight: 500; }
+    .placeholder-card p { max-width: 430px; margin: 9px auto 0; color: #91a1b0; font-size: 11px; line-height: 1.9; }
+    .placeholder-tag { display: inline-flex; align-items: center; gap: 6px; margin-top: 19px; padding: 6px 9px; color: #d1b775; background: rgba(196,160,90,.07); border: 1px solid rgba(196,160,90,.17); border-radius: 3px; font-size: 9px; }
+    .form-preview { width: min(610px, 100%); margin-top: 23px; text-align: right; }
+    .form-preview label { display: block; margin: 0 0 6px; color: #9ba9b6; font-size: 10px; }
+    .form-preview select, .form-preview input, .form-preview textarea { width: 100%; margin-bottom: 13px; padding: 10px; color: #b6c0c8; background: #081421; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; }
+    .form-preview textarea { min-height: 86px; resize: vertical; }
+    .form-preview :disabled { opacity: .65; cursor: not-allowed; }
+    .prototype-footnote { margin-top: 13px; color: #728497; font-size: 9px; }
+    .mobile-overlay { display: none; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(1, 5, 9, .78);
+      backdrop-filter: blur(6px);
+    }
+    .modal-backdrop.open { display: flex; }
+    .detail-modal { width: min(490px, 100%); padding: 20px; background: linear-gradient(145deg, #112237, #091522); border: 1px solid rgba(196,160,90,.28); border-radius: 7px; box-shadow: 0 24px 80px rgba(0,0,0,.48); }
+    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; color: #f0f0eb; font-size: 17px; font-weight: 600; }
+    .modal-head p { margin: 5px 0 0; color: #8192a2; font: 10px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .modal-close { flex: 0 0 auto; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
+    .detail-field { padding: 10px; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 4px; }
+    .detail-field small { display: block; color: #7e90a1; font-size: 9px; }
+    .detail-field strong { display: block; margin-top: 5px; color: #e1e5e6; font-size: 11px; font-weight: 500; }
+    .detail-disclaimer { margin-top: 12px; padding: 9px 10px; color: #bca76e; background: rgba(196,160,90,.055); border-right: 2px solid var(--gold); font-size: 9px; line-height: 1.7; }
+    .toast {
+      position: fixed;
+      right: 50%;
+      bottom: 22px;
+      z-index: 70;
+      max-width: calc(100vw - 28px);
+      padding: 10px 15px;
+      color: #d9e1e5;
+      background: #122236;
+      border: 1px solid rgba(196,160,90,.3);
+      border-radius: 4px;
+      box-shadow: 0 12px 35px rgba(0,0,0,.3);
+      font-size: 10px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(50%, 8px);
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(50%, 0); }
+    .hidden { display: none !important; }
+
+    @media (max-width: 1180px) {
+      :root { --sidebar-width: 238px; }
+      .toolbar { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+      .search-box { grid-column: span 4; }
+    }
+    @media (max-width: 900px) {
+      :root { --sidebar-width: 238px; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      .sidebar { width: min(290px, 84vw); transform: translateX(103%); transition: transform .22s ease; }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-right: 0; }
+      .mobile-overlay.open { position: fixed; inset: 0; z-index: 15; display: block; background: rgba(0,0,0,.57); }
+      .mobile-menu { display: inline-grid; }
+      .topbar { min-height: 58px; padding: 0 16px; }
+      .topbar-right { gap: 10px; }
+      .topbar-left { gap: 8px; }
+      .topbar-path { font-size: 10px; }
+      .prototype-tag { padding: 4px 7px; font-size: 8px; }
+      .content { padding: 24px 15px 40px; }
+      .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 18px; }
+      .heading-actions { width: 100%; justify-content: space-between; }
+      .hero { min-height: 129px; padding: 19px 17px; }
+      .hero-seal { width: 53px; height: 53px; flex-basis: 53px; margin: 0 5px 0 0; font-size: 17px; }
+      .hero p { max-width: 380px; font-size: 10px; }
+      .stats-grid { gap: 8px; margin-top: 13px; }
+      .stat-card { min-height: 99px; padding: 12px; }
+      .stat-label { font-size: 9px; }
+      .stat-value { font-size: 23px; }
+      .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .search-box { grid-column: span 2; }
+      .table-footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 3px; padding: 9px 12px; }
+    }
+    @media (max-width: 420px) {
+      .live-indicator { display: none; }
+      .topbar-divider { display: none; }
+      .hero-seal { display: none; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .section-label { margin-top: 20px; }
+      .toolbar { gap: 7px; padding: 9px; }
+      .filter-select { font-size: 9px; }
+      .detail-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-grid" aria-hidden="true"></div>
+  <div class="mobile-overlay" id="mobileOverlay" aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="التنقل الرئيسي">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></div>
+      <div>
+        <p class="brand-name">BLACKRIDGE CITY</p>
+        <div class="brand-subtitle">نظام التحذيرات الرسمي</div>
+      </div>
+    </div>
+    <div class="class-chip">COMMAND • INTERNAL</div>
+    <div class="nav-label">القائمة الرئيسية</div>
+    <nav>
+      <ul class="nav-list">
+        <li><button class="nav-item active" data-page="dashboard" type="button" aria-current="page"><i class="fa-solid fa-border-all"></i><span>الرئيسية</span></button></li>
+        <li><button class="nav-item" data-page="records" type="button"><i class="fa-solid fa-folder-open"></i><span>سجل التحذيرات</span></button></li>
+        <li><button class="nav-item" data-page="new-warning" type="button"><i class="fa-solid fa-file-circle-plus"></i><span>إصدار تحذير جديد</span></button></li>
+        <li><button class="nav-item" data-page="personnel" type="button"><i class="fa-solid fa-user-shield"></i><span>ملفات الأفراد</span></button></li>
+        <li><button class="nav-item" data-page="review" type="button"><i class="fa-solid fa-clipboard-check"></i><span>المراجعة والاعتماد</span></button></li>
+        <li><button class="nav-item" data-page="reports" type="button"><i class="fa-solid fa-chart-column"></i><span>الإحصائيات والتقارير</span></button></li>
+      </ul>
+    </nav>
+    <div class="nav-label">النظام</div>
+    <ul class="nav-list">
+      <li><button class="nav-item" data-page="settings" type="button"><i class="fa-solid fa-sliders"></i><span>الصلاحيات والإعدادات</span></button></li>
+    </ul>
+    <div class="sidebar-bottom">
+      <div class="demo-note"><i class="fa-solid fa-circle-info"></i> نموذج واجهة مستقل. جميع الأسماء والسجلات المعروضة تجريبية.</div>
+      <div class="sidebar-version"><span>BR • WARNING SYSTEM</span><span>UI / 01</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-right">
+        <button class="icon-button mobile-menu" id="menuToggle" type="button" aria-label="فتح القائمة"><i class="fa-solid fa-bars"></i></button>
+        <div class="topbar-path"><span>BLACKRIDGE CITY</span><span class="topbar-divider"></span><strong id="breadcrumb">الرئيسية</strong></div>
+      </div>
+      <div class="topbar-left">
+        <span class="live-indicator"><span class="live-dot"></span> وضع العرض التجريبي</span>
+        <span class="prototype-tag">PROTOTYPE • PHASE 01</span>
+        <button class="icon-button" id="infoButton" type="button" aria-label="معلومات النموذج" title="معلومات النموذج"><i class="fa-regular fa-circle-question"></i></button>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="page-view" id="page-dashboard" data-title="الرئيسية">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">BLACKRIDGE // COMMAND OVERVIEW</div>
+            <h1>مركز التحذيرات</h1>
+            <p class="page-description">نظرة تشغيلية على التحذيرات والسجلات الإدارية للأفراد.</p>
+          </div>
+          <div class="heading-actions">
+            <span class="date-stamp">13 OCT 2026 • 09:40</span>
+            <button class="button-primary" type="button" data-open-page="new-warning"><i class="fa-solid fa-plus"></i> تحذير جديد</button>
+          </div>
+        </div>
+
+        <section class="hero" aria-label="ملخص النظام">
+          <div class="hero-copy">
+            <div class="hero-kicker"><i class="fa-solid fa-crosshairs"></i><span>BLACKRIDGE CITY / PERSONNEL OVERSIGHT</span></div>
+            <h2>مركز القيادة الإدارية</h2>
+            <p>واجهة موحّدة لمتابعة سجل التحذيرات وحالة المراجعة. هذه معاينة مستقلة للمرحلة الأولى، ببيانات مصطنعة بالكامل.</p>
+          </div>
+          <div class="hero-seal" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></div>
+        </section>
+
+        <div class="stats-grid" aria-label="مؤشرات التحذيرات">
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">إجمالي التحذيرات</span><span class="stat-icon"><i class="fa-solid fa-file-lines"></i></span></div>
+            <div class="stat-value" id="statTotal">—</div>
+            <div class="stat-foot">كافة السجلات التجريبية</div>
+          </article>
+          <article class="stat-card danger">
+            <div class="stat-top"><span class="stat-label">التحذيرات النشطة</span><span class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></span></div>
+            <div class="stat-value" id="statActive">—</div>
+            <div class="stat-foot">تتطلب متابعة إدارية</div>
+          </article>
+          <article class="stat-card safe">
+            <div class="stat-top"><span class="stat-label">التحذيرات المغلقة</span><span class="stat-icon"><i class="fa-solid fa-circle-check"></i></span></div>
+            <div class="stat-value" id="statClosed">—</div>
+            <div class="stat-foot">أُغلقت ضمن السجل التجريبي</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">أفراد لديهم تحذيرات</span><span class="stat-icon"><i class="fa-solid fa-user-tag"></i></span></div>
+            <div class="stat-value" id="statPersonnel">—</div>
+            <div class="stat-foot">أفراد فريدون ضمن العينة</div>
+          </article>
+        </div>
+
+        <div class="section-label"><i class="fa-solid fa-signal"></i><span>ملخص الحالة</span><span class="section-line"></span></div>
+        <div class="overview-grid">
+          <section class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> أحدث التحذيرات</div>
+              <span class="panel-caption">آخر السجلات المضافة</span>
+            </div>
+            <div class="latest-list" id="latestList"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><i class="fa-solid fa-chart-simple"></i> توزيع الحالة</div>
+              <span class="panel-caption">بيانات تجريبية</span>
+            </div>
+            <div class="signal-body">
+              <div class="signal-row"><span>نشط</span><span class="signal-number" id="activeRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill red" id="activeBar"></div></div>
+              <div class="signal-row" style="margin-top:14px"><span>مغلق</span><span class="signal-number" id="closedRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill green" id="closedBar"></div></div>
+              <div class="signal-footnote"><i class="fa-solid fa-circle"></i><span>الأرقام مستمدة من السجلات الوهمية في هذه المعاينة.</span></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel" style="margin-top:22px">
+          <div class="panel-header">
+            <div class="panel-title"><i class="fa-solid fa-list-check"></i> سجل التحذيرات</div>
+            <span class="panel-caption">اختر سجلًا لعرض التفاصيل</span>
+          </div>
+          <div class="toolbar">
+            <input class="search-box" id="searchInput" type="search" placeholder="ابحث بالاسم التجريبي أو الكود العسكري…" autocomplete="off" aria-label="بحث بالاسم أو الكود العسكري">
+            <select class="filter-select" id="rankFilter" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
+            <select class="filter-select" id="sectorFilter" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
+            <select class="filter-select" id="typeFilter" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
+            <select class="filter-select" id="statusFilter" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option></select>
+          </div>
+          <div class="table-scroll">
+            <table class="warning-table">
+              <thead><tr>
+                <th>رقم التحذير</th><th>اسم الفرد</th><th>الكود العسكري</th><th>الرتبة</th><th>القطاع</th><th>النوع</th><th>الخطورة</th><th>الحالة</th><th>تاريخ الإصدار</th>
+              </tr></thead>
+              <tbody id="warningRows"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="resultCount">—</span><strong>DEMO DATA • NO REAL PERSONNEL</strong></div>
+        </section>
+      </section>
+
+      <section class="page-view hidden" id="page-records" data-title="سجل التحذيرات">
+        <div class="page-heading">
+          <div><div class="eyebrow">RECORDS // SEARCH & FILTER</div><h1>سجل التحذيرات</h1><p class="page-description">ابحث في السجلات التجريبية وضيّق النتائج حسب الرتبة أو القطاع أو النوع أو الحالة.</p></div>
+          <div class="heading-actions"><button class="button-secondary" type="button" id="clearFilters"><i class="fa-solid fa-rotate-left"></i> مسح الفلاتر</button></div>
+        </div>
+        <section class="panel">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-folder-open"></i> جميع السجلات</div><span class="panel-caption">بيانات خيالية • وضع العرض فقط</span></div>
+          <div class="toolbar">
+            <input class="search-box" id="searchInputRecords" type="search" placeholder="ابحث بالاسم التجريبي أو الكود العسكري…" autocomplete="off" aria-label="بحث بالاسم أو الكود العسكري">
+            <select class="filter-select" id="rankFilterRecords" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
+            <select class="filter-select" id="sectorFilterRecords" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
+            <select class="filter-select" id="typeFilterRecords" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
+            <select class="filter-select" id="statusFilterRecords" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option></select>
+          </div>
+          <div class="table-scroll">
+            <table class="warning-table">
+              <thead><tr><th>رقم التحذير</th><th>اسم الفرد</th><th>الكود العسكري</th><th>الرتبة</th><th>القطاع</th><th>النوع</th><th>الخطورة</th><th>الحالة</th><th>تاريخ الإصدار</th></tr></thead>
+              <tbody id="warningRowsRecords"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="resultCountRecords">—</span><strong>DEMO DATA • NO REAL PERSONNEL</strong></div>
+        </section>
+      </section>
+
+      <section class="page-view hidden" id="page-new-warning" data-title="إصدار تحذير جديد">
+        <div class="page-heading"><div><div class="eyebrow">COMMAND // NEW NOTICE</div><h1>إصدار تحذير جديد</h1><p class="page-description">معاينة شكل نموذج الإدخال فقط — لا يتم إنشاء سجل أو إرسال بيانات.</p></div></div>
+        <div class="placeholder-card">
+          <div>
+            <div class="placeholder-icon"><i class="fa-solid fa-file-circle-plus"></i></div>
+            <h2>نموذج إصدار التحذير</h2>
+            <p>الحقول أدناه للمعاينة البصرية فقط. آلية الإصدار والصلاحيات والاعتماد خارج نطاق المرحلة الأولى.</p>
+            <div class="form-preview">
+              <label for="demoPerson">الفرد المستهدف</label><select id="demoPerson" disabled><option>اختر فردًا تجريبيًا</option><option>نسر تجريبي 01 • BR-TR-041</option></select>
+              <label for="demoType">نوع التحذير</label><select id="demoType" disabled><option>اختر نوع التحذير</option><option>انضباطي</option></select>
+              <label for="demoReason">تفاصيل التحذير</label><textarea id="demoReason" placeholder="وصف مختصر للواقعة…" disabled></textarea>
+              <button class="button-primary" type="button" disabled><i class="fa-solid fa-lock"></i> إصدار تجريبي غير متاح</button>
+            </div>
+            <div class="prototype-footnote"><i class="fa-solid fa-shield-halved"></i> لا توجد اتصالات بخادم أو قاعدة بيانات.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-view hidden" id="page-personnel" data-title="ملفات الأفراد">
+        <div class="page-heading"><div><div class="eyebrow">PERSONNEL // FILES</div><h1>ملفات الأفراد</h1><p class="page-description">تصور أولي لقائمة ملفات الأفراد المرتبطة بسجلات التحذير.</p></div></div>
+        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-user-shield"></i></div><h2>ملفات الأفراد — قيد التخطيط</h2><p>ستُصمم تفاصيل الملف وربط السجلات في مرحلة لاحقة. هذه المرحلة تعرض بيانات أشخاص تجريبية في لوحة التحذيرات فقط.</p><span class="placeholder-tag"><i class="fa-solid fa-circle-info"></i> معاينة الواجهة • بلا ملفات حقيقية</span></div></div>
+      </section>
+      <section class="page-view hidden" id="page-review" data-title="المراجعة والاعتماد">
+        <div class="page-heading"><div><div class="eyebrow">REVIEW // AUTHORIZATION</div><h1>المراجعة والاعتماد</h1><p class="page-description">مساحة مبدئية لمسار مراجعة التحذيرات واعتمادها.</p></div></div>
+        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-clipboard-check"></i></div><h2>مسار الاعتماد غير مفعّل</h2><p>يعرض هذا القسم حالة الواجهة فقط. قواعد المراجعة وسير الاعتماد لم تُنفذ في هذه المرحلة.</p><span class="placeholder-tag"><i class="fa-solid fa-hourglass-half"></i> مرحلة لاحقة</span></div></div>
+      </section>
+      <section class="page-view hidden" id="page-reports" data-title="الإحصائيات والتقارير">
+        <div class="page-heading"><div><div class="eyebrow">INTELLIGENCE // REPORTS</div><h1>الإحصائيات والتقارير</h1><p class="page-description">ملخص المؤشرات المعروضة من عينة البيانات التجريبية.</p></div><div class="heading-actions"><button class="button-secondary" type="button" data-open-page="dashboard"><i class="fa-solid fa-arrow-right"></i> العودة للرئيسية</button></div></div>
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-top"><span class="stat-label">إجمالي التحذيرات</span><span class="stat-icon"><i class="fa-solid fa-file-lines"></i></span></div><div class="stat-value report-total">—</div></article>
+          <article class="stat-card danger"><div class="stat-top"><span class="stat-label">التحذيرات النشطة</span><span class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></span></div><div class="stat-value report-active">—</div></article>
+          <article class="stat-card safe"><div class="stat-top"><span class="stat-label">التحذيرات المغلقة</span><span class="stat-icon"><i class="fa-solid fa-circle-check"></i></span></div><div class="stat-value report-closed">—</div></article>
+          <article class="stat-card"><div class="stat-top"><span class="stat-label">الأفراد ذوو التحذيرات</span><span class="stat-icon"><i class="fa-solid fa-user-tag"></i></span></div><div class="stat-value report-personnel">—</div></article>
+        </div>
+        <p class="prototype-footnote"><i class="fa-solid fa-circle-info"></i> هذه المؤشرات توضيحية فقط، ولا تمثل سجلًا تشغيليًا.</p>
+      </section>
+      <section class="page-view hidden" id="page-settings" data-title="الصلاحيات والإعدادات">
+        <div class="page-heading"><div><div class="eyebrow">SYSTEM // ACCESS CONTROL</div><h1>الصلاحيات والإعدادات</h1><p class="page-description">معاينة الهيكل المقترح لإعدادات النظام وصلاحياته.</p></div></div>
+        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-sliders"></i></div><h2>الإعدادات غير مفعّلة</h2><p>لا توجد حسابات أو صلاحيات متصلة بهذا النموذج. ستُحدد الأدوار وسياسات الوصول ضمن مرحلة التنفيذ الوظيفي.</p><span class="placeholder-tag"><i class="fa-solid fa-lock"></i> واجهة فقط • لا مصادقة</span></div></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-backdrop" id="detailBackdrop" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <article class="detail-modal">
+      <div class="modal-head">
+        <div><h2 id="detailTitle">تفاصيل التحذير</h2><p id="detailId"></p></div>
+        <button class="icon-button modal-close" id="modalClose" type="button" aria-label="إغلاق التفاصيل"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="detail-grid" id="detailGrid"></div>
+      <div class="detail-disclaimer"><i class="fa-solid fa-circle-info"></i> سجل وهمي لعرض التفاعل فقط — لا توجد بيانات شخصية حقيقية.</div>
+    </article>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    "use strict";
+
+    // All records below are invented UI fixtures; no real personnel data is used.
+    const warningRecords = [
+      { id: "WRN-26041", name: "نسر تجريبي 01", code: "BR-TR-041", rank: "ملازم", sector: "القطاع الشمالي", type: "انضباطي", severity: "مرتفع", status: "نشط", date: "2026-10-12" },
+      { id: "WRN-26040", name: "صقر تجريبي 02", code: "BR-TR-028", rank: "رقيب أول", sector: "القطاع الغربي", type: "التزام بالإجراءات", severity: "متوسط", status: "نشط", date: "2026-10-11" },
+      { id: "WRN-26039", name: "غيث تجريبي 03", code: "BR-TR-067", rank: "نقيب", sector: "مركز القيادة", type: "إداري", severity: "منخفض", status: "مغلق", date: "2026-10-10" },
+      { id: "WRN-26038", name: "رعد تجريبي 04", code: "BR-TR-013", rank: "عريف", sector: "القطاع الشرقي", type: "غياب", severity: "حرج", status: "نشط", date: "2026-10-09" },
+      { id: "WRN-26037", name: "نسر تجريبي 01", code: "BR-TR-041", rank: "ملازم", sector: "القطاع الشمالي", type: "إداري", severity: "منخفض", status: "مغلق", date: "2026-10-08" },
+      { id: "WRN-26036", name: "مزن تجريبي 05", code: "BR-TR-052", rank: "رقيب", sector: "القطاع الجنوبي", type: "انضباطي", severity: "مرتفع", status: "نشط", date: "2026-10-07" },
+      { id: "WRN-26035", name: "صقر تجريبي 02", code: "BR-TR-028", rank: "رقيب أول", sector: "القطاع الغربي", type: "تأخر", severity: "متوسط", status: "مغلق", date: "2026-10-06" },
+      { id: "WRN-26034", name: "سهل تجريبي 06", code: "BR-TR-076", rank: "ملازم أول", sector: "مركز القيادة", type: "التزام بالإجراءات", severity: "مرتفع", status: "نشط", date: "2026-10-05" },
+      { id: "WRN-26033", name: "غيث تجريبي 03", code: "BR-TR-067", rank: "نقيب", sector: "مركز القيادة", type: "انضباطي", severity: "منخفض", status: "مغلق", date: "2026-10-04" },
+      { id: "WRN-26032", name: "برق تجريبي 07", code: "BR-TR-089", rank: "عريف", sector: "القطاع الشرقي", type: "تأخر", severity: "متوسط", status: "نشط", date: "2026-10-03" },
+      { id: "WRN-26031", name: "مزن تجريبي 05", code: "BR-TR-052", rank: "رقيب", sector: "القطاع الجنوبي", type: "غياب", severity: "حرج", status: "مغلق", date: "2026-10-02" },
+      { id: "WRN-26030", name: "سهل تجريبي 06", code: "BR-TR-076", rank: "ملازم أول", sector: "مركز القيادة", type: "إداري", severity: "منخفض", status: "نشط", date: "2026-10-01" }
+    ];
+
+    const pageNames = {
+      dashboard: "الرئيسية",
+      records: "سجل التحذيرات",
+      "new-warning": "إصدار تحذير جديد",
+      personnel: "ملفات الأفراد",
+      review: "المراجعة والاعتماد",
+      reports: "الإحصائيات والتقارير",
+      settings: "الصلاحيات والإعدادات"
+    };
+
+    const severityClass = { "حرج": "critical", "مرتفع": "high", "متوسط": "medium", "منخفض": "low" };
+    let toastTimer;
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    function formatDate(isoDate) {
+      const [year, month, day] = isoDate.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    function getFilteredRecords(prefix) {
+      const search = document.getElementById(`searchInput${prefix}`).value.trim().toLocaleLowerCase("ar");
+      const rank = document.getElementById(`rankFilter${prefix}`).value;
+      const sector = document.getElementById(`sectorFilter${prefix}`).value;
+      const type = document.getElementById(`typeFilter${prefix}`).value;
+      const status = document.getElementById(`statusFilter${prefix}`).value;
+      return warningRecords.filter((record) => {
+        const matchesSearch = !search || record.name.toLocaleLowerCase("ar").includes(search) || record.code.toLocaleLowerCase("en").includes(search);
+        return matchesSearch
+          && (!rank || record.rank === rank)
+          && (!sector || record.sector === sector)
+          && (!type || record.type === type)
+          && (!status || record.status === status);
+      });
+    }
+
+    function renderRows(prefix, targetId, countId) {
+      const records = getFilteredRecords(prefix);
+      const target = document.getElementById(targetId);
+      if (!records.length) {
+        target.innerHTML = `<tr><td colspan="9"><div class="empty-state"><i class="fa-solid fa-magnifying-glass"></i>لا توجد سجلات تطابق البحث أو الفلاتر.</div></td></tr>`;
+      } else {
+        target.innerHTML = records.map((record) => `
+          <tr data-record-id="${escapeHtml(record.id)}" tabindex="0" aria-label="عرض التحذير ${escapeHtml(record.id)}">
+            <td class="warning-id">${escapeHtml(record.id)}</td>
+            <td class="person-name">${escapeHtml(record.name)}</td>
+            <td class="person-code">${escapeHtml(record.code)}</td>
+            <td>${escapeHtml(record.rank)}</td>
+            <td>${escapeHtml(record.sector)}</td>
+            <td>${escapeHtml(record.type)}</td>
+            <td><span class="severity ${severityClass[record.severity]}">${escapeHtml(record.severity)}</span></td>
+            <td><span class="status ${record.status === "نشط" ? "active" : "closed"}">${escapeHtml(record.status)}</span></td>
+            <td class="date-cell">${formatDate(record.date)}</td>
+          </tr>`).join("");
+        target.querySelectorAll("tr[data-record-id]").forEach((row) => {
+          row.addEventListener("click", () => openDetails(row.dataset.recordId));
+          row.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openDetails(row.dataset.recordId);
+            }
+          });
+        });
+      }
+      document.getElementById(countId).textContent = `عرض ${records.length} من ${warningRecords.length} سجلات`;
+    }
+
+    function syncFilterOptions() {
+      const options = [
+        ["rank", "كل الرتب", "rank"],
+        ["sector", "كل القطاعات", "sector"],
+        ["type", "كل الأنواع", "type"]
+      ];
+      for (const [field, defaultLabel, idPart] of options) {
+        const values = [...new Set(warningRecords.map((record) => record[field]))].sort((a, b) => a.localeCompare(b, "ar"));
+        for (const suffix of ["", "Records"]) {
+          const select = document.getElementById(`${idPart}Filter${suffix}`);
+          select.innerHTML = `<option value="">${defaultLabel}</option>${values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+        }
+      }
+    }
+
+    function renderStats() {
+      const active = warningRecords.filter((record) => record.status === "نشط").length;
+      const closed = warningRecords.length - active;
+      const people = new Set(warningRecords.map((record) => record.code)).size;
+      document.getElementById("statTotal").textContent = warningRecords.length;
+      document.getElementById("statActive").textContent = active;
+      document.getElementById("statClosed").textContent = closed;
+      document.getElementById("statPersonnel").textContent = people;
+      document.querySelectorAll(".report-total").forEach((node) => node.textContent = warningRecords.length);
+      document.querySelectorAll(".report-active").forEach((node) => node.textContent = active);
+      document.querySelectorAll(".report-closed").forEach((node) => node.textContent = closed);
+      document.querySelectorAll(".report-personnel").forEach((node) => node.textContent = people);
+      document.getElementById("activeRatio").textContent = `${active} / ${warningRecords.length}`;
+      document.getElementById("closedRatio").textContent = `${closed} / ${warningRecords.length}`;
+      document.getElementById("activeBar").style.width = `${Math.round((active / warningRecords.length) * 100)}%`;
+      document.getElementById("closedBar").style.width = `${Math.round((closed / warningRecords.length) * 100)}%`;
+    }
+
+    function renderLatest() {
+      const latest = [...warningRecords].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+      document.getElementById("latestList").innerHTML = latest.map((record) => `
+        <div class="latest-item" data-record-id="${escapeHtml(record.id)}" tabindex="0" role="button" aria-label="عرض التحذير ${escapeHtml(record.id)}">
+          <span class="latest-icon ${record.severity === "منخفض" ? "low" : ""}"><i class="fa-solid ${record.status === "مغلق" ? "fa-check" : "fa-exclamation"}"></i></span>
+          <span><span class="latest-title">${escapeHtml(record.name)} <span style="color:#8090a0">• ${escapeHtml(record.type)}</span></span><span class="latest-meta">${escapeHtml(record.id)} &nbsp; / &nbsp; ${escapeHtml(record.code)}</span></span>
+          <span class="latest-date">${formatDate(record.date)}</span>
+        </div>`).join("");
+      document.querySelectorAll(".latest-item[data-record-id]").forEach((item) => {
+        item.addEventListener("click", () => openDetails(item.dataset.recordId));
+        item.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDetails(item.dataset.recordId);
+          }
+        });
+      });
+    }
+
+    function openDetails(id) {
+      const record = warningRecords.find((item) => item.id === id);
+      if (!record) return;
+      document.getElementById("detailTitle").textContent = `${record.name} • ${record.type}`;
+      document.getElementById("detailId").textContent = record.id;
+      const fields = [
+        ["الكود العسكري", record.code],
+        ["الرتبة", record.rank],
+        ["القطاع", record.sector],
+        ["نوع التحذير", record.type],
+        ["الخطورة", record.severity],
+        ["الحالة", record.status],
+        ["تاريخ الإصدار", formatDate(record.date)]
+      ];
+      document.getElementById("detailGrid").innerHTML = fields.map(([label, value]) =>
+        `<div class="detail-field"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`
+      ).join("");
+      document.getElementById("detailBackdrop").classList.add("open");
+      document.getElementById("modalClose").focus();
+    }
+
+    function closeDetails() {
+      document.getElementById("detailBackdrop").classList.remove("open");
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2800);
+    }
+
+    function setPage(page) {
+      if (!pageNames[page]) return;
+      document.querySelectorAll(".page-view").forEach((view) => view.classList.toggle("hidden", view.id !== `page-${page}`));
+      document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
+        const active = item.dataset.page === page;
+        item.classList.toggle("active", active);
+        if (active) item.setAttribute("aria-current", "page");
+        else item.removeAttribute("aria-current");
+      });
+      document.getElementById("breadcrumb").textContent = pageNames[page];
+      closeMobileMenu();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function openMobileMenu() {
+      document.getElementById("sidebar").classList.add("open");
+      document.getElementById("mobileOverlay").classList.add("open");
+      document.getElementById("mobileOverlay").setAttribute("aria-hidden", "false");
+    }
+
+    function closeMobileMenu() {
+      document.getElementById("sidebar").classList.remove("open");
+      document.getElementById("mobileOverlay").classList.remove("open");
+      document.getElementById("mobileOverlay").setAttribute("aria-hidden", "true");
+    }
+
+    function initFilters() {
+      const filterIds = ["searchInput", "rankFilter", "sectorFilter", "typeFilter", "statusFilter"];
+      const filterIdsRecords = ["searchInputRecords", "rankFilterRecords", "sectorFilterRecords", "typeFilterRecords", "statusFilterRecords"];
+      for (const id of [...filterIds, ...filterIdsRecords]) {
+        const element = document.getElementById(id);
+        element.addEventListener("input", () => {
+          if (id.endsWith("Records")) {
+            const homeId = id.replace("Records", "");
+            document.getElementById(homeId).value = element.value;
+          } else {
+            const recordsId = `${id}Records`;
+            document.getElementById(recordsId).value = element.value;
+          }
+          renderRows("", "warningRows", "resultCount");
+          renderRows("Records", "warningRowsRecords", "resultCountRecords");
+        });
+        element.addEventListener("change", () => element.dispatchEvent(new Event("input", { bubbles: true })));
+      }
+    }
+
+    document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
+      item.addEventListener("click", () => setPage(item.dataset.page));
+    });
+    document.querySelectorAll("[data-open-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(button.dataset.openPage));
+    });
+    document.getElementById("menuToggle").addEventListener("click", openMobileMenu);
+    document.getElementById("mobileOverlay").addEventListener("click", closeMobileMenu);
+    document.getElementById("modalClose").addEventListener("click", closeDetails);
+    document.getElementById("detailBackdrop").addEventListener("click", (event) => {
+      if (event.target.id === "detailBackdrop") closeDetails();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeDetails();
+        closeMobileMenu();
+      }
+    });
+    document.getElementById("clearFilters").addEventListener("click", () => {
+      ["searchInputRecords", "rankFilterRecords", "sectorFilterRecords", "typeFilterRecords", "statusFilterRecords"].forEach((id) => {
+        document.getElementById(id).value = "";
+      });
+      ["searchInput", "rankFilter", "sectorFilter", "typeFilter", "statusFilter"].forEach((id) => {
+        document.getElementById(id).value = "";
+      });
+      renderRows("", "warningRows", "resultCount");
+      renderRows("Records", "warningRowsRecords", "resultCountRecords");
+    });
+    document.getElementById("infoButton").addEventListener("click", () => {
+      showToast("نموذج مستقل للمعاينة — لا يتصل بـ IBP أو OSD ولا يحفظ بيانات.");
+    });
+
+    syncFilterOptions();
+    renderStats();
+    renderLatest();
+    renderRows("", "warningRows", "resultCount");
+    renderRows("Records", "warningRowsRecords", "resultCountRecords");
+    initFilters();
+  </script>
+</body>
+</html>
