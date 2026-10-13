@@ -354,6 +354,8 @@
     .signal-fill { height: 100%; background: linear-gradient(90deg, #927747, #d2b36d); border-radius: inherit; }
     .signal-fill.red { background: linear-gradient(90deg, #973f48, #df7474); }
     .signal-fill.green { background: linear-gradient(90deg, #3a806f, #78c0a0); }
+    .signal-fill.blue { background: linear-gradient(90deg, #476f8b, #81b3d3); }
+    .signal-fill.gold { background: linear-gradient(90deg, #927747, #d2b36d); }
     .signal-footnote { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 11px; color: #738699; border-top: 1px solid var(--line); font-size: 9px; }
     .signal-footnote i { color: var(--green); font-size: 8px; }
     .toolbar {
@@ -415,6 +417,8 @@
     .severity.low { color: #85aac5; background: rgba(121,169,206,.09); border-color: rgba(121,169,206,.18); }
     .status.active { color: #e0a568; background: rgba(224,165,104,.08); border-color: rgba(224,165,104,.18); }
     .status.closed { color: #7cbd9f; background: rgba(104,184,154,.08); border-color: rgba(104,184,154,.18); }
+    .status.cancelled { color: #e88989; background: rgba(226,107,107,.08); border-color: rgba(226,107,107,.18); }
+    .status.draft { color: #9cb4c9; background: rgba(121,169,206,.08); border-color: rgba(121,169,206,.18); }
     .date-cell { color: #91a0ae !important; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
     .table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 0 13px; color: #75879a; border-top: 1px solid var(--line); font-size: 9px; }
     .table-footer strong { color: #bdc7ce; font: 500 10px ui-monospace, monospace; }
@@ -439,6 +443,79 @@
     .form-preview select, .form-preview input, .form-preview textarea { width: 100%; margin-bottom: 13px; padding: 10px; color: #b6c0c8; background: #081421; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; }
     .form-preview textarea { min-height: 86px; resize: vertical; }
     .form-preview :disabled { opacity: .65; cursor: not-allowed; }
+    .form-shell { display: block; min-height: unset; padding: 0; text-align: right; }
+    .warning-form { width: min(970px, 100%); margin: 0 auto; text-align: right; }
+    .form-section { margin-top: 15px; padding: 16px; background: linear-gradient(145deg, rgba(13,27,42,.96), rgba(9,19,31,.98)); border: 1px solid var(--line); border-radius: 6px; }
+    .form-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #e0e5e8; font-size: 11px; font-weight: 600; }
+    .form-section-head i { color: var(--gold); }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .form-field { min-width: 0; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label { display: block; margin-bottom: 6px; color: #a4b0bb; font-size: 10px; }
+    .form-field label em { color: var(--red); font-style: normal; }
+    .form-control {
+      width: 100%;
+      min-height: 38px;
+      padding: 9px 10px;
+      color: #e0e5e8;
+      background: #071421;
+      border: 1px solid rgba(170,187,204,.16);
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .form-control::placeholder { color: #607487; }
+    .form-control:focus { border-color: rgba(196,160,90,.55); outline: 2px solid rgba(196,160,90,.12); }
+    .form-control textarea, textarea.form-control { min-height: 92px; resize: vertical; }
+    .form-help { margin-top: 5px; color: #6e8294; font-size: 9px; line-height: 1.7; }
+    .form-actions { display: flex; align-items: center; justify-content: flex-start; gap: 9px; flex-wrap: wrap; margin-top: 15px; }
+    .button-danger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 37px; padding: 0 13px; color: #e99595; background: rgba(166,54,62,.12); border: 1px solid rgba(226,107,107,.25); border-radius: 4px; cursor: pointer; font-size: 10px; }
+    .button-danger:hover { background: rgba(166,54,62,.2); }
+    .evidence-box { padding: 12px; border: 1px dashed rgba(170,187,204,.24); border-radius: 5px; background: rgba(255,255,255,.015); }
+    .evidence-preview { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #a6b3bd; font-size: 10px; }
+    .evidence-preview img { width: 60px; height: 60px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
+    .evidence-preview button { margin-right: auto; padding: 6px 8px; color: #e99595; background: transparent; border: 1px solid rgba(226,107,107,.2); border-radius: 3px; cursor: pointer; font-size: 9px; }
+    .form-storage-note { margin-top: 12px; padding: 10px 12px; color: #c4ad70; background: rgba(196,160,90,.055); border-right: 2px solid var(--gold); font-size: 9px; line-height: 1.8; }
+    .form-storage-note i { margin-left: 4px; }
+    .personnel-search { width: min(370px, 100%); }
+    .personnel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }
+    .person-card { min-width: 0; padding: 14px; background: linear-gradient(145deg, rgba(13,27,42,.95), rgba(9,19,31,.98)); border: 1px solid var(--line); border-radius: 6px; }
+    .person-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .person-avatar { display: grid; place-items: center; width: 37px; height: 37px; color: var(--gold-bright); background: rgba(196,160,90,.08); border: 1px solid rgba(196,160,90,.2); border-radius: 50%; }
+    .person-card h2 { margin: 1px 0 4px; color: #e5e9e9; font-size: 12px; font-weight: 600; }
+    .person-code-label { color: #8597a8; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .person-meta { margin-top: 11px; color: #98a7b4; font-size: 10px; line-height: 1.9; }
+    .person-card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .person-count { color: #b6c1c9; font-size: 9px; }
+    .person-open { padding: 6px 8px; color: var(--gold-bright); background: rgba(196,160,90,.06); border: 1px solid rgba(196,160,90,.18); border-radius: 3px; cursor: pointer; font-size: 9px; }
+    .profile-banner { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; padding: 17px; background: linear-gradient(110deg, rgba(17,35,50,.96), rgba(12,26,40,.96)); border: 1px solid var(--line); border-radius: 6px; }
+    .profile-banner .person-avatar { width: 50px; height: 50px; flex: 0 0 50px; font-size: 18px; }
+    .profile-banner h2 { margin: 0; color: #eef0ed; font-size: 17px; }
+    .profile-banner p { margin: 5px 0 0; color: #91a2b1; font: 10px/1.7 ui-monospace, sans-serif; direction: ltr; text-align: right; }
+    .profile-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .profile-stat { padding: 11px 13px; background: rgba(12,25,40,.92); border: 1px solid var(--line); border-radius: 5px; }
+    .profile-stat small { color: #8496a7; font-size: 9px; }
+    .profile-stat strong { display: block; margin-top: 5px; color: #e3e7e8; font: 600 17px ui-monospace, monospace; }
+    .profile-record { margin-top: 9px; padding: 13px; background: rgba(11,23,37,.93); border: 1px solid var(--line); border-right: 2px solid var(--gold); border-radius: 5px; cursor: pointer; }
+    .profile-record:hover { background: rgba(16,32,49,.98); }
+    .profile-record-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
+    .profile-record-id { color: var(--gold-bright); font: 600 10px ui-monospace, monospace; direction: ltr; text-align: right; }
+    .profile-record-reason { margin-top: 8px; color: #d1d8dc; font-size: 10px; line-height: 1.8; }
+    .profile-record-meta { margin-top: 7px; color: #8293a3; font-size: 9px; line-height: 1.8; }
+    .timeline { display: grid; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
+    .timeline-item { position: relative; padding: 0 18px 14px 0; border-right: 1px solid rgba(196,160,90,.28); }
+    .timeline-item:last-child { padding-bottom: 0; border-right-color: transparent; }
+    .timeline-item::before { position: absolute; top: 3px; right: -4px; width: 7px; height: 7px; content: ""; background: var(--gold); border: 2px solid #112237; border-radius: 50%; }
+    .timeline-title { color: #dfe4e4; font-size: 10px; font-weight: 500; }
+    .timeline-meta { margin-top: 3px; color: #8495a4; font-size: 9px; line-height: 1.7; }
+    .detail-section { margin-top: 13px; padding: 11px; background: rgba(4,12,20,.52); border: 1px solid var(--line); border-radius: 5px; }
+    .detail-section h3 { margin: 0 0 7px; color: var(--gold-bright); font-size: 10px; font-weight: 600; }
+    .detail-section p { margin: 0; color: #c6d0d7; font-size: 10px; line-height: 1.9; white-space: pre-wrap; }
+    .detail-evidence img { display: block; max-width: 100%; max-height: 220px; margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+    .modal-backdrop { overflow-y: auto; }
+    .detail-modal { max-height: calc(100vh - 36px); overflow-y: auto; width: min(650px, 100%); }
+    .toast.toast-error { border-color: rgba(226,107,107,.55); color: #ffc1c1; }
+    .toast.toast-success { border-color: rgba(104,184,154,.5); color: #b8e8d1; }
     .prototype-footnote { margin-top: 13px; color: #728497; font-size: 9px; }
     .mobile-overlay { display: none; }
     .modal-backdrop {
@@ -493,6 +570,7 @@
       :root { --sidebar-width: 238px; }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .overview-grid { grid-template-columns: 1fr; }
+      .personnel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 700px) {
       .sidebar { width: min(290px, 84vw); transform: translateX(103%); transition: transform .22s ease; }
@@ -518,6 +596,9 @@
       .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .search-box { grid-column: span 2; }
       .table-footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 3px; padding: 9px 12px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-field.full { grid-column: auto; }
+      .personnel-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 420px) {
       .live-indicator { display: none; }
@@ -563,7 +644,7 @@
       <li><button class="nav-item" data-page="settings" type="button"><i class="fa-solid fa-sliders"></i><span>الصلاحيات والإعدادات</span></button></li>
     </ul>
     <div class="sidebar-bottom">
-      <div class="demo-note"><i class="fa-solid fa-circle-info"></i> نموذج واجهة مستقل. جميع الأسماء والسجلات المعروضة تجريبية.</div>
+      <div class="demo-note"><i class="fa-solid fa-circle-info"></i> بيانات تجريبية فقط؛ السجلات التي تنشئها تُحفظ محليًا في هذا المتصفح، وليست قاعدة إنتاجية.</div>
       <div class="sidebar-version"><span>BR • WARNING SYSTEM</span><span>UI / 01</span></div>
     </div>
   </aside>
@@ -646,6 +727,10 @@
               <div class="signal-track"><div class="signal-fill red" id="activeBar"></div></div>
               <div class="signal-row" style="margin-top:14px"><span>مغلق</span><span class="signal-number" id="closedRatio">—</span></div>
               <div class="signal-track"><div class="signal-fill green" id="closedBar"></div></div>
+              <div class="signal-row" style="margin-top:14px"><span>ملغى</span><span class="signal-number" id="cancelledRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill red" id="cancelledBar"></div></div>
+              <div class="signal-row" style="margin-top:14px"><span>مسودة</span><span class="signal-number" id="draftRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill blue" id="draftBar"></div></div>
               <div class="signal-footnote"><i class="fa-solid fa-circle"></i><span>الأرقام مستمدة من السجلات الوهمية في هذه المعاينة.</span></div>
             </div>
           </section>
@@ -661,7 +746,7 @@
             <select class="filter-select" id="rankFilter" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
             <select class="filter-select" id="sectorFilter" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
             <select class="filter-select" id="typeFilter" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
-            <select class="filter-select" id="statusFilter" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option></select>
+            <select class="filter-select" id="statusFilter" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
           </div>
           <div class="table-scroll">
             <table class="warning-table">
@@ -687,7 +772,7 @@
             <select class="filter-select" id="rankFilterRecords" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
             <select class="filter-select" id="sectorFilterRecords" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
             <select class="filter-select" id="typeFilterRecords" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
-            <select class="filter-select" id="statusFilterRecords" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option></select>
+            <select class="filter-select" id="statusFilterRecords" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
           </div>
           <div class="table-scroll">
             <table class="warning-table">
@@ -700,26 +785,71 @@
       </section>
 
       <section class="page-view hidden" id="page-new-warning" data-title="إصدار تحذير جديد">
-        <div class="page-heading"><div><div class="eyebrow">COMMAND // NEW NOTICE</div><h1>إصدار تحذير جديد</h1><p class="page-description">معاينة شكل نموذج الإدخال فقط — لا يتم إنشاء سجل أو إرسال بيانات.</p></div></div>
-        <div class="placeholder-card">
-          <div>
-            <div class="placeholder-icon"><i class="fa-solid fa-file-circle-plus"></i></div>
-            <h2>نموذج إصدار التحذير</h2>
-            <p>الحقول أدناه للمعاينة البصرية فقط. آلية الإصدار والصلاحيات والاعتماد خارج نطاق المرحلة الأولى.</p>
-            <div class="form-preview">
-              <label for="demoPerson">الفرد المستهدف</label><select id="demoPerson" disabled><option>اختر فردًا تجريبيًا</option><option>نسر تجريبي 01 • BR-TR-041</option></select>
-              <label for="demoType">نوع التحذير</label><select id="demoType" disabled><option>اختر نوع التحذير</option><option>انضباطي</option></select>
-              <label for="demoReason">تفاصيل التحذير</label><textarea id="demoReason" placeholder="وصف مختصر للواقعة…" disabled></textarea>
-              <button class="button-primary" type="button" disabled><i class="fa-solid fa-lock"></i> إصدار تجريبي غير متاح</button>
-            </div>
-            <div class="prototype-footnote"><i class="fa-solid fa-shield-halved"></i> لا توجد اتصالات بخادم أو قاعدة بيانات.</div>
-          </div>
+        <div class="page-heading">
+          <div><div class="eyebrow">COMMAND // NEW NOTICE</div><h1 id="warningFormTitle">إصدار تحذير جديد</h1><p class="page-description">أدخل بيانات تجريبية لإنشاء سجل داخل هذا النموذج.</p></div>
+          <div class="heading-actions"><span class="prototype-tag"><i class="fa-solid fa-flask"></i> وضع تجريبي</span></div>
         </div>
+        <form class="warning-form" id="warningForm" novalidate>
+          <input type="hidden" id="editingWarningId">
+          <section class="form-section">
+            <div class="form-section-head"><i class="fa-solid fa-user-shield"></i> بيانات الفرد</div>
+            <div class="form-grid">
+              <div class="form-field"><label for="personName">اسم الفرد التجريبي <em>*</em></label><input class="form-control" id="personName" name="personName" maxlength="70" required placeholder="مثال: نسر تجريبي 08"></div>
+              <div class="form-field"><label for="personCode">الكود العسكري <em>*</em></label><input class="form-control" id="personCode" name="personCode" maxlength="30" required placeholder="مثال: BR-TR-108" dir="ltr"></div>
+              <div class="form-field"><label for="personRank">الرتبة <em>*</em></label><select class="form-control" id="personRank" name="personRank" required><option value="">اختر الرتبة</option><option>جندي</option><option>عريف</option><option>رقيب</option><option>رقيب أول</option><option>ملازم</option><option>ملازم أول</option><option>نقيب</option><option>رائد</option><option>مسؤول تجريبي</option></select></div>
+              <div class="form-field"><label for="personSector">القطاع أو الوحدة <em>*</em></label><input class="form-control" id="personSector" name="personSector" maxlength="80" required placeholder="مثال: القطاع الشمالي"></div>
+            </div>
+          </section>
+          <section class="form-section">
+            <div class="form-section-head"><i class="fa-solid fa-file-shield"></i> بيانات التحذير</div>
+            <div class="form-grid">
+              <div class="form-field"><label for="warningType">نوع التحذير <em>*</em></label><select class="form-control" id="warningType" name="warningType" required><option value="">اختر النوع</option><option>شفهي</option><option>أول</option><option>ثانٍ</option><option>نهائي</option><option>إيقاف مؤقت</option></select></div>
+              <div class="form-field"><label for="warningSeverity">مستوى الخطورة <em>*</em></label><select class="form-control" id="warningSeverity" name="warningSeverity" required><option value="">اختر مستوى الخطورة</option><option>منخفض</option><option>متوسط</option><option>مرتفع</option><option>حرج</option></select></div>
+              <div class="form-field full"><label for="warningReason">سبب التحذير <em>*</em></label><input class="form-control" id="warningReason" name="warningReason" maxlength="120" required placeholder="عنوان مختصر للمخالفة"></div>
+              <div class="form-field full"><label for="warningDetails">تفاصيل المخالفة <em>*</em></label><textarea class="form-control" id="warningDetails" name="warningDetails" maxlength="1500" required placeholder="اكتب وصفًا تجريبيًا واضحًا لما حدث…"></textarea></div>
+              <div class="form-field"><label for="warningOfficer">اسم المسؤول المُصدر <em>*</em></label><input class="form-control" id="warningOfficer" name="warningOfficer" maxlength="70" required placeholder="مثال: مسؤول تجريبي 01"></div>
+              <div class="form-field"><label for="warningDateTime">تاريخ ووقت الإصدار <em>*</em></label><input class="form-control" id="warningDateTime" name="warningDateTime" type="datetime-local" required></div>
+              <div class="form-field"><label for="warningDuration">مدة التحذير بالأيام</label><input class="form-control" id="warningDuration" name="warningDuration" type="number" min="1" max="3650" step="1" placeholder="اختياري"><div class="form-help">اتركه فارغًا إذا لم تحدد مدة.</div></div>
+              <div class="form-field full"><label for="warningNotes">ملاحظات إضافية</label><textarea class="form-control" id="warningNotes" name="warningNotes" maxlength="1000" placeholder="ملاحظات تجريبية اختيارية…"></textarea></div>
+            </div>
+          </section>
+          <section class="form-section">
+            <div class="form-section-head"><i class="fa-solid fa-paperclip"></i> مرفق توضيحي تجريبي</div>
+            <div class="evidence-box">
+              <div class="form-field"><label for="warningEvidence">إرفاق صورة توضيحية (اختياري)</label><input class="form-control" id="warningEvidence" name="warningEvidence" type="file" accept="image/*"><div class="form-help">تُضغط الصورة وتبقى داخل تخزين المتصفح المحلي؛ الحد الأقصى للحجم قبل الضغط 2MB.</div></div>
+              <div class="evidence-preview hidden" id="evidencePreview"></div>
+            </div>
+          </section>
+          <div class="form-storage-note"><i class="fa-solid fa-database"></i> التخزين تجريبي في `localStorage` لهذا المتصفح فقط؛ ليس قاعدة بيانات إنتاجية ولا تتم مزامنة البيانات بين الأجهزة.</div>
+          <div class="form-actions">
+            <button class="button-primary" type="submit" id="submitWarningButton"><i class="fa-solid fa-paper-plane"></i> إصدار التحذير التجريبي</button>
+            <button class="button-secondary" type="button" id="saveDraftButton"><i class="fa-solid fa-floppy-disk"></i> حفظ كمسودة</button>
+            <button class="button-danger hidden" type="button" id="cancelEditButton"><i class="fa-solid fa-xmark"></i> إلغاء التعديل</button>
+          </div>
+        </form>
       </section>
 
       <section class="page-view hidden" id="page-personnel" data-title="ملفات الأفراد">
-        <div class="page-heading"><div><div class="eyebrow">PERSONNEL // FILES</div><h1>ملفات الأفراد</h1><p class="page-description">تصور أولي لقائمة ملفات الأفراد المرتبطة بسجلات التحذير.</p></div></div>
-        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-user-shield"></i></div><h2>ملفات الأفراد — قيد التخطيط</h2><p>ستُصمم تفاصيل الملف وربط السجلات في مرحلة لاحقة. هذه المرحلة تعرض بيانات أشخاص تجريبية في لوحة التحذيرات فقط.</p><span class="placeholder-tag"><i class="fa-solid fa-circle-info"></i> معاينة الواجهة • بلا ملفات حقيقية</span></div></div>
+        <div class="page-heading">
+          <div><div class="eyebrow">PERSONNEL // FILES</div><h1>ملفات الأفراد</h1><p class="page-description">ملفات تجريبية مجمعة حسب الكود العسكري، مع سجل المخالفات والمسؤول المُصدر.</p></div>
+          <div class="personnel-search"><input class="search-box" id="personnelSearch" type="search" placeholder="ابحث بالاسم أو الكود أو القطاع…" aria-label="بحث في ملفات الأفراد"></div>
+        </div>
+        <div class="personnel-grid" id="personnelGrid"></div>
+      </section>
+      <section class="page-view hidden" id="page-profile" data-title="ملف الفرد">
+        <div class="page-heading">
+          <div><div class="eyebrow">PERSONNEL // SERVICE FILE</div><h1>ملف الفرد</h1><p class="page-description">البيانات والسجل التجريبي المرتبطان بهذا الكود العسكري.</p></div>
+          <div class="heading-actions"><button class="button-secondary" type="button" id="backToPersonnel"><i class="fa-solid fa-arrow-right"></i> العودة إلى الملفات</button></div>
+        </div>
+        <div class="profile-banner">
+          <div class="person-avatar"><i class="fa-solid fa-user-shield"></i></div>
+          <div><h2 id="profileName">—</h2><p id="profileIdentity">—</p></div>
+        </div>
+        <div class="profile-stat-grid" id="profileStats"></div>
+        <section class="panel">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> سجل التحذيرات والمخالفات</div><span class="panel-caption">يتضمن السبب والمسؤول المُصدر</span></div>
+          <div style="padding: 12px" id="profileWarnings"></div>
+        </section>
       </section>
       <section class="page-view hidden" id="page-review" data-title="المراجعة والاعتماد">
         <div class="page-heading"><div><div class="eyebrow">REVIEW // AUTHORIZATION</div><h1>المراجعة والاعتماد</h1><p class="page-description">مساحة مبدئية لمسار مراجعة التحذيرات واعتمادها.</p></div></div>
@@ -749,6 +879,11 @@
         <button class="icon-button modal-close" id="modalClose" type="button" aria-label="إغلاق التفاصيل"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="detail-grid" id="detailGrid"></div>
+      <section class="detail-section"><h3>سبب التحذير والتفاصيل</h3><p id="detailReason"></p></section>
+      <section class="detail-section hidden" id="detailNotesSection"><h3>ملاحظات إضافية</h3><p id="detailNotes"></p></section>
+      <section class="detail-section detail-evidence hidden" id="detailEvidenceSection"><h3>المرفق التوضيحي</h3><p id="detailEvidenceName"></p><img id="detailEvidenceImage" alt="مرفق توضيحي تجريبي"></section>
+      <section class="detail-section"><h3>التسلسل الزمني</h3><ul class="timeline" id="detailTimeline"></ul></section>
+      <div class="detail-actions" id="detailActions"></div>
       <div class="detail-disclaimer"><i class="fa-solid fa-circle-info"></i> سجل وهمي لعرض التفاعل فقط — لا توجد بيانات شخصية حقيقية.</div>
     </article>
   </div>
@@ -758,7 +893,8 @@
     "use strict";
 
     // All records below are invented UI fixtures; no real personnel data is used.
-    const warningRecords = [
+    const STORAGE_KEY = "blackridge.warningPrototype.records.v1";
+    const seededWarningRecords = [
       { id: "WRN-26041", name: "نسر تجريبي 01", code: "BR-TR-041", rank: "ملازم", sector: "القطاع الشمالي", type: "انضباطي", severity: "مرتفع", status: "نشط", date: "2026-10-12" },
       { id: "WRN-26040", name: "صقر تجريبي 02", code: "BR-TR-028", rank: "رقيب أول", sector: "القطاع الغربي", type: "التزام بالإجراءات", severity: "متوسط", status: "نشط", date: "2026-10-11" },
       { id: "WRN-26039", name: "غيث تجريبي 03", code: "BR-TR-067", rank: "نقيب", sector: "مركز القيادة", type: "إداري", severity: "منخفض", status: "مغلق", date: "2026-10-10" },
@@ -773,18 +909,74 @@
       { id: "WRN-26030", name: "سهل تجريبي 06", code: "BR-TR-076", rank: "ملازم أول", sector: "مركز القيادة", type: "إداري", severity: "منخفض", status: "نشط", date: "2026-10-01" }
     ];
 
+    function loadStoredWarnings() {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
+        if (!Array.isArray(saved)) return [];
+        return saved.filter((record) => record && (record.custom === true || record.modified === true) && record.id && record.code && record.name);
+      } catch (error) {
+        console.warn("تعذّر قراءة سجلات النموذج من localStorage.", error);
+        return [];
+      }
+    }
+
+    function persistWarningRecords() {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(warningRecords.filter((record) => record.custom || record.modified)));
+        return true;
+      } catch (error) {
+        console.error("تعذّر حفظ سجلات النموذج محليًا.", error);
+        return false;
+      }
+    }
+
+    const savedWarningRecords = loadStoredWarnings();
+    const savedWarningsById = new Map(savedWarningRecords.map((record) => [record.id, record]));
+    const seededIds = new Set(seededWarningRecords.map((record) => record.id));
+    const warningRecords = [
+      ...seededWarningRecords.map((record, index) => {
+        const officer = `مسؤول تجريبي ${String(index + 1).padStart(2, "0")}`;
+        const seeded = {
+          ...record,
+          reason: `مخالفة تجريبية: ${record.type}.`,
+          details: `تفاصيل توضيحية مصطنعة لسجل ${record.id}، لا تمثل واقعة حقيقية.`,
+          officer,
+          time: "09:00",
+          duration: "",
+          notes: "",
+          evidence: null,
+          custom: false,
+          createdAt: `${record.date}T09:00:00.000Z`,
+          timeline: [{
+            at: `${record.date}T09:00:00.000Z`,
+            action: record.status === "مغلق" ? "إصدار التحذير" : "تسجيل التحذير التجريبي",
+            by: officer
+          }].concat(record.status === "مغلق" ? [{
+            at: `${record.date}T15:00:00.000Z`,
+            action: "إغلاق التحذير",
+            by: "مسؤول تجريبي للمراجعة"
+          }] : [])
+        };
+        return savedWarningsById.has(record.id) ? { ...seeded, ...savedWarningsById.get(record.id) } : seeded;
+      }),
+      ...savedWarningRecords.filter((record) => record.custom && !seededIds.has(record.id))
+    ];
+
     const pageNames = {
       dashboard: "الرئيسية",
       records: "سجل التحذيرات",
       "new-warning": "إصدار تحذير جديد",
       personnel: "ملفات الأفراد",
+      profile: "ملف الفرد",
       review: "المراجعة والاعتماد",
       reports: "الإحصائيات والتقارير",
       settings: "الصلاحيات والإعدادات"
     };
 
     const severityClass = { "حرج": "critical", "مرتفع": "high", "متوسط": "medium", "منخفض": "low" };
+    const statusClass = { "مسودة": "draft", "نشط": "active", "مغلق": "closed", "ملغى": "cancelled" };
     let toastTimer;
+    let selectedEvidence = null;
 
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (char) => ({
@@ -828,7 +1020,7 @@
             <td>${escapeHtml(record.sector)}</td>
             <td>${escapeHtml(record.type)}</td>
             <td><span class="severity ${severityClass[record.severity]}">${escapeHtml(record.severity)}</span></td>
-            <td><span class="status ${record.status === "نشط" ? "active" : "closed"}">${escapeHtml(record.status)}</span></td>
+            <td><span class="status ${statusClass[record.status] || "draft"}">${escapeHtml(record.status)}</span></td>
             <td class="date-cell">${formatDate(record.date)}</td>
           </tr>`).join("");
         target.querySelectorAll("tr[data-record-id]").forEach((row) => {
@@ -854,14 +1046,18 @@
         const values = [...new Set(warningRecords.map((record) => record[field]))].sort((a, b) => a.localeCompare(b, "ar"));
         for (const suffix of ["", "Records"]) {
           const select = document.getElementById(`${idPart}Filter${suffix}`);
+          const selected = select.value;
           select.innerHTML = `<option value="">${defaultLabel}</option>${values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+          if (values.includes(selected)) select.value = selected;
         }
       }
     }
 
     function renderStats() {
       const active = warningRecords.filter((record) => record.status === "نشط").length;
-      const closed = warningRecords.length - active;
+      const closed = warningRecords.filter((record) => record.status === "مغلق").length;
+      const cancelled = warningRecords.filter((record) => record.status === "ملغى").length;
+      const drafts = warningRecords.filter((record) => record.status === "مسودة").length;
       const people = new Set(warningRecords.map((record) => record.code)).size;
       document.getElementById("statTotal").textContent = warningRecords.length;
       document.getElementById("statActive").textContent = active;
@@ -873,15 +1069,19 @@
       document.querySelectorAll(".report-personnel").forEach((node) => node.textContent = people);
       document.getElementById("activeRatio").textContent = `${active} / ${warningRecords.length}`;
       document.getElementById("closedRatio").textContent = `${closed} / ${warningRecords.length}`;
+      document.getElementById("cancelledRatio").textContent = `${cancelled} / ${warningRecords.length}`;
+      document.getElementById("draftRatio").textContent = `${drafts} / ${warningRecords.length}`;
       document.getElementById("activeBar").style.width = `${Math.round((active / warningRecords.length) * 100)}%`;
       document.getElementById("closedBar").style.width = `${Math.round((closed / warningRecords.length) * 100)}%`;
+      document.getElementById("cancelledBar").style.width = `${Math.round((cancelled / warningRecords.length) * 100)}%`;
+      document.getElementById("draftBar").style.width = `${Math.round((drafts / warningRecords.length) * 100)}%`;
     }
 
     function renderLatest() {
-      const latest = [...warningRecords].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+      const latest = [...warningRecords].sort((a, b) => new Date(b.createdAt || `${b.date}T00:00:00`) - new Date(a.createdAt || `${a.date}T00:00:00`)).slice(0, 4);
       document.getElementById("latestList").innerHTML = latest.map((record) => `
         <div class="latest-item" data-record-id="${escapeHtml(record.id)}" tabindex="0" role="button" aria-label="عرض التحذير ${escapeHtml(record.id)}">
-          <span class="latest-icon ${record.severity === "منخفض" ? "low" : ""}"><i class="fa-solid ${record.status === "مغلق" ? "fa-check" : "fa-exclamation"}"></i></span>
+          <span class="latest-icon ${record.severity === "منخفض" ? "low" : ""}"><i class="fa-solid ${record.status === "مغلق" ? "fa-check" : record.status === "ملغى" ? "fa-ban" : record.status === "مسودة" ? "fa-pen" : "fa-exclamation"}"></i></span>
           <span><span class="latest-title">${escapeHtml(record.name)} <span style="color:#8090a0">• ${escapeHtml(record.type)}</span></span><span class="latest-meta">${escapeHtml(record.id)} &nbsp; / &nbsp; ${escapeHtml(record.code)}</span></span>
           <span class="latest-date">${formatDate(record.date)}</span>
         </div>`).join("");
@@ -896,6 +1096,85 @@
       });
     }
 
+    function renderAllData() {
+      syncFilterOptions();
+      renderStats();
+      renderLatest();
+      renderRows("", "warningRows", "resultCount");
+      renderRows("Records", "warningRowsRecords", "resultCountRecords");
+      renderPersonnel(document.getElementById("personnelSearch").value);
+    }
+
+    function renderPersonnel(searchValue = "") {
+      const query = searchValue.trim().toLocaleLowerCase("ar");
+      const peopleByCode = new Map();
+      for (const record of warningRecords) {
+        const existing = peopleByCode.get(record.code);
+        if (!existing || new Date(record.createdAt || `${record.date}T00:00:00`) > new Date(existing.createdAt || `${existing.date}T00:00:00`)) {
+          peopleByCode.set(record.code, record);
+        }
+      }
+      const people = [...peopleByCode.values()]
+        .filter((person) => [person.name, person.code, person.rank, person.sector].some((value) => String(value).toLocaleLowerCase("ar").includes(query)))
+        .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+      const target = document.getElementById("personnelGrid");
+      if (!people.length) {
+        target.innerHTML = `<div class="panel empty-state" style="grid-column:1/-1"><i class="fa-solid fa-user-slash"></i>لا توجد ملفات تطابق البحث.</div>`;
+        return;
+      }
+      target.innerHTML = people.map((person) => {
+        const records = warningRecords.filter((record) => record.code === person.code);
+        const active = records.filter((record) => record.status === "نشط").length;
+        return `<article class="person-card">
+          <div class="person-card-head"><div><h2>${escapeHtml(person.name)}</h2><div class="person-code-label">${escapeHtml(person.code)}</div></div><span class="person-avatar"><i class="fa-solid fa-user-shield"></i></span></div>
+          <div class="person-meta">${escapeHtml(person.rank)}<br>${escapeHtml(person.sector)}</div>
+          <div class="person-card-bottom"><span class="person-count">${records.length} سجل • ${active} نشط</span><button class="person-open" type="button" data-person-code="${escapeHtml(person.code)}">فتح الملف <i class="fa-solid fa-arrow-left"></i></button></div>
+        </article>`;
+      }).join("");
+      target.querySelectorAll("[data-person-code]").forEach((button) => button.addEventListener("click", () => openPersonProfile(button.dataset.personCode)));
+    }
+
+    function openPersonProfile(code) {
+      const records = warningRecords.filter((record) => record.code === code)
+        .sort((a, b) => new Date(b.createdAt || `${b.date}T00:00:00`) - new Date(a.createdAt || `${a.date}T00:00:00`));
+      if (!records.length) return;
+      const person = records[0];
+      document.getElementById("profileName").textContent = person.name;
+      document.getElementById("profileIdentity").textContent = `${person.code}  /  ${person.rank}  /  ${person.sector}`;
+      const active = records.filter((record) => record.status === "نشط").length;
+      const closed = records.filter((record) => record.status === "مغلق").length;
+      document.getElementById("profileStats").innerHTML = `
+        <div class="profile-stat"><small>إجمالي السجلات</small><strong>${records.length}</strong></div>
+        <div class="profile-stat"><small>تحذيرات نشطة</small><strong>${active}</strong></div>
+        <div class="profile-stat"><small>مغلقة / ملغاة</small><strong>${closed + records.filter((record) => record.status === "ملغى").length}</strong></div>`;
+      document.getElementById("profileWarnings").innerHTML = records.map((record) => `
+        <article class="profile-record" data-profile-record="${escapeHtml(record.id)}" tabindex="0">
+          <div class="profile-record-head"><span class="profile-record-id">${escapeHtml(record.id)} • ${escapeHtml(formatDate(record.date))}</span><span class="status ${statusClass[record.status] || "draft"}">${escapeHtml(record.status)}</span></div>
+          <div class="profile-record-reason"><strong>السبب:</strong> ${escapeHtml(record.reason || record.type)}<br><strong>التفاصيل:</strong> ${escapeHtml(record.details || "لا توجد تفاصيل إضافية.")}</div>
+          <div class="profile-record-meta"><strong>المسؤول المُصدر:</strong> ${escapeHtml(record.officer || "غير محدد")}<br><strong>النوع / الخطورة:</strong> ${escapeHtml(record.type)} • ${escapeHtml(record.severity)}</div>
+        </article>`).join("");
+      document.querySelectorAll("[data-profile-record]").forEach((item) => {
+        item.addEventListener("click", () => openDetails(item.dataset.profileRecord));
+        item.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDetails(item.dataset.profileRecord);
+          }
+        });
+      });
+      setPage("profile");
+    }
+
+    function formatDateTime(isoValue) {
+      if (!isoValue) return "—";
+      const date = new Date(isoValue);
+      return Number.isNaN(date.getTime()) ? String(isoValue) : date.toLocaleString("ar-JO", { dateStyle: "medium", timeStyle: "short" });
+    }
+
+    function safeImageDataUrl(value) {
+      return typeof value === "string" && /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(value) ? value : "";
+    }
+
     function openDetails(id) {
       const record = warningRecords.find((item) => item.id === id);
       if (!record) return;
@@ -908,11 +1187,50 @@
         ["نوع التحذير", record.type],
         ["الخطورة", record.severity],
         ["الحالة", record.status],
-        ["تاريخ الإصدار", formatDate(record.date)]
+        ["تاريخ الإصدار", `${formatDate(record.date)} • ${record.time || "—"}`],
+        ["المدة", record.duration ? `${record.duration} يوم` : "غير محددة"],
+        ["المسؤول المُصدر", record.officer || "غير محدد"]
       ];
       document.getElementById("detailGrid").innerHTML = fields.map(([label, value]) =>
         `<div class="detail-field"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`
       ).join("");
+      document.getElementById("detailReason").textContent = `${record.reason || record.type}\n${record.details || ""}`.trim();
+      const notesSection = document.getElementById("detailNotesSection");
+      notesSection.classList.toggle("hidden", !record.notes);
+      document.getElementById("detailNotes").textContent = record.notes || "";
+      const evidenceSection = document.getElementById("detailEvidenceSection");
+      const evidenceUrl = safeImageDataUrl(record.evidence?.dataUrl);
+      evidenceSection.classList.toggle("hidden", !evidenceUrl);
+      document.getElementById("detailEvidenceName").textContent = record.evidence?.name || "";
+      if (evidenceUrl) document.getElementById("detailEvidenceImage").src = evidenceUrl;
+      else document.getElementById("detailEvidenceImage").removeAttribute("src");
+      const timeline = Array.isArray(record.timeline) ? record.timeline : [];
+      document.getElementById("detailTimeline").innerHTML = timeline.length
+        ? timeline.map((event) => `<li class="timeline-item"><div class="timeline-title">${escapeHtml(event.action || "إجراء مسجل")}</div><div class="timeline-meta">${escapeHtml(formatDateTime(event.at))} • ${escapeHtml(event.by || "مسؤول تجريبي")}</div></li>`).join("")
+        : `<li class="timeline-item"><div class="timeline-title">لا توجد إجراءات مسجلة بعد</div></li>`;
+      const actions = document.getElementById("detailActions");
+      const button = (action, label, icon, className) => `<button type="button" class="${className}" data-record-action="${action}"><i class="fa-solid ${icon}"></i> ${label}</button>`;
+      if (record.status === "مسودة") {
+        actions.innerHTML = button("edit", "تعديل المسودة", "fa-pen-to-square", "button-secondary")
+          + button("issue", "إصدار التحذير", "fa-paper-plane", "button-primary")
+          + button("cancel", "إلغاء المسودة", "fa-ban", "button-danger");
+      } else if (record.status === "نشط") {
+        actions.innerHTML = button("close", "إغلاق التحذير", "fa-circle-check", "button-secondary")
+          + button("cancel", "إلغاء التحذير", "fa-ban", "button-danger");
+      } else {
+        actions.innerHTML = `<span class="placeholder-tag"><i class="fa-solid fa-lock"></i> لا توجد إجراءات متاحة لهذه الحالة</span>`;
+      }
+      actions.querySelectorAll("[data-record-action]").forEach((actionButton) => {
+        actionButton.addEventListener("click", () => {
+          const action = actionButton.dataset.recordAction;
+          if (action === "edit") {
+            closeDetails();
+            beginEditDraft(record.id);
+          } else {
+            changeWarningStatus(record.id, action);
+          }
+        });
+      });
       document.getElementById("detailBackdrop").classList.add("open");
       document.getElementById("modalClose").focus();
     }
@@ -921,9 +1239,237 @@
       document.getElementById("detailBackdrop").classList.remove("open");
     }
 
-    function showToast(message) {
+    function localDateTimeValue(date = new Date()) {
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+
+    function showEvidencePreview() {
+      const preview = document.getElementById("evidencePreview");
+      const safeUrl = safeImageDataUrl(selectedEvidence?.dataUrl);
+      if (!safeUrl) {
+        preview.classList.add("hidden");
+        preview.replaceChildren();
+        return;
+      }
+      preview.classList.remove("hidden");
+      preview.replaceChildren();
+      const image = document.createElement("img");
+      image.src = safeUrl;
+      image.alt = "معاينة المرفق";
+      const name = document.createElement("span");
+      name.textContent = String(selectedEvidence.name || "صورة تجريبية");
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.textContent = "إزالة المرفق";
+      removeButton.addEventListener("click", clearEvidence);
+      preview.append(image, name, removeButton);
+    }
+
+    function clearEvidence() {
+      selectedEvidence = null;
+      document.getElementById("warningEvidence").value = "";
+      showEvidencePreview();
+    }
+
+    function readImageAsPreview(file) {
+      return new Promise((resolve, reject) => {
+        if (!file.type.startsWith("image/")) {
+          reject(new Error("المرفق التجريبي يجب أن يكون صورة."));
+          return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          reject(new Error("حجم الصورة أكبر من 2MB."));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("تعذّر قراءة الصورة."));
+        reader.onload = () => {
+          const image = new Image();
+          image.onerror = () => reject(new Error("تعذّر فتح الصورة المختارة."));
+          image.onload = () => {
+            const scale = Math.min(1, 1400 / Math.max(image.width, image.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            resolve({ name: file.name.slice(0, 120), dataUrl: canvas.toDataURL("image/jpeg", 0.78), type: "image/jpeg" });
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function resetWarningForm() {
+      document.getElementById("warningForm").reset();
+      document.getElementById("editingWarningId").value = "";
+      document.getElementById("warningDateTime").value = localDateTimeValue();
+      document.getElementById("warningFormTitle").textContent = "إصدار تحذير جديد";
+      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إصدار التحذير التجريبي`;
+      document.getElementById("saveDraftButton").innerHTML = `<i class="fa-solid fa-floppy-disk"></i> حفظ كمسودة`;
+      document.getElementById("cancelEditButton").classList.add("hidden");
+      selectedEvidence = null;
+      showEvidencePreview();
+    }
+
+    function beginEditDraft(id) {
+      const record = warningRecords.find((item) => item.id === id);
+      if (!record || record.status !== "مسودة") {
+        showToast("يمكن تعديل المسودات فقط.", "error");
+        return;
+      }
+      const values = {
+        personName: record.name,
+        personCode: record.code,
+        personRank: record.rank,
+        personSector: record.sector,
+        warningType: record.type,
+        warningSeverity: record.severity,
+        warningReason: record.reason,
+        warningDetails: record.details,
+        warningOfficer: record.officer,
+        warningDateTime: `${record.date}T${record.time || "09:00"}`,
+        warningDuration: record.duration || "",
+        warningNotes: record.notes || ""
+      };
+      for (const [id, value] of Object.entries(values)) document.getElementById(id).value = value;
+      document.getElementById("editingWarningId").value = record.id;
+      document.getElementById("warningFormTitle").textContent = `تعديل المسودة • ${record.id}`;
+      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إصدار التحذير`;
+      document.getElementById("saveDraftButton").innerHTML = `<i class="fa-solid fa-floppy-disk"></i> حفظ التعديلات`;
+      document.getElementById("cancelEditButton").classList.remove("hidden");
+      selectedEvidence = record.evidence || null;
+      showEvidencePreview();
+      setPage("new-warning");
+      document.getElementById("personName").focus();
+    }
+
+    function generateWarningId() {
+      let id;
+      do {
+        const dateTag = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+        const randomTag = Math.random().toString(36).slice(2, 8).toUpperCase().padEnd(6, "0");
+        id = `WRN-${dateTag}-${randomTag}`;
+      } while (warningRecords.some((record) => record.id === id));
+      return id;
+    }
+
+    function getFormValues() {
+      const dateTime = document.getElementById("warningDateTime").value;
+      const [date, time = "00:00"] = dateTime.split("T");
+      return {
+        name: document.getElementById("personName").value.trim(),
+        code: document.getElementById("personCode").value.trim().toUpperCase(),
+        rank: document.getElementById("personRank").value,
+        sector: document.getElementById("personSector").value.trim(),
+        type: document.getElementById("warningType").value,
+        reason: document.getElementById("warningReason").value.trim(),
+        details: document.getElementById("warningDetails").value.trim(),
+        officer: document.getElementById("warningOfficer").value.trim(),
+        date,
+        time,
+        duration: document.getElementById("warningDuration").value,
+        severity: document.getElementById("warningSeverity").value,
+        notes: document.getElementById("warningNotes").value.trim(),
+        evidence: selectedEvidence ? { ...selectedEvidence } : null
+      };
+    }
+
+    function saveWarning(status) {
+      const form = document.getElementById("warningForm");
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        showToast("أكمل الحقول المطلوبة قبل الحفظ.", "error");
+        return;
+      }
+      const values = getFormValues();
+      if (!values.date || !values.time || !values.name || !values.code || !values.reason || !values.details || !values.officer) {
+        showToast("بعض البيانات الأساسية غير مكتملة.", "error");
+        return;
+      }
+      const editingId = document.getElementById("editingWarningId").value;
+      const index = editingId ? warningRecords.findIndex((record) => record.id === editingId) : -1;
+      const existing = index >= 0 ? warningRecords[index] : null;
+      if (editingId && (!existing || existing.status !== "مسودة")) {
+        showToast("تعذّر تحديث المسودة؛ قد تكون تغيّرت حالتها.", "error");
+        return;
+      }
+      const now = new Date().toISOString();
+      const action = existing
+        ? (status === "نشط" ? "إصدار المسودة" : "تعديل المسودة")
+        : (status === "نشط" ? "إصدار التحذير التجريبي" : "حفظ المسودة");
+      const updated = {
+        ...(existing || {}),
+        ...values,
+        id: existing?.id || generateWarningId(),
+        status,
+        custom: true,
+        modified: false,
+        createdAt: existing?.createdAt || now,
+        timeline: [...(existing?.timeline || []), { at: now, action, by: values.officer }]
+      };
+      const previous = existing;
+      if (index >= 0) warningRecords[index] = updated;
+      else warningRecords.push(updated);
+      if (!persistWarningRecords()) {
+        if (index >= 0) warningRecords[index] = previous;
+        else warningRecords.pop();
+        showToast("تعذّر الحفظ المحلي. تحقق من مساحة تخزين المتصفح.", "error");
+        return;
+      }
+      clearWarningFilters();
+      renderAllData();
+      resetWarningForm();
+      setPage("dashboard");
+      showToast(`${status === "مسودة" ? "حُفظت المسودة" : "تم إصدار التحذير"} • ${updated.id}`, "success");
+    }
+
+    function changeWarningStatus(id, action) {
+      const index = warningRecords.findIndex((record) => record.id === id);
+      if (index < 0) return;
+      const current = warningRecords[index];
+      const transitions = {
+        issue: { from: "مسودة", to: "نشط", label: "إصدار المسودة" },
+        close: { from: "نشط", to: "مغلق", label: "إغلاق التحذير" },
+        cancel: { from: ["مسودة", "نشط"], to: "ملغى", label: "إلغاء التحذير" }
+      };
+      const transition = transitions[action];
+      const allowedFrom = Array.isArray(transition?.from) ? transition.from : [transition?.from];
+      if (!transition || !allowedFrom.includes(current.status)) {
+        showToast("لا يمكن تنفيذ هذا الإجراء على الحالة الحالية.", "error");
+        return;
+      }
+      const updated = {
+        ...current,
+        status: transition.to,
+        modified: current.custom ? current.modified : true,
+        timeline: [...(current.timeline || []), { at: new Date().toISOString(), action: transition.label, by: current.officer || "مسؤول تجريبي" }]
+      };
+      warningRecords[index] = updated;
+      if (!persistWarningRecords()) {
+        warningRecords[index] = current;
+        showToast("تعذّر حفظ التغيير المحلي.", "error");
+        return;
+      }
+      renderAllData();
+      openDetails(id);
+      showToast(`تم تحديث الحالة إلى «${updated.status}».`, "success");
+    }
+
+    function clearWarningFilters() {
+      ["searchInputRecords", "rankFilterRecords", "sectorFilterRecords", "typeFilterRecords", "statusFilterRecords",
+        "searchInput", "rankFilter", "sectorFilter", "typeFilter", "statusFilter"].forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.value = "";
+      });
+    }
+
+    function showToast(message, kind = "info") {
       const toast = document.getElementById("toast");
       toast.textContent = message;
+      toast.classList.remove("toast-error", "toast-success");
+      if (kind === "error") toast.classList.add("toast-error");
+      if (kind === "success") toast.classList.add("toast-success");
       toast.classList.add("show");
       window.clearTimeout(toastTimer);
       toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2800);
@@ -931,6 +1477,8 @@
 
     function setPage(page) {
       if (!pageNames[page]) return;
+      if (page === "new-warning" && !document.getElementById("editingWarningId").value) resetWarningForm();
+      if (page === "personnel") renderPersonnel(document.getElementById("personnelSearch").value);
       document.querySelectorAll(".page-view").forEach((view) => view.classList.toggle("hidden", view.id !== `page-${page}`));
       document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
         const active = item.dataset.page === page;
@@ -994,24 +1542,46 @@
       }
     });
     document.getElementById("clearFilters").addEventListener("click", () => {
-      ["searchInputRecords", "rankFilterRecords", "sectorFilterRecords", "typeFilterRecords", "statusFilterRecords"].forEach((id) => {
-        document.getElementById(id).value = "";
-      });
-      ["searchInput", "rankFilter", "sectorFilter", "typeFilter", "statusFilter"].forEach((id) => {
-        document.getElementById(id).value = "";
-      });
+      clearWarningFilters();
       renderRows("", "warningRows", "resultCount");
       renderRows("Records", "warningRowsRecords", "resultCountRecords");
     });
     document.getElementById("infoButton").addEventListener("click", () => {
-      showToast("نموذج مستقل للمعاينة — لا يتصل بـ IBP أو OSD ولا يحفظ بيانات.");
+      showToast("بيانات النموذج التجريبي تُحفظ محليًا في هذا المتصفح فقط؛ لا يتصل بـ IBP أو OSD.");
     });
 
+    document.getElementById("warningForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveWarning("نشط");
+    });
+    document.getElementById("saveDraftButton").addEventListener("click", () => saveWarning("مسودة"));
+    document.getElementById("cancelEditButton").addEventListener("click", () => {
+      resetWarningForm();
+      setPage("records");
+      showToast("أُلغي تعديل المسودة دون حفظ.");
+    });
+    document.getElementById("warningEvidence").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        selectedEvidence = await readImageAsPreview(file);
+        showEvidencePreview();
+        showToast("أُرفقت الصورة للمعاينة.", "success");
+      } catch (error) {
+        clearEvidence();
+        showToast(error.message || "تعذّر إرفاق الصورة.", "error");
+      }
+    });
+    document.getElementById("personnelSearch").addEventListener("input", (event) => renderPersonnel(event.target.value));
+    document.getElementById("backToPersonnel").addEventListener("click", () => setPage("personnel"));
+
+    resetWarningForm();
     syncFilterOptions();
     renderStats();
     renderLatest();
     renderRows("", "warningRows", "resultCount");
     renderRows("Records", "warningRowsRecords", "resultCountRecords");
+    renderPersonnel();
     initFilters();
   </script>
 </body>
