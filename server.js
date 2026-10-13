@@ -91,7 +91,8 @@ const publicAssets = Object.freeze({
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
-  '/ibp/ibp.js': path.join('ibp', 'ibp.js')
+  '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
+  '/brand-seal.jpg': path.join('blackridge-personnel-module', 'public', 'blackridge-official-seal.jpg')
 });
 
 for (const [route, file] of Object.entries(publicAssets)) {
@@ -277,6 +278,7 @@ function saveState() {
 let state = clone(EMPTY_STATE);
 
 const sessions = new Map();
+const accountCharacterLoginFailures = new Map();
 const socketToUser = new Map();
 const radioChannels = new Map();
 const pendingRequestSockets = new Map();
@@ -3455,6 +3457,55 @@ io.on(
       }
     );
 
+    socket.on('account:characters:login', async (payload, cb) => {
+      if (socket.userId) return no(cb, 'سجّل الخروج من الجلسة الحالية أولاً.');
+      const loginName = lower(clean(payload?.loginName, 100));
+      const password = String(payload?.password || '');
+      const attemptKey = String(socket.handshake?.address || socket.request?.socket?.remoteAddress || socket.id || 'unknown').slice(0, 160);
+      const currentAttempts = accountCharacterLoginFailures.get(attemptKey);
+      if (currentAttempts && Date.now() - currentAttempts.startedAt >= 15 * 60 * 1000) accountCharacterLoginFailures.delete(attemptKey);
+      const activeAttempts = accountCharacterLoginFailures.get(attemptKey);
+      if (activeAttempts && activeAttempts.count >= 5) return no(cb, 'محاولات كثيرة. حاول مجددًا بعد 15 دقيقة.');
+
+      const account = loginName ? state.cia_accounts.find((item) => lower(item.loginName) === loginName) : null;
+      const suppliedDigest = crypto.createHash('sha256').update(password, 'utf8').digest();
+      const storedDigest = account ? Buffer.from(String(account.passwordHash || ''), 'hex') : Buffer.alloc(0);
+      const passwordMatches = !!account && storedDigest.length === suppliedDigest.length && crypto.timingSafeEqual(storedDigest, suppliedDigest);
+      if (!loginName || password.length < 4 || password.length > 4096 || !passwordMatches) {
+        const prior = accountCharacterLoginFailures.get(attemptKey);
+        accountCharacterLoginFailures.set(attemptKey, { startedAt: prior?.startedAt || Date.now(), count: (prior?.count || 0) + 1 });
+        if (accountCharacterLoginFailures.size > 1000) {
+          const cutoff = Date.now() - 15 * 60 * 1000;
+          for (const [key, value] of accountCharacterLoginFailures) if (value.startedAt < cutoff) accountCharacterLoginFailures.delete(key);
+          if (accountCharacterLoginFailures.size > 1000) accountCharacterLoginFailures.delete(accountCharacterLoginFailures.keys().next().value);
+        }
+        return no(cb, 'اسم الحساب أو كلمة المرور غير صحيحين.');
+      }
+      accountCharacterLoginFailures.delete(attemptKey);
+
+      if (account.status === 'PENDING_APPROVAL' || (!account.status && account.pendingPrimary)) return no(cb, 'حسابك بانتظار اعتماد القيادة.');
+      if (account.status && account.status !== 'APPROVED') return no(cb, 'هذا الحساب غير نشط.');
+      const primary = (account.characterId && getUserById(account.characterId)) || state.cia_users.find((user) => user.accountId === account.id && user.characterType !== 'secondary');
+      if (!primary || (primary.accountId !== account.id && account.characterId !== primary.id) || primary.suspended === true || primary.securityStatus !== 'ACTIVE' || primary.approved === false) {
+        return no(cb, 'تعذر فتح الشخصيات لهذا الحساب.');
+      }
+      if (primary.serviceApproved === false) return no(cb, 'حسابك بانتظار اعتماد الخدمة من القيادة.');
+
+      markLogin(socket, primary);
+      const result = {
+        ok: true,
+        user: publicUser(primary, primary),
+        needsIdentity: primary.identityRequired !== false && !primary.identity,
+        serviceApproved: primary.serviceApproved !== false,
+        serviceRequired: primary.activeService !== true || primary.serviceApproved === false
+      };
+      socket.emit('auth:login:result', result);
+      if (typeof cb === 'function') cb(result);
+      try { await sendNotificationCounts(primary.id); } catch (_error) {}
+      emitState();
+      return result;
+    });
+
     /* =====================================================
        LOGIN
     ===================================================== */
@@ -5498,7 +5549,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
       const characters = characterListForUser(actor)
-        .filter((user) => user.suspended !== true && !user.separatedAt)
+        .filter((user) => user.suspended !== true && !user.separatedAt && user.approved !== false && user.serviceApproved !== false && user.securityStatus === 'ACTIVE')
         .map((user) => publicUser(user, actor));
       return ok(cb, {
         owner: { id: actor.characterOwnerId || actor.id, name: actor.name, accountId: actor.accountId || null },
