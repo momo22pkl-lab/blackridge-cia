@@ -5,6 +5,7 @@ const sessions = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const CLASSIFICATION_LEVEL = Object.freeze({ PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, SECRET: 3, 'TOP SECRET': 4 });
 const STATUSES = new Set(['ACTIVE','ALERT','STANDBY','PLANNED','IN_PROGRESS','COMPLETE','CANCELLED','ARCHIVED']);
+const REPORT_STATUSES = new Set(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED']);
 
 function registerIBPSocket(socket, ctx) {
   const state = () => ctx.getState();
@@ -93,14 +94,26 @@ function registerIBPSocket(socket, ctx) {
   }
   function clearance(person) { return ctx.isChief(person) ? 4 : ctx.isSenior(person) ? 3 : Math.min(2, rank(person)); }
   function classificationAllowed(person, value) { return (CLASSIFICATION_LEVEL[String(value || 'INTERNAL').toUpperCase()] ?? 1) <= clearance(person); }
-  function persist(actor, action, details, target, cb, payload = {}) {
+  function persist(actor, action, details, target, cb, payload = {}, rollback = null) {
     ctx.addAuditLog(action, actor, target || null, details || '');
+    const stateAfterAudit = typeof rollback === 'function' ? ctx.getState() : null;
+    const auditEntry = stateAfterAudit && Array.isArray(stateAfterAudit.cia_audit_logs)
+      ? stateAfterAudit.cia_audit_logs[0]
+      : null;
     let pending;
     try { pending = ctx.saveState(); } catch (error) { pending = Promise.reject(error); }
     return Promise.resolve(pending).then(() => {
       ctx.emitState();
       return reply(cb, { ok: true, ...payload });
     }).catch((error) => {
+      if (typeof rollback === 'function') {
+        try { rollback(); } catch (rollbackError) {
+          console.error('[IBP] State rollback failed:', rollbackError && rollbackError.message || rollbackError);
+        }
+        const auditLogs = ctx.getState() && ctx.getState().cia_audit_logs;
+        const auditIndex = Array.isArray(auditLogs) && auditEntry ? auditLogs.indexOf(auditEntry) : -1;
+        if (auditIndex >= 0) auditLogs.splice(auditIndex, 1);
+      }
       console.error('[IBP] State persistence failed:', error && error.message || error);
       return fail(cb, 'تعذر حفظ التغيير. تحقق من الاتصال ثم أعد المحاولة.');
     });
@@ -221,6 +234,75 @@ function registerIBPSocket(socket, ctx) {
       other.deputyCode || ''
     ].some((memberCode) => clean(memberCode, 100).toUpperCase() === code(person)));
   }
+  function reportUnit(report) {
+    return report && report.battalionId
+      ? units().find((unit) => String(unit.id) === String(report.battalionId)) || null
+      : null;
+  }
+  function canManageReportUnit(person, unit) {
+    return !!person && (senior(person) || (!!unit && (
+      clean(unit.commanderCode, 100).toUpperCase() === code(person) ||
+      (leader(person) && canManageUnit(person, unit))
+    )));
+  }
+  function canReviewReports(person, unit) {
+    return !!person && (
+      senior(person) ||
+      (!!unit && canManageReportUnit(person, unit)) ||
+      (leader(person) && (!unit || inUnitScope(person, unit)))
+    );
+  }
+  function reportClassificationAllowed(person, value, unit) {
+    return classificationAllowed(person, value) ||
+      (String(value || '').toUpperCase() === 'INTERNAL' && !!unit && inUnitScope(person, unit));
+  }
+  function reportVisible(person, report) {
+    if (!person || !report) return false;
+    const unit = reportUnit(report);
+    const author = clean(report.authorCode, 100).toUpperCase() === code(person);
+    if (!reportClassificationAllowed(person, report.classification, unit) && !(author && classificationAllowed(person, report.classification))) return false;
+    if (senior(person) || author) return true;
+    return !!unit && inUnitScope(person, unit);
+  }
+  function safeReport(report, viewer) {
+    const unit = reportUnit(report);
+    const author = clean(report.authorCode, 100).toUpperCase() === code(viewer);
+    const manager = canManageReportUnit(viewer, unit);
+    const status = REPORT_STATUSES.has(String(report.status || '').toUpperCase())
+      ? String(report.status).toUpperCase()
+      : 'SUBMITTED';
+    return {
+      id: clean(report.id, 120),
+      reportNumber: clean(report.reportNumber || report.id, 120),
+      title: clean(report.title, 140),
+      type: clean(report.type, 50) || 'SECTOR',
+      battalionId: unit ? unit.id : '',
+      battalionCode: clean(report.battalionCode || unit && unit.code, 32),
+      classification: String(report.classification || 'INTERNAL').toUpperCase(),
+      summary: clean(report.summary, 500),
+      text: clean(report.text, 5000),
+      status,
+      authorCode: clean(report.authorCode, 100),
+      createdAt: report.createdAt || '',
+      updatedAt: report.updatedAt || '',
+      reviewedAt: report.reviewedAt || '',
+      canEdit: status !== 'APPROVED' && (senior(viewer) || manager || (author && ['DRAFT', 'REJECTED'].includes(status))),
+      canReview: canReviewReports(viewer, unit) && ['SUBMITTED', 'IN_REVIEW'].includes(status),
+      canDelete: senior(viewer) || (status === 'DRAFT' && (manager || author)),
+      history: (senior(viewer) || manager || author) && Array.isArray(report.history)
+        ? report.history.slice(-20).map((entry) => ({
+          action: clean(entry.action, 40),
+          from: clean(entry.from, 30),
+          to: clean(entry.to, 30),
+          actorCode: clean(entry.actorCode, 100),
+          at: entry.at || ''
+        }))
+        : []
+    };
+  }
+  function validReportStatus(value) {
+    return REPORT_STATUSES.has(String(value || '').toUpperCase());
+  }
 
   socket.on('ibp:auth:issue', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -300,8 +382,27 @@ function registerIBPSocket(socket, ctx) {
   socket.on('ibp:reports:list', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
     const visibleUnits = scopedUnits(actor);
-    const reports = records('ibp_reports').filter((item) => classificationAllowed(actor,item.classification) && (!item.battalionId || visibleUnits.some((unit) => String(unit.id) === String(item.battalionId)) || item.authorCode === actor.publicCode)).slice(0,300);
-    return reply(cb, { ok: true, reports, battalions: visibleUnits.map((unit) => safeUnit(unit, actor)), canCreate: true });
+    const filters = payload && typeof payload === 'object' ? payload : {};
+    const status = String(filters.status || 'ALL').toUpperCase();
+    const battalionId = clean(filters.battalionId, 120);
+    const query = clean(filters.query, 100).toLocaleLowerCase();
+    const reports = records('ibp_reports')
+      .filter((item) => reportVisible(actor, item))
+      .filter((item) => status === 'ALL' || !validReportStatus(status) || String(item.status || 'SUBMITTED').toUpperCase() === status)
+      .filter((item) => !battalionId || String(item.battalionId || '') === battalionId)
+      .filter((item) => !query || [item.reportNumber, item.id, item.title, item.type, item.summary, item.text, item.battalionCode, item.authorCode]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(query)))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 200)
+      .map((item) => safeReport(item, actor));
+    const canCreate = leader(actor) || senior(actor) || visibleUnits.some((unit) => canManageReportUnit(actor, unit));
+    return reply(cb, {
+      ok: true,
+      reports,
+      battalions: visibleUnits.map((unit) => safeUnit(unit, actor)),
+      canCreate,
+      permissions: { create: canCreate, review: canReviewReports(actor, null), sectorWide: senior(actor) }
+    });
   });
   socket.on('ibp:access:get', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -531,13 +632,139 @@ function registerIBPSocket(socket, ctx) {
     return persist(actor,row?'تحديث عملية':'إنشاء عملية',record.name+' · '+(unit.code||unit.id),null,cb,{operation:safeOperation(record,actor)});
   });
   socket.on('ibp:report:create', (payload, cb) => {
-    const actor=gate(cb);if(!actor)return;const title=clean(payload&&payload.title,140), text=clean(payload&&payload.text,5000), summary=clean(payload&&payload.summary,500);
-    if(!title||(!summary&&!text))return fail(cb,'أدخل عنوان التقرير ومحتواه.');
-    const unit=payload&&payload.battalionId?units().find((u)=>String(u.id)===String(payload.battalionId)):null;
-    if(payload&&payload.battalionId&&(!unit||!inUnitScope(actor,unit)))return fail(cb,'لا تملك صلاحية ربط التقرير بهذه الكتيبة.');
-    const classification=String(payload&&payload.classification||'INTERNAL').toUpperCase();if(!Object.prototype.hasOwnProperty.call(CLASSIFICATION_LEVEL,classification)||!classificationAllowed(actor,classification))return fail(cb,'لا تملك صلاحية استخدام هذا التصنيف.');
-    const report={id:ctx.makeId('RPT'),title,type:clean(payload&&payload.type,50)||'SECTOR',battalionId:unit&&unit.id||'',battalionCode:unit&&unit.code||'',classification,summary,text,status:'SUBMITTED',authorCode:actor.publicCode,createdAt:ctx.now()};
-    records('ibp_reports').unshift(report);records('ibp_reports').splice(500);return persist(actor,'إنشاء تقرير',title,null,cb,{report});
+    const actor = gate(cb); if (!actor) return;
+    const title = clean(payload && payload.title, 140);
+    const text = clean(payload && payload.text, 5000);
+    const summary = clean(payload && payload.summary, 500);
+    if (!title || (!summary && !text)) return fail(cb, 'أدخل عنوان التقرير ومحتواه.');
+    const unit = payload && payload.battalionId
+      ? units().find((item) => String(item.id) === String(payload.battalionId))
+      : null;
+    if (payload && payload.battalionId && (!unit || !canManageReportUnit(actor, unit))) {
+      return fail(cb, 'لا تملك صلاحية إنشاء تقرير لهذه الكتيبة.');
+    }
+    if (!unit && !leader(actor) && !senior(actor)) return fail(cb, 'إنشاء التقارير متاح لقادة الكتائب والقيادة فقط.');
+    const classification = String(payload && payload.classification || 'INTERNAL').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(CLASSIFICATION_LEVEL, classification) || !reportClassificationAllowed(actor, classification, unit)) {
+      return fail(cb, 'لا تملك صلاحية استخدام هذا التصنيف.');
+    }
+    const requestId = clean(payload && payload.requestId, 100);
+    if (requestId && !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) return fail(cb, 'معرّف طلب التقرير غير صالح.');
+    const list = records('ibp_reports');
+    const duplicate = requestId && list.find((item) =>
+      item.requestId === requestId && clean(item.authorCode, 100).toUpperCase() === code(actor)
+    );
+    if (duplicate) return reply(cb, { ok: true, report: safeReport(duplicate, actor), deduplicated: true });
+    const status = String(payload && payload.status || 'SUBMITTED').toUpperCase();
+    if (!['DRAFT', 'SUBMITTED'].includes(status)) return fail(cb, 'حالة التقرير عند الإنشاء غير صالحة.');
+    const at = ctx.now();
+    const report = {
+      id: ctx.makeId('RPT'),
+      reportNumber: '',
+      title,
+      type: clean(payload && payload.type, 50) || 'SECTOR',
+      battalionId: unit && unit.id || '',
+      battalionCode: unit && unit.code || '',
+      classification,
+      summary,
+      text,
+      status,
+      authorCode: actor.publicCode || '',
+      requestId,
+      createdAt: at,
+      updatedAt: at,
+      history: [{ action: 'CREATED', from: '', to: status, actorCode: actor.publicCode || '', at }]
+    };
+    report.reportNumber = report.id;
+    list.unshift(report);
+    const removed = list.splice(500);
+    const rollback = () => {
+      const index = list.indexOf(report);
+      if (index >= 0) list.splice(index, 1);
+      if (removed.length) list.push(...removed);
+    };
+    return persist(actor, 'إنشاء تقرير عسكري', report.reportNumber + ' · ' + title, null, cb, { report: safeReport(report, actor) }, rollback);
+  });
+  socket.on('ibp:report:update', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const id = clean(payload && (payload.id || payload.reportId), 120);
+    const report = records('ibp_reports').find((item) => String(item.id) === id);
+    if (!report || !reportVisible(actor, report)) return fail(cb, 'التقرير غير موجود أو خارج نطاق صلاحيتك.');
+    const unit = reportUnit(report);
+    const currentStatus = REPORT_STATUSES.has(String(report.status || '').toUpperCase())
+      ? String(report.status).toUpperCase()
+      : 'SUBMITTED';
+    const owner = clean(report.authorCode, 100).toUpperCase() === code(actor);
+    const manager = canManageReportUnit(actor, unit);
+    if (currentStatus === 'APPROVED') return fail(cb, 'التقرير المعتمد للقراءة فقط.');
+    if (!senior(actor) && !manager && !(owner && ['DRAFT', 'REJECTED'].includes(currentStatus))) {
+      return fail(cb, 'لا تملك صلاحية تعديل هذا التقرير.');
+    }
+    const patch = {};
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'title')) {
+      patch.title = clean(payload.title, 140);
+      if (!patch.title) return fail(cb, 'عنوان التقرير مطلوب.');
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'text')) patch.text = clean(payload.text, 5000);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'summary')) patch.summary = clean(payload.summary, 500);
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'type')) patch.type = clean(payload.type, 50) || 'SECTOR';
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'classification')) {
+      const classification = String(payload.classification || '').toUpperCase();
+      if (!Object.prototype.hasOwnProperty.call(CLASSIFICATION_LEVEL, classification) || !reportClassificationAllowed(actor, classification, unit)) {
+        return fail(cb, 'لا تملك صلاحية استخدام هذا التصنيف.');
+      }
+      patch.classification = classification;
+    }
+    if (!String(patch.summary === undefined ? report.summary || '' : patch.summary).trim() &&
+        !String(patch.text === undefined ? report.text || '' : patch.text).trim()) {
+      return fail(cb, 'يجب أن يحتوي التقرير على ملخص أو تفاصيل.');
+    }
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'status')) {
+      const nextStatus = String(payload.status || '').toUpperCase();
+      if (!validReportStatus(nextStatus)) return fail(cb, 'حالة التقرير غير صالحة.');
+      const canManageStatus = senior(actor) || manager || owner;
+      const allowedTransition =
+        (currentStatus === 'DRAFT' && ['SUBMITTED', 'DRAFT'].includes(nextStatus) && canManageStatus) ||
+        (currentStatus === 'REJECTED' && ['DRAFT', 'SUBMITTED'].includes(nextStatus) && canManageStatus) ||
+        (currentStatus === 'SUBMITTED' && nextStatus === 'IN_REVIEW' && canReviewReports(actor, unit)) ||
+        (currentStatus === 'IN_REVIEW' && ['APPROVED', 'REJECTED'].includes(nextStatus) && senior(actor));
+      if (!allowedTransition) return fail(cb, 'انتقال حالة التقرير غير مسموح بصلاحيتك الحالية.');
+      patch.status = nextStatus;
+    }
+    if (!Object.keys(patch).length) return fail(cb, 'لا توجد تغييرات صالحة لحفظها.');
+    const before = { ...report, history: Array.isArray(report.history) ? report.history.slice() : [] };
+    if (patch.status && ['APPROVED', 'REJECTED'].includes(patch.status)) report.reviewedAt = ctx.now();
+    Object.assign(report, patch);
+    const at = ctx.now();
+    report.updatedAt = at;
+    if (patch.status && patch.status !== currentStatus) {
+      report.history = [...(Array.isArray(report.history) ? report.history : []).slice(-19), {
+        action: 'STATUS_CHANGED',
+        from: currentStatus,
+        to: patch.status,
+        actorCode: actor.publicCode || '',
+        at
+      }];
+    }
+    const rollback = () => Object.assign(report, before);
+    return persist(actor, patch.status ? 'تحديث حالة تقرير عسكري' : 'تعديل تقرير عسكري', id + ' · ' + (patch.status || 'CONTENT'), null, cb, { report: safeReport(report, actor) }, rollback);
+  });
+  socket.on('ibp:report:delete', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const id = clean(payload && (payload.id || payload.reportId), 120);
+    const list = records('ibp_reports');
+    const index = list.findIndex((item) => String(item.id) === id);
+    if (index < 0 || !reportVisible(actor, list[index])) return fail(cb, 'التقرير غير موجود أو خارج نطاق صلاحيتك.');
+    const report = list[index];
+    const unit = reportUnit(report);
+    const owner = clean(report.authorCode, 100).toUpperCase() === code(actor);
+    if (!senior(actor) && !(String(report.status).toUpperCase() === 'DRAFT' && (owner || canManageReportUnit(actor, unit)))) {
+      return fail(cb, 'الحذف متاح لصاحب المسودة أو القيادة المخولة فقط.');
+    }
+    list.splice(index, 1);
+    return persist(actor, 'حذف تقرير عسكري', clean(report.reportNumber || report.id, 120) + ' · ' + clean(report.title, 140), null, cb, { id }, () => {
+      list.splice(index, 0, report);
+    });
   });
   socket.on('ibp:intelligence:create', (payload, cb) => {
     const actor=gate(cb);if(!actor)return;if(!leader(actor))return fail(cb,'نشر الموجزات متاح للقيادات فقط.');

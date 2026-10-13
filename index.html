@@ -1328,9 +1328,48 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 .ibp-module-english { text-align: left; }
 .ibp-module-english .table-custom,
 .ibp-module-english .classified-shell { direction: ltr; }
+.ibp-feature-panel[hidden] { display: none !important; }
+.ibp-feature-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(153,169,175,.17);
+  border-radius: 6px;
+  background: linear-gradient(155deg,rgba(18,28,36,.98),rgba(10,17,23,.98));
+}
+.ibp-feature-head,.ibp-feature-toolbar,.ibp-report-filters,.ibp-report-actions {
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+}
+.ibp-feature-head { margin-bottom:11px; }
+.ibp-feature-head h3 { margin:0;color:#efe8d2;font-size:14px; }
+.ibp-feature-head p { margin:4px 0 0;color:#91a0a5;font-size:10px;line-height:1.6; }
+.ibp-report-form,.ibp-report-filters { margin-top:10px;padding:11px;border:1px solid rgba(153,169,175,.14);border-radius:5px;background:rgba(5,10,15,.48); }
+.ibp-report-form-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+.ibp-report-field { display:grid;gap:5px;min-width:0;color:#b9b9ab;font-size:10px; }
+.ibp-report-field.full { grid-column:1/-1; }
+.ibp-report-field input,.ibp-report-field select,.ibp-report-field textarea,.ibp-report-filters input,.ibp-report-filters select {
+  min-width:0;width:100%;padding:8px 9px;border:1px solid rgba(153,169,175,.2);border-radius:4px;outline:0;background:#080e14;color:#e7e3d7;font:inherit;
+}
+.ibp-report-field textarea { min-height:80px;resize:vertical;line-height:1.65; }
+.ibp-report-field option,.ibp-report-filters option { background:#101820;color:#e7e3d7; }
+.ibp-report-check { display:inline-flex;align-items:center;gap:7px;color:#d5c99f;font-size:10px; }
+.ibp-report-check input { accent-color:#c1a25a; }
+.ibp-report-status { min-height:16px;color:#96d7c3;font-size:10px; }
+.ibp-report-filters { display:grid;grid-template-columns:minmax(180px,1fr) minmax(140px,.6fr) minmax(140px,.6fr); }
+.ibp-report-list { display:grid;gap:8px;margin-top:10px; }
+.ibp-report-card { min-width:0;padding:11px;border:1px solid rgba(153,169,175,.14);border-radius:5px;background:rgba(8,14,20,.82); }
+.ibp-report-card-head { display:flex;justify-content:space-between;align-items:flex-start;gap:10px; }
+.ibp-report-card h4 { margin:0;color:#e9e4d7;font-size:12px;overflow-wrap:anywhere; }
+.ibp-report-meta { margin-top:5px;color:#85949a;font-size:9px;line-height:1.7;overflow-wrap:anywhere; }
+.ibp-report-content { margin:8px 0 0;color:#bbc2bf;font-size:10px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere; }
+.ibp-report-content summary { color:#9fdccd;cursor:pointer; }
+.ibp-report-pill { flex:none;padding:4px 7px;border:1px solid rgba(193,162,90,.35);border-radius:12px;color:#e5cf91;background:rgba(193,162,90,.08);font-size:9px; }
+.ibp-report-actions { justify-content:flex-start;margin-top:9px; }
+.ibp-report-empty { padding:16px 8px;color:#89989d;text-align:center;font-size:10px; }
 @media (max-width: 680px) {
   #ibp-return-bar { flex-wrap: wrap; gap: 6px; }
   .ibp-return-language { margin-inline: 0; }
+  .ibp-report-form-grid,.ibp-report-filters { grid-template-columns:1fr; }
+  .ibp-feature-panel { padding:9px; }
 }
 
 </style>
@@ -1858,7 +1897,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <button class="ibp-card" data-ibp-operations hidden type="button" onclick="openIBPModule('operations')"><span class="ibp-card-icon"><i class="fa-solid fa-crosshairs"></i></span><span><b class="ibp-card-title">OPERATIONS CONTROL</b><small class="ibp-card-desc">المهمات والتحديثات الميدانية</small></span><code class="ibp-card-code">04</code></button>
           <button class="ibp-card" type="button" onclick="openIBPModule('cases-vault')"><span class="ibp-card-icon"><i class="fa-solid fa-box-archive"></i></span><span><b class="ibp-card-title">INTELLIGENCE ARCHIVE</b><small class="ibp-card-desc">أرشيف القضايا والأدلة</small></span><code class="ibp-card-code">05</code></button>
           <button class="ibp-card" type="button" onclick="openIBPModule('sos-alerts')"><span class="ibp-card-icon"><i class="fa-solid fa-tower-broadcast"></i></span><span><b class="ibp-card-title">INTELLIGENCE FEED</b><small class="ibp-card-desc">البلاغات والتنبيهات المصرح بها</small></span><code class="ibp-card-code">06</code></button>
-          <button class="ibp-card" type="button" onclick="openIBPModule('reports')"><span class="ibp-card-icon"><i class="fa-solid fa-file-lines"></i></span><span><b class="ibp-card-title">REPORTS & BRIEFINGS</b><small class="ibp-card-desc">التقارير والملخصات</small></span><code class="ibp-card-code">07</code></button>
+          <button class="ibp-card" type="button" data-ibp-feature-open="reports"><span class="ibp-card-icon"><i class="fa-solid fa-file-lines"></i></span><span><b class="ibp-card-title">REPORTS & BRIEFINGS</b><small class="ibp-card-desc">التقارير العسكرية</small></span><code class="ibp-card-code">07</code></button>
           <button class="ibp-card" data-ibp-audit hidden type="button" onclick="openIBPModule('audit-panel')"><span class="ibp-card-icon"><i class="fa-solid fa-fingerprint"></i></span><span><b class="ibp-card-title">BLACKBOX</b><small class="ibp-card-desc">سجل القيادة والتغييرات المصرح بها</small></span><code class="ibp-card-code">08</code></button>
         </div><div class="ibp-foot"><span>IBP // ONE SECTOR · ONE NETWORK · COMPLETE COMMAND VISIBILITY</span><span id="ibp-data-scope">SECURE ACCESS // ROLE-BASED</span></div>
       </main></div></div></div>
@@ -6577,7 +6616,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         "المهمات والتحديثات الميدانية",
         "أرشيف القضايا والأدلة",
         "البلاغات والتنبيهات المصرح بها",
-        "التقارير والملخصات",
+        "تقارير عسكرية بمسار مراجعة موثق",
         "سجل القيادة والتغييرات المصرح بها"
       ],
       scopeFooter: "دخول آمن // بحسب الرتبة",
@@ -6652,6 +6691,55 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       updatedFromServer: "محدّث من الخادم",
       notLiveTracking: "لا يوجد تتبع جغرافي حي",
       statusConnection: "حالة الاتصال",
+      reportModule: "نظام التقارير العسكرية",
+      reportModuleHint: "تقارير محفوظة على الخادم ضمن نطاق كتيبتك وصلاحيتك.",
+      refreshReports: "تحديث التقارير",
+      reportTitle: "عنوان التقرير",
+      reportType: "نوع التقرير",
+      reportUnit: "الكتيبة",
+      reportNoUnit: "تقرير قطاع غير مرتبط بكتيبة",
+      reportClassification: "درجة السرية",
+      reportSummary: "ملخص",
+      reportBody: "التفاصيل الميدانية",
+      reportDraft: "حفظ كمسودة",
+      reportCreate: "حفظ التقرير",
+      reportUpdate: "حفظ التعديل",
+      reportCancelEdit: "إلغاء التعديل",
+      reportSearch: "بحث بالرقم أو العنوان أو المحتوى",
+      reportStatusFilter: "تصفية الحالة",
+      reportUnitFilter: "تصفية الكتيبة",
+      reportAllStatuses: "كل الحالات",
+      reportAllUnits: "كل الكتائب",
+      reportNone: "لا توجد تقارير مطابقة.",
+      reportLoading: "جارٍ تحميل التقارير…",
+      reportLoadError: "تعذر تحميل التقارير من الخادم.",
+      reportRequired: "أدخل عنواناً وملخصاً أو تفاصيل للتقرير.",
+      reportSaved: "تم حفظ التقرير العسكري.",
+      reportSaveError: "تعذر حفظ التقرير؛ تحقق من الصلاحية والاتصال.",
+      reportDeleteConfirm: "حذف هذا التقرير نهائياً من سجل IBP؟",
+      reportDelete: "حذف",
+      reportEdit: "تعديل",
+      reportSubmitForReview: "إرسال للمراجعة",
+      reportMoveToReview: "بدء المراجعة",
+      reportApprove: "اعتماد",
+      reportReject: "رفض",
+      reportAuthor: "المحرر",
+      reportClassificationPublic: "عام",
+      reportClassificationInternal: "داخلي",
+      reportClassificationConfidential: "سري",
+      reportClassificationSecret: "سري للغاية",
+      reportClassificationTopSecret: "بالغ السرية",
+      reportTypePatrol: "دورية",
+      reportTypeOperation: "عملية",
+      reportTypeIntelligence: "استخبارات",
+      reportTypeIncident: "حادث ميداني",
+      reportTypeBriefing: "إحاطة",
+      reportStatusDraft: "مسودة",
+      reportStatusSubmitted: "مرسل",
+      reportStatusInReview: "قيد المراجعة",
+      reportStatusApproved: "معتمد",
+      reportStatusRejected: "مرفوض",
+      reportActionFailed: "تعذر تنفيذ الإجراء على التقرير.",
       archiveConfirm: "سيؤدي حفظ الحالة المؤرشفة إلى إيقاف إسناد أفراد جدد لهذه الكتيبة. متابعة؟",
       errors: {
         "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.",
@@ -6686,7 +6774,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         "Missions and field updates",
         "Case and evidence archive",
         "Authorized alerts and reports",
-        "Reports and briefings",
+        "Military reports with an audited review workflow",
         "Command activity and permitted changes"
       ],
       scopeFooter: "SECURE ACCESS // ROLE-SCOPED",
@@ -6761,6 +6849,55 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       updatedFromServer: "Updated from server",
       notLiveTracking: "No live geographic tracking",
       statusConnection: "Connection",
+      reportModule: "Military reports",
+      reportModuleHint: "Reports are saved on the server and scoped to your battalion and permissions.",
+      refreshReports: "Refresh reports",
+      reportTitle: "Report title",
+      reportType: "Report type",
+      reportUnit: "Battalion",
+      reportNoUnit: "Sector report not linked to a battalion",
+      reportClassification: "Classification",
+      reportSummary: "Summary",
+      reportBody: "Field details",
+      reportDraft: "Save as draft",
+      reportCreate: "Save report",
+      reportUpdate: "Save changes",
+      reportCancelEdit: "Cancel edit",
+      reportSearch: "Search number, title, or content",
+      reportStatusFilter: "Filter status",
+      reportUnitFilter: "Filter battalion",
+      reportAllStatuses: "All statuses",
+      reportAllUnits: "All battalions",
+      reportNone: "No matching reports.",
+      reportLoading: "Loading reports…",
+      reportLoadError: "Reports could not be loaded from the server.",
+      reportRequired: "Enter a title and a summary or report details.",
+      reportSaved: "Military report saved.",
+      reportSaveError: "The report could not be saved. Check permissions and connection.",
+      reportDeleteConfirm: "Permanently delete this report from the IBP record?",
+      reportDelete: "Delete",
+      reportEdit: "Edit",
+      reportSubmitForReview: "Submit for review",
+      reportMoveToReview: "Begin review",
+      reportApprove: "Approve",
+      reportReject: "Reject",
+      reportAuthor: "Author",
+      reportClassificationPublic: "Public",
+      reportClassificationInternal: "Internal",
+      reportClassificationConfidential: "Confidential",
+      reportClassificationSecret: "Secret",
+      reportClassificationTopSecret: "Top secret",
+      reportTypePatrol: "Patrol",
+      reportTypeOperation: "Operation",
+      reportTypeIntelligence: "Intelligence",
+      reportTypeIncident: "Field incident",
+      reportTypeBriefing: "Briefing",
+      reportStatusDraft: "Draft",
+      reportStatusSubmitted: "Submitted",
+      reportStatusInReview: "In review",
+      reportStatusApproved: "Approved",
+      reportStatusRejected: "Rejected",
+      reportActionFailed: "The report action could not be completed.",
       archiveConfirm: "Saving as archived will prevent new personnel assignments to this battalion. Continue?",
       errors: {
         "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "A selected person is already assigned to another active battalion.",
@@ -6789,6 +6926,18 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     operations: [],
     operationsLoading: false,
     operationsError: "",
+    activeFeature: "",
+    reports: [],
+    reportBattalions: [],
+    canCreateReports: false,
+    reportsLoading: false,
+    reportsError: "",
+    lastReportRequest: 0,
+    reportRequestSequence: 0,
+    reportFilters: { status: "ALL", battalionId: "", query: "" },
+    reportFormBattalionId: "",
+    editingReportId: "",
+    reportSaving: false,
     mounted: false
   };
 
@@ -6892,7 +7041,32 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
               <button class="ibp-console-button secondary" type="button" data-ibp-open="tactical-map-view" data-ibp-i18n="openMap"></button>
               <button class="ibp-console-button secondary" type="button" data-ibp-open="operations" data-ibp-ops-action hidden data-ibp-i18n="openOperations"></button>
               <button class="ibp-console-button secondary" type="button" data-ibp-open="cases-vault" data-ibp-i18n="openArchive"></button>
+              <button class="ibp-console-button secondary" type="button" data-ibp-feature-open="reports" data-ibp-i18n="reportModule"></button>
             </div>
+            <section id="ibp-reports-module" class="ibp-feature-panel" hidden aria-labelledby="ibp-reports-heading">
+              <div class="ibp-feature-head">
+                <div><h3 id="ibp-reports-heading" data-ibp-i18n="reportModule"></h3><p data-ibp-i18n="reportModuleHint"></p></div>
+                <button id="ibp-reports-refresh" class="ibp-console-button secondary" type="button" data-ibp-i18n="refreshReports"></button>
+              </div>
+              <form id="ibp-report-form" class="ibp-report-form">
+                <div class="ibp-report-form-grid">
+                  <label class="ibp-report-field"><span data-ibp-i18n="reportTitle"></span><input id="ibp-report-title" maxlength="140" required></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="reportType"></span><select id="ibp-report-type"><option value="PATROL" data-ibp-i18n="reportTypePatrol"></option><option value="OPERATION" data-ibp-i18n="reportTypeOperation"></option><option value="INTELLIGENCE" data-ibp-i18n="reportTypeIntelligence"></option><option value="INCIDENT" data-ibp-i18n="reportTypeIncident"></option><option value="BRIEFING" data-ibp-i18n="reportTypeBriefing"></option></select></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="reportUnit"></span><select id="ibp-report-unit"></select></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="reportClassification"></span><select id="ibp-report-classification"><option value="PUBLIC" data-ibp-i18n="reportClassificationPublic"></option><option value="INTERNAL" data-ibp-i18n="reportClassificationInternal"></option><option value="CONFIDENTIAL" data-ibp-i18n="reportClassificationConfidential"></option><option value="SECRET" data-ibp-i18n="reportClassificationSecret"></option><option value="TOP SECRET" data-ibp-i18n="reportClassificationTopSecret"></option></select></label>
+                  <label class="ibp-report-field full"><span data-ibp-i18n="reportSummary"></span><input id="ibp-report-summary" maxlength="500"></label>
+                  <label class="ibp-report-field full"><span data-ibp-i18n="reportBody"></span><textarea id="ibp-report-body" maxlength="5000"></textarea></label>
+                  <label class="ibp-report-check"><input id="ibp-report-draft" type="checkbox"><span data-ibp-i18n="reportDraft"></span></label>
+                </div>
+                <div class="ibp-report-actions"><button id="ibp-report-save" class="ibp-console-button" type="submit"></button><button id="ibp-report-cancel-edit" class="ibp-console-button secondary" type="button" hidden data-ibp-i18n="reportCancelEdit"></button><span id="ibp-report-status" class="ibp-report-status" role="status" aria-live="polite"></span></div>
+              </form>
+              <div class="ibp-report-filters">
+                <input id="ibp-report-search" type="search" maxlength="100" data-ibp-i18n-placeholder="reportSearch" aria-label="Report search">
+                <select id="ibp-report-status-filter" aria-label="Filter by report status"></select>
+                <select id="ibp-report-unit-filter" aria-label="Filter by battalion"></select>
+              </div>
+              <div id="ibp-reports-list" class="ibp-report-list" aria-live="polite"></div>
+            </section>
           </section>
           <div id="ibp-editor-modal" class="ibp-editor-modal" hidden>
             <section class="ibp-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="ibp-editor-title">
@@ -6932,6 +7106,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (!state.mounted) {
       document.addEventListener("click", handleClick);
       document.addEventListener("change", handleChange);
+      document.addEventListener("input", handleInput);
       document.addEventListener("submit", handleSubmit);
       document.addEventListener("keydown", handleKeydown);
       state.mounted = true;
@@ -6956,6 +7131,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     shell.querySelectorAll("[data-ibp-i18n]").forEach((element) => {
       const key = element.getAttribute("data-ibp-i18n");
       if (key) element.textContent = t(key);
+    });
+    shell.querySelectorAll("[data-ibp-i18n-placeholder]").forEach((element) => {
+      const key = element.getAttribute("data-ibp-i18n-placeholder");
+      if (key) element.setAttribute("placeholder", t(key));
     });
 
     const navLabels = {
@@ -7027,6 +7206,18 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       state.lastOperationsRequest = 0;
       state.operations = [];
       state.operationsError = "";
+      state.activeFeature = "";
+      state.reports = [];
+      state.reportBattalions = [];
+      state.canCreateReports = false;
+      state.reportsLoading = false;
+      state.reportsError = "";
+      state.lastReportRequest = 0;
+      state.reportRequestSequence += 1;
+      state.reportFilters = { status: "ALL", battalionId: "", query: "" };
+      state.reportFormBattalionId = "";
+      state.editingReportId = "";
+      state.reportSaving = false;
       state.languageTouched = false;
     }
     if (!state.languageTouched && user && (user.ibpLanguage === "ar" || user.ibpLanguage === "en")) {
@@ -7294,6 +7485,313 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }).join("");
   }
 
+  function reportRank() {
+    const user = current();
+    return String(user && typeof normalizeRank === "function" ? normalizeRank(user.rank) : "").toUpperCase();
+  }
+
+  function seniorReportReviewer() {
+    return ["CIA CHIEF", "SUPREME COMMANDER"].includes(reportRank());
+  }
+
+  function reportStatusLabel(status) {
+    const key = {
+      DRAFT: "reportStatusDraft",
+      SUBMITTED: "reportStatusSubmitted",
+      IN_REVIEW: "reportStatusInReview",
+      APPROVED: "reportStatusApproved",
+      REJECTED: "reportStatusRejected"
+    }[String(status || "").toUpperCase()];
+    return key ? t(key) : String(status || "—");
+  }
+
+  function reportClassificationLabel(value) {
+    const key = {
+      PUBLIC: "reportClassificationPublic",
+      INTERNAL: "reportClassificationInternal",
+      CONFIDENTIAL: "reportClassificationConfidential",
+      SECRET: "reportClassificationSecret",
+      "TOP SECRET": "reportClassificationTopSecret"
+    }[String(value || "INTERNAL").toUpperCase()];
+    return key ? t(key) : String(value || "INTERNAL");
+  }
+
+  function reportClassifications() {
+    const rank = reportRank();
+    if (rank === "CIA CHIEF") return ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "SECRET", "TOP SECRET"];
+    if (rank === "SUPREME COMMANDER") return ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "SECRET"];
+    if (rank === "HIGH COMMANDER") return ["PUBLIC", "INTERNAL", "CONFIDENTIAL"];
+    return ["PUBLIC", "INTERNAL"];
+  }
+
+  function renderReportControls() {
+    const shell = root();
+    if (!shell) return;
+    const panel = shell.querySelector("#ibp-reports-module");
+    if (!panel) return;
+    panel.hidden = state.activeFeature !== "reports";
+    const form = panel.querySelector("#ibp-report-form");
+    if (!form) return;
+    form.hidden = !state.canCreateReports && !state.editingReportId;
+
+    const unitSelect = panel.querySelector("#ibp-report-unit");
+    const unitFilter = panel.querySelector("#ibp-report-unit-filter");
+    const statuses = panel.querySelector("#ibp-report-status-filter");
+    const classification = panel.querySelector("#ibp-report-classification");
+    const rank = reportRank();
+    const canCreateSectorReport = ["CIA CHIEF", "SUPREME COMMANDER", "HIGH COMMANDER"].includes(rank);
+    const priorUnit = unitSelect && unitSelect.value;
+    const units = state.reportBattalions;
+    if (unitSelect) {
+      const options = canCreateSectorReport
+        ? `<option value="">${esc(t("reportNoUnit"))}</option>`
+        : "";
+      unitSelect.innerHTML = options + units.map((unit) => {
+        const label = state.language === "ar" ? unit.nameAr || unit.nameEn || unit.name : unit.nameEn || unit.nameAr || unit.name;
+        return `<option value="${esc(unit.id)}">${esc(label || unit.code || unit.id)}</option>`;
+      }).join("");
+      const requested = state.reportFormBattalionId || priorUnit || state.selectedId;
+      unitSelect.value = units.some((unit) => String(unit.id) === String(requested))
+        ? String(requested)
+        : canCreateSectorReport ? "" : String(units[0] && units[0].id || "");
+      state.reportFormBattalionId = unitSelect.value;
+      unitSelect.disabled = units.length < 2 && !canCreateSectorReport;
+    }
+    if (unitFilter) {
+      const selected = state.reportFilters.battalionId;
+      unitFilter.innerHTML = `<option value="">${esc(t("reportAllUnits"))}</option>` + units.map((unit) => {
+        const label = state.language === "ar" ? unit.nameAr || unit.nameEn || unit.name : unit.nameEn || unit.nameAr || unit.name;
+        return `<option value="${esc(unit.id)}">${esc(label || unit.code || unit.id)}</option>`;
+      }).join("");
+      unitFilter.value = units.some((unit) => String(unit.id) === String(selected)) ? selected : "";
+    }
+    if (statuses) {
+      const options = [
+        ["ALL", t("reportAllStatuses")],
+        ["DRAFT", t("reportStatusDraft")],
+        ["SUBMITTED", t("reportStatusSubmitted")],
+        ["IN_REVIEW", t("reportStatusInReview")],
+        ["APPROVED", t("reportStatusApproved")],
+        ["REJECTED", t("reportStatusRejected")]
+      ];
+      statuses.innerHTML = options.map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+      statuses.value = state.reportFilters.status;
+    }
+    if (classification) {
+      const previous = classification.value || "INTERNAL";
+      const allowed = reportClassifications();
+      classification.innerHTML = allowed.map((value) => `<option value="${esc(value)}">${esc(reportClassificationLabel(value))}</option>`).join("");
+      classification.value = allowed.includes(previous) ? previous : "INTERNAL";
+    }
+    const search = panel.querySelector("#ibp-report-search");
+    if (search) {
+      search.placeholder = t("reportSearch");
+      search.value = state.reportFilters.query;
+    }
+    const saveButton = panel.querySelector("#ibp-report-save");
+    if (saveButton) {
+      saveButton.textContent = t(state.editingReportId ? "reportUpdate" : "reportCreate");
+      saveButton.disabled = state.reportSaving || (!state.canCreateReports && !state.editingReportId);
+    }
+    const cancel = panel.querySelector("#ibp-report-cancel-edit");
+    if (cancel) cancel.hidden = !state.editingReportId;
+    const draft = panel.querySelector("#ibp-report-draft");
+    if (draft) draft.disabled = !!state.editingReportId;
+  }
+
+  function renderReportList() {
+    const box = root() && root().querySelector("#ibp-reports-list");
+    if (!box) return;
+    if (state.reportsLoading && !state.reports.length) {
+      box.innerHTML = `<div class="ibp-report-empty">${esc(t("reportLoading"))}</div>`;
+      return;
+    }
+    if (state.reportsError && !state.reports.length) {
+      box.innerHTML = `<div class="ibp-report-empty">${esc(state.reportsError)} <button class="ibp-console-button secondary" type="button" data-ibp-reports-refresh>${esc(t("refreshReports"))}</button></div>`;
+      return;
+    }
+    if (!state.reports.length) {
+      box.innerHTML = `<div class="ibp-report-empty">${esc(t("reportNone"))}</div>`;
+      return;
+    }
+    box.innerHTML = state.reports.map((report) => {
+      const status = String(report.status || "SUBMITTED").toUpperCase();
+      const unit = state.reportBattalions.find((item) => String(item.id) === String(report.battalionId));
+      const unitLabel = report.battalionCode || (unit && (unit.nameAr || unit.nameEn || unit.name)) || (state.language === "ar" ? "تقرير قطاع" : "Sector report");
+      const details = report.text || report.summary || "";
+      const createdAt = report.createdAt ? new Date(report.createdAt).toLocaleString(state.language === "ar" ? "ar" : "en-GB") : "—";
+      const actions = [];
+      if (report.canEdit) actions.push(`<button class="ibp-console-button secondary" type="button" data-ibp-report-edit="${esc(report.id)}">${esc(t("reportEdit"))}</button>`);
+      if (["DRAFT", "REJECTED"].includes(status) && report.canEdit) {
+        actions.push(`<button class="ibp-console-button secondary" type="button" data-ibp-report-status="${esc(report.id)}" data-next-status="SUBMITTED">${esc(t("reportSubmitForReview"))}</button>`);
+      }
+      if (status === "SUBMITTED" && report.canReview) {
+        actions.push(`<button class="ibp-console-button secondary" type="button" data-ibp-report-status="${esc(report.id)}" data-next-status="IN_REVIEW">${esc(t("reportMoveToReview"))}</button>`);
+      }
+      if (status === "IN_REVIEW" && report.canReview && seniorReportReviewer()) {
+        actions.push(`<button class="ibp-console-button" type="button" data-ibp-report-status="${esc(report.id)}" data-next-status="APPROVED">${esc(t("reportApprove"))}</button>`);
+        actions.push(`<button class="ibp-console-button danger" type="button" data-ibp-report-status="${esc(report.id)}" data-next-status="REJECTED">${esc(t("reportReject"))}</button>`);
+      }
+      if (report.canDelete) actions.push(`<button class="ibp-console-button danger" type="button" data-ibp-report-delete="${esc(report.id)}">${esc(t("reportDelete"))}</button>`);
+      const typeKeys = { PATROL: "reportTypePatrol", OPERATION: "reportTypeOperation", INTELLIGENCE: "reportTypeIntelligence", INCIDENT: "reportTypeIncident", BRIEFING: "reportTypeBriefing" };
+      const reportType = typeKeys[String(report.type || "").toUpperCase()]
+        ? t(typeKeys[String(report.type || "").toUpperCase()])
+        : String(report.type || "SECTOR");
+      return `<article class="ibp-report-card">
+        <div class="ibp-report-card-head"><div><h4>${esc(report.reportNumber || report.id)} · ${esc(report.title)}</h4><div class="ibp-report-meta">${esc(unitLabel)} · ${esc(reportType)} · ${esc(reportClassificationLabel(report.classification))} · ${esc(t("reportAuthor"))}: #${esc(report.authorCode || "—")} · ${esc(createdAt)}</div></div><span class="ibp-report-pill">${esc(reportStatusLabel(status))}</span></div>
+        ${details ? `<details class="ibp-report-content"><summary>${esc(t("reportBody"))}</summary><div>${esc(details)}</div></details>` : ""}
+        ${actions.length ? `<div class="ibp-report-actions">${actions.join("")}</div>` : ""}
+      </article>`;
+    }).join("");
+  }
+
+  function renderReportPanel() {
+    renderReportControls();
+    renderReportList();
+  }
+
+  function requestReports(force) {
+    if (!isAuthenticated() || !connected()) return;
+    if (!force && Date.now() - state.lastReportRequest < 15000) return;
+    const s = socket();
+    if (!s) return;
+    const sequence = ++state.reportRequestSequence;
+    state.lastReportRequest = Date.now();
+    state.reportsLoading = true;
+    state.reportsError = "";
+    renderReportPanel();
+    s.emit("ibp:reports:list", {
+      status: state.reportFilters.status,
+      battalionId: state.reportFilters.battalionId,
+      query: state.reportFilters.query
+    }, (result) => {
+      if (sequence !== state.reportRequestSequence) return;
+      state.reportsLoading = false;
+      if (!result || !result.ok) {
+        state.reportsError = result && result.message || t("reportLoadError");
+        renderReportPanel();
+        return;
+      }
+      state.reports = Array.isArray(result.reports) ? result.reports : [];
+      state.reportBattalions = Array.isArray(result.battalions) ? result.battalions : [];
+      state.canCreateReports = result.canCreate === true;
+      state.reportsError = "";
+      renderReportPanel();
+    });
+  }
+
+  function openReportFeature() {
+    state.activeFeature = "reports";
+    renderReportPanel();
+    requestReports(true);
+    const panel = root() && root().querySelector("#ibp-reports-module");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelReportEdit() {
+    const panel = root();
+    const form = panel && panel.querySelector("#ibp-report-form");
+    if (form) form.reset();
+    state.editingReportId = "";
+    state.reportFormBattalionId = "";
+    const status = panel && panel.querySelector("#ibp-report-status");
+    if (status) status.textContent = "";
+    renderReportPanel();
+  }
+
+  function editReport(id) {
+    const report = state.reports.find((item) => String(item.id) === String(id));
+    const panel = root();
+    if (!report || !report.canEdit || !panel) return;
+    state.activeFeature = "reports";
+    state.editingReportId = String(report.id);
+    state.reportFormBattalionId = String(report.battalionId || "");
+    renderReportPanel();
+    panel.querySelector("#ibp-report-title").value = report.title || "";
+    panel.querySelector("#ibp-report-type").value = report.type || "PATROL";
+    panel.querySelector("#ibp-report-unit").value = String(report.battalionId || "");
+    panel.querySelector("#ibp-report-classification").value = report.classification || "INTERNAL";
+    panel.querySelector("#ibp-report-summary").value = report.summary || "";
+    panel.querySelector("#ibp-report-body").value = report.text || "";
+    panel.querySelector("#ibp-report-title").focus();
+    panel.querySelector("#ibp-report-module").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function submitReportForm(event) {
+    event.preventDefault();
+    const panel = root();
+    const s = socket();
+    if (!panel || !s || !s.connected || !isAuthenticated() || state.reportSaving) return;
+    const title = panel.querySelector("#ibp-report-title").value.trim();
+    const summary = panel.querySelector("#ibp-report-summary").value.trim();
+    const body = panel.querySelector("#ibp-report-body").value.trim();
+    const statusOutput = panel.querySelector("#ibp-report-status");
+    if (!title || (!summary && !body)) {
+      statusOutput.textContent = t("reportRequired");
+      return;
+    }
+    const base = {
+      title,
+      text: body,
+      summary,
+      type: panel.querySelector("#ibp-report-type").value,
+      battalionId: panel.querySelector("#ibp-report-unit").value,
+      classification: panel.querySelector("#ibp-report-classification").value
+    };
+    const editing = state.editingReportId;
+    const eventName = editing ? "ibp:report:update" : "ibp:report:create";
+    const payload = editing
+      ? { ...base, id: editing }
+      : {
+        ...base,
+        requestId: window.crypto && typeof window.crypto.randomUUID === "function"
+          ? window.crypto.randomUUID()
+          : `RPT-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+        status: panel.querySelector("#ibp-report-draft").checked ? "DRAFT" : "SUBMITTED"
+      };
+    state.reportSaving = true;
+    panel.querySelector("#ibp-report-save").disabled = true;
+    statusOutput.textContent = t("loading");
+    s.emit(eventName, payload, (result) => {
+      state.reportSaving = false;
+      if (!result || !result.ok) {
+        statusOutput.textContent = result && result.message || t("reportSaveError");
+        renderReportControls();
+        return;
+      }
+      statusOutput.textContent = t("reportSaved");
+      cancelReportEdit();
+      requestReports(true);
+    });
+  }
+
+  function updateReportStatus(id, status) {
+    const s = socket();
+    if (!s || !s.connected || !isAuthenticated()) return;
+    s.emit("ibp:report:update", { id, status }, (result) => {
+      if (!result || !result.ok) {
+        const output = root() && root().querySelector("#ibp-report-status");
+        if (output) output.textContent = result && result.message || t("reportActionFailed");
+        return;
+      }
+      requestReports(true);
+    });
+  }
+
+  function deleteReportRecord(id) {
+    const s = socket();
+    if (!s || !s.connected || !isAuthenticated() || !window.confirm(t("reportDeleteConfirm"))) return;
+    s.emit("ibp:report:delete", { id }, (result) => {
+      if (!result || !result.ok) {
+        const output = root() && root().querySelector("#ibp-report-status");
+        if (output) output.textContent = result && result.message || t("reportActionFailed");
+        return;
+      }
+      if (state.editingReportId === String(id)) cancelReportEdit();
+      requestReports(true);
+    });
+  }
+
   function render() {
     const shell = root();
     if (!shell) return;
@@ -7303,6 +7801,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     renderCards();
     renderDetail();
     renderFeed();
+    renderReportPanel();
   }
 
   function openEditor(id) {
@@ -7365,6 +7864,34 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 
     const lang = target.closest("#ibp-language-select");
     if (lang) return;
+    const reportFeature = target.closest("[data-ibp-feature-open='reports']");
+    if (reportFeature) {
+      openReportFeature();
+      return;
+    }
+    if (target.closest("#ibp-reports-refresh, [data-ibp-reports-refresh]")) {
+      requestReports(true);
+      return;
+    }
+    const reportEdit = target.closest("[data-ibp-report-edit]");
+    if (reportEdit) {
+      editReport(reportEdit.getAttribute("data-ibp-report-edit"));
+      return;
+    }
+    const reportStatus = target.closest("[data-ibp-report-status]");
+    if (reportStatus) {
+      updateReportStatus(reportStatus.getAttribute("data-ibp-report-status"), reportStatus.getAttribute("data-next-status"));
+      return;
+    }
+    const reportDelete = target.closest("[data-ibp-report-delete]");
+    if (reportDelete) {
+      deleteReportRecord(reportDelete.getAttribute("data-ibp-report-delete"));
+      return;
+    }
+    if (target.closest("#ibp-report-cancel-edit")) {
+      cancelReportEdit();
+      return;
+    }
     const unitCard = target.closest("[data-unit-id]");
     if (unitCard) {
       state.selectedId = unitCard.getAttribute("data-unit-id") || "";
@@ -7421,7 +7948,29 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (target && target.id === "ibp-battalion-filter") {
       state.filter = target.value;
       render();
+      return;
     }
+    if (target && target.id === "ibp-report-unit") {
+      state.reportFormBattalionId = target.value;
+      return;
+    }
+    if (target && target.id === "ibp-report-status-filter") {
+      state.reportFilters.status = target.value;
+      requestReports(true);
+      return;
+    }
+    if (target && target.id === "ibp-report-unit-filter") {
+      state.reportFilters.battalionId = target.value;
+      requestReports(true);
+    }
+  }
+
+  function handleInput(event) {
+    const target = event.target;
+    if (!target || target.id !== "ibp-report-search") return;
+    state.reportFilters.query = target.value.trim();
+    window.clearTimeout(state.reportSearchTimer);
+    state.reportSearchTimer = window.setTimeout(() => requestReports(true), 250);
   }
 
   function setLanguage(language) {
@@ -7474,6 +8023,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (event.target && event.target.id === "ibp-editor-form") {
       event.preventDefault();
       saveBattalion();
+      return;
+    }
+    if (event.target && event.target.id === "ibp-report-form") {
+      submitReportForm(event);
     }
   }
 
@@ -7567,9 +8120,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     s.on("connect", () => {
       state.lastBattalionRequest = 0;
       state.lastOperationsRequest = 0;
+      state.lastReportRequest = 0;
       if (document.body.classList.contains("ibp-mode")) {
         requestBattalions(true);
         requestOperations(true);
+        if (state.activeFeature === "reports") requestReports(true);
       }
     });
   }
