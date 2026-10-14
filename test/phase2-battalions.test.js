@@ -371,3 +371,112 @@ test('military reports open inside the existing IBP center, while CIA reports an
   assert.match(index, /ibp:reports:list/);
   assert.doesNotMatch(index, /onclick="openIBPModule\('reports'\)"/);
 });
+
+test('messages persist between battalions and are visible only to endpoint members', async () => {
+  const sender = makeHarness(people[5]);
+  const sent = await sender.invoke('ibp:message:send', {
+    requestId: 'battalion-message-001',
+    fromBattalionId: 'bat-alpha',
+    toBattalionId: 'bat-bravo',
+    subject: 'Route coordination',
+    text: 'Use the western approach at 20:00.',
+    classification: 'INTERNAL'
+  });
+  assert.equal(sent.ok, true);
+  assert.equal(sender.state.ibp_messages.length, 1);
+  assert.equal(sender.metrics.saves, 1);
+  assert.equal(sender.metrics.audits, 1);
+
+  const recipient = makeHarness(people[6], sender.state);
+  const inbox = await recipient.invoke('ibp:messages:list', { box: 'INBOX' });
+  assert.equal(inbox.ok, true);
+  assert.equal(inbox.messages.length, 1);
+  assert.equal(inbox.messages[0].subject, 'Route coordination');
+  assert.equal(inbox.messages[0].incoming, true);
+  assert.equal(inbox.unreadCount, 1);
+
+  const outsider = makeHarness(people[7], sender.state);
+  const hidden = await outsider.invoke('ibp:messages:list', {});
+  assert.equal(hidden.ok, true);
+  assert.equal(hidden.messages.length, 0);
+  assert.equal(hidden.unreadCount, 0);
+});
+
+test('message sending rejects unauthorized source, same-unit delivery, and excessive classification', async () => {
+  const member = makeHarness(people[5]);
+  const foreignSource = await member.invoke('ibp:message:send', {
+    fromBattalionId: 'bat-bravo', toBattalionId: 'bat-alpha',
+    subject: 'Unauthorized', text: 'No.'
+  });
+  const sameUnit = await member.invoke('ibp:message:send', {
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-alpha',
+    subject: 'Loop', text: 'No.'
+  });
+  const overclassified = await member.invoke('ibp:message:send', {
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-bravo',
+    subject: 'Restricted', text: 'No.', classification: 'SECRET'
+  });
+  assert.equal(foreignSource.ok, false);
+  assert.equal(sameUnit.ok, false);
+  assert.equal(overclassified.ok, false);
+  assert.equal(member.state.ibp_messages, undefined);
+  assert.equal(member.metrics.saves, 0);
+});
+
+test('message recipient can mark read idempotently while sender cannot impersonate the recipient', async () => {
+  const sender = makeHarness(people[5]);
+  const sent = await sender.invoke('ibp:message:send', {
+    requestId: 'battalion-message-read-01',
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-bravo',
+    subject: 'Read receipt', text: 'Please acknowledge.'
+  });
+  const senderAttempt = await sender.invoke('ibp:message:read', { id: sent.message.id });
+  assert.equal(senderAttempt.ok, false);
+  const recipient = makeHarness(people[6], sender.state);
+  const marked = await recipient.invoke('ibp:message:read', { id: sent.message.id });
+  const repeated = await recipient.invoke('ibp:message:read', { id: sent.message.id });
+  assert.equal(marked.ok, true);
+  assert.equal(marked.message.read, true);
+  assert.equal(repeated.ok, true);
+  assert.equal(repeated.unchanged, true);
+  assert.deepEqual(recipient.state.ibp_messages[0].readBy, ['BRAVO-1']);
+});
+
+test('duplicate message requests are idempotent and failed persistence removes the message and audit', async () => {
+  const sender = makeHarness(people[5]);
+  const payload = {
+    requestId: 'battalion-message-dedup-01',
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-bravo',
+    subject: 'One message', text: 'Exactly once.'
+  };
+  const first = await sender.invoke('ibp:message:send', payload);
+  const duplicate = await sender.invoke('ibp:message:send', payload);
+  assert.equal(first.ok, true);
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.deduplicated, true);
+  assert.equal(sender.state.ibp_messages.length, 1);
+  assert.equal(sender.metrics.saves, 1);
+
+  const failing = makeHarness(people[5], baseState(), { failSave: true });
+  const failed = await failing.invoke('ibp:message:send', {
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-bravo',
+    subject: 'Not persisted', text: 'Rollback this.'
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failing.state.ibp_messages.length, 0);
+  assert.equal(failing.state.cia_audit_logs.length, 0);
+  assert.equal(failing.metrics.broadcasts, 0);
+});
+
+test('battalion messaging is embedded in the current IBP center and stays separate from CIA chat', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(index, /id="ibp-command-center"/);
+  assert.match(index, /id="ibp-messages-module"/);
+  assert.match(index, /data-ibp-feature-open="messages"/);
+  assert.match(index, /id="chat"/);
+  assert.match(index, /id="reports"/);
+  assert.match(index, /id="bank"/);
+  assert.match(server, /ibp_messages: \[\]/);
+  assert.match(server, /'ibp_messages'/);
+});

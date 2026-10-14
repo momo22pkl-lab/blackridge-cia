@@ -1909,6 +1909,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <button class="ibp-card" type="button" onclick="openIBPModule('cases-vault')"><span class="ibp-card-icon"><i class="fa-solid fa-box-archive"></i></span><span><b class="ibp-card-title">INTELLIGENCE ARCHIVE</b><small class="ibp-card-desc">أرشيف القضايا والأدلة</small></span><code class="ibp-card-code">05</code></button>
           <button class="ibp-card" type="button" onclick="openIBPModule('sos-alerts')"><span class="ibp-card-icon"><i class="fa-solid fa-tower-broadcast"></i></span><span><b class="ibp-card-title">INTELLIGENCE FEED</b><small class="ibp-card-desc">البلاغات والتنبيهات المصرح بها</small></span><code class="ibp-card-code">06</code></button>
           <button class="ibp-card" type="button" data-ibp-feature-open="reports"><span class="ibp-card-icon"><i class="fa-solid fa-file-lines"></i></span><span><b class="ibp-card-title">REPORTS & BRIEFINGS</b><small class="ibp-card-desc">التقارير العسكرية</small></span><code class="ibp-card-code">07</code></button>
+          <button class="ibp-card" type="button" data-ibp-feature-open="messages"><span class="ibp-card-icon"><i class="fa-solid fa-envelope"></i></span><span><b class="ibp-card-title">BATTALION MESSENGER</b><small class="ibp-card-desc">مراسلات آمنة بين الكتائب</small></span><code class="ibp-card-code">09</code></button>
           <button class="ibp-card" data-ibp-audit hidden type="button" onclick="openIBPModule('audit-panel')"><span class="ibp-card-icon"><i class="fa-solid fa-fingerprint"></i></span><span><b class="ibp-card-title">BLACKBOX</b><small class="ibp-card-desc">سجل القيادة والتغييرات المصرح بها</small></span><code class="ibp-card-code">08</code></button>
         </div><div class="ibp-foot"><span>IBP // ONE SECTOR · ONE NETWORK · COMPLETE COMMAND VISIBILITY</span><span id="ibp-data-scope">SECURE ACCESS // ROLE-BASED</span></div>
       </main></div></div></div>
@@ -6813,6 +6814,29 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       reportStatusApproved: "معتمد",
       reportStatusRejected: "مرفوض",
       reportActionFailed: "تعذر تنفيذ الإجراء على التقرير.",
+      messageModule: "مراسلات الكتائب",
+      messageModuleHint: "قناة رسائل محفوظة على الخادم، منفصلة عن دردشة CIA العامة ومقيدة بعضوية الكتائب والتصنيف.",
+      refreshMessages: "تحديث الرسائل",
+      messageFrom: "الإرسال من",
+      messageTo: "الكتيبة المستلمة",
+      messageSubject: "عنوان الرسالة",
+      messageBody: "نص الرسالة",
+      messageSend: "إرسال آمن",
+      messageSearch: "بحث في الرسائل",
+      messageAll: "كل الرسائل",
+      messageInbox: "الواردة",
+      messageSent: "الصادرة",
+      messageUnread: "غير مقروءة",
+      messageRead: "تمت القراءة",
+      messageMarkRead: "تأكيد القراءة",
+      messageNone: "لا توجد رسائل مطابقة.",
+      messageLoading: "جارٍ تحميل الرسائل…",
+      messageLoadError: "تعذر تحميل الرسائل من الخادم.",
+      messageSentOk: "تم إرسال الرسالة وحفظها.",
+      messageSendError: "تعذر إرسال الرسالة؛ تحقق من الصلاحية والاتصال.",
+      messageReadError: "تعذر تأكيد قراءة الرسالة.",
+      messageIncoming: "واردة",
+      messageOutgoing: "صادرة",
       archiveConfirm: "سيؤدي حفظ الحالة المؤرشفة إلى إيقاف إسناد أفراد جدد لهذه الكتيبة. متابعة؟",
       errors: {
         "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.",
@@ -6971,6 +6995,29 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       reportStatusApproved: "Approved",
       reportStatusRejected: "Rejected",
       reportActionFailed: "The report action could not be completed.",
+      messageModule: "Battalion messages",
+      messageModuleHint: "Server-persisted messaging, separate from global CIA chat and scoped by battalion membership and classification.",
+      refreshMessages: "Refresh messages",
+      messageFrom: "Send from",
+      messageTo: "Recipient battalion",
+      messageSubject: "Subject",
+      messageBody: "Message",
+      messageSend: "Send securely",
+      messageSearch: "Search messages",
+      messageAll: "All messages",
+      messageInbox: "Inbox",
+      messageSent: "Sent",
+      messageUnread: "Unread",
+      messageRead: "Read",
+      messageMarkRead: "Mark read",
+      messageNone: "No matching messages.",
+      messageLoading: "Loading messages…",
+      messageLoadError: "Messages could not be loaded from the server.",
+      messageSentOk: "Message sent and saved.",
+      messageSendError: "The message could not be sent. Check permissions and connection.",
+      messageReadError: "The message could not be marked as read.",
+      messageIncoming: "Incoming",
+      messageOutgoing: "Outgoing",
       archiveConfirm: "Saving as archived will prevent new personnel assignments to this battalion. Continue?",
       errors: {
         "أحد الأفراد محدد بالفعل ضمن كتيبة أخرى نشطة.": "A selected person is already assigned to another active battalion.",
@@ -7011,6 +7058,17 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     reportFormBattalionId: "",
     editingReportId: "",
     reportSaving: false,
+    messages: [],
+    messageSources: [],
+    messageTargets: [],
+    messageUnreadCount: 0,
+    canSendMessages: false,
+    messagesLoading: false,
+    messagesError: "",
+    messageFilters: { box: "ALL", query: "" },
+    lastMessageRequest: 0,
+    messageRequestSequence: 0,
+    messageSaving: false,
     mounted: false
   };
 
@@ -7115,6 +7173,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
               <button class="ibp-console-button secondary" type="button" data-ibp-open="operations" data-ibp-ops-action hidden data-ibp-i18n="openOperations"></button>
               <button class="ibp-console-button secondary" type="button" data-ibp-open="cases-vault" data-ibp-i18n="openArchive"></button>
               <button class="ibp-console-button secondary" type="button" data-ibp-feature-open="reports" data-ibp-i18n="reportModule"></button>
+              <button class="ibp-console-button secondary" type="button" data-ibp-feature-open="messages" data-ibp-i18n="messageModule"></button>
             </div>
             <section id="ibp-reports-module" class="ibp-feature-panel" hidden aria-labelledby="ibp-reports-heading">
               <div class="ibp-feature-head">
@@ -7139,6 +7198,28 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
                 <select id="ibp-report-unit-filter" aria-label="Filter by battalion"></select>
               </div>
               <div id="ibp-reports-list" class="ibp-report-list" aria-live="polite"></div>
+            </section>
+            <section id="ibp-messages-module" class="ibp-feature-panel" hidden aria-labelledby="ibp-messages-heading">
+              <div class="ibp-feature-head">
+                <div><h3 id="ibp-messages-heading" data-ibp-i18n="messageModule"></h3><p data-ibp-i18n="messageModuleHint"></p></div>
+                <button id="ibp-messages-refresh" class="ibp-console-button secondary" type="button" data-ibp-i18n="refreshMessages"></button>
+              </div>
+              <form id="ibp-message-form" class="ibp-report-form">
+                <div class="ibp-report-form-grid">
+                  <label class="ibp-report-field"><span data-ibp-i18n="messageFrom"></span><select id="ibp-message-from"></select></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="messageTo"></span><select id="ibp-message-to" required></select></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="reportClassification"></span><select id="ibp-message-classification"></select></label>
+                  <label class="ibp-report-field"><span data-ibp-i18n="messageSubject"></span><input id="ibp-message-subject" maxlength="120" required></label>
+                  <label class="ibp-report-field full"><span data-ibp-i18n="messageBody"></span><textarea id="ibp-message-body" maxlength="3000" required></textarea></label>
+                </div>
+                <div class="ibp-report-actions"><button id="ibp-message-send" class="ibp-console-button" type="submit" data-ibp-i18n="messageSend"></button><span id="ibp-message-status" class="ibp-report-status" role="status" aria-live="polite"></span></div>
+              </form>
+              <div class="ibp-report-filters">
+                <select id="ibp-message-box" aria-label="Message mailbox"></select>
+                <input id="ibp-message-search" type="search" maxlength="100" data-ibp-i18n-placeholder="messageSearch" aria-label="Message search">
+                <span id="ibp-message-unread" class="ibp-report-pill" aria-live="polite"></span>
+              </div>
+              <div id="ibp-messages-list" class="ibp-report-list" aria-live="polite"></div>
             </section>
           </section>
           <div id="ibp-editor-modal" class="ibp-editor-modal" hidden>
@@ -7761,6 +7842,151 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function renderMessagePanel() {
+    const shell = root();
+    if (!shell) return;
+    const panel = shell.querySelector("#ibp-messages-module");
+    if (!panel) return;
+    panel.hidden = state.activeFeature !== "messages";
+    const form = panel.querySelector("#ibp-message-form");
+    if (!form) return;
+    form.hidden = !state.canSendMessages;
+    const from = panel.querySelector("#ibp-message-from");
+    const to = panel.querySelector("#ibp-message-to");
+    const previousFrom = from.value;
+    const previousTo = to.value;
+    from.innerHTML = state.messageSources.map((unit) => `<option value="${esc(unit.id)}">${esc(unit.code)}</option>`).join("");
+    from.value = state.messageSources.some((unit) => String(unit.id) === previousFrom)
+      ? previousFrom : String(state.messageSources[0] && state.messageSources[0].id || "");
+    const targets = state.messageTargets.filter((unit) => String(unit.id) !== String(from.value));
+    to.innerHTML = targets.map((unit) => `<option value="${esc(unit.id)}">${esc(unit.code)}</option>`).join("");
+    to.value = targets.some((unit) => String(unit.id) === previousTo)
+      ? previousTo : String(targets[0] && targets[0].id || "");
+    const classification = panel.querySelector("#ibp-message-classification");
+    const selectedClassification = classification.value || "INTERNAL";
+    const allowedClassifications = reportClassifications();
+    classification.innerHTML = allowedClassifications.map((value) =>
+      `<option value="${esc(value)}">${esc(reportClassificationLabel(value))}</option>`
+    ).join("");
+    classification.value = allowedClassifications.includes(selectedClassification) ? selectedClassification : "INTERNAL";
+    const box = panel.querySelector("#ibp-message-box");
+    const boxOptions = [["ALL", t("messageAll")], ["INBOX", t("messageInbox")], ["SENT", t("messageSent")]];
+    box.innerHTML = boxOptions.map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+    box.value = state.messageFilters.box;
+    const search = panel.querySelector("#ibp-message-search");
+    if (search && search.value !== state.messageFilters.query) search.value = state.messageFilters.query;
+    const unread = panel.querySelector("#ibp-message-unread");
+    if (unread) unread.textContent = `${t("messageUnread")}: ${state.messageUnreadCount}`;
+    const output = panel.querySelector("#ibp-messages-list");
+    if (!output) return;
+    if (state.messagesLoading && !state.messages.length) {
+      output.innerHTML = `<div class="ibp-report-empty">${esc(t("messageLoading"))}</div>`;
+      return;
+    }
+    if (state.messagesError && !state.messages.length) {
+      output.innerHTML = `<div class="ibp-report-empty">${esc(state.messagesError)}</div>`;
+      return;
+    }
+    if (!state.messages.length) {
+      output.innerHTML = `<div class="ibp-report-empty">${esc(t("messageNone"))}</div>`;
+      return;
+    }
+    output.innerHTML = state.messages.map((message) => {
+      const direction = message.incoming ? t("messageIncoming") : t("messageOutgoing");
+      const readLabel = message.read ? t("messageRead") : t("messageUnread");
+      const action = message.canMarkRead
+        ? `<div class="ibp-report-actions"><button class="ibp-console-button secondary" type="button" data-ibp-message-read="${esc(message.id)}">${esc(t("messageMarkRead"))}</button></div>`
+        : "";
+      return `<article class="ibp-report-card">
+        <div class="ibp-report-card-head"><div><h4>${esc(message.subject)}</h4><div class="ibp-report-meta">${esc(direction)} · ${esc(message.fromBattalionCode)} → ${esc(message.toBattalionCode)} · #${esc(message.senderCode)} · ${esc(reportClassificationLabel(message.classification))} · ${esc(message.createdAt)}</div></div><span class="ibp-report-pill">${esc(readLabel)}</span></div>
+        <div class="ibp-report-content">${esc(message.text)}</div>${action}
+      </article>`;
+    }).join("");
+  }
+
+  function requestMessages(force) {
+    if (!isAuthenticated() || !connected()) return;
+    if (!force && Date.now() - state.lastMessageRequest < 15000) return;
+    const s = socket();
+    if (!s) return;
+    const sequence = ++state.messageRequestSequence;
+    state.lastMessageRequest = Date.now();
+    state.messagesLoading = true;
+    state.messagesError = "";
+    renderMessagePanel();
+    s.emit("ibp:messages:list", state.messageFilters, (result) => {
+      if (sequence !== state.messageRequestSequence) return;
+      state.messagesLoading = false;
+      if (!result || !result.ok) {
+        state.messagesError = result && result.message || t("messageLoadError");
+        renderMessagePanel();
+        return;
+      }
+      state.messages = Array.isArray(result.messages) ? result.messages : [];
+      state.messageSources = Array.isArray(result.sourceBattalions) ? result.sourceBattalions : [];
+      state.messageTargets = Array.isArray(result.targetBattalions) ? result.targetBattalions : [];
+      state.messageUnreadCount = Number(result.unreadCount) || 0;
+      state.canSendMessages = result.canSend === true;
+      state.messagesError = "";
+      renderMessagePanel();
+    });
+  }
+
+  function openMessageFeature() {
+    state.activeFeature = "messages";
+    renderMessagePanel();
+    requestMessages(true);
+    const panel = root() && root().querySelector("#ibp-messages-module");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function submitMessageForm(event) {
+    event.preventDefault();
+    const panel = root();
+    const s = socket();
+    if (!panel || !s || !s.connected || !isAuthenticated() || state.messageSaving) return;
+    const subject = panel.querySelector("#ibp-message-subject").value.trim();
+    const body = panel.querySelector("#ibp-message-body").value.trim();
+    const status = panel.querySelector("#ibp-message-status");
+    if (!subject || !body) return;
+    state.messageSaving = true;
+    panel.querySelector("#ibp-message-send").disabled = true;
+    status.textContent = t("loading");
+    s.emit("ibp:message:send", {
+      fromBattalionId: panel.querySelector("#ibp-message-from").value,
+      toBattalionId: panel.querySelector("#ibp-message-to").value,
+      subject,
+      text: body,
+      classification: panel.querySelector("#ibp-message-classification").value,
+      requestId: window.crypto && typeof window.crypto.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `MSG-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
+    }, (result) => {
+      state.messageSaving = false;
+      panel.querySelector("#ibp-message-send").disabled = false;
+      if (!result || !result.ok) {
+        status.textContent = result && result.message || t("messageSendError");
+        return;
+      }
+      panel.querySelector("#ibp-message-form").reset();
+      status.textContent = t("messageSentOk");
+      requestMessages(true);
+    });
+  }
+
+  function markMessageRead(id) {
+    const s = socket();
+    if (!s || !s.connected || !isAuthenticated()) return;
+    s.emit("ibp:message:read", { id }, (result) => {
+      const status = root() && root().querySelector("#ibp-message-status");
+      if (!result || !result.ok) {
+        if (status) status.textContent = result && result.message || t("messageReadError");
+        return;
+      }
+      requestMessages(true);
+    });
+  }
+
   function cancelReportEdit() {
     const panel = root();
     const form = panel && panel.querySelector("#ibp-report-form");
@@ -7875,6 +8101,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     renderDetail();
     renderFeed();
     renderReportPanel();
+    renderMessagePanel();
   }
 
   function openEditor(id) {
@@ -7940,6 +8167,20 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     const reportFeature = target.closest("[data-ibp-feature-open='reports']");
     if (reportFeature) {
       openReportFeature();
+      return;
+    }
+    const messageFeature = target.closest("[data-ibp-feature-open='messages']");
+    if (messageFeature) {
+      openMessageFeature();
+      return;
+    }
+    if (target.closest("#ibp-messages-refresh")) {
+      requestMessages(true);
+      return;
+    }
+    const markRead = target.closest("[data-ibp-message-read]");
+    if (markRead) {
+      markMessageRead(markRead.getAttribute("data-ibp-message-read"));
       return;
     }
     if (target.closest("#ibp-reports-refresh, [data-ibp-reports-refresh]")) {
@@ -8027,6 +8268,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       state.reportFormBattalionId = target.value;
       return;
     }
+    if (target && target.id === "ibp-message-from") {
+      renderMessagePanel();
+      return;
+    }
+    if (target && target.id === "ibp-message-box") {
+      state.messageFilters.box = target.value;
+      requestMessages(true);
+      return;
+    }
     if (target && target.id === "ibp-report-status-filter") {
       state.reportFilters.status = target.value;
       requestReports(true);
@@ -8040,6 +8290,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 
   function handleInput(event) {
     const target = event.target;
+    if (target && target.id === "ibp-message-search") {
+      state.messageFilters.query = target.value.trim();
+      window.clearTimeout(state.messageSearchTimer);
+      state.messageSearchTimer = window.setTimeout(() => requestMessages(true), 250);
+      return;
+    }
     if (!target || target.id !== "ibp-report-search") return;
     state.reportFilters.query = target.value.trim();
     window.clearTimeout(state.reportSearchTimer);
@@ -8100,6 +8356,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
     if (event.target && event.target.id === "ibp-report-form") {
       submitReportForm(event);
+      return;
+    }
+    if (event.target && event.target.id === "ibp-message-form") {
+      submitMessageForm(event);
     }
   }
 

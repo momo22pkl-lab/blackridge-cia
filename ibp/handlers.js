@@ -303,6 +303,50 @@ function registerIBPSocket(socket, ctx) {
   function validReportStatus(value) {
     return REPORT_STATUSES.has(String(value || '').toUpperCase());
   }
+  function messageUnit(value) {
+    return units().find((unit) => String(unit.id) === String(value || '')) || null;
+  }
+  function messageUnitLabel(unit) {
+    return clean(unit && (unit.code || unit.name || unit.nameAr || unit.nameEn || unit.id), 80);
+  }
+  function messageVisible(person, message) {
+    if (!person || !message) return false;
+    const from = messageUnit(message.fromBattalionId);
+    const to = messageUnit(message.toBattalionId);
+    const inFrom = !!from && inUnitScope(person, from);
+    const inTo = !!to && inUnitScope(person, to);
+    if (!inFrom && !inTo) return false;
+    const classification = String(message.classification || 'INTERNAL').toUpperCase();
+    if (classification === 'PUBLIC' || classification === 'INTERNAL') return true;
+    return classificationAllowed(person, classification);
+  }
+  function safeMessage(message, viewer) {
+    const from = messageUnit(message.fromBattalionId);
+    const to = messageUnit(message.toBattalionId);
+    const own = code(viewer);
+    const sender = clean(message.senderCode, 100).toUpperCase();
+    const inFrom = !!from && inUnitScope(viewer, from);
+    const inTo = !!to && inUnitScope(viewer, to);
+    const incoming = inTo && sender !== own;
+    const sent = sender === own || (inFrom && !inTo);
+    const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+    return {
+      id: clean(message.id, 120),
+      fromBattalionId: from && from.id || '',
+      fromBattalionCode: messageUnitLabel(from),
+      toBattalionId: to && to.id || '',
+      toBattalionCode: messageUnitLabel(to),
+      senderCode: clean(message.senderCode, 100),
+      subject: clean(message.subject, 120),
+      text: clean(message.text, 3000),
+      classification: String(message.classification || 'INTERNAL').toUpperCase(),
+      createdAt: message.createdAt || '',
+      incoming,
+      sent,
+      read: readBy.includes(own),
+      canMarkRead: incoming && !readBy.includes(own)
+    };
+  }
 
   socket.on('ibp:auth:issue', (payload, cb) => {
     const actor = gate(cb); if (!actor) return;
@@ -402,6 +446,110 @@ function registerIBPSocket(socket, ctx) {
       battalions: visibleUnits.map((unit) => safeUnit(unit, actor)),
       canCreate,
       permissions: { create: canCreate, review: canReviewReports(actor, null), sectorWide: senior(actor) }
+    });
+  });
+  socket.on('ibp:messages:list', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const filters = payload && typeof payload === 'object' ? payload : {};
+    const box = String(filters.box || 'ALL').toUpperCase();
+    const unitId = clean(filters.battalionId, 120);
+    const query = clean(filters.query, 100).toLocaleLowerCase();
+    const actorCode = code(actor);
+    const visible = records('ibp_messages')
+      .filter((item) => messageVisible(actor, item))
+      .map((item) => safeMessage(item, actor))
+      .filter((item) => box !== 'INBOX' || item.incoming)
+      .filter((item) => box !== 'SENT' || item.sent)
+      .filter((item) => !unitId || item.fromBattalionId === unitId || item.toBattalionId === unitId)
+      .filter((item) => !query || [item.subject, item.text, item.fromBattalionCode, item.toBattalionCode, item.senderCode]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(query)))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 200);
+    const unreadCount = records('ibp_messages').filter((item) => {
+      const to = messageUnit(item.toBattalionId);
+      return !!to && inUnitScope(actor, to) &&
+        clean(item.senderCode, 100).toUpperCase() !== actorCode &&
+        !(Array.isArray(item.readBy) && item.readBy.includes(actorCode)) &&
+        messageVisible(actor, item);
+    }).length;
+    const activeUnits = units().filter((unit) => unit.status !== 'ARCHIVED');
+    const sourceBattalions = activeUnits.filter((unit) => inUnitScope(actor, unit))
+      .map((unit) => ({ id: unit.id, code: messageUnitLabel(unit) }));
+    const targetBattalions = activeUnits.map((unit) => ({ id: unit.id, code: messageUnitLabel(unit) }));
+    return reply(cb, {
+      ok: true,
+      messages: visible,
+      unreadCount,
+      sourceBattalions,
+      targetBattalions,
+      canSend: sourceBattalions.length > 0 && targetBattalions.length > 1
+    });
+  });
+  socket.on('ibp:message:send', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const from = messageUnit(payload && payload.fromBattalionId);
+    const to = messageUnit(payload && payload.toBattalionId);
+    if (!from || from.status === 'ARCHIVED' || !inUnitScope(actor, from)) {
+      return fail(cb, 'لا تملك صلاحية الإرسال من هذه الكتيبة.');
+    }
+    if (!to || to.status === 'ARCHIVED') return fail(cb, 'الكتيبة المستلمة غير موجودة أو مؤرشفة.');
+    if (String(from.id) === String(to.id)) return fail(cb, 'اختر كتيبة مستلمة مختلفة عن كتيبتك.');
+    const subject = clean(payload && payload.subject, 120);
+    const text = clean(payload && payload.text, 3000);
+    if (!subject || !text) return fail(cb, 'أدخل عنوان الرسالة ونصها.');
+    const classification = String(payload && payload.classification || 'INTERNAL').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(CLASSIFICATION_LEVEL, classification) ||
+        (classification !== 'INTERNAL' && !classificationAllowed(actor, classification))) {
+      return fail(cb, 'لا تملك صلاحية استخدام هذا التصنيف.');
+    }
+    const requestId = clean(payload && payload.requestId, 100);
+    if (requestId && !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
+      return fail(cb, 'معرّف طلب الرسالة غير صالح.');
+    }
+    const list = records('ibp_messages');
+    const senderCode = code(actor);
+    const duplicate = requestId && list.find((item) => item.requestId === requestId &&
+      clean(item.senderCode, 100).toUpperCase() === senderCode);
+    if (duplicate) return reply(cb, { ok: true, message: safeMessage(duplicate, actor), deduplicated: true });
+    const message = {
+      id: ctx.makeId('MSG'),
+      requestId,
+      fromBattalionId: from.id,
+      toBattalionId: to.id,
+      senderCode: actor.publicCode || '',
+      subject,
+      text,
+      classification,
+      createdAt: ctx.now(),
+      readBy: []
+    };
+    list.unshift(message);
+    const removed = list.splice(1000);
+    return persist(actor, 'إرسال رسالة بين الكتائب', messageUnitLabel(from) + ' → ' + messageUnitLabel(to) + ' · ' + subject, null, cb, {
+      message: safeMessage(message, actor)
+    }, () => {
+      const index = list.indexOf(message);
+      if (index >= 0) list.splice(index, 1);
+      if (removed.length) list.push(...removed);
+    });
+  });
+  socket.on('ibp:message:read', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    const id = clean(payload && (payload.id || payload.messageId), 120);
+    const message = records('ibp_messages').find((item) => String(item.id) === id);
+    if (!message || !messageVisible(actor, message)) return fail(cb, 'الرسالة غير موجودة أو خارج نطاق صلاحيتك.');
+    const to = messageUnit(message.toBattalionId);
+    if (!to || !inUnitScope(actor, to) || clean(message.senderCode, 100).toUpperCase() === code(actor)) {
+      return fail(cb, 'يمكن لأفراد الكتيبة المستلمة فقط تأكيد قراءة الرسالة.');
+    }
+    const readBy = Array.isArray(message.readBy) ? message.readBy : (message.readBy = []);
+    if (readBy.includes(code(actor))) return reply(cb, { ok: true, message: safeMessage(message, actor), unchanged: true });
+    readBy.push(code(actor));
+    return persist(actor, 'تأكيد قراءة رسالة بين الكتائب', message.id + ' · ' + message.subject, null, cb, {
+      message: safeMessage(message, actor)
+    }, () => {
+      const index = readBy.indexOf(code(actor));
+      if (index >= 0) readBy.splice(index, 1);
     });
   });
   socket.on('ibp:access:get', (payload, cb) => {
