@@ -1814,13 +1814,24 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <div class="classified-stamp"><i class="fa-solid fa-users-gear"></i> CHARACTERS // ACCESS</div>
       <h2 style="margin-top:10px;">شخصياتي</h2>
       <p style="font-size:.7rem;color:var(--text-dim);line-height:1.6;">«شخصياتي» مرتبطة بحسابك نفسه. ستظهر هنا كل الشخصيات المعتمدة التابعة للحساب، باستثناء أي شخصية تم فصلها. للدخول إلى أي شخصية اكتب كودها العسكري الذي منحه لك القائد.</p>
-      <div id="characters-auth-fields" style="display:none;"></div>
+      <div id="characters-auth-fields" style="display:none;">
+        <div class="classified-shell" style="margin:8px 0;padding:10px;text-align:right;">
+          <label style="display:block;color:var(--text-dim);font-size:.7rem;margin-bottom:4px;" for="characters-account-name">اسم الحساب</label>
+          <input type="text" id="characters-account-name" class="input-field" placeholder="اسم تسجيل الدخول للحساب" autocomplete="username">
+          <label style="display:block;color:var(--text-dim);font-size:.7rem;margin:8px 0 4px;" for="characters-account-password">كلمة مرور الحساب</label>
+          <input type="password" id="characters-account-password" class="input-field" placeholder="كلمة مرور الحساب" autocomplete="current-password">
+          <button type="button" id="characters-account-login-btn" class="btn-action" style="margin-top:7px;">التحقق وعرض الشخصيات</button>
+          <div id="characters-auth-msg" role="status" aria-live="polite" style="margin-top:8px;color:var(--red-alert);font-size:.72rem;"></div>
+        </div>
+      </div>
       <div id="characters-manager-body" style="display:none;">
         <div id="characters-owner-summary" class="classified-shell" style="margin:8px 0;"></div>
         <div id="characters-list"></div>
-        <div id="characters-create-area" style="margin-top:10px;">
-          <input type="text" id="new-character-name" class="input-field" placeholder="اسم الشخصية الجديدة">
-          <button type="button" class="btn-action" onclick="requestNewCharacter()">إنشاء / طلب شخصية جديدة</button>
+        <button type="button" id="characters-create-toggle" class="btn-action" style="margin-top:10px;" onclick="showCharactersCreateForm()">إضافة / طلب شخصية جديدة</button>
+        <div id="characters-create-area" style="display:none;margin-top:10px;">
+          <input type="text" id="new-character-name" class="input-field" placeholder="اسم الشخصية الجديدة" autocomplete="off">
+          <button type="button" class="btn-action" onclick="requestNewCharacter()">إرسال طلب الشخصية</button>
+          <button type="button" class="btn-action" style="margin-top:5px;background:#111827;color:var(--text-dim);border:1px solid var(--border);" onclick="cancelCharactersCreateForm()">إلغاء</button>
         </div>
         <div id="characters-manager-msg" style="margin-top:8px;color:var(--red-alert);font-size:.72rem;"></div>
       </div>
@@ -2662,7 +2673,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const loginBtn = document.getElementById('login-btn');
       if (loginBtn) loginBtn.addEventListener('click', function(e) { e.preventDefault(); handleLogin(); });
       const charactersOpenBtn = document.getElementById('characters-open-btn');
-      if (charactersOpenBtn) charactersOpenBtn.addEventListener('click', function(e) { e.preventDefault(); openCharactersManager(); });
+      if (charactersOpenBtn) charactersOpenBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openCharactersManager(); });
+      const charactersAccountLoginBtn = document.getElementById('characters-account-login-btn');
+      if (charactersAccountLoginBtn) charactersAccountLoginBtn.addEventListener('click', function(e) { e.preventDefault(); authenticateCharactersAccount(); });
       const createAccountBtn = document.getElementById('create-account-btn');
       if (createAccountBtn) createAccountBtn.addEventListener('click', function(e) { e.preventDefault(); openAccountCreateModal(); });
       const accountSubmit = document.getElementById('account-create-submit');
@@ -3232,8 +3245,18 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const msg = document.getElementById('characters-manager-msg');
       if (!currentUser) {
         if (body) body.style.display = 'none';
-        if (auth) auth.style.display = 'none';
-        if (msg) msg.innerText = 'يجب تسجيل الدخول أولاً حتى تظهر شخصيات حسابك.';
+        if (auth) auth.style.display = 'block';
+        if (msg) msg.innerText = '';
+        const accountNameField = document.getElementById('characters-account-name');
+        try {
+          const savedAccountName = localStorage.getItem('cia_account_login_name');
+          if (accountNameField && !accountNameField.value && savedAccountName) accountNameField.value = savedAccountName;
+        } catch (_error) {}
+        const authMsg = document.getElementById('characters-auth-msg');
+        if (authMsg) authMsg.innerText = accountNameField?.value.trim()
+          ? 'تم التعرف على الحساب المسجل. أدخل كلمة المرور فقط لعرض شخصياته.'
+          : 'أدخل اسم الحساب وكلمة مروره لعرض الشخصيات المعتمدة التابعة له.';
+        if (accountNameField?.value.trim()) document.getElementById('characters-account-password')?.focus();
         return;
       }
       if (auth) auth.style.display = 'none';
@@ -3249,11 +3272,42 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
     }
 
+    function authenticateCharactersAccount() {
+      const loginName = document.getElementById('characters-account-name')?.value.trim() || '';
+      const passwordEl = document.getElementById('characters-account-password');
+      const password = passwordEl?.value || '';
+      const message = document.getElementById('characters-auth-msg');
+      const button = document.getElementById('characters-account-login-btn');
+      if (!loginName || !password) { if (message) message.innerText = 'أدخل اسم الحساب وكلمة المرور.'; return; }
+      if (!ciaSocket || !ciaSocket.connected) { if (message) message.innerText = 'الاتصال بالسيرفر غير متاح.'; return; }
+      if (button) button.disabled = true;
+      if (message) message.innerText = 'جارٍ التحقق من الحساب...';
+      ciaSocket.emit('account:characters:login', { loginName, password }, function(result) {
+        if (button) button.disabled = false;
+        if (passwordEl) passwordEl.value = '';
+        if (!result || !result.ok) {
+          if (message) message.innerText = (result && result.message) || 'تعذر التحقق من الحساب.';
+          return;
+        }
+        try { localStorage.setItem('cia_account_login_name', loginName); } catch (_error) {}
+        if (message) message.innerText = 'تم التحقق. جارٍ تحميل الشخصيات...';
+        ciaSocket.emit('character:list', {}, function(listResult) {
+          if (!listResult || !listResult.ok) {
+            if (message) message.innerText = (listResult && listResult.message) || 'تعذر تحميل الشخصيات.';
+            return;
+          }
+          renderCharactersManager(listResult);
+        });
+      });
+    }
+
     function closeCharactersManager() {
       const modal = document.getElementById('characters-modal');
       if (modal) modal.style.display = 'none';
       charactersOwner = null;
       charactersOwnerCredentials = null;
+      const passwordEl = document.getElementById('characters-account-password');
+      if (passwordEl) passwordEl.value = '';
       const body = document.getElementById('characters-manager-body');
       const auth = document.getElementById('characters-auth-fields');
       if (body) body.style.display = 'none';
@@ -3294,7 +3348,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <div style="font-size:.66rem;color:var(--text-dim);margin-top:5px;">اختر أي شخصية معتمدة من القائمة؛ لا حاجة لإعادة كتابة الكود العسكري.</div>` : '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد شخصيات معتمدة لهذا الحساب.</div>';
       }
       const create = document.getElementById('characters-create-area');
-      if (create) create.style.display = result.characters.length >= result.limit ? 'none' : 'block';
+      const createToggle = document.getElementById('characters-create-toggle');
+      if (create) create.style.display = 'none';
+      if (createToggle) createToggle.style.display = result.characters.length >= result.limit ? 'none' : 'block';
       const msg = document.getElementById('characters-manager-msg');
       if (msg) msg.innerText = '';
     }
@@ -3322,6 +3378,23 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       ciaSocket.emit('character:login', { characterId: character.id, characterName: character.name, characterCode: militaryCode });
     }
 
+    function showCharactersCreateForm() {
+      const area = document.getElementById('characters-create-area');
+      const toggle = document.getElementById('characters-create-toggle');
+      if (area) area.style.display = 'block';
+      if (toggle) toggle.style.display = 'none';
+      document.getElementById('new-character-name')?.focus();
+    }
+
+    function cancelCharactersCreateForm() {
+      const area = document.getElementById('characters-create-area');
+      const toggle = document.getElementById('characters-create-toggle');
+      const input = document.getElementById('new-character-name');
+      if (area) area.style.display = 'none';
+      if (toggle) toggle.style.display = 'block';
+      if (input) input.value = '';
+    }
+
     function requestNewCharacter() {
       const requestedName = document.getElementById('new-character-name').value.trim();
       if (!requestedName) { document.getElementById('characters-manager-msg').innerText = 'اكتب اسم الشخصية الجديدة.'; return; }
@@ -3334,7 +3407,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           document.getElementById('characters-manager-msg').innerText = (result && result.message) || 'تعذر إرسال طلب الشخصية.';
           return;
         }
-        document.getElementById('new-character-name').value = '';
+        cancelCharactersCreateForm();
         document.getElementById('characters-manager-msg').innerText = result.direct ? 'تم إنشاء الشخصية الجديدة.' : 'تم إرسال الطلب إلى القيادة.';
         loadCharactersManager();
       });
