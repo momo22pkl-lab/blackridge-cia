@@ -151,6 +151,7 @@ const EMPTY_STATE = {
   ibp_operations: [],
   ibp_intelligence: [],
   ibp_reports: [],
+  ibp_messages: [],
   settings: {
     publicSalary: SYSTEM.defaultSalary,
     rankSalaries: {
@@ -208,7 +209,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
     'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
-    'cia_notifications', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports'
+    'cia_notifications', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
