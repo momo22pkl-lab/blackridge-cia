@@ -88,6 +88,14 @@ app.use('/osd', (req, res, next) => {
   return osdStatic(req, res, next);
 });
 app.use('/api/osd', osdRouter);
+
+// Serve the standalone warning prototype without changing the main CIA or OSD entry points.
+app.get('/blackridge-warning-prototype', (req, res) => {
+  const entryPoint = path.join(__dirname, 'blackridge-warning-prototype', 'index.html');
+  if (!fs.existsSync(entryPoint)) return res.status(404).send('BLACKRIDGE warning prototype not found.');
+  return res.sendFile(entryPoint);
+});
+
 const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
