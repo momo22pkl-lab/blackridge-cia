@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>OSD Secure Document Viewer</title>
+  <link rel="stylesheet" href="/osd/share.css">
+  <script src="/osd/qr-code.js" defer></script>
+  <script src="/osd/share.js" defer></script>
+</head>
+<body>
+  <main class="viewer-shell">
+    <header class="viewer-header">
+      <a class="brand" href="/osd/" aria-label="BLACK RIDGE CIA"><span class="brand-seal" aria-hidden="true">◆</span><span><b>BLACK RIDGE CIA</b><small>OFFICIAL SECTOR DOCUMENTS</small></span></a>
+      <span class="secure-indicator"><i></i><span id="accessLabel">SECURE DOCUMENT LINK</span></span>
+    </header>
+
+    <section class="access-card" id="loginPanel" hidden>
+      <div class="eyebrow">OSD ACCOUNT ACCESS</div>
+      <h1 id="loginTitle">Sign in to view this internal document</h1>
+      <p id="loginDescription">The document is protected by your OSD account and assigned clearance.</p>
+      <form id="loginForm">
+        <label><span id="usernameLabel">Username</span><input id="loginUsername" autocomplete="username" required></label>
+        <label><span id="passwordLabel">Password</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <button type="submit" id="loginButton">Sign in</button>
+      </form>
+      <p class="error-message" id="loginError" role="alert"></p>
+    </section>
+
+    <section class="error-card" id="errorPanel" hidden aria-live="polite">
+      <span class="error-symbol">!</span><h1 id="errorTitle">This link is unavailable</h1><p id="errorMessage">The share link may have expired, been revoked, or the document may no longer be active.</p>
+    </section>
+
+    <article class="document-frame" id="documentFrame" hidden>
+      <div class="document-toolbar">
+        <span class="status-pill" id="documentStatus">ISSUED</span>
+        <div class="toolbar-actions">
+          <a class="toolbar-button" id="verifyButton" target="_blank" rel="noopener">VERIFY RECORD</a>
+          <button class="toolbar-button primary" id="printButton" type="button" hidden>PRINT / SAVE PDF</button>
+        </div>
+      </div>
+      <p class="share-expiry" id="shareExpiryDisplay" hidden></p>
+      <div class="document-paper" id="documentPaper">
+        <div class="document-ribbon"><span>OFFICIAL SECTOR DOCUMENT</span><b id="classification">PUBLIC</b></div>
+        <div class="document-brand">
+          <span class="document-seal" aria-hidden="true"><img src="/brand-seal.jpg" alt=""></span>
+          <div><b>CIA</b><small>OFFICIAL SECTOR DOCUMENTS</small></div>
+          <div class="document-number"><small>DOCUMENT NO.</small><b id="documentNumber">—</b></div>
+        </div>
+        <div class="paper-rule"></div>
+        <div class="document-meta">
+          <span><i>ISSUED AT · UTC</i><b id="issuedAt">—</b></span>
+          <span><i>VERSION</i><b id="version">—</b></span>
+          <span><i>SECTOR</i><b id="sector">—</b></span>
+          <span id="recipientRow" hidden><i>RECIPIENT</i><b id="recipient">—</b></span>
+        </div>
+        <div class="document-type" id="documentType">OFFICIAL DOCUMENT</div>
+        <h1 id="documentTitle">Official document</h1>
+        <p class="document-body" id="documentBody"></p>
+        <div class="signature-row">
+          <div><small>AUTHORIZED BY</small><b id="signer">AUTHORIZED COMMAND</b><img id="signatureImage" alt="Authorized signature" hidden></div>
+          <span class="signature-seal">CIA<br>AUTHORITY</span>
+        </div>
+        <div class="verification-row">
+          <img id="verificationQr" alt="QR code for document verification">
+          <div><small>VERIFY DOCUMENT</small><b id="verificationCode">—</b><a id="verificationLink" target="_blank" rel="noopener">Open verification record</a></div>
+        </div>
+        <footer class="paper-footer"><span>CIA · OFFICIAL SECTOR DOCUMENTS</span><b id="footerClass">PUBLIC</b><span id="footerNumber">—</span></footer>
+      </div>
+      <aside class="viewer-disclaimer" id="protectedNotice" hidden>
+        <b>Protected viewing</b>
+        <span>Hiding print, download, and copy controls reduces casual copying; it cannot prevent screenshots, photographs, or browser-level access.</span>
+      </aside>
+    </article>
+    <footer class="viewer-footer">OSD · DOCUMENT AUTHORITY SYSTEM <span>Verification shows status and integrity, not legal identity.</span></footer>
+  </main>
+  <div class="watermark-layer" id="watermarkLayer" aria-hidden="true" hidden></div>
+</body>
+</html>

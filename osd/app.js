@@ -202,6 +202,33 @@ const PAGE_TEXT = {
   settings: ['settingsEyebrow', 'إعدادات النظام', 'إدارة حسابات OSD والصلاحيات المستقلة.']
 };
 
+const SHARE_COPY = {
+  ar: {
+    title: 'إنشاء رابط مشاركة آمن', access: 'نمط الوصول', public: 'عام — دون تسجيل دخول (للوثائق العامة فقط)',
+    internal: 'داخلي — يتطلب حساب OSD وصلاحية مناسبة', expiry: 'مدة صلاحية الرابط', days: 'أيام',
+    protected: 'وضع مشاهدة محمي: إخفاء الطباعة والتنزيل والنسخ من العارض',
+    allowDownload: 'السماح بالطباعة / حفظ PDF', watermark: 'علامة مائية للمستلم (اختياري)',
+    create: 'إنشاء الرابط', copy: 'نسخ الرابط', revoke: 'إلغاء الرابط', revoked: 'ملغى',
+    active: 'روابط المشاركة', noLinks: 'لا توجد روابط مشاركة بعد.', expiryLabel: 'ينتهي',
+    created: 'تم إنشاء رابط المشاركة.', copied: 'تم نسخ الرابط.', failedCopy: 'انسخ الرابط من الحقل.',
+    captured: 'إخفاء أدوات الطباعة والتنزيل والنسخ يقلل النسخ غير المصرح به، لكنه لا يمنع تصوير الشاشة أو أدوات المتصفح.',
+    publicOnly: 'الرابط العام متاح فقط للوثائق المصنفة PUBLIC. الوثائق الداخلية تتطلب تسجيل الدخول وتخضع لصلاحية الحساب على الخادم.',
+    revokeConfirm: 'هل تريد إلغاء رابط المشاركة؟ سيتوقف الرابط فورًا.'
+  },
+  en: {
+    title: 'Create a secure share link', access: 'Access mode', public: 'Public — no sign-in (PUBLIC documents only)',
+    internal: 'Internal — OSD sign-in and clearance required', expiry: 'Link lifetime', days: 'days',
+    protected: 'Protected view: hide print, download, and copy controls',
+    allowDownload: 'Allow print / Save PDF', watermark: 'Recipient watermark (optional)',
+    create: 'Create link', copy: 'Copy link', revoke: 'Revoke link', revoked: 'Revoked',
+    active: 'Share links', noLinks: 'No share links yet.', expiryLabel: 'Expires',
+    created: 'Share link created.', copied: 'Link copied.', failedCopy: 'Copy the link from the field.',
+    captured: 'Hiding print, download, and copy controls reduces casual copying; it cannot prevent screenshots or browser tools.',
+    publicOnly: 'Public links are allowed only for PUBLIC documents. Internal documents require sign-in and server-side account clearance.',
+    revokeConfirm: 'Revoke this share link? It will stop working immediately.'
+  }
+};
+
 const state = {
   user: null,
   documents: [],
@@ -220,6 +247,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[char]));
 const t = (key) => COPY[state.language]?.[key] || COPY.en[key] || key;
+const st = (key) => SHARE_COPY[state.language]?.[key] || SHARE_COPY.en[key] || key;
 const can = (permission) => !!state.user && state.user.permissions.includes(permission);
 
 async function request(path, options = {}) {
@@ -444,6 +472,32 @@ function renderPreview(documentData = null) {
   $('#previewAuthorizationLevel').textContent = data.signature?.authorizationLevel || data.authorizationLevel || data.classification || '—';
   $('#previewVersion').textContent = data.version || 'DRAFT';
   $('#previewVerificationCode').textContent = data.verificationCode || (state.language === 'ar' ? 'يُنشأ عند الإصدار' : 'GENERATED ON ISSUE');
+  const verificationQr = $('#verificationQr');
+  const verificationQrPlaceholder = $('#verificationQrPlaceholder');
+  const verificationLink = $('#previewVerificationLink');
+  if (data.verificationCode && window.OSDQR) {
+    const verifyUrl = new URL(`/osd/?verify=${encodeURIComponent(data.verificationCode)}`, location.origin).toString();
+    try {
+      verificationQr.src = window.OSDQR.toDataUri(verifyUrl);
+      verificationQr.hidden = false;
+      verificationQrPlaceholder.hidden = true;
+      verificationLink.href = verifyUrl;
+      verificationLink.textContent = state.language === 'ar' ? 'فتح سجل التحقق' : 'Open verification record';
+      verificationLink.hidden = false;
+    } catch {
+      verificationQr.removeAttribute('src');
+      verificationQr.hidden = true;
+      verificationQrPlaceholder.hidden = false;
+      verificationLink.href = verifyUrl;
+      verificationLink.hidden = false;
+    }
+  } else {
+    verificationQr.removeAttribute('src');
+    verificationQr.hidden = true;
+    verificationQrPlaceholder.hidden = false;
+    verificationLink.removeAttribute('href');
+    verificationLink.hidden = true;
+  }
   $('#previewSigner').textContent = data.signature?.display || (data.signature ? t('publicSigner') : t('signaturePending'));
   $('#previewSignatureCaption').textContent = data.signature?.signatureImage ? t('signatureRecorded') : t('signaturePending');
   const signatureImage = data.signature?.signatureImage;
@@ -707,15 +761,96 @@ async function confirmSignatureAndIssue() {
 }
 
 async function shareDocument(id) {
+  if (!can('SHARE_DOCUMENTS')) return toast(t('noPermission'), 'error');
+  const documentData = state.documents.find((item) => item.id === id);
+  if (!documentData) return;
+  state.selectedDocument = documentData;
+  const publicAllowed = documentData.classification === 'PUBLIC';
+  $('#modalTitle').textContent = st('title');
+  $('#modalNumber').textContent = documentData.documentNumber;
+  $('#modalContent').innerHTML = `
+    <div class="share-form">
+      <label>${escapeHtml(st('access'))}<select id="shareMode">
+        <option value="INTERNAL" ${publicAllowed ? '' : 'selected'}>${escapeHtml(st('internal'))}</option>
+        <option value="PUBLIC" ${publicAllowed ? 'selected' : 'disabled'}>${escapeHtml(st('public'))}</option>
+      </select></label>
+      <label>${escapeHtml(st('expiry'))}<select id="shareExpiry">${[1, 7, 14, 30, 90].map((days) => `<option value="${days}" ${days === 14 ? 'selected' : ''}>${days} ${escapeHtml(st('days'))}</option>`).join('')}</select></label>
+      <label class="share-check"><input id="shareProtected" type="checkbox" checked><span>${escapeHtml(st('protected'))}</span></label>
+      <label id="shareDownloadRow" class="share-check" hidden><input id="shareAllowDownload" type="checkbox" ${can('DOWNLOAD_DOCUMENTS') ? '' : 'disabled'}><span>${escapeHtml(st('allowDownload'))}</span></label>
+      <label>${escapeHtml(st('watermark'))}<input id="shareWatermark" maxlength="100" placeholder="${escapeHtml(documentData.recipient || '')}"></label>
+      <p class="share-notice">${escapeHtml(st('publicOnly'))}<br>${escapeHtml(st('captured'))}</p>
+      <div class="share-result" id="shareResult" hidden></div>
+      <div><b>${escapeHtml(st('active'))}</b><div id="shareLinkList" class="share-link-list"><small>${escapeHtml(st('noLinks'))}</small></div></div>
+    </div>`;
+  $('#modalActions').innerHTML = `<button class="button button-quiet" data-action="closeModal">${escapeHtml(t('close'))}</button><button class="button button-primary" data-action="createShareLink" data-id="${escapeHtml(id)}">${escapeHtml(st('create'))}</button>`;
+  $('#documentModal').hidden = false;
+  $('#shareProtected').addEventListener('change', () => {
+    $('#shareDownloadRow').hidden = $('#shareProtected').checked;
+  });
+  await refreshShareLinks(id);
+}
+
+async function refreshShareLinks(id) {
   try {
-    const result = await request(`/documents/${encodeURIComponent(id)}/share`, {
-      method: 'POST',
-      body: JSON.stringify({ permissions: ['VIEW', 'VERIFY'], expiresInDays: 14 })
-    });
-    await navigator.clipboard?.writeText(result.url);
-    toast(navigator.clipboard ? t('copied') : `${t('shareCreated')} ${result.url}`);
-    window.prompt(t('shareCreated'), result.url);
-  } catch (error) { toast(error.message, 'error'); }
+    const result = await request(`/documents/${encodeURIComponent(id)}/shares`);
+    const shares = result.shares || [];
+    $('#shareLinkList').innerHTML = shares.length ? shares.map((share) => {
+      const isExpired = share.expires_at && new Date(share.expires_at).getTime() <= Date.now();
+      const revoked = !!share.revoked_at;
+      const stateLabel = revoked ? st('revoked') : isExpired ? (state.language === 'ar' ? 'منتهي' : 'Expired') : share.share_mode;
+      return `<div class="share-link-row"><span>${escapeHtml(stateLabel)} · ${share.protected_view ? 'VIEW ONLY' : 'STANDARD VIEW'}<small>${escapeHtml(st('expiryLabel'))}: ${escapeHtml(formatDate(share.expires_at, true))}</small></span>${!revoked && !isExpired ? `<button class="button button-quiet" data-action="revokeShareLink" data-id="${escapeHtml(id)}" data-share-id="${escapeHtml(share.share_id)}">${escapeHtml(st('revoke'))}</button>` : ''}</div>`;
+    }).join('') : `<small>${escapeHtml(st('noLinks'))}</small>`;
+  } catch (error) {
+    $('#shareLinkList').innerHTML = `<small>${escapeHtml(error.message)}</small>`;
+  }
+}
+
+async function createShareLink(id) {
+  const protectedView = $('#shareProtected').checked;
+  const permissions = ['VIEW', 'VERIFY'];
+  if (!protectedView && $('#shareAllowDownload').checked) permissions.push('DOWNLOAD');
+  const result = await request(`/documents/${encodeURIComponent(id)}/share`, {
+    method: 'POST',
+    body: JSON.stringify({
+      mode: $('#shareMode').value,
+      expiresInDays: Number($('#shareExpiry').value),
+      protectedView,
+      watermark: $('#shareWatermark').value.trim(),
+      permissions
+    })
+  });
+  const url = new URL(result.url, location.origin).toString();
+  const resultPanel = $('#shareResult');
+  resultPanel.hidden = false;
+  resultPanel.innerHTML = `<b>${escapeHtml(st('created'))}</b><input id="createdShareUrl" value="${escapeHtml(url)}" readonly aria-label="Share URL"><button class="button button-outline" data-action="copyShareLink">${escapeHtml(st('copy'))}</button>`;
+  try {
+    await navigator.clipboard?.writeText(url);
+    toast(navigator.clipboard ? st('copied') : st('created'));
+  } catch {
+    $('#createdShareUrl').select();
+    toast(st('failedCopy'));
+  }
+  await refreshShareLinks(id);
+}
+
+async function revokeShareLink(id, shareId) {
+  if (!window.confirm(st('revokeConfirm'))) return;
+  await request(`/documents/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+  await refreshShareLinks(id);
+  toast(st('revoked'));
+}
+
+async function copyShareLink() {
+  const input = $('#createdShareUrl');
+  if (!input) return;
+  try {
+    await navigator.clipboard.writeText(input.value);
+    toast(st('copied'));
+  } catch {
+    input.select();
+    document.execCommand('copy');
+    toast(st('failedCopy'));
+  }
 }
 
 async function waitForPrintAssets(root) {
@@ -960,7 +1095,7 @@ async function authenticate() {
   const share = new URLSearchParams(location.search).get('share');
   const verify = new URLSearchParams(location.search).get('verify');
   if (share) {
-    await showShareDocument(share);
+    location.replace(`/osd/share.html?token=${encodeURIComponent(share)}`);
     return;
   }
   if (verify) {
@@ -1066,6 +1201,9 @@ document.addEventListener('click', async (event) => {
     else if (action === 'amendDocument') await createAmendment(id);
     else if (['submitForApproval', 'approveDocument', 'issueDocument', 'revokeDocument', 'archiveDocument'].includes(action)) await actOnDocument(action, id);
     else if (action === 'shareDocument') await shareDocument(id);
+    else if (action === 'createShareLink') await createShareLink(id);
+    else if (action === 'revokeShareLink') await revokeShareLink(id, target.dataset.shareId);
+    else if (action === 'copyShareLink') await copyShareLink();
     else if (action === 'printDocument') {
       const result = await request(`/documents/${encodeURIComponent(id)}/download`, { method: 'POST', body: '{}' });
       await printDocument(result.document, { includeShareLink: true });
