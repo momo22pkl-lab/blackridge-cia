@@ -23,7 +23,10 @@ Without PostgreSQL, the OSD API fails closed and does not create documents. With
 ## Included workflow
 
 - Separate OSD accounts, role-based clearance, individual server-enforced permissions, password hashing, expiring HttpOnly sessions, same-origin writes, and login throttling.
-- Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, secure bearer links, and public verification.
+- Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, expiring and revocable share links, and public verification.
+- Dedicated share viewer links that open the document directly. Anonymous links are restricted to `PUBLIC` documents; internal links require an active OSD session, `VIEW_DOCUMENTS`, and sufficient server-checked clearance.
+- Protected viewing hides print/download controls, suppresses ordinary copy/selection actions, and can display a recipient watermark. These browser-side measures reduce casual copying but cannot prevent screenshots, photographs, or browser-level access.
+- Issued-document print layouts retain the existing browser print-to-PDF flow, signature, official layout, verification code, clickable verification URL, and a locally generated QR code.
 - Atomic sector/year document numbering, immutable version rows, amendment drafts linked to their predecessor, server-generated UTC timestamps, HMAC-signed issued snapshots, and append-only hash-chained audit events.
 - Commanders draw their own signature in a pointer-enabled canvas using a mouse, stylus, or touch. The server rejects absent, oversized, malformed, or checksum-invalid PNGs; the approved drawing is stored with the issued snapshot and covered by its HMAC.
 - Browser print layout for A4 includes the issued signature image and metadata; use **Print / Save PDF** and choose **Save as PDF** in the browser print dialog.
@@ -32,7 +35,8 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 
 ## Current boundaries
 
-- The verification code and secure verification URL are implemented; a scannable QR image and binary attachment upload are not part of this first implementation.
+- A scannable QR code is generated locally from the public verification URL. Public verification reveals only status and document number for classified records; public records may additionally reveal type, classification, version, and issue time. Verification never returns the document body, recipient, or real signer identity.
+- Share settings add columns to the OSD share table through the existing idempotent OSD schema initialization. No production database is changed by this source branch; a server startup after deployment will apply the schema additions.
 - PDF output uses the browser's print-to-PDF pipeline, not a server-side PDF renderer.
 - The handwritten image records the signer's drawn mark; the server HMAC proves that the stored issued snapshot has not changed, but neither mechanism is a government digital signature or a legal-identity verification service.
 - Hash chaining and database triggers make version/audit mutation detectable within the application. A database owner can still alter database structure or secrets; this is not a compliance certification or protection against a fully compromised host.
@@ -40,4 +44,4 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 
 ## Checks
 
-Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, privacy redaction, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers.
+Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, public/internal share policy, expiry and revocation decisions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Database-backed login/logout and live browser print rendering require an isolated test database and browser; they are not exercised by these unit tests.

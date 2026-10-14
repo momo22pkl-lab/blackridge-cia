@@ -118,12 +118,32 @@ CREATE TABLE IF NOT EXISTS osd_audit_events (
 CREATE INDEX IF NOT EXISTS osd_audit_document_idx ON osd_audit_events(document_id, id DESC);
 CREATE TABLE IF NOT EXISTS osd_document_shares (
   token_hash TEXT PRIMARY KEY,
+  share_id TEXT,
   document_id TEXT NOT NULL REFERENCES osd_documents(id),
   permissions JSONB NOT NULL,
+  share_mode TEXT NOT NULL DEFAULT 'PUBLIC',
+  protected_view BOOLEAN NOT NULL DEFAULT TRUE,
+  watermark TEXT NOT NULL DEFAULT '',
   expires_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  revoked_by TEXT REFERENCES osd_users(id),
   created_by TEXT NOT NULL REFERENCES osd_users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS share_id TEXT;
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS share_mode TEXT NOT NULL DEFAULT 'PUBLIC';
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS protected_view BOOLEAN;
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS watermark TEXT NOT NULL DEFAULT '';
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+ALTER TABLE osd_document_shares ADD COLUMN IF NOT EXISTS revoked_by TEXT REFERENCES osd_users(id);
+UPDATE osd_document_shares
+  SET share_id = md5(token_hash || clock_timestamp()::text || random()::text)
+  WHERE share_id IS NULL;
+UPDATE osd_document_shares SET protected_view = FALSE WHERE protected_view IS NULL;
+ALTER TABLE osd_document_shares ALTER COLUMN share_id SET NOT NULL;
+ALTER TABLE osd_document_shares ALTER COLUMN protected_view SET DEFAULT TRUE;
+ALTER TABLE osd_document_shares ALTER COLUMN protected_view SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS osd_document_shares_share_id_idx ON osd_document_shares(share_id);
 CREATE OR REPLACE FUNCTION osd_reject_immutable_mutation() RETURNS trigger AS $$
 BEGIN
   RAISE EXCEPTION 'OSD immutable records cannot be updated or deleted';
@@ -268,6 +288,96 @@ function hasPermission(user, permission) {
 
 function canReadClassification(user, classification) {
   return CLASSIFICATIONS.indexOf(classification) <= CLASSIFICATIONS.indexOf(user.clearance);
+}
+
+function normalizeShareOptions(input, classification, user) {
+  const mode = cleanText(input?.mode || (classification === 'PUBLIC' ? 'PUBLIC' : 'INTERNAL'), 20).toUpperCase();
+  if (!['PUBLIC', 'INTERNAL'].includes(mode)) {
+    throw Object.assign(new Error('Choose a valid share access mode.'), { status: 400 });
+  }
+  if (mode === 'PUBLIC' && classification !== 'PUBLIC') {
+    throw Object.assign(new Error('Only PUBLIC documents may use a link that does not require sign-in.'), { status: 403 });
+  }
+  const rawDays = input?.expiresInDays === undefined ? 14 : Number(input.expiresInDays);
+  if (!Number.isInteger(rawDays) || rawDays < 1 || rawDays > 90) {
+    throw Object.assign(new Error('Share-link expiry must be between 1 and 90 days.'), { status: 400 });
+  }
+  const protectedView = input?.protectedView !== false;
+  const requested = Array.isArray(input?.permissions) ? input.permissions : ['VIEW', 'VERIFY'];
+  const permissions = [...new Set(requested.filter((permission) => ['VIEW', 'DOWNLOAD', 'VERIFY'].includes(permission)))];
+  if (!permissions.includes('VIEW')) permissions.unshift('VIEW');
+  if (protectedView && permissions.includes('DOWNLOAD')) {
+    throw Object.assign(new Error('Protected viewing cannot include print or download access.'), { status: 400 });
+  }
+  if (permissions.includes('DOWNLOAD') && !hasPermission(user, 'DOWNLOAD_DOCUMENTS')) {
+    throw Object.assign(new Error('Your account does not have permission to share document downloads.'), { status: 403 });
+  }
+  return {
+    mode,
+    protectedView,
+    watermark: cleanText(input?.watermark, 100),
+    expiresInDays: rawDays,
+    permissions
+  };
+}
+
+function shareAccessDecision({ mode, classification, permissions = [], revokedAt, shareExpiresAt, documentStatus, documentRevokedAt, documentExpiresAt, user }) {
+  if (revokedAt) return 'LINK_REVOKED';
+  if (shareExpiresAt && new Date(shareExpiresAt).getTime() <= Date.now()) return 'LINK_EXPIRED';
+  if (!['ISSUED', 'ARCHIVED'].includes(documentStatus) || documentRevokedAt ||
+      (documentExpiresAt && new Date(documentExpiresAt).getTime() <= Date.now())) return 'DOCUMENT_UNAVAILABLE';
+  if (mode === 'PUBLIC') return classification === 'PUBLIC' ? 'ALLOW' : 'DOCUMENT_UNAVAILABLE';
+  if (mode !== 'INTERNAL') return 'DOCUMENT_UNAVAILABLE';
+  if (!user) return 'SIGN_IN_REQUIRED';
+  if (!hasPermission(user, 'VIEW_DOCUMENTS') || !canReadClassification(user, classification)) return 'NOT_AUTHORIZED';
+  if (!permissions.includes('VIEW') && !permissions.includes('DOWNLOAD')) return 'NOT_AUTHORIZED';
+  return 'ALLOW';
+}
+
+function verificationResult(status, document) {
+  const result = { status };
+  if (!document) return result;
+  if (document.classification !== 'PUBLIC' && document.verification_code) {
+    result.documentNumber = document.document_number;
+    return result;
+  }
+  result.documentNumber = document.document_number;
+  if (status === 'DOCUMENT VALID' && document.classification === 'PUBLIC') {
+    result.type = document.document_type;
+    result.classification = document.classification;
+    result.version = document.version;
+    result.issuedAt = document.issued_at;
+  }
+  return result;
+}
+
+function verifyIssuedDocument(document, secret) {
+  if (!document || !document.issued_snapshot || !document.signature || !signingSecretReady(secret)) return false;
+  const snapshot = document.issued_snapshot;
+  const currentSnapshot = {
+    id: document.id,
+    documentNumber: document.document_number,
+    verificationCode: document.verification_code,
+    type: document.document_type,
+    title: document.title,
+    body: document.body,
+    sector: document.sector,
+    classification: document.classification,
+    recipient: document.recipient,
+    version: document.version,
+    issuedAt: document.issued_at ? new Date(document.issued_at).toISOString() : null,
+    expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null
+  };
+  if (Object.hasOwn(snapshot, 'authorizationLevel')) currentSnapshot.authorizationLevel = document.signature.authorizationLevel;
+  if (Object.hasOwn(snapshot, 'timeZone')) currentSnapshot.timeZone = snapshot.timeZone;
+  if (Object.hasOwn(snapshot, 'signatureImage')) currentSnapshot.signatureImage = document.signature.signatureImage;
+  const payload = document.signature.signaturePayload;
+  if (!payload) return false;
+  const expected = signPayload(payload, secret);
+  return canonicalJson(snapshot) === canonicalJson(payload.snapshot) &&
+    canonicalJson(snapshot) === canonicalJson(currentSnapshot) &&
+    safeEqual(expected, document.integrity_hash) &&
+    safeEqual(expected, document.signature.signature);
 }
 
 function safeDocument(row, user, options = {}) {
@@ -431,38 +541,42 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
 
   router.use(sameOrigin);
 
+  async function loadUser(req, pool) {
+    const cookie = String(req.headers.cookie || '').split(';').map((item) => item.trim())
+      .find((item) => item.startsWith('osd_session='));
+    let token = '';
+    try {
+      token = cookie ? decodeURIComponent(cookie.slice('osd_session='.length)) : '';
+    } catch {
+      token = '';
+    }
+    if (!token || token.length > 200) return null;
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.display_name, u.role, u.clearance, u.permissions
+       FROM osd_sessions s JOIN osd_users u ON u.id = s.user_id
+       WHERE s.token_hash = $1 AND s.expires_at > NOW() AND u.enabled = TRUE`,
+      [sha256(token)]
+    );
+    if (!result.rows.length) return null;
+    return {
+      id: result.rows[0].id,
+      username: result.rows[0].username,
+      displayName: result.rows[0].display_name,
+      role: result.rows[0].role,
+      clearance: result.rows[0].clearance,
+      permissions: Array.isArray(result.rows[0].permissions) ? result.rows[0].permissions : []
+    };
+  }
+
   function currentUser(req, res, next) {
     Promise.resolve().then(async () => {
       const pool = await poolOr503(res);
       if (!pool) return;
-      const cookie = String(req.headers.cookie || '').split(';').map((item) => item.trim())
-        .find((item) => item.startsWith('osd_session='));
-      let token = '';
-      try {
-        token = cookie ? decodeURIComponent(cookie.slice('osd_session='.length)) : '';
-      } catch {
-        token = '';
-      }
-      if (!token || token.length > 200) return res.status(401).json({ error: 'Authentication required.' });
-      const tokenHash = sha256(token);
-      const result = await pool.query(
-        `SELECT u.id, u.username, u.display_name, u.role, u.clearance, u.permissions
-         FROM osd_sessions s JOIN osd_users u ON u.id = s.user_id
-         WHERE s.token_hash = $1 AND s.expires_at > NOW() AND u.enabled = TRUE`,
-        [tokenHash]
-      );
-      if (!result.rows.length) {
+      req.osdUser = await loadUser(req, pool);
+      if (!req.osdUser) {
         res.setHeader('Set-Cookie', clearSessionCookie(req));
-        return res.status(401).json({ error: 'Session expired. Sign in again.' });
+        return res.status(401).json({ error: 'Authentication required. Sign in with an active OSD account.' });
       }
-      req.osdUser = {
-        id: result.rows[0].id,
-        username: result.rows[0].username,
-        displayName: result.rows[0].display_name,
-        role: result.rows[0].role,
-        clearance: result.rows[0].clearance,
-        permissions: Array.isArray(result.rows[0].permissions) ? result.rows[0].permissions : []
-      };
       req.osdPool = pool;
       next();
     }).catch(next);
@@ -987,51 +1101,24 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
       [identifier]
     );
     const document = result.rows[0];
-    if (!document) return res.json({ status: 'DOCUMENT NOT FOUND' });
-    if (document.status === 'REVOKED' || document.revoked_at) return res.json({ status: 'DOCUMENT REVOKED', documentNumber: document.document_number });
+    if (!document) return res.json(verificationResult('DOCUMENT NOT FOUND'));
+    if (document.classification !== 'PUBLIC' && document.verification_code !== identifier) {
+      return res.json(verificationResult('DOCUMENT NOT VERIFIED'));
+    }
+    if (document.status === 'REVOKED' || document.revoked_at) return res.json(verificationResult('DOCUMENT REVOKED', document));
     if (!document.issued_snapshot || !document.signature || !signingSecretReady(env.OSD_SIGNING_SECRET)) {
-      return res.json({ status: 'DOCUMENT NOT VERIFIED', documentNumber: document.document_number });
+      return res.json(verificationResult('DOCUMENT NOT VERIFIED', document));
     }
     if (!['ISSUED', 'ARCHIVED'].includes(document.status)) {
-      return res.json({ status: 'DOCUMENT NOT VERIFIED', documentNumber: document.document_number });
+      return res.json(verificationResult('DOCUMENT NOT VERIFIED', document));
     }
-    const snapshot = document.issued_snapshot;
-    const currentSnapshot = {
-      id: document.id,
-      documentNumber: document.document_number,
-      verificationCode: document.verification_code,
-      type: document.document_type,
-      title: document.title,
-      body: document.body,
-      sector: document.sector,
-      classification: document.classification,
-      recipient: document.recipient,
-      version: document.version,
-      issuedAt: document.issued_at ? new Date(document.issued_at).toISOString() : null,
-      expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null
-    };
-    if (Object.hasOwn(snapshot, 'authorizationLevel')) currentSnapshot.authorizationLevel = document.signature.authorizationLevel;
-    if (Object.hasOwn(snapshot, 'timeZone')) currentSnapshot.timeZone = snapshot.timeZone;
-    if (Object.hasOwn(snapshot, 'signatureImage')) currentSnapshot.signatureImage = document.signature.signatureImage;
-    const payload = document.signature.signaturePayload;
-    const expected = payload ? signPayload(payload, env.OSD_SIGNING_SECRET) : '';
-    if (!payload || canonicalJson(snapshot) !== canonicalJson(payload.snapshot) ||
-        canonicalJson(snapshot) !== canonicalJson(currentSnapshot) ||
-        !safeEqual(expected, document.integrity_hash) || !safeEqual(expected, document.signature.signature)) {
-      return res.json({ status: 'DOCUMENT INTEGRITY CHECK FAILED', documentNumber: document.document_number });
+    if (!verifyIssuedDocument(document, env.OSD_SIGNING_SECRET)) {
+      return res.json(verificationResult('DOCUMENT INTEGRITY CHECK FAILED', document));
     }
     if (document.status === 'EXPIRED' || (document.expires_at && new Date(document.expires_at).getTime() <= Date.now())) {
-      return res.json({ status: 'DOCUMENT EXPIRED', documentNumber: document.document_number });
+      return res.json(verificationResult('DOCUMENT EXPIRED', document));
     }
-    res.json({
-      status: 'DOCUMENT VALID',
-      documentNumber: document.document_number,
-      type: document.document_type,
-      classification: document.classification,
-      version: document.version,
-      issuedAt: document.issued_at,
-      verificationCode: document.verification_code
-    });
+    res.json(verificationResult('DOCUMENT VALID', document));
   }));
 
   router.post('/documents/:id/share', currentUser, requirePermission('SHARE_DOCUMENTS'), asyncRoute(async (req, res) => {
@@ -1041,20 +1128,38 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
         (document.expires_at && new Date(document.expires_at).getTime() <= Date.now())) {
       return res.status(409).json({ error: 'Only active issued documents can be shared.' });
     }
-    const requested = Array.isArray(req.body?.permissions) ? req.body.permissions : ['VIEW', 'VERIFY'];
-    const permissions = [...new Set(requested.filter((permission) => ['VIEW', 'DOWNLOAD', 'VERIFY'].includes(permission)))];
-    if (!permissions.length) return res.status(400).json({ error: 'Select at least one share permission.' });
+    if (!signingSecretReady(env.OSD_SIGNING_SECRET)) {
+      return res.status(503).json({ error: 'Document integrity verification is temporarily unavailable.' });
+    }
+    if (!verifyIssuedDocument(document, env.OSD_SIGNING_SECRET)) {
+      return res.status(409).json({ error: 'Document integrity verification failed; a share link was not created.' });
+    }
+    let settings;
+    try {
+      settings = normalizeShareOptions(req.body, document.classification, req.osdUser);
+    } catch (error) {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
     const token = crypto.randomBytes(32).toString('base64url');
-    const ttlDays = Math.max(1, Math.min(90, Number(req.body?.expiresInDays) || 14));
+    const shareId = crypto.randomUUID();
     const client = await req.osdPool.connect();
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO osd_document_shares (token_hash,document_id,permissions,expires_at,created_by)
-         VALUES ($1,$2,$3::jsonb,NOW()+($4::text||' days')::interval,$5)`,
-        [sha256(token), document.id, JSON.stringify(permissions), ttlDays, req.osdUser.id]
+        `INSERT INTO osd_document_shares
+         (token_hash,share_id,document_id,permissions,share_mode,protected_view,watermark,expires_at,created_by)
+         VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,NOW()+($8::text||' days')::interval,$9)`,
+        [sha256(token), shareId, document.id, JSON.stringify(settings.permissions), settings.mode,
+          settings.protectedView, settings.watermark, settings.expiresInDays, req.osdUser.id]
       );
-      await appendAudit(client, { documentId: document.id, actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'SECURE SHARE LINK CREATED', version: document.version, metadata: { permissions, expiresInDays: ttlDays } });
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: req.osdUser.role,
+        action: 'SECURE SHARE LINK CREATED',
+        version: document.version,
+        metadata: { shareId, mode: settings.mode, protectedView: settings.protectedView, permissions: settings.permissions, expiresInDays: settings.expiresInDays }
+      });
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -1062,8 +1167,64 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
     } finally {
       client.release();
     }
-    const origin = `${req.protocol === 'https' || String(req.get('x-forwarded-proto') || '').includes('https') ? 'https' : 'http'}://${req.get('host')}`;
-    res.status(201).json({ url: `${origin}/osd/?share=${encodeURIComponent(token)}`, permissions, expiresInDays: ttlDays });
+    res.status(201).json({
+      url: `/osd/share.html?token=${encodeURIComponent(token)}`,
+      shareId,
+      mode: settings.mode,
+      protectedView: settings.protectedView,
+      watermark: settings.watermark,
+      permissions: settings.permissions,
+      expiresInDays: settings.expiresInDays,
+      expiresAt: new Date(Date.now() + settings.expiresInDays * 86400000).toISOString()
+    });
+  }));
+
+  router.get('/documents/:id/shares', currentUser, requirePermission('SHARE_DOCUMENTS'), asyncRoute(async (req, res) => {
+    const document = await getDocument(req.osdPool, cleanText(req.params.id, 100));
+    if (!checkDocumentVisibility(req.osdUser, document, res)) return;
+    const result = await req.osdPool.query(
+      `SELECT share_id,share_mode,permissions,protected_view,watermark,expires_at,revoked_at,created_at
+       FROM osd_document_shares WHERE document_id=$1 ORDER BY created_at DESC`,
+      [document.id]
+    );
+    res.json({ shares: result.rows });
+  }));
+
+  router.delete('/documents/:id/shares/:shareId', currentUser, requirePermission('SHARE_DOCUMENTS'), asyncRoute(async (req, res) => {
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await getDocument(client, cleanText(req.params.id, 100), true);
+      if (!checkDocumentVisibility(req.osdUser, document, res)) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      const result = await client.query(
+        `UPDATE osd_document_shares SET revoked_at=NOW(),revoked_by=$3
+         WHERE document_id=$1 AND share_id=$2 AND revoked_at IS NULL
+         RETURNING share_id,share_mode`,
+        [document.id, cleanText(req.params.shareId, 100), req.osdUser.id]
+      );
+      if (!result.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Active share link not found.' });
+      }
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: req.osdUser.role,
+        action: 'SECURE SHARE LINK REVOKED',
+        version: document.version,
+        metadata: { shareId: result.rows[0].share_id, mode: result.rows[0].share_mode }
+      });
+      await client.query('COMMIT');
+      res.json({ revoked: true, shareId: result.rows[0].share_id });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }));
 
   router.get('/share/:token', asyncRoute(async (req, res) => {
@@ -1071,16 +1232,47 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
     if (!pool) return;
     const token = cleanText(req.params.token, 200);
     const result = await pool.query(
-      `SELECT d.*,s.permissions AS share_permissions
+      `SELECT d.*,s.share_id,s.share_mode,s.protected_view,s.watermark,s.permissions AS share_permissions,
+              s.expires_at AS share_expires_at,s.revoked_at AS share_revoked_at
        FROM osd_document_shares s JOIN osd_documents d ON d.id=s.document_id
-       WHERE s.token_hash=$1 AND (s.expires_at IS NULL OR s.expires_at>NOW())`,
+       WHERE s.token_hash=$1`,
       [sha256(token)]
     );
     const document = result.rows[0];
     if (!document) return res.status(404).json({ error: 'Share link is invalid or expired.' });
-    if (!['ISSUED', 'ARCHIVED'].includes(document.status) || document.revoked_at ||
-        (document.expires_at && new Date(document.expires_at).getTime() <= Date.now())) {
-      return res.status(410).json({ error: 'This document is no longer available.' });
+    let viewer = null;
+    if (document.share_mode === 'INTERNAL') {
+      viewer = await loadUser(req, pool);
+      if (!viewer) {
+        const hasCookie = String(req.headers.cookie || '').includes('osd_session=');
+        if (hasCookie) res.setHeader('Set-Cookie', clearSessionCookie(req));
+      }
+    }
+    const access = shareAccessDecision({
+      mode: document.share_mode,
+      classification: document.classification,
+      permissions: Array.isArray(document.share_permissions) ? document.share_permissions : [],
+      revokedAt: document.share_revoked_at,
+      shareExpiresAt: document.share_expires_at,
+      documentStatus: document.status,
+      documentRevokedAt: document.revoked_at,
+      documentExpiresAt: document.expires_at,
+      user: viewer
+    });
+    if (access === 'SIGN_IN_REQUIRED') return res.status(401).json({ error: 'Sign in with an OSD account to view this internal document.' });
+    if (access === 'NOT_AUTHORIZED') return res.status(404).json({ error: 'Share link is invalid or you are not authorized to view this document.' });
+    if (access !== 'ALLOW') return res.status(410).json({ error: 'This share link or document is no longer available.' });
+    if (document.share_mode === 'INTERNAL') {
+      const userCanDownload = hasPermission(viewer, 'DOWNLOAD_DOCUMENTS');
+      if (Array.isArray(document.share_permissions) && document.share_permissions.includes('DOWNLOAD') && !userCanDownload) {
+        return res.status(404).json({ error: 'Share link is invalid or you are not authorized to view this document.' });
+      }
+    }
+    if (!signingSecretReady(env.OSD_SIGNING_SECRET)) {
+      return res.status(503).json({ error: 'Document integrity verification is temporarily unavailable.' });
+    }
+    if (!verifyIssuedDocument(document, env.OSD_SIGNING_SECRET)) {
+      return res.status(410).json({ error: 'This document is no longer available for sharing.' });
     }
     const auditClient = await pool.connect();
     try {
@@ -1102,7 +1294,7 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
         title: document.title,
         sector: document.sector,
         classification: document.classification,
-        recipient: document.recipient,
+        recipient: document.share_mode === 'INTERNAL' ? document.recipient : '',
         status: document.status,
         version: document.version,
         issuedAt: document.issued_at,
@@ -1112,13 +1304,18 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
           references: document.issued_snapshot?.body?.references || []
         } : undefined,
         signer: 'AUTHORIZED COMMAND',
-        signature: document.share_permissions.includes('DOWNLOAD') ? {
+        signature: !document.protected_view && document.share_permissions.includes('DOWNLOAD') ? {
           display: 'AUTHORIZED COMMAND',
           signedAt: document.signature?.signedAt,
           authorizationLevel: document.signature?.authorizationLevel,
           signatureImage: document.signature?.signatureImage
         } : undefined
       },
+      shareId: document.share_id,
+      mode: document.share_mode,
+      protectedView: !!document.protected_view,
+      watermark: cleanText(document.watermark, 100),
+      expiresAt: document.share_expires_at,
       permissions: document.share_permissions
     });
   }));
@@ -1275,11 +1472,15 @@ module.exports = {
   createOsdRouter,
   nextMinorVersion,
   normalizeDocument,
+  normalizeShareOptions,
   normalizeSignatureImage,
   safeEqual,
   safeDocument,
   sectorCode,
   sha256,
+  shareAccessDecision,
   signPayload,
-  signingSecretReady
+  signingSecretReady,
+  verificationResult,
+  verifyIssuedDocument
 };

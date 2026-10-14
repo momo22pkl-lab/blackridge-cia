@@ -78,7 +78,10 @@ app.use((req, res, next) => {
   next();
 });
 const osdRouter = createOsdRouter({ getPool: () => postgresPool });
-const osdPublicFiles = new Set(['/', '/index.html', '/styles.css', '/app.js']);
+const osdPublicFiles = new Set([
+  '/', '/index.html', '/styles.css', '/app.js', '/qr-code.js',
+  '/share.html', '/share.css', '/share.js'
+]);
 const osdStatic = express.static(path.join(__dirname, 'osd'), { index: 'index.html' });
 app.use('/osd', (req, res, next) => {
   if (!osdPublicFiles.has(req.path)) return res.sendStatus(404);

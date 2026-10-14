@@ -13,13 +13,18 @@ const {
   canonicalJson,
   nextMinorVersion,
   normalizeDocument,
+  normalizeShareOptions,
   normalizeSignatureImage,
   safeDocument,
   sectorCode,
   sha256,
+  shareAccessDecision,
   signPayload,
-  signingSecretReady
+  signingSecretReady,
+  verificationResult,
+  verifyIssuedDocument
 } = require('../server');
+const QR = require('../qr-code');
 
 function pngChunk(type, data) {
   const typeBuffer = Buffer.from(type, 'ascii');
@@ -68,6 +73,91 @@ test('user-assigned permissions reject unknown capabilities and deduplicate vali
   assert.deepEqual(allowedPermissions(['VIEW_DOCUMENTS', 'VIEW_DOCUMENTS']), ['VIEW_DOCUMENTS']);
   assert.deepEqual(allowedPermissions([]), []);
   assert.equal(allowedPermissions(['ROOT_ACCESS']), null);
+});
+
+test('share settings restrict anonymous links to PUBLIC documents and enforce expiry and print permissions', () => {
+  const shareAdmin = { permissions: ['SHARE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS'] };
+  assert.deepEqual(
+    normalizeShareOptions({ mode: 'PUBLIC', expiresInDays: 7, protectedView: true, permissions: ['VIEW', 'VERIFY'] }, 'PUBLIC', shareAdmin),
+    { mode: 'PUBLIC', protectedView: true, watermark: '', expiresInDays: 7, permissions: ['VIEW', 'VERIFY'] }
+  );
+  assert.throws(() => normalizeShareOptions({ mode: 'PUBLIC' }, 'INTERNAL', shareAdmin), /Only PUBLIC documents/);
+  assert.throws(() => normalizeShareOptions({ mode: 'EXTERNAL' }, 'PUBLIC', shareAdmin), /valid share access mode/);
+  assert.throws(() => normalizeShareOptions({ mode: 'INTERNAL', expiresInDays: 91 }, 'SECRET', shareAdmin), /between 1 and 90 days/);
+  assert.throws(() => normalizeShareOptions({ mode: 'PUBLIC', protectedView: true, permissions: ['VIEW', 'DOWNLOAD'] }, 'PUBLIC', shareAdmin), /cannot include print or download/);
+  assert.throws(() => normalizeShareOptions({ mode: 'INTERNAL', protectedView: false, permissions: ['DOWNLOAD'] }, 'SECRET', { permissions: ['SHARE_DOCUMENTS'] }), /does not have permission to share document downloads/);
+});
+
+test('share access requires an active link and server-side account clearance for internal documents', () => {
+  const base = {
+    mode: 'INTERNAL', classification: 'SECRET', permissions: ['VIEW'], documentStatus: 'ISSUED',
+    shareExpiresAt: new Date(Date.now() + 60_000).toISOString()
+  };
+  assert.equal(shareAccessDecision(base), 'SIGN_IN_REQUIRED');
+  assert.equal(shareAccessDecision({ ...base, user: { clearance: 'INTERNAL', permissions: ['VIEW_DOCUMENTS'] } }), 'NOT_AUTHORIZED');
+  assert.equal(shareAccessDecision({ ...base, user: { clearance: 'TOP SECRET', permissions: ['VIEW_DOCUMENTS'] } }), 'ALLOW');
+  assert.equal(shareAccessDecision({ ...base, mode: 'PUBLIC', user: null }), 'DOCUMENT_UNAVAILABLE');
+  assert.equal(shareAccessDecision({ ...base, revokedAt: new Date().toISOString() }), 'LINK_REVOKED');
+  assert.equal(shareAccessDecision({ ...base, shareExpiresAt: new Date(Date.now() - 60_000).toISOString() }), 'LINK_EXPIRED');
+  assert.equal(shareAccessDecision({ ...base, documentStatus: 'REVOKED', user: { clearance: 'TOP SECRET', permissions: ['VIEW_DOCUMENTS'] } }), 'DOCUMENT_UNAVAILABLE');
+});
+
+test('public verification returns only status and identifier for classified documents', () => {
+  const classified = {
+    document_number: 'OSD-LSS-2026-00001', document_type: 'INTELLIGENCE REPORT',
+    classification: 'SECRET', version: '9.4', issued_at: '2026-10-01T12:00:00Z',
+    recipient: 'Restricted recipient', signature: { signerName: 'Private signer' }
+  };
+  const restricted = verificationResult('DOCUMENT VALID', classified);
+  assert.deepEqual(restricted, { status: 'DOCUMENT VALID', documentNumber: 'OSD-LSS-2026-00001' });
+  const publicDoc = { ...classified, classification: 'PUBLIC' };
+  assert.deepEqual(verificationResult('DOCUMENT VALID', publicDoc), {
+    status: 'DOCUMENT VALID',
+    documentNumber: 'OSD-LSS-2026-00001',
+    type: 'INTELLIGENCE REPORT',
+    classification: 'PUBLIC',
+    version: '9.4',
+    issuedAt: '2026-10-01T12:00:00Z'
+  });
+  assert.deepEqual(verificationResult('DOCUMENT NOT FOUND'), { status: 'DOCUMENT NOT FOUND' });
+});
+
+test('share payloads are served only while the issued snapshot HMAC remains intact', () => {
+  const secret = 'test-only-signing-secret-with-at-least-32-bytes';
+  const snapshot = {
+    id: 'doc-1', documentNumber: 'OSD-LSS-2026-00001', verificationCode: 'A1B2C3D4',
+    type: 'ORDER', title: 'Test order', body: { text: 'Approved test body' }, sector: 'Los Santos',
+    classification: 'PUBLIC', recipient: '', version: '1.0',
+    issuedAt: '2026-10-01T12:00:00.000Z', expiresAt: null,
+    authorizationLevel: 'COMMANDER', signatureImage: null
+  };
+  const signaturePayload = { snapshot };
+  const signature = signPayload(signaturePayload, secret);
+  const document = {
+    id: snapshot.id, document_number: snapshot.documentNumber, verification_code: snapshot.verificationCode,
+    document_type: snapshot.type, title: snapshot.title, body: snapshot.body, sector: snapshot.sector,
+    classification: snapshot.classification, recipient: snapshot.recipient, version: snapshot.version,
+    issued_at: snapshot.issuedAt, expires_at: snapshot.expiresAt,
+    issued_snapshot: snapshot, integrity_hash: signature,
+    signature: {
+      signaturePayload, signature, authorizationLevel: snapshot.authorizationLevel, signatureImage: snapshot.signatureImage
+    }
+  };
+  assert.equal(verifyIssuedDocument(document, secret), true);
+  assert.equal(verifyIssuedDocument({ ...document, title: 'Tampered order' }, secret), false);
+  assert.equal(verifyIssuedDocument(document, 'wrong-secret-that-is-also-32-bytes-long'), false);
+  assert.equal(verifyIssuedDocument(document, 'short'), false);
+});
+
+test('QR verification symbols are generated locally for short verification URLs', () => {
+  const short = QR.makeMatrix('https://blackridge.example/osd/?verify=ABC123');
+  const long = QR.makeMatrix('https://blackridge.example/osd/?verify=1234567890ABCDEF');
+  assert.equal(short.length, 29);
+  assert.equal(long.length, 33);
+  assert.ok(short.every((row) => row.length === short.length && row.every((cell) => typeof cell === 'boolean')));
+  assert.match(QR.toSvg('https://blackridge.example/osd/?verify=ABC123'), /<svg[^>]+viewBox="0 0 37 37"/);
+  assert.match(QR.toDataUri('https://blackridge.example/osd/?verify=ABC123'), /^data:image\/svg\+xml;charset=utf-8,/);
+  assert.throws(() => QR.makeMatrix(`https://example.test/${'x'.repeat(90)}`), /too long/);
 });
 
 test('draft edits create incrementing version numbers and major rollover', () => {
