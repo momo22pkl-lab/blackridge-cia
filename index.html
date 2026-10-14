@@ -1579,6 +1579,73 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   #br-world-command-root .brw-coming { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 15px; padding: 6px 9px; border: 1px solid rgba(214,177,104,.24); border-radius: 3px; color: #d3bb80; background: rgba(214,177,104,.06); font: 8px "Courier New", monospace; letter-spacing: .08em; }
   #br-world-command-root .brw-back-button { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 0 10px; border: 1px solid var(--brw-line-strong); border-radius: 3px; color: #a6d9e9; background: rgba(19,69,91,.2); cursor: pointer; }
   #br-world-command-root .brw-back-button:hover { border-color: var(--brw-cyan); color: #e2f9ff; }
+  #br-world-command-root .brw-message-workspace{display:grid;grid-template-columns:minmax(220px,.72fr) minmax(0,1.55fr);height:min(68vh,680px);min-height:430px;border:1px solid rgba(91,195,231,.27);border-radius:5px;overflow:hidden;background:#06101a;box-shadow:0 14px 40px rgba(0,0,0,.24);direction:ltr}
+  #br-world-command-root .brw-message-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);border-right:1px solid var(--brw-line);background:linear-gradient(180deg,rgba(9,21,33,.98),rgba(5,13,21,.98));direction:ltr}
+  #br-world-command-root .brw-message-sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 13px;border-bottom:1px solid var(--brw-line)}
+  #br-world-command-root .brw-message-sidebar-head h2{margin:4px 0 0;color:#e6eef3;font-size:11px;letter-spacing:.08em}
+  #br-world-command-root .brw-message-unread-total{flex:none;color:#89d8f5;font:7px "Courier New",monospace;letter-spacing:.06em}
+  #br-world-command-root .brw-message-sidebar-tools{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:6px;padding:9px;border-bottom:1px solid var(--brw-line)}
+  #br-world-command-root .brw-message-search{display:flex;align-items:center;gap:7px;min-width:0;padding:0 8px;border:1px solid var(--brw-line);border-radius:3px;background:#07131e;color:#7293a5}
+  #br-world-command-root .brw-message-search input,#br-world-command-root .brw-message-sidebar-tools select{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#cad7df;font:8px "Courier New",monospace}
+  #br-world-command-root .brw-message-sidebar-tools select{padding:7px 5px;border:1px solid var(--brw-line);border-radius:3px;background:#07131e}
+  #br-world-command-root .brw-message-sidebar-tools option{background:#07131e;color:#cad7df}
+  #br-world-command-root .brw-message-threads{min-height:0;overflow:auto;padding:5px;scrollbar-color:#214151 transparent}
+  #br-world-command-root .brw-message-thread{width:100%;display:grid;grid-template-columns:31px minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px 7px;border:1px solid transparent;border-radius:4px;background:transparent;color:#d9e4e9;text-align:left;cursor:pointer}
+  #br-world-command-root .brw-message-thread:hover{background:rgba(46,132,168,.12);border-color:rgba(91,195,231,.16)}
+  #br-world-command-root .brw-message-thread.active{border-color:rgba(91,195,231,.34);background:linear-gradient(100deg,rgba(21,91,123,.29),rgba(10,33,49,.35));box-shadow:inset 2px 0 var(--brw-cyan)}
+  #br-world-command-root .brw-message-avatar{width:30px;height:30px;display:grid;place-items:center;border:1px solid rgba(91,195,231,.4);border-radius:50%;background:radial-gradient(circle at 35% 28%,rgba(86,201,239,.28),rgba(10,27,40,.96));color:#c9efff;font:700 8px "Courier New",monospace}
+  #br-world-command-root .brw-message-avatar.large{width:36px;height:36px;font-size:9px}
+  #br-world-command-root .brw-message-avatar.small{width:26px;height:26px;font-size:7px}
+  #br-world-command-root .brw-message-thread-copy{min-width:0;display:grid;gap:4px}
+  #br-world-command-root .brw-message-thread-top{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+  #br-world-command-root .brw-message-thread-top b{overflow:hidden;color:#e4edf2;font:700 8px "Courier New",monospace;text-overflow:ellipsis;white-space:nowrap}
+  #br-world-command-root .brw-message-thread-top time{flex:none;color:#718b9b;font:7px "Courier New",monospace}
+  #br-world-command-root .brw-message-thread-preview{overflow:hidden;color:#8197a4;font-size:8px;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+  #br-world-command-root .brw-message-unread{min-width:16px;padding:3px 4px;border-radius:9px;background:#167fab;color:#fff;text-align:center;font:7px "Courier New",monospace}
+  #br-world-command-root .brw-message-chat{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:radial-gradient(ellipse at 70% 0,rgba(21,86,119,.15),transparent 45%),#06101a;direction:ltr}
+  #br-world-command-root .brw-message-chat-head{display:flex;align-items:center;gap:9px;min-width:0;padding:10px 13px;border-bottom:1px solid var(--brw-line);background:rgba(7,17,27,.9)}
+  #br-world-command-root .brw-message-chat-title{min-width:0;flex:1}
+  #br-world-command-root .brw-message-chat-title h2{margin:0;overflow:hidden;color:#e6eef3;font-size:10px;letter-spacing:.05em;text-overflow:ellipsis;white-space:nowrap}
+  #br-world-command-root .brw-message-chat-title small{display:block;margin-top:4px;overflow:hidden;color:#7792a2;font:7px "Courier New",monospace;letter-spacing:.04em;text-overflow:ellipsis;white-space:nowrap}
+  #br-world-command-root .brw-message-secure-status{display:flex;align-items:center;gap:5px;color:#70d1b2;font:7px "Courier New",monospace;white-space:nowrap}
+  #br-world-command-root .brw-message-secure-status .brw-live-dot{width:5px;height:5px}
+  #br-world-command-root .brw-message-refresh{width:27px;height:27px;border:1px solid var(--brw-line);border-radius:3px;background:#091723;color:#91cfe3;cursor:pointer}
+  #br-world-command-root .brw-message-refresh:hover{border-color:var(--brw-cyan);color:#e0f8ff}
+  #br-world-command-root .brw-message-stream{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:15px;scrollbar-color:#214151 transparent}
+  #br-world-command-root .brw-message-row{display:flex;align-items:flex-end;gap:7px;max-width:88%}
+  #br-world-command-root .brw-message-row.incoming{align-self:flex-start}
+  #br-world-command-root .brw-message-row.outgoing{align-self:flex-end;flex-direction:row-reverse}
+  #br-world-command-root .brw-message-bubble-wrap{min-width:0;max-width:min(560px,72vw)}
+  #br-world-command-root .brw-message-meta{display:flex;align-items:center;gap:8px;margin:0 3px 4px;color:#7892a2;font:7px "Courier New",monospace}
+  #br-world-command-root .brw-message-meta b{color:#aac2ce;font-weight:600}
+  #br-world-command-root .brw-message-bubble{padding:8px 10px;border:1px solid rgba(91,195,231,.18);border-radius:6px 6px 6px 2px;background:linear-gradient(145deg,rgba(14,37,53,.95),rgba(9,23,34,.96));color:#d5e1e7;box-shadow:0 5px 15px rgba(0,0,0,.14)}
+  #br-world-command-root .brw-message-row.outgoing .brw-message-bubble{border-color:rgba(91,195,231,.28);border-radius:6px 6px 2px 6px;background:linear-gradient(145deg,rgba(13,47,64,.95),rgba(8,28,41,.97))}
+  #br-world-command-root .brw-message-bubble strong{display:block;margin-bottom:4px;color:#8bdaf5;font-size:8px;font-weight:700}
+  #br-world-command-root .brw-message-bubble p{margin:0;color:#d5e1e7;font-size:9px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+  #br-world-command-root .brw-message-bubble-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;color:#7892a2;font:7px "Courier New",monospace}
+  #br-world-command-root .brw-message-read-state{color:#88b6c7}
+  #br-world-command-root .brw-message-mark-read{padding:3px 6px;border:1px solid rgba(91,195,231,.23);border-radius:3px;background:rgba(30,111,141,.16);color:#a8e3f2;font:7px "Courier New",monospace;cursor:pointer}
+  #br-world-command-root .brw-message-mark-read:hover{border-color:var(--brw-cyan);background:rgba(30,111,141,.3)}
+  #br-world-command-root .brw-message-empty{display:grid;min-height:100%;place-content:center;padding:16px;color:#8298a5;text-align:center;font-size:9px;line-height:1.7}
+  #br-world-command-root .brw-message-compose{display:grid;gap:7px;padding:9px 11px;border-top:1px solid var(--brw-line);background:rgba(5,14,23,.96)}
+  #br-world-command-root .brw-message-compose-toolbar{display:flex;align-items:center;gap:10px}
+  #br-world-command-root .brw-message-compose-toolbar label{display:flex;align-items:center;gap:6px;color:#7892a2;font:7px "Courier New",monospace;letter-spacing:.04em}
+  #br-world-command-root .brw-message-compose-toolbar select{max-width:180px;min-width:88px;padding:5px 7px;border:1px solid var(--brw-line);border-radius:3px;outline:0;background:#071521;color:#d4e1e8;font:8px "Courier New",monospace}
+  #br-world-command-root .brw-message-compose-row{display:flex;align-items:stretch;gap:7px}
+  #br-world-command-root .brw-message-compose textarea{flex:1;min-width:0;min-height:37px;max-height:90px;resize:vertical;padding:8px 10px;border:1px solid var(--brw-line);border-radius:4px;outline:0;background:#071521;color:#e1ebf0;font:inherit;font-size:9px;line-height:1.5}
+  #br-world-command-root .brw-message-compose textarea::placeholder{color:#718896}
+  #br-world-command-root .brw-message-compose textarea:focus,#br-world-command-root .brw-message-compose-toolbar select:focus{border-color:var(--brw-cyan);box-shadow:0 0 0 2px rgba(86,201,239,.1)}
+  #br-world-command-root .brw-message-send{display:flex;align-items:center;justify-content:center;gap:6px;min-width:74px;padding:0 10px;border:1px solid rgba(86,201,239,.45);border-radius:4px;background:linear-gradient(135deg,#155c7c,#0d3b56);color:#def8ff;font:700 8px "Courier New",monospace;cursor:pointer}
+  #br-world-command-root .brw-message-send:hover{background:linear-gradient(135deg,#1c7597,#125477)}
+  #br-world-command-root .brw-message-send:disabled{opacity:.55;cursor:wait}
+  #br-world-command-root .brw-message-status{min-height:11px;color:#8fd8bc;font-size:8px}
+  #br-world-command-root .brw-message-compose-disabled{padding:14px;border-top:1px solid var(--brw-line);color:#8398a4;text-align:center;font-size:9px}
+  #br-world-command-root .brw-message-search-empty{min-height:50px}
+  #br-world-command-root .brw-message-empty[hidden]{display:none}
+  #br-world-command-root .brw-message-thread[hidden]{display:none}
+  @media (max-width: 760px){#br-world-command-root .brw-message-workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,31%) minmax(320px,1fr);height:min(82vh,760px);min-height:590px}#br-world-command-root .brw-message-sidebar{grid-template-rows:auto auto minmax(0,1fr);border-right:0;border-bottom:1px solid var(--brw-line)}#br-world-command-root .brw-message-threads{display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:5px}#br-world-command-root .brw-message-thread{min-width:165px;max-width:210px}#br-world-command-root .brw-message-row{max-width:96%}}
+  @media (max-width: 420px){#br-world-command-root .brw-message-sidebar-tools{grid-template-columns:minmax(0,1fr) 82px}#br-world-command-root .brw-message-secure-status{font-size:0}#br-world-command-root .brw-message-compose-toolbar{justify-content:space-between}#br-world-command-root .brw-message-compose-toolbar label{gap:4px;font-size:6px}#br-world-command-root .brw-message-compose-toolbar select{max-width:115px;min-width:70px;font-size:7px}#br-world-command-root .brw-message-send{min-width:38px;padding:0 8px}#br-world-command-root .brw-message-send span{display:none}}
+
   #br-world-command-root .brw-footer { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px 2px; color: #516573; font: 7px "Courier New", monospace; letter-spacing: .1em; }
   @keyframes brw-spin { to { transform: rotate(360deg); } }
   @keyframes brw-pulse { 0%,100% { transform: scale(.97); opacity: .24; } 50% { transform: scale(1.04); opacity: .65; } }
@@ -8861,7 +8928,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       { key: 'sos', label: 'SOS', icon: 'fa-tower-broadcast', title: 'CRITICAL SOS', description: 'SOS intake and response workflows are reserved for a later phase.' },
       { key: 'reports', label: 'REPORTS', icon: 'fa-file-lines', title: 'REPORTS', description: 'Report authoring and review are reserved for a later phase.' },
       { key: 'personnel', label: 'PERSONNEL', icon: 'fa-users', title: 'PERSONNEL', description: 'Personnel directory and assignment tools will be built in a later phase.' },
-      { key: 'messages', label: 'MESSAGES', icon: 'fa-envelope', title: 'MESSAGES', description: 'Command messaging is reserved for a later phase.' },
+      { key: 'messages', label: 'MESSAGES', icon: 'fa-envelope', title: 'MESSAGES', description: 'Secure battalion communications are available here.' },
       { key: 'bank', label: 'BANK', icon: 'fa-building-columns', title: 'BANK', description: 'Bank and finance tools are reserved for a later phase.' },
       { key: 'intelligence', label: 'INTELLIGENCE', icon: 'fa-fingerprint', title: 'INTELLIGENCE', description: 'Intelligence workflows are reserved for a later phase.' }
     ];
@@ -8972,11 +9039,173 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 
     const content = root.querySelector('#brw-page-content');
     const sidebarPanels = root.querySelector('#brw-side-panels');
+    const worldMessageState = { messages: [], sources: [], targets: [], unreadCount: 0, canSend: false, loading: false, error: "", sourceId: "", targetId: "", box: "ALL", query: "", classification: "INTERNAL", sequence: 0, lastRequestedAt: 0, saving: false };
+    let worldCommandPage = "command";
+    const worldMessageSocket = () => window.blackRidgeSocket || null;
+    const worldMessageEscape = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
+    const worldMessageTime = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value || "") : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }); };
+    const worldMessageInitials = (value) => String(value || "").trim().slice(0, 2).toUpperCase() || "—";
+    function worldMessageHistory(targetId) {
+      const sourceId = String(worldMessageState.sourceId || "");
+      return worldMessageState.messages.filter((message) =>
+        (String(message.fromBattalionId) === sourceId && String(message.toBattalionId) === String(targetId)) ||
+        (String(message.fromBattalionId) === String(targetId) && String(message.toBattalionId) === sourceId)
+      ).filter((message) => worldMessageState.box === "INBOX" ? message.incoming : worldMessageState.box === "SENT" ? message.sent : true)
+        .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+    }
+    function renderWorldMessages() {
+      const sourceUnits = worldMessageState.sources || [];
+      const sourceId = String(worldMessageState.sourceId || (sourceUnits[0] && sourceUnits[0].id) || "");
+      worldMessageState.sourceId = sourceId;
+      const targetUnits = sourceId ? (worldMessageState.targets || []).filter((unit) => String(unit.id) !== sourceId) : [];
+      if (!targetUnits.some((unit) => String(unit.id) === String(worldMessageState.targetId))) {
+        const latest = worldMessageState.messages.find((message) =>
+          (String(message.fromBattalionId) === sourceId && String(message.toBattalionId) !== sourceId) ||
+          (String(message.toBattalionId) === sourceId && String(message.fromBattalionId) !== sourceId)
+        );
+        const suggested = latest ? (String(latest.fromBattalionId) === sourceId ? String(latest.toBattalionId) : String(latest.fromBattalionId)) : "";
+        worldMessageState.targetId = targetUnits.some((unit) => String(unit.id) === suggested) ? suggested : String(targetUnits[0] && targetUnits[0].id || "");
+      }
+      const sourceOptions = sourceUnits.map((unit) => "<option value=\"" + worldMessageEscape(unit.id) + "\" " + (String(unit.id) === sourceId ? "selected" : "") + ">" + worldMessageEscape(unit.code) + "</option>").join("");
+      const targetOptions = targetUnits.map((unit) => "<option value=\"" + worldMessageEscape(unit.id) + "\" " + (String(unit.id) === String(worldMessageState.targetId) ? "selected" : "") + ">" + worldMessageEscape(unit.code) + "</option>").join("");
+      const boxOptions = [["ALL", "All messages"], ["INBOX", "Inbox"], ["SENT", "Sent"]].map(([value, label]) => "<option value=\"" + value + "\" " + (worldMessageState.box === value ? "selected" : "") + ">" + label + "</option>").join("");
+      const classificationOptions = ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "SECRET", "TOP SECRET"].map((value) => "<option value=\"" + value + "\" " + (worldMessageState.classification === value ? "selected" : "") + ">" + value + "</option>").join("");
+      const query = String(worldMessageState.query || "").toLocaleLowerCase();
+      const threads = targetUnits.map((unit) => {
+        const history = worldMessageHistory(unit.id);
+        const latest = history[history.length - 1] || null;
+        const unread = history.filter((message) => message.canMarkRead && String(message.toBattalionId) === sourceId).length;
+        return { unit, history, latest, unread };
+      }).filter((thread) => !query || String(thread.unit.code || "").toLocaleLowerCase().includes(query) || thread.history.some((message) => [message.text, message.subject, message.senderCode].some((value) => String(value || "").toLocaleLowerCase().includes(query))))
+        .sort((a, b) => String(b.latest && b.latest.createdAt || "").localeCompare(String(a.latest && a.latest.createdAt || "")) || String(a.unit.code || "").localeCompare(String(b.unit.code || "")));
+      let threadMarkup = "";
+      if (worldMessageState.loading && !worldMessageState.messages.length) threadMarkup = "<div class=\"brw-message-empty\">Loading battalion messages…</div>";
+      else if (worldMessageState.error && !worldMessageState.messages.length) threadMarkup = "<div class=\"brw-message-empty\">" + worldMessageEscape(worldMessageState.error) + "</div>";
+      else if (!threads.length) threadMarkup = query ? "" : "<div class=\"brw-message-empty\">No battalions are available in this scope.</div>";
+      else threadMarkup = threads.map((thread) => {
+        const active = String(thread.unit.id) === String(worldMessageState.targetId);
+        const preview = thread.latest ? (thread.latest.text || thread.latest.subject) : "No messages yet";
+        const unread = thread.unread ? "<span class=\"brw-message-unread\">" + thread.unread + "</span>" : "";
+        const time = thread.latest ? "<time>" + worldMessageEscape(worldMessageTime(thread.latest.createdAt)) + "</time>" : "";
+        const searchText = [thread.unit.code, preview, thread.latest && thread.latest.subject].join(" ").toLocaleLowerCase();
+        return "<button type=\"button\" class=\"brw-message-thread" + (active ? " active" : "") + "\" data-br-message-thread=\"" + worldMessageEscape(thread.unit.id) + "\" data-br-message-search=\"" + worldMessageEscape(searchText) + "\" aria-current=\"" + (active ? "true" : "false") + "\"><span class=\"brw-message-avatar\">" + worldMessageEscape(worldMessageInitials(thread.unit.code)) + "</span><span class=\"brw-message-thread-copy\"><span class=\"brw-message-thread-top\"><b>" + worldMessageEscape(thread.unit.code) + "</b>" + time + "</span><span class=\"brw-message-thread-preview\">" + worldMessageEscape(preview) + "</span></span>" + unread + "</button>";
+      }).join("");
+      const activeUnit = targetUnits.find((unit) => String(unit.id) === String(worldMessageState.targetId));
+      const conversation = activeUnit ? worldMessageHistory(activeUnit.id) : [];
+      let conversationMarkup = "";
+      if (worldMessageState.loading && !worldMessageState.messages.length) conversationMarkup = "<div class=\"brw-message-empty\">Loading secure conversation…</div>";
+      else if (worldMessageState.error && !worldMessageState.messages.length) conversationMarkup = "<div class=\"brw-message-empty\">" + worldMessageEscape(worldMessageState.error) + "</div>";
+      else if (!activeUnit) conversationMarkup = "<div class=\"brw-message-empty\">Select a battalion to view messages.</div>";
+      else if (!conversation.length) conversationMarkup = "<div class=\"brw-message-empty\">No messages yet — start the conversation.</div>";
+      else conversationMarkup = conversation.map((message) => {
+        const outgoing = String(message.fromBattalionId) === sourceId;
+        const avatarCode = outgoing ? message.fromBattalionCode : message.fromBattalionCode;
+        const readAction = message.canMarkRead
+          ? "<button class=\"brw-message-mark-read\" type=\"button\" data-br-message-read=\"" + worldMessageEscape(message.id) + "\">MARK READ</button>"
+          : (message.incoming ? "<span class=\"brw-message-read-state\">" + (message.read ? "READ" : "UNREAD") + "</span>" : "");
+        return "<article class=\"brw-message-row " + (outgoing ? "outgoing" : "incoming") + "\"><span class=\"brw-message-avatar small\">" + worldMessageEscape(worldMessageInitials(avatarCode)) + "</span><div class=\"brw-message-bubble-wrap\"><div class=\"brw-message-meta\"><b>#" + worldMessageEscape(message.senderCode) + "</b><time>" + worldMessageEscape(worldMessageTime(message.createdAt)) + "</time></div><div class=\"brw-message-bubble\"><strong>" + worldMessageEscape(message.subject) + "</strong><p dir=\"auto\">" + worldMessageEscape(message.text) + "</p><div class=\"brw-message-bubble-foot\"><span>" + worldMessageEscape(message.classification) + "</span>" + readAction + "</div></div></div></article>";
+      }).join("");
+      const activeName = activeUnit ? worldMessageEscape(activeUnit.code) : "Select a conversation";
+      const sourceName = sourceUnits.find((unit) => String(unit.id) === sourceId);
+      return "<section class=\"brw-message-workspace\" aria-label=\"Battalion messages\"><aside class=\"brw-message-sidebar\"><div class=\"brw-message-sidebar-head\"><div><span class=\"brw-panel-kicker\">SECURE NETWORK</span><h2>CONVERSATIONS</h2></div><span class=\"brw-message-unread-total\">" + worldMessageState.unreadCount + " UNREAD</span></div><div class=\"brw-message-sidebar-tools\"><label class=\"brw-message-search\"><i class=\"fa-solid fa-magnifying-glass\" aria-hidden=\"true\"></i><input id=\"brw-message-search\" type=\"search\" maxlength=\"100\" placeholder=\"Search battalions...\" value=\"" + worldMessageEscape(worldMessageState.query) + "\" aria-label=\"Search battalions\"></label><select id=\"brw-message-box\" aria-label=\"Filter messages\">" + boxOptions + "</select></div><div id=\"brw-message-threads\" class=\"brw-message-threads\" aria-live=\"polite\">" + threadMarkup + "</div><div id=\"brw-message-search-empty\" class=\"brw-message-empty search-empty\" hidden>No battalions match this search.</div></aside><section class=\"brw-message-chat\"><header class=\"brw-message-chat-head\"><span class=\"brw-message-avatar large\">" + worldMessageEscape(worldMessageInitials(activeUnit && activeUnit.code)) + "</span><div class=\"brw-message-chat-title\"><h2>" + activeName + "</h2><small>" + (sourceName ? "CHANNEL · " + worldMessageEscape(sourceName.code) + " ↔ " + activeName : "SELECT A SOURCE BATTALION") + "</small></div><span class=\"brw-message-secure-status\"><i class=\"brw-live-dot\"></i> SERVER-SCOPED</span><button type=\"button\" class=\"brw-message-refresh\" data-br-message-refresh aria-label=\"Refresh messages\" title=\"Refresh messages\"><i class=\"fa-solid fa-rotate\" aria-hidden=\"true\"></i></button></header><div id=\"brw-message-stream\" class=\"brw-message-stream\" aria-live=\"polite\">" + conversationMarkup + "</div>" +
+        (worldMessageState.canSend ? "<form id=\"brw-message-form\" class=\"brw-message-compose\"><input id=\"brw-message-subject\" type=\"hidden\" value=\"Battalion message\"><select id=\"brw-message-to\" hidden aria-hidden=\"true\">" + targetOptions + "</select><div class=\"brw-message-compose-toolbar\"><label>SEND FROM <select id=\"brw-message-from\">" + sourceOptions + "</select></label><label>CLASSIFICATION <select id=\"brw-message-classification\">" + classificationOptions + "</select></label></div><div class=\"brw-message-compose-row\"><textarea id=\"brw-message-body\" rows=\"2\" maxlength=\"3000\" required placeholder=\"Write a message...\"></textarea><button id=\"brw-message-send\" type=\"submit\" class=\"brw-message-send\"><i class=\"fa-solid fa-paper-plane\" aria-hidden=\"true\"></i><span>SEND</span></button></div><div id=\"brw-message-status\" class=\"brw-message-status\" role=\"status\" aria-live=\"polite\"></div></form>" : "<div class=\"brw-message-compose-disabled\">No active battalion messaging permissions are available for this account.</div>") + "</section></section>";
+    }
+    function requestWorldMessages(force) {
+      if (worldCommandPage !== "messages") return;
+      const socket = worldMessageSocket();
+      if (!socket || !socket.connected) {
+        worldMessageState.loading = false;
+        worldMessageState.error = "Secure server connection unavailable. Reconnect and retry.";
+        if (content) content.innerHTML = renderWorldMessages();
+        const offlineHeader = root.querySelector(".brw-live-label");
+        if (offlineHeader) offlineHeader.textContent = "MESSAGING · OFFLINE";
+        const offlineFooter = root.querySelector(".brw-footer span:last-child");
+        if (offlineFooter) offlineFooter.textContent = "MESSAGE SERVICE · CONNECTION REQUIRED";
+        return;
+      }
+      if (!force && Date.now() - worldMessageState.lastRequestedAt < 15000) return;
+      const sequence = ++worldMessageState.sequence;
+      worldMessageState.lastRequestedAt = Date.now();
+      worldMessageState.loading = true;
+      worldMessageState.error = "";
+      if (content) content.innerHTML = renderWorldMessages();
+      socket.emit("ibp:messages:list", { box: "ALL", query: "" }, (result) => {
+        if (sequence !== worldMessageState.sequence) return;
+        worldMessageState.loading = false;
+        if (!result || !result.ok) {
+          worldMessageState.error = result && result.message || "Unable to load messages.";
+        } else {
+          worldMessageState.error = "";
+          worldMessageState.messages = Array.isArray(result.messages) ? result.messages : [];
+          worldMessageState.sources = Array.isArray(result.sourceBattalions) ? result.sourceBattalions : [];
+          worldMessageState.targets = Array.isArray(result.targetBattalions) ? result.targetBattalions : [];
+          worldMessageState.unreadCount = Number(result.unreadCount) || 0;
+          worldMessageState.canSend = result.canSend === true;
+          if (!worldMessageState.sources.some((unit) => String(unit.id) === String(worldMessageState.sourceId))) worldMessageState.sourceId = String(worldMessageState.sources[0] && worldMessageState.sources[0].id || "");
+        }
+        if (worldCommandPage === "messages" && content) {
+          content.innerHTML = renderWorldMessages();
+          const headerStatus = root.querySelector(".brw-live-label");
+          if (headerStatus) headerStatus.textContent = worldMessageState.error ? "MESSAGING · OFFLINE" : "LIVE · SERVER-SCOPED DATA";
+          const footerStatus = root.querySelector(".brw-footer span:last-child");
+          if (footerStatus) footerStatus.textContent = worldMessageState.error ? "MESSAGE SERVICE · CONNECTION REQUIRED" : "LIVE MESSAGING · SERVER AUTHORIZED";
+        }
+      });
+    }
+    function sendWorldMessage(event) {
+      if (event) event.preventDefault();
+      const socket = worldMessageSocket();
+      const form = content && content.querySelector("#brw-message-form");
+      if (!form || !socket || !socket.connected || worldMessageState.saving) return;
+      const text = form.querySelector("#brw-message-body").value.trim();
+      const status = form.querySelector("#brw-message-status");
+      if (!text) return;
+      worldMessageState.saving = true;
+      const button = form.querySelector("#brw-message-send");
+      button.disabled = true;
+      status.textContent = "Sending securely…";
+      socket.emit("ibp:message:send", {
+        fromBattalionId: form.querySelector("#brw-message-from").value,
+        toBattalionId: form.querySelector("#brw-message-to").value,
+        subject: form.querySelector("#brw-message-subject").value,
+        text,
+        classification: form.querySelector("#brw-message-classification").value,
+        requestId: window.crypto && typeof window.crypto.randomUUID === "function" ? window.crypto.randomUUID() : "MSG-" + Date.now() + "-" + Math.random().toString(36).slice(2, 12)
+      }, (result) => {
+        worldMessageState.saving = false;
+        if (!result || !result.ok) {
+          status.textContent = result && result.message || "Message could not be sent. Check your permission.";
+          button.disabled = false;
+          return;
+        }
+        form.querySelector("#brw-message-body").value = "";
+        status.textContent = "Message sent and saved.";
+        requestWorldMessages(true);
+      });
+    }
+    function markWorldMessageRead(id) {
+      const socket = worldMessageSocket();
+      if (!socket || !socket.connected) return;
+      socket.emit("ibp:message:read", { id }, (result) => {
+        if (!result || !result.ok) {
+          const status = content && content.querySelector("#brw-message-status");
+          if (status) status.textContent = result && result.message || "Could not mark this message as read.";
+          return;
+        }
+        requestWorldMessages(true);
+      });
+    }
     function setPage(key) {
       const item = pages.find((candidate) => candidate.key === key) || pages[0];
       root.querySelector('#brw-page-title').textContent = item.key === 'command' ? 'COMMAND CENTER' : item.title;
       root.querySelector('#brw-page-description').textContent = item.key === 'command' ? 'Unified overview of Black Ridge command channels.' : item.description;
-      content.innerHTML = item.key === 'command' ? renderDashboard() : renderPlaceholder(item);
+      worldCommandPage = item.key;
+      content.innerHTML = item.key === 'command' ? renderDashboard() : item.key === 'messages' ? renderWorldMessages() : renderPlaceholder(item);
+      const headerStatus = root.querySelector('.brw-live-label');
+      if (headerStatus) headerStatus.textContent = item.key === 'messages' ? 'LIVE · SERVER-SCOPED DATA' : 'PREVIEW INTERFACE';
+      const footerStatus = root.querySelector('.brw-footer span:last-child');
+      if (footerStatus) footerStatus.textContent = item.key === 'messages' ? 'LIVE MESSAGING · SERVER AUTHORIZED' : 'PHASE 1 · VISUAL PREVIEW · NO LIVE DATA';
+      if (item.key === 'messages') requestWorldMessages(true);
       sidebarPanels.innerHTML = item.key === 'command' ? renderSidePanels() : '';
       sidebarPanels.hidden = item.key !== 'command';
       root.querySelectorAll('.brw-nav-button').forEach((button) => {
@@ -8999,9 +9228,41 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (typeof window.exitIBPWorkspace === 'function') window.exitIBPWorkspace();
         return;
       }
+      const messageRefresh = event.target.closest('[data-br-message-refresh]');
+      if (messageRefresh) { requestWorldMessages(true); return; }
+      const messageThread = event.target.closest('[data-br-message-thread]');
+      if (messageThread) { worldMessageState.targetId = messageThread.getAttribute('data-br-message-thread'); content.innerHTML = renderWorldMessages(); return; }
+      const messageRead = event.target.closest('[data-br-message-read]');
+      if (messageRead) { markWorldMessageRead(messageRead.getAttribute('data-br-message-read')); return; }
       const pageButton = event.target.closest('[data-br-page]');
       if (pageButton) setPage(pageButton.dataset.brPage);
     });
+    root.addEventListener('submit', (event) => {
+      if (event.target && event.target.id === 'brw-message-form') sendWorldMessage(event);
+    });
+    root.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!target) return;
+      if (target.id === 'brw-message-from') { worldMessageState.sourceId = target.value; worldMessageState.targetId = ''; content.innerHTML = renderWorldMessages(); return; }
+      if (target.id === 'brw-message-box') { worldMessageState.box = target.value; content.innerHTML = renderWorldMessages(); return; }
+      if (target.id === 'brw-message-classification') worldMessageState.classification = target.value;
+    });
+    root.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!target || target.id !== 'brw-message-search') return;
+      worldMessageState.query = target.value;
+      const query = worldMessageState.query.toLocaleLowerCase();
+      let visible = 0;
+      content.querySelectorAll('[data-br-message-search]').forEach((thread) => {
+        const matches = !query || String(thread.getAttribute('data-br-message-search') || '').includes(query);
+        thread.hidden = !matches;
+        if (matches) visible += 1;
+      });
+      const empty = content.querySelector('#brw-message-search-empty');
+      if (empty) empty.hidden = visible > 0 || !query;
+    });
+    if (window.blackRidgeSocket) window.blackRidgeSocket.on('connect', () => { if (worldCommandPage === 'messages') requestWorldMessages(true); });
+    window.setInterval(() => { if (worldCommandPage === 'messages') requestWorldMessages(false); }, 20000);
     if (typeof window.openIBPHome === 'function') {
       const openExistingCenter = window.openIBPHome;
       window.openIBPHome = function () {
