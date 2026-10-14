@@ -745,10 +745,29 @@ async function waitForPrintAssets(root) {
   }));
 }
 
-async function printDocument(documentData) {
+async function printDocument(documentData, { includeShareLink = false } = {}) {
   const source = $('#livePreview');
   if (!source) throw new Error('The official document preview is unavailable.');
   renderPreview(documentData);
+
+  let shareUrl = '';
+  if (includeShareLink && documentData?.id && can('SHARE_DOCUMENTS')) {
+    try {
+      const share = await request('/documents/' + encodeURIComponent(documentData.id) + '/share', {
+        method: 'POST',
+        body: JSON.stringify({ permissions: ['VIEW', 'VERIFY'], expiresInDays: 14 })
+      });
+      shareUrl = share.url || '';
+      if (!shareUrl) throw new Error('The share service returned no URL.');
+    } catch (error) {
+      const message = state.language === 'ar'
+        ? 'تعذر إنشاء رابط العرض؛ سيُطبع التقرير من دونه: ' + error.message
+        : 'Could not create the view link; printing without it: ' + error.message;
+      toast(message, 'error');
+    }
+  } else if (includeShareLink && !can('SHARE_DOCUMENTS')) {
+    toast(state.language === 'ar' ? 'تحتاج صلاحية مشاركة الوثائق لإضافة رابط العرض إلى PDF.' : 'Share Documents permission is required to include a view link.', 'error');
+  }
 
   const printRoot = document.createElement('div');
   printRoot.className = 'osd-print-root';
@@ -757,6 +776,16 @@ async function printDocument(documentData) {
   paper.removeAttribute('id');
   paper.classList.add('print-document');
   paper.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+  const shareBlock = paper.querySelector('[data-print-share]');
+  if (shareBlock && shareUrl) {
+    const caption = shareBlock.querySelector('.paper-share-caption');
+    const link = shareBlock.querySelector('[data-share-url]');
+    if (caption) caption.textContent = state.language === 'ar' ? 'رابط عرض آمن · صالح لمدة 14 يومًا' : 'READ-ONLY VIEW LINK · VALID FOR 14 DAYS';
+    if (link) { link.href = shareUrl; link.textContent = shareUrl; }
+    shareBlock.hidden = false;
+  } else if (shareBlock) {
+    shareBlock.remove();
+  }
   printRoot.append(paper);
   document.body.append(printRoot);
 
@@ -1039,7 +1068,7 @@ document.addEventListener('click', async (event) => {
     else if (action === 'shareDocument') await shareDocument(id);
     else if (action === 'printDocument') {
       const result = await request(`/documents/${encodeURIComponent(id)}/download`, { method: 'POST', body: '{}' });
-      await printDocument(result.document);
+      await printDocument(result.document, { includeShareLink: true });
     } else if (action === 'showAudit') await loadAudit(id);
     else if (action === 'showVersions') await showVersions(id);
     else if (action === 'openUserForm') openUserForm();
