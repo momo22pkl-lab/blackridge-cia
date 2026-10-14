@@ -1365,6 +1365,65 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 .ibp-report-pill { flex:none;padding:4px 7px;border:1px solid rgba(193,162,90,.35);border-radius:12px;color:#e5cf91;background:rgba(193,162,90,.08);font-size:9px; }
 .ibp-report-actions { justify-content:flex-start;margin-top:9px; }
 .ibp-report-empty { padding:16px 8px;color:#89989d;text-align:center;font-size:10px; }
+#ibp-command-center .ibp-message-layout{display:grid;grid-template-columns:minmax(220px,.72fr) minmax(0,1.55fr);height:min(68vh,660px);min-height:440px;border:1px solid rgba(78,139,174,.3);border-radius:8px;overflow:hidden;background:#07111b;box-shadow:0 16px 42px rgba(0,0,0,.24)}
+#ibp-command-center .ibp-message-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);border-right:1px solid rgba(78,139,174,.25);background:linear-gradient(180deg,rgba(10,22,34,.98),rgba(6,13,21,.98));direction:rtl}
+#ibp-command-center[dir="ltr"] .ibp-message-sidebar,#ibp-command-center[dir="ltr"] .ibp-message-chat{direction:ltr}
+#ibp-command-center .ibp-message-sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:13px 14px;border-bottom:1px solid rgba(78,139,174,.17)}
+#ibp-command-center .ibp-message-sidebar-head h4{margin:0;color:#e5edf4;font-size:12px;letter-spacing:.02em}
+#ibp-command-center .ibp-message-sidebar-head small{display:block;margin-top:4px;color:#7f98aa;font:9px var(--mono)}
+#ibp-command-center .ibp-message-unread-total{flex:none;padding:5px 8px;border:1px solid rgba(69,183,232,.3);border-radius:12px;background:rgba(42,145,191,.09);color:#8edcff;font:9px var(--mono)}
+#ibp-command-center .ibp-message-sidebar-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;padding:10px;border-bottom:1px solid rgba(78,139,174,.15)}
+#ibp-command-center .ibp-message-sidebar-tools input,#ibp-command-center .ibp-message-sidebar-tools select{min-width:0;width:100%;padding:8px 9px;border:1px solid rgba(104,147,172,.25);border-radius:5px;outline:0;background:#091521;color:#d9e7ef;font:10px var(--mono)}
+#ibp-command-center .ibp-message-sidebar-tools input:focus,#ibp-command-center .ibp-message-sidebar-tools select:focus,#ibp-command-center .ibp-message-compose select:focus,#ibp-command-center .ibp-message-compose textarea:focus{border-color:rgba(70,194,244,.7);box-shadow:0 0 0 2px rgba(45,163,208,.12)}
+#ibp-command-center .ibp-message-threads{min-height:0;overflow:auto;padding:5px}
+#ibp-command-center .ibp-message-thread{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:9px;padding:10px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:#d6e2ea;text-align:start;cursor:pointer;transition:background .16s,border-color .16s}
+#ibp-command-center .ibp-message-thread:hover{background:rgba(50,115,150,.12);border-color:rgba(75,159,193,.18)}
+#ibp-command-center .ibp-message-thread.is-active{background:linear-gradient(100deg,rgba(26,119,164,.27),rgba(14,50,72,.25));border-color:rgba(63,184,228,.37);box-shadow:inset 2px 0 #39b8eb}
+#ibp-command-center .ibp-message-avatar{width:32px;height:32px;display:grid;place-items:center;flex:none;border:1px solid rgba(82,185,225,.38);border-radius:50%;background:radial-gradient(circle at 35% 28%,rgba(79,188,226,.28),rgba(12,30,43,.95));color:#b9ebff;font:700 9px var(--mono);letter-spacing:.02em}
+#ibp-command-center .ibp-message-avatar-large{width:38px;height:38px;font-size:10px}
+#ibp-command-center .ibp-message-thread-copy{min-width:0;display:grid;gap:5px}
+#ibp-command-center .ibp-message-thread-top{display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0}
+#ibp-command-center .ibp-message-thread-top b{overflow:hidden;color:#e1ebf1;font:700 10px var(--mono);text-overflow:ellipsis;white-space:nowrap}
+#ibp-command-center .ibp-message-thread-top time{flex:none;color:#7590a1;font:8px var(--mono)}
+#ibp-command-center .ibp-message-thread-preview{overflow:hidden;color:#8299a8;font-size:9px;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+#ibp-command-center .ibp-message-thread-unread{min-width:18px;padding:3px 5px;border-radius:10px;background:#218bc0;color:#fff;text-align:center;font:8px var(--mono)}
+#ibp-command-center .ibp-message-chat{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:radial-gradient(ellipse at 75% 0,rgba(25,88,121,.13),transparent 47%),#06101a;direction:rtl}
+#ibp-command-center .ibp-message-chat-head{display:flex;align-items:center;gap:10px;min-width:0;padding:11px 15px;border-bottom:1px solid rgba(78,139,174,.2);background:rgba(8,18,28,.82)}
+#ibp-command-center .ibp-message-chat-title{min-width:0;flex:1}
+#ibp-command-center .ibp-message-chat-title h4{margin:0;overflow:hidden;color:#e7f0f4;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+#ibp-command-center .ibp-message-chat-title small{display:block;margin-top:4px;overflow:hidden;color:#7894a5;font:9px var(--mono);text-overflow:ellipsis;white-space:nowrap}
+#ibp-command-center .ibp-message-channel{display:flex;align-items:center;gap:6px;color:#6fceb8;font:8px var(--mono);letter-spacing:.05em;white-space:nowrap}
+#ibp-command-center .ibp-message-channel i{color:#65d3b7}
+#ibp-command-center .ibp-message-stream{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:13px;padding:17px 18px;scrollbar-color:#17384c transparent}
+#ibp-command-center .ibp-message-row{display:flex;align-items:flex-end;gap:8px;max-width:88%}
+#ibp-command-center .ibp-message-row.is-outgoing{align-self:flex-end;flex-direction:row-reverse}
+#ibp-command-center .ibp-message-row.is-incoming{align-self:flex-start}
+#ibp-command-center .ibp-message-row .ibp-message-avatar{width:27px;height:27px;font-size:8px}
+#ibp-command-center .ibp-message-bubble-wrap{min-width:0;max-width:min(560px,72vw)}
+#ibp-command-center .ibp-message-meta{display:flex;align-items:center;gap:8px;margin:0 3px 4px;color:#8099a7;font:8px var(--mono)}
+#ibp-command-center .ibp-message-meta b{color:#a8bdc9;font-weight:600}
+#ibp-command-center .ibp-message-bubble{padding:9px 11px;border:1px solid rgba(87,145,174,.2);border-radius:7px 7px 7px 2px;background:linear-gradient(145deg,rgba(15,37,52,.95),rgba(10,24,35,.96));color:#d4e0e7;box-shadow:0 6px 16px rgba(0,0,0,.14)}
+#ibp-command-center .ibp-message-row.is-outgoing .ibp-message-bubble{border-color:rgba(67,158,192,.28);border-radius:7px 7px 2px 7px;background:linear-gradient(145deg,rgba(14,49,66,.94),rgba(10,31,44,.97))}
+#ibp-command-center .ibp-message-subject{display:block;margin-bottom:4px;color:#82d7f6;font-size:9px;font-weight:700}
+#ibp-command-center .ibp-message-bubble p{margin:0;color:#d2dde4;font-size:10px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+#ibp-command-center .ibp-message-bubble-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:7px;color:#6f8796;font:8px var(--mono)}
+#ibp-command-center .ibp-message-read-state{color:#8bb6c7}
+#ibp-command-center .ibp-message-mark-read{padding:3px 6px;border:1px solid rgba(99,181,210,.23);border-radius:4px;background:rgba(34,109,141,.16);color:#9edff2;font:inherit;font-size:8px;cursor:pointer}
+#ibp-command-center .ibp-message-mark-read:hover{border-color:rgba(95,207,239,.56);background:rgba(34,109,141,.3)}
+#ibp-command-center .ibp-message-empty{display:grid;min-height:100%;place-content:center;padding:18px;color:#8299a8;text-align:center;font-size:10px;line-height:1.7}
+#ibp-command-center .ibp-message-compose{display:grid;gap:8px;padding:10px 12px;border-top:1px solid rgba(78,139,174,.2);background:rgba(6,15,24,.94)}
+#ibp-command-center .ibp-message-compose-toolbar{display:flex;align-items:center;gap:10px}
+#ibp-command-center .ibp-message-compose-toolbar label{display:flex;align-items:center;gap:6px;color:#8099a8;font-size:9px}
+#ibp-command-center .ibp-message-compose-toolbar select{max-width:190px;min-width:90px;padding:6px 8px;border:1px solid rgba(104,147,172,.22);border-radius:4px;outline:0;background:#091521;color:#d9e7ef;font-size:9px}
+#ibp-command-center .ibp-message-compose-row{display:flex;align-items:stretch;gap:8px}
+#ibp-command-center .ibp-message-compose textarea{flex:1;min-width:0;min-height:42px;max-height:100px;resize:vertical;padding:10px 11px;border:1px solid rgba(104,147,172,.25);border-radius:6px;outline:0;background:#091521;color:#e4edf2;font:inherit;font-size:10px;line-height:1.6}
+#ibp-command-center .ibp-message-compose textarea::placeholder{color:#627989}
+#ibp-command-center .ibp-message-send{display:flex;align-items:center;justify-content:center;gap:7px;align-self:stretch;padding:0 12px;border:1px solid rgba(74,188,228,.55);border-radius:6px;background:linear-gradient(135deg,#155c7d,#0c3853);color:#dff7ff;font-size:9px;font-weight:700;cursor:pointer}
+#ibp-command-center .ibp-message-send:hover{background:linear-gradient(135deg,#1d779d,#125277)}
+#ibp-command-center .ibp-message-send:disabled{opacity:.55;cursor:wait}
+#ibp-command-center .ibp-message-compose .ibp-report-status{min-height:12px;font-size:9px}
+@media (max-width: 760px){#ibp-command-center .ibp-message-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,32%) minmax(360px,1fr);height:min(82vh,820px);min-height:590px}#ibp-command-center .ibp-message-sidebar{grid-template-rows:auto auto minmax(0,1fr);border-right:0;border-bottom:1px solid rgba(78,139,174,.25)}#ibp-command-center .ibp-message-threads{display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:6px}#ibp-command-center .ibp-message-thread{min-width:180px;max-width:220px}#ibp-command-center .ibp-message-stream{padding:13px 10px}#ibp-command-center .ibp-message-row{max-width:96%}}
+@media (max-width: 420px){#ibp-command-center .ibp-message-sidebar-tools{grid-template-columns:minmax(0,1fr) 92px}#ibp-command-center .ibp-message-channel{font-size:0}#ibp-command-center .ibp-message-compose-toolbar{justify-content:space-between}#ibp-command-center .ibp-message-compose-toolbar label{gap:4px}#ibp-command-center .ibp-message-compose-toolbar select{max-width:125px;min-width:75px}#ibp-command-center .ibp-message-send{padding:0 9px}#ibp-command-center .ibp-message-send span{display:none}}
 @media (max-width: 680px) {
   #ibp-return-bar { flex-wrap: wrap; gap: 6px; }
   .ibp-return-language { margin-inline: 0; }
@@ -6820,6 +6879,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       reportActionFailed: "تعذر تنفيذ الإجراء على التقرير.",
       messageModule: "مراسلات الكتائب",
       messageModuleHint: "قناة رسائل محفوظة على الخادم، منفصلة عن دردشة CIA العامة ومقيدة بعضوية الكتائب والتصنيف.",
+      messageConversations: "المحادثات",
+      messageSecureChannel: "قناة مراسلات القطاع",
+      messageSelectConversation: "اختر كتيبة لعرض المراسلات",
+      messageComposerPlaceholder: "اكتب رسالتك هنا...",
+      messageNoHistory: "لا توجد رسائل بعد — ابدأ المحادثة.",
+      messageNoTargets: "لا توجد كتائب متاحة للمراسلة.",
+      messageDefaultSubject: "رسالة تشغيلية",
       refreshMessages: "تحديث الرسائل",
       messageFrom: "الإرسال من",
       messageTo: "الكتيبة المستلمة",
@@ -7001,6 +7067,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       reportActionFailed: "The report action could not be completed.",
       messageModule: "Battalion messages",
       messageModuleHint: "Server-persisted messaging, separate from global CIA chat and scoped by battalion membership and classification.",
+      messageConversations: "Conversations",
+      messageSecureChannel: "Sector communications channel",
+      messageSelectConversation: "Select a battalion to view messages",
+      messageComposerPlaceholder: "Write a message...",
+      messageNoHistory: "No messages yet — start the conversation.",
+      messageNoTargets: "No battalions are available to message.",
+      messageDefaultSubject: "Operational message",
       refreshMessages: "Refresh messages",
       messageFrom: "Send from",
       messageTo: "Recipient battalion",
@@ -7070,6 +7143,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     messagesLoading: false,
     messagesError: "",
     messageFilters: { box: "ALL", query: "" },
+    messageActiveTargetId: "",
     lastMessageRequest: 0,
     messageRequestSequence: 0,
     messageSaving: false,
@@ -7204,27 +7278,45 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
               <div id="ibp-reports-list" class="ibp-report-list" aria-live="polite"></div>
             </section>
             <section id="ibp-messages-module" class="ibp-feature-panel" hidden aria-labelledby="ibp-messages-heading">
-              <div class="ibp-feature-head">
-                <div><h3 id="ibp-messages-heading" data-ibp-i18n="messageModule"></h3><p data-ibp-i18n="messageModuleHint"></p></div>
-                <button id="ibp-messages-refresh" class="ibp-console-button secondary" type="button" data-ibp-i18n="refreshMessages"></button>
-              </div>
-              <form id="ibp-message-form" class="ibp-report-form">
-                <div class="ibp-report-form-grid">
-                  <label class="ibp-report-field"><span data-ibp-i18n="messageFrom"></span><select id="ibp-message-from"></select></label>
-                  <label class="ibp-report-field"><span data-ibp-i18n="messageTo"></span><select id="ibp-message-to" required></select></label>
-                  <label class="ibp-report-field"><span data-ibp-i18n="reportClassification"></span><select id="ibp-message-classification"></select></label>
-                  <label class="ibp-report-field"><span data-ibp-i18n="messageSubject"></span><input id="ibp-message-subject" maxlength="120" required></label>
-                  <label class="ibp-report-field full"><span data-ibp-i18n="messageBody"></span><textarea id="ibp-message-body" maxlength="3000" required></textarea></label>
-                </div>
-                <div class="ibp-report-actions"><button id="ibp-message-send" class="ibp-console-button" type="submit" data-ibp-i18n="messageSend"></button><span id="ibp-message-status" class="ibp-report-status" role="status" aria-live="polite"></span></div>
-              </form>
-              <div class="ibp-report-filters">
-                <select id="ibp-message-box" aria-label="Message mailbox"></select>
-                <input id="ibp-message-search" type="search" maxlength="100" data-ibp-i18n-placeholder="messageSearch" aria-label="Message search">
-                <span id="ibp-message-unread" class="ibp-report-pill" aria-live="polite"></span>
-              </div>
-              <div id="ibp-messages-list" class="ibp-report-list" aria-live="polite"></div>
-            </section>
+  <div class="ibp-feature-head">
+    <div><h3 id="ibp-messages-heading" data-ibp-i18n="messageModule"></h3><p data-ibp-i18n="messageModuleHint"></p></div>
+    <button id="ibp-messages-refresh" class="ibp-console-button secondary" type="button" data-ibp-i18n="refreshMessages"></button>
+  </div>
+  <div class="ibp-message-layout">
+    <aside class="ibp-message-sidebar" aria-label="Battalion conversations">
+      <div class="ibp-message-sidebar-head">
+        <div><h4 data-ibp-i18n="messageConversations"></h4><small data-ibp-i18n="messageSecureChannel"></small></div>
+        <span id="ibp-message-unread" class="ibp-message-unread-total" aria-live="polite"></span>
+      </div>
+      <div class="ibp-message-sidebar-tools">
+        <input id="ibp-message-search" type="search" maxlength="100" data-ibp-i18n-placeholder="messageSearch" aria-label="Message search">
+        <select id="ibp-message-box" aria-label="Message mailbox"></select>
+      </div>
+      <div id="ibp-message-threads" class="ibp-message-threads" aria-live="polite"></div>
+    </aside>
+    <section class="ibp-message-chat" aria-label="Selected conversation">
+      <header class="ibp-message-chat-head">
+        <span id="ibp-message-active-avatar" class="ibp-message-avatar ibp-message-avatar-large">—</span>
+        <div class="ibp-message-chat-title"><h4 id="ibp-message-active-name" data-ibp-i18n="messageSelectConversation"></h4><small id="ibp-message-active-meta" data-ibp-i18n="messageSecureChannel"></small></div>
+        <span class="ibp-message-channel"><i class="fa-solid fa-lock" aria-hidden="true"></i><span data-ibp-i18n="messageSecureChannel"></span></span>
+      </header>
+      <div id="ibp-messages-list" class="ibp-message-stream" aria-live="polite"></div>
+      <form id="ibp-message-form" class="ibp-message-compose">
+        <input id="ibp-message-subject" type="hidden" value="">
+        <select id="ibp-message-to" required hidden tabindex="-1" aria-hidden="true"></select>
+        <div class="ibp-message-compose-toolbar">
+          <label><span data-ibp-i18n="messageFrom"></span><select id="ibp-message-from"></select></label>
+          <label><span data-ibp-i18n="reportClassification"></span><select id="ibp-message-classification"></select></label>
+        </div>
+        <div class="ibp-message-compose-row">
+          <textarea id="ibp-message-body" rows="2" maxlength="3000" required data-ibp-i18n-placeholder="messageComposerPlaceholder"></textarea>
+          <button id="ibp-message-send" class="ibp-message-send" type="submit" aria-label="Send message"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span data-ibp-i18n="messageSend"></span></button>
+        </div>
+        <span id="ibp-message-status" class="ibp-report-status" role="status" aria-live="polite"></span>
+      </form>
+    </section>
+  </div>
+</section>
           </section>
           <div id="ibp-editor-modal" class="ibp-editor-modal" hidden>
             <section class="ibp-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="ibp-editor-title">
@@ -7846,6 +7938,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function formatMessageTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return date.toLocaleTimeString(state.language === "ar" ? "ar-JO" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function messageInitials(value) {
+    return String(value || "").trim().slice(0, 2).toUpperCase() || "—";
+  }
+
   function renderMessagePanel() {
     const shell = root();
     if (!shell) return;
@@ -7855,57 +7957,123 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     const form = panel.querySelector("#ibp-message-form");
     if (!form) return;
     form.hidden = !state.canSendMessages;
+
     const from = panel.querySelector("#ibp-message-from");
     const to = panel.querySelector("#ibp-message-to");
     const previousFrom = from.value;
-    const previousTo = to.value;
-    from.innerHTML = state.messageSources.map((unit) => `<option value="${esc(unit.id)}">${esc(unit.code)}</option>`).join("");
+    from.innerHTML = state.messageSources.map((unit) => "<option value=\"" + esc(unit.id) + "\">" + esc(unit.code) + "</option>").join("");
     from.value = state.messageSources.some((unit) => String(unit.id) === previousFrom)
       ? previousFrom : String(state.messageSources[0] && state.messageSources[0].id || "");
-    const targets = state.messageTargets.filter((unit) => String(unit.id) !== String(from.value));
-    to.innerHTML = targets.map((unit) => `<option value="${esc(unit.id)}">${esc(unit.code)}</option>`).join("");
-    to.value = targets.some((unit) => String(unit.id) === previousTo)
-      ? previousTo : String(targets[0] && targets[0].id || "");
+    const sourceId = String(from.value || "");
+    const targets = state.messageTargets.filter((unit) => String(unit.id) !== sourceId);
+    const defaultTarget = state.messages.find((message) =>
+      (String(message.fromBattalionId) === sourceId && String(message.toBattalionId) !== sourceId) ||
+      (String(message.toBattalionId) === sourceId && String(message.fromBattalionId) !== sourceId)
+    );
+    const suggestedId = defaultTarget
+      ? (String(defaultTarget.fromBattalionId) === sourceId ? String(defaultTarget.toBattalionId) : String(defaultTarget.fromBattalionId))
+      : "";
+    if (!targets.some((unit) => String(unit.id) === String(state.messageActiveTargetId))) {
+      state.messageActiveTargetId = targets.some((unit) => String(unit.id) === suggestedId)
+        ? suggestedId : String(targets[0] && targets[0].id || "");
+    }
+    to.innerHTML = targets.map((unit) => "<option value=\"" + esc(unit.id) + "\">" + esc(unit.code) + "</option>").join("");
+    to.value = state.messageActiveTargetId;
+    panel.querySelector("#ibp-message-subject").value = t("messageDefaultSubject");
+
     const classification = panel.querySelector("#ibp-message-classification");
     const selectedClassification = classification.value || "INTERNAL";
     const allowedClassifications = reportClassifications();
     classification.innerHTML = allowedClassifications.map((value) =>
-      `<option value="${esc(value)}">${esc(reportClassificationLabel(value))}</option>`
+      "<option value=\"" + esc(value) + "\">" + esc(reportClassificationLabel(value)) + "</option>"
     ).join("");
     classification.value = allowedClassifications.includes(selectedClassification) ? selectedClassification : "INTERNAL";
+
     const box = panel.querySelector("#ibp-message-box");
     const boxOptions = [["ALL", t("messageAll")], ["INBOX", t("messageInbox")], ["SENT", t("messageSent")]];
-    box.innerHTML = boxOptions.map(([value, label]) => `<option value="${value}">${esc(label)}</option>`).join("");
+    box.innerHTML = boxOptions.map(([value, label]) => "<option value=\"" + value + "\">" + esc(label) + "</option>").join("");
     box.value = state.messageFilters.box;
     const search = panel.querySelector("#ibp-message-search");
     if (search && search.value !== state.messageFilters.query) search.value = state.messageFilters.query;
     const unread = panel.querySelector("#ibp-message-unread");
-    if (unread) unread.textContent = `${t("messageUnread")}: ${state.messageUnreadCount}`;
+    if (unread) unread.textContent = t("messageUnread") + ": " + state.messageUnreadCount;
+
+    const threadsOutput = panel.querySelector("#ibp-message-threads");
     const output = panel.querySelector("#ibp-messages-list");
+    const activeName = panel.querySelector("#ibp-message-active-name");
+    const activeMeta = panel.querySelector("#ibp-message-active-meta");
+    const activeAvatar = panel.querySelector("#ibp-message-active-avatar");
+    const activeUnit = targets.find((unit) => String(unit.id) === String(state.messageActiveTargetId));
+    const query = String(state.messageFilters.query || "").toLocaleLowerCase();
+    const pairMessages = (targetId) => state.messages.filter((message) =>
+      (String(message.fromBattalionId) === sourceId && String(message.toBattalionId) === String(targetId)) ||
+      (String(message.fromBattalionId) === String(targetId) && String(message.toBattalionId) === sourceId)
+    );
+    const threadData = targets.map((unit) => {
+      const messages = pairMessages(unit.id).sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+      const latest = messages[messages.length - 1] || null;
+      const unreadCount = messages.filter((message) => message.canMarkRead && String(message.toBattalionId) === sourceId).length;
+      return { unit, messages, latest, unreadCount };
+    }).filter((thread) => !query || String(thread.unit.code || "").toLocaleLowerCase().includes(query) || thread.messages.length > 0)
+      .sort((a, b) => String(b.latest && b.latest.createdAt || "").localeCompare(String(a.latest && a.latest.createdAt || "")) || String(a.unit.code || "").localeCompare(String(b.unit.code || "")));
+
+    if (threadsOutput) {
+      if (state.messagesLoading && !state.messages.length) {
+        threadsOutput.innerHTML = "<div class=\"ibp-message-empty\">" + esc(t("messageLoading")) + "</div>";
+      } else if (state.messagesError && !state.messages.length) {
+        threadsOutput.innerHTML = "<div class=\"ibp-message-empty\">" + esc(state.messagesError) + "</div>";
+      } else if (!threadData.length) {
+        threadsOutput.innerHTML = "<div class=\"ibp-message-empty\">" + esc(t("messageNoTargets")) + "</div>";
+      } else {
+        threadsOutput.innerHTML = threadData.map((thread) => {
+          const selected = String(thread.unit.id) === String(state.messageActiveTargetId);
+          const preview = thread.latest ? thread.latest.text : t("messageNoHistory");
+          const unreadBadge = thread.unreadCount ? "<span class=\"ibp-message-thread-unread\">" + thread.unreadCount + "</span>" : "";
+          const time = thread.latest ? "<time>" + esc(formatMessageTime(thread.latest.createdAt)) + "</time>" : "";
+          return "<button class=\"ibp-message-thread" + (selected ? " is-active" : "") + "\" type=\"button\" data-ibp-message-thread=\"" + esc(thread.unit.id) + "\" aria-current=\"" + (selected ? "true" : "false") + "\">" +
+            "<span class=\"ibp-message-avatar\">" + esc(messageInitials(thread.unit.code)) + "</span>" +
+            "<span class=\"ibp-message-thread-copy\"><span class=\"ibp-message-thread-top\"><b>" + esc(thread.unit.code) + "</b>" + time + "</span>" +
+            "<span class=\"ibp-message-thread-preview\">" + esc(preview) + "</span></span>" + unreadBadge + "</button>";
+        }).join("");
+      }
+    }
+
+    if (activeName) activeName.textContent = activeUnit ? activeUnit.code : t("messageSelectConversation");
+    if (activeMeta) activeMeta.textContent = sourceId
+      ? t("messageFrom") + " " + (state.messageSources.find((unit) => String(unit.id) === sourceId)?.code || "") + " · " + t("messageSecureChannel")
+      : t("messageSecureChannel");
+    if (activeAvatar) activeAvatar.textContent = messageInitials(activeUnit && activeUnit.code);
     if (!output) return;
+    const conversation = activeUnit ? pairMessages(activeUnit.id).sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))) : [];
     if (state.messagesLoading && !state.messages.length) {
-      output.innerHTML = `<div class="ibp-report-empty">${esc(t("messageLoading"))}</div>`;
+      output.innerHTML = "<div class=\"ibp-message-empty\">" + esc(t("messageLoading")) + "</div>";
       return;
     }
     if (state.messagesError && !state.messages.length) {
-      output.innerHTML = `<div class="ibp-report-empty">${esc(state.messagesError)}</div>`;
+      output.innerHTML = "<div class=\"ibp-message-empty\">" + esc(state.messagesError) + "</div>";
       return;
     }
-    if (!state.messages.length) {
-      output.innerHTML = `<div class="ibp-report-empty">${esc(t("messageNone"))}</div>`;
+    if (!activeUnit) {
+      output.innerHTML = "<div class=\"ibp-message-empty\">" + esc(t("messageSelectConversation")) + "</div>";
       return;
     }
-    output.innerHTML = state.messages.map((message) => {
-      const direction = message.incoming ? t("messageIncoming") : t("messageOutgoing");
-      const readLabel = message.read ? t("messageRead") : t("messageUnread");
-      const action = message.canMarkRead
-        ? `<div class="ibp-report-actions"><button class="ibp-console-button secondary" type="button" data-ibp-message-read="${esc(message.id)}">${esc(t("messageMarkRead"))}</button></div>`
-        : "";
-      return `<article class="ibp-report-card">
-        <div class="ibp-report-card-head"><div><h4>${esc(message.subject)}</h4><div class="ibp-report-meta">${esc(direction)} · ${esc(message.fromBattalionCode)} → ${esc(message.toBattalionCode)} · #${esc(message.senderCode)} · ${esc(reportClassificationLabel(message.classification))} · ${esc(message.createdAt)}</div></div><span class="ibp-report-pill">${esc(readLabel)}</span></div>
-        <div class="ibp-report-content">${esc(message.text)}</div>${action}
-      </article>`;
+    if (!conversation.length) {
+      output.innerHTML = "<div class=\"ibp-message-empty\">" + esc(t("messageNoHistory")) + "</div>";
+      return;
+    }
+    output.innerHTML = conversation.map((message) => {
+      const outgoing = String(message.fromBattalionId) === sourceId;
+      const fromCode = outgoing ? message.fromBattalionCode : message.fromBattalionCode;
+      const readStatus = message.canMarkRead
+        ? "<button class=\"ibp-message-mark-read\" type=\"button\" data-ibp-message-read=\"" + esc(message.id) + "\">" + esc(t("messageMarkRead")) + "</button>"
+        : (message.incoming ? "<span class=\"ibp-message-read-state\">" + esc(message.read ? t("messageRead") : t("messageUnread")) + "</span>" : "");
+      return "<article class=\"ibp-message-row " + (outgoing ? "is-outgoing" : "is-incoming") + "\">" +
+        "<span class=\"ibp-message-avatar\">" + esc(messageInitials(fromCode)) + "</span>" +
+        "<div class=\"ibp-message-bubble-wrap\"><div class=\"ibp-message-meta\"><b>#" + esc(message.senderCode) + "</b><time>" + esc(formatMessageTime(message.createdAt)) + "</time></div>" +
+        "<div class=\"ibp-message-bubble\"><strong class=\"ibp-message-subject\">" + esc(message.subject) + "</strong><p>" + esc(message.text) + "</p>" +
+        "<div class=\"ibp-message-bubble-foot\"><span>" + esc(reportClassificationLabel(message.classification)) + "</span>" + readStatus + "</div></div></div></article>";
     }).join("");
+    output.scrollTop = output.scrollHeight;
   }
 
   function requestMessages(force) {
@@ -8180,6 +8348,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
     if (target.closest("#ibp-messages-refresh")) {
       requestMessages(true);
+      return;
+    }
+    const messageThread = target.closest("[data-ibp-message-thread]");
+    if (messageThread) {
+      state.messageActiveTargetId = messageThread.getAttribute("data-ibp-message-thread");
+      renderMessagePanel();
       return;
     }
     const markRead = target.closest("[data-ibp-message-read]");
