@@ -1,0 +1,12 @@
+{
+  "name": "blackridge-warning-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Blackridge warning prototype",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
