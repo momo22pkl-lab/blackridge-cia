@@ -1882,7 +1882,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li class="nav-btn" onclick="showPane('identity-directory', this)"><i class="fa-solid fa-id-card"></i> الهويات العامة</li>
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>
       <li id="chief-nav" class="nav-btn" style="display: none;" onclick="showPane('chief-panel', this)"><i class="fa-solid fa-user-gear"></i> إدارة القيادة</li>
-      <li id="official-warnings-nav" class="nav-btn nav-link" style="display: none;"><a href="/blackridge-warning-prototype" aria-label="فتح نموذج التحذيرات الرسمية"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red-alert);" aria-hidden="true"></i><span>التحذيرات الرسمية</span></a></li>
+      <li id="official-warnings-nav" class="nav-btn" style="display: none;" onclick="showPane('official-warnings-view', this)"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red-alert);"></i> التحذيرات الرسمية</li>
       <li id="audit-nav" class="nav-btn" style="display: none;" onclick="showPane('audit-panel', this)"><i class="fa-solid fa-clock-rotate-left"></i> السجلات اليومية</li>
       <li id="security-nav" class="nav-btn" style="display: none;" onclick="showPane('security-panel', this)"><i class="fa-solid fa-shield-halved"></i> مركز الأمن</li>
     </ul>
@@ -1893,6 +1893,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
   <!-- Content Area -->
   <div class="content-area">
+    <div id="official-warnings-view" class="view-pane" aria-label="نظام التحذيرات الرسمي" style="padding:0;overflow:hidden;"><iframe title="نظام التحذيرات الرسمي" src="/blackridge-warning-prototype?embed=1" style="display:block;width:100%;height:calc(100vh - 125px);min-height:600px;border:0;background:#07111d;"></iframe></div>
     <div id="ibp-return-bar" style="display:none"><button type="button" onclick="openIBPHome()">← رجوع إلى مركز IBP</button><span>IBP // LOS SANTOS SECTOR COMMAND</span><button type="button" onclick="exitIBPWorkspace()">الخروج إلى BLACK RIDGE</button></div>
     <div id="ibp-command-center" class="view-pane"><div class="ibp-shell" dir="ltr">
       <header class="ibp-topbar"><div class="ibp-brand"><div class="ibp-mark">IBP</div><div><div class="ibp-brand-title">INTELLIGENCE BATTALION PROGRAM</div><div class="ibp-brand-sub">LOS SANTOS SECTOR // SECURE COMMAND NETWORK</div></div></div><div class="ibp-header-right"><span class="ibp-live"><i class="ibp-dot"></i><span id="ibp-live-state">SECURE LINK</span></span><span id="ibp-clock" class="ibp-clock">--:--:--</span><button class="ibp-exit" type="button" onclick="exitIBPWorkspace()">BLACK RIDGE ↗</button></div></header>
@@ -3549,7 +3550,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const leadershipNav = document.getElementById('chief-nav');
       if (leadershipNav) leadershipNav.style.display = ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank)) ? 'flex' : 'none';
       const officialWarningsNav = document.getElementById('official-warnings-nav');
-      if (officialWarningsNav) officialWarningsNav.style.display = normalizeRank(currentUser.rank) === 'CIA CHIEF' ? 'flex' : 'none';
+      if (officialWarningsNav) officialWarningsNav.style.display = currentUser && ciaSessionAuthenticated ? 'flex' : 'none';
       const opNav = document.getElementById('operations-nav');
       if (opNav) opNav.style.display = currentUser ? 'flex' : 'none';
       const chiefSecrets = document.getElementById('chief-command-secrets');
