@@ -1,517 +1,44 @@
-<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07111d">
-  <meta name="description" content="نموذج واجهة تجريبي مستقل لنظام تحذيرات BLACKRIDGE CITY.">
-  <title>BLACKRIDGE CITY | نظام التحذيرات</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #07111d;
-      --bg-deep: #050b13;
-      --sidebar: #091522;
-      --panel: #0c1928;
-      --panel-raised: #101f30;
-      --line: rgba(170, 187, 204, .12);
-      --line-strong: rgba(197, 160, 86, .24);
-      --gold: #c4a05a;
-      --gold-bright: #e1bf78;
-      --text: #edf1f4;
-      --muted: #8291a2;
-      --faint: #5d6e80;
-      --red: #e26b6b;
-      --red-soft: rgba(226, 107, 107, .13);
-      --green: #68b89a;
-      --blue: #79a9ce;
-      --sidebar-width: 264px;
-      font-family: "IBM Plex Sans Arabic", "Segoe UI", sans-serif;
-    }
-
-    * { box-sizing: border-box; }
-    html { min-width: 320px; background: var(--bg); }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
-      background:
-        radial-gradient(ellipse at 78% -12%, rgba(42, 70, 91, .18), transparent 42%),
-        linear-gradient(155deg, #091522 0%, var(--bg) 43%, #060d16 100%);
-    }
-    button, input, select { font: inherit; }
-    button { color: inherit; }
-    button:focus-visible, input:focus-visible, select:focus-visible {
-      outline: 2px solid var(--gold-bright);
-      outline-offset: 2px;
-    }
-    .ambient-grid {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      opacity: .16;
-      background-image: linear-gradient(rgba(159, 178, 196, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(159, 178, 196, .035) 1px, transparent 1px);
-      background-size: 44px 44px;
-      mask-image: linear-gradient(to bottom, black, transparent 70%);
-    }
-    .sidebar {
-      position: fixed;
-      inset: 0 0 0 auto;
-      z-index: 20;
-      display: flex;
-      flex-direction: column;
-      width: var(--sidebar-width);
-      padding: 20px 15px 14px;
-      overflow-y: auto;
-      background: linear-gradient(180deg, rgba(10, 22, 35, .98), rgba(7, 17, 28, .99));
-      border-left: 1px solid var(--line);
-      box-shadow: -15px 0 50px rgba(0, 0, 0, .12);
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 3px 5px 21px;
-      border-bottom: 1px solid var(--line);
-    }
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 43px;
-      height: 43px;
-      flex: 0 0 43px;
-      color: var(--gold-bright);
-      background: linear-gradient(145deg, rgba(196, 160, 90, .17), rgba(196, 160, 90, .035));
-      border: 1px solid rgba(196, 160, 90, .4);
-      border-radius: 12px 4px 12px 4px;
-      font-size: 18px;
-      box-shadow: inset 0 0 18px rgba(196, 160, 90, .06);
-    }
-    .brand-name {
-      margin: 0;
-      color: #f3f0e9;
-      font: 700 13px/1.35 "IBM Plex Sans Arabic", sans-serif;
-      letter-spacing: .09em;
-      direction: ltr;
-      text-align: right;
-    }
-    .brand-subtitle { margin-top: 4px; color: var(--muted); font-size: 10px; }
-    .class-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin: 17px 3px 10px;
-      color: #aa8e59;
-      font: 600 9px/1.4 "IBM Plex Sans Arabic", sans-serif;
-      letter-spacing: .13em;
-      direction: ltr;
-    }
-    .class-chip::before { width: 5px; height: 5px; content: ""; background: var(--gold); border-radius: 50%; box-shadow: 0 0 8px rgba(196, 160, 90, .8); }
-    .nav-label {
-      margin: 13px 9px 8px;
-      color: #617386;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .08em;
-    }
-    .nav-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-    .nav-item {
-      position: relative;
-      display: flex;
-      align-items: center;
-      width: 100%;
-      gap: 11px;
-      min-height: 43px;
-      padding: 0 12px;
-      color: #9aabba;
-      text-align: right;
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: color .18s ease, background .18s ease, border-color .18s ease;
-      font-size: 12px;
-    }
-    .nav-item i { width: 17px; color: #718397; text-align: center; font-size: 13px; }
-    .nav-item:hover { color: #f0eee7; background: rgba(255,255,255,.035); }
-    .nav-item.active {
-      color: #eadbb9;
-      background: linear-gradient(90deg, rgba(196, 160, 90, .04), rgba(196, 160, 90, .13));
-      border-color: rgba(196, 160, 90, .17);
-    }
-    .nav-item.active::after {
-      position: absolute;
-      top: 9px;
-      right: -1px;
-      bottom: 9px;
-      width: 2px;
-      content: "";
-      background: var(--gold);
-      box-shadow: 0 0 9px rgba(196, 160, 90, .5);
-    }
-    .nav-item.active i { color: var(--gold-bright); }
-    .sidebar-bottom { margin-top: auto; padding-top: 16px; }
-    .demo-note {
-      padding: 12px 12px 11px;
-      color: #8c9aaa;
-      background: rgba(255,255,255,.025);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      font-size: 10px;
-      line-height: 1.8;
-    }
-    .demo-note i { margin-left: 5px; color: var(--gold); }
-    .sidebar-version { display: flex; justify-content: space-between; margin: 12px 3px 0; color: #5e7184; font: 9px/1.5 ui-monospace, monospace; }
-    .main {
-      position: relative;
-      z-index: 1;
-      min-height: 100vh;
-      margin-right: var(--sidebar-width);
-    }
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 68px;
-      padding: 0 clamp(20px, 4vw, 54px);
-      background: rgba(7, 17, 29, .83);
-      border-bottom: 1px solid var(--line);
-      backdrop-filter: blur(16px);
-    }
-    .topbar-right, .topbar-left { display: flex; align-items: center; gap: 14px; }
-    .topbar-path { color: var(--muted); font-size: 11px; }
-    .topbar-path strong { color: #e8e9e8; font-weight: 500; }
-    .topbar-divider { width: 1px; height: 17px; background: var(--line); }
-    .live-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      color: #a8baae;
-      font-size: 10px;
-    }
-    .live-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 9px rgba(104,184,154,.65); }
-    .prototype-tag {
-      padding: 5px 9px;
-      color: var(--gold-bright);
-      background: rgba(196, 160, 90, .08);
-      border: 1px solid rgba(196, 160, 90, .22);
-      border-radius: 3px;
-      font: 600 9px/1.4 "IBM Plex Sans Arabic", sans-serif;
-    }
-    .icon-button {
-      display: inline-grid;
-      place-items: center;
-      width: 34px;
-      height: 34px;
-      color: #9aabba;
-      background: transparent;
-      border: 1px solid var(--line);
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .icon-button:hover { color: var(--gold-bright); border-color: var(--line-strong); }
-    .mobile-menu { display: none; }
-    .content { width: min(1500px, 100%); margin: auto; padding: 33px clamp(20px, 4vw, 54px) 55px; }
-    .page-heading {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 18px;
-      margin-bottom: 23px;
-    }
-    .eyebrow { margin-bottom: 7px; color: var(--gold); font: 600 9px/1.5 ui-monospace, monospace; letter-spacing: .16em; direction: ltr; text-align: right; }
-    h1 { margin: 0; color: #f1f2f1; font-size: clamp(22px, 2.3vw, 29px); line-height: 1.35; font-weight: 600; letter-spacing: -.025em; }
-    .page-description { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
-    .heading-actions { display: flex; align-items: center; gap: 9px; }
-    .date-stamp { color: #8191a2; font: 10px/1.5 ui-monospace, monospace; direction: ltr; }
-    .button-primary, .button-secondary {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 37px;
-      padding: 0 13px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 600;
-      transition: transform .16s ease, filter .16s ease;
-    }
-    .button-primary { color: #10151a; background: linear-gradient(135deg, #d6b76f, #b8924c); border: 1px solid #d7b66c; }
-    .button-secondary { color: #c7d0d8; background: rgba(255,255,255,.025); border: 1px solid var(--line); }
-    .button-primary:hover, .button-secondary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-    .hero {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 142px;
-      padding: 25px 28px;
-      overflow: hidden;
-      background: linear-gradient(108deg, rgba(17, 35, 50, .96), rgba(13, 27, 41, .96) 56%, rgba(21, 35, 47, .8));
-      border: 1px solid rgba(176, 191, 203, .15);
-      border-radius: 7px;
-      box-shadow: 0 16px 44px rgba(0,0,0,.16);
-    }
-    .hero::before {
-      position: absolute;
-      top: -90px;
-      left: 13%;
-      width: 280px;
-      height: 280px;
-      content: "";
-      border: 1px solid rgba(196,160,90,.10);
-      border-radius: 50%;
-      box-shadow: 0 0 0 27px rgba(196,160,90,.018), 0 0 0 55px rgba(196,160,90,.014), 0 0 0 85px rgba(196,160,90,.01);
-    }
-    .hero-copy { position: relative; z-index: 1; max-width: 640px; }
-    .hero-kicker { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #c2a566; font-size: 10px; }
-    .hero-kicker i { font-size: 10px; }
-    .hero h2 { margin: 0; color: #f1f1ed; font-size: clamp(17px, 2vw, 22px); font-weight: 600; }
-    .hero p { margin: 7px 0 0; color: #9babba; font-size: 11px; line-height: 1.8; }
-    .hero-seal {
-      position: relative;
-      z-index: 1;
-      display: grid;
-      place-items: center;
-      width: 70px;
-      height: 70px;
-      flex: 0 0 70px;
-      margin: 0 22px;
-      color: rgba(220, 190, 126, .84);
-      border: 1px solid rgba(196,160,90,.38);
-      border-radius: 50%;
-      box-shadow: inset 0 0 0 5px rgba(196,160,90,.035), 0 0 24px rgba(196,160,90,.07);
-      font-size: 23px;
-    }
-    .hero-seal::before, .hero-seal::after { position: absolute; content: ""; border: 1px solid rgba(196,160,90,.2); border-radius: 50%; }
-    .hero-seal::before { inset: 5px; }
-    .hero-seal::after { inset: -6px; border-style: dashed; opacity: .48; }
-    .section-label { display: flex; align-items: center; gap: 9px; margin: 24px 0 13px; color: #dce2e7; font-size: 12px; font-weight: 600; }
-    .section-label i { color: var(--gold); font-size: 12px; }
-    .section-label small { color: var(--muted); font-size: 10px; font-weight: 400; }
-    .section-line { flex: 1; height: 1px; margin-right: 3px; background: linear-gradient(90deg, transparent, var(--line)); }
-    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 17px; }
-    .stat-card {
-      position: relative;
-      min-height: 109px;
-      padding: 15px 16px;
-      overflow: hidden;
-      background: linear-gradient(145deg, rgba(14, 28, 43, .96), rgba(10, 22, 35, .96));
-      border: 1px solid var(--line);
-      border-radius: 6px;
-    }
-    .stat-card::after { position: absolute; left: -18px; bottom: -38px; width: 90px; height: 90px; content: ""; border: 1px solid rgba(196,160,90,.08); border-radius: 50%; box-shadow: 0 0 0 12px rgba(196,160,90,.018); }
-    .stat-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
-    .stat-label { color: #9ba9b6; font-size: 10px; }
-    .stat-icon { display: grid; place-items: center; width: 28px; height: 28px; color: var(--gold-bright); background: rgba(196,160,90,.09); border: 1px solid rgba(196,160,90,.13); border-radius: 5px; font-size: 11px; }
-    .stat-card.danger .stat-icon { color: var(--red); background: var(--red-soft); border-color: rgba(226,107,107,.2); }
-    .stat-card.safe .stat-icon { color: var(--green); background: rgba(104,184,154,.09); border-color: rgba(104,184,154,.18); }
-    .stat-value { margin-top: 9px; color: #f0f2f2; font: 600 26px/1 ui-monospace, monospace; direction: ltr; text-align: right; }
-    .stat-foot { margin-top: 7px; color: #66798b; font-size: 9px; }
-    .overview-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(270px, .8fr); gap: 13px; margin-top: 14px; }
-    .panel {
-      min-width: 0;
-      background: linear-gradient(145deg, rgba(13, 27, 42, .92), rgba(10, 21, 33, .96));
-      border: 1px solid var(--line);
-      border-radius: 6px;
-    }
-    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 49px; padding: 0 15px; border-bottom: 1px solid var(--line); }
-    .panel-title { display: flex; align-items: center; gap: 8px; color: #dfe4e8; font-size: 11px; font-weight: 600; }
-    .panel-title i { color: var(--gold); font-size: 11px; }
-    .panel-caption { color: #75879a; font-size: 9px; }
-    .latest-list { display: grid; }
-    .latest-item {
-      display: grid;
-      grid-template-columns: 31px minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 10px;
-      padding: 11px 14px;
-      cursor: pointer;
-      border-bottom: 1px solid rgba(170,187,204,.07);
-      transition: background .16s ease;
-    }
-    .latest-item:last-child { border-bottom: 0; }
-    .latest-item:hover { background: rgba(255,255,255,.025); }
-    .latest-icon { display: grid; place-items: center; width: 30px; height: 30px; color: var(--red); background: var(--red-soft); border: 1px solid rgba(226,107,107,.16); border-radius: 5px; font-size: 11px; }
-    .latest-icon.low { color: var(--blue); background: rgba(121,169,206,.09); border-color: rgba(121,169,206,.16); }
-    .latest-title { overflow: hidden; color: #dbe1e5; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-    .latest-meta { margin-top: 3px; color: #728396; font: 9px/1.5 ui-monospace, sans-serif; direction: ltr; text-align: right; }
-    .latest-date { color: #77899a; font: 9px/1.5 ui-monospace, monospace; direction: ltr; }
-    .signal-body { padding: 15px; }
-    .signal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 13px; color: #a7b3bf; font-size: 10px; }
-    .signal-row:last-of-type { margin-bottom: 0; }
-    .signal-number { color: #e5e8e9; font: 600 11px ui-monospace, monospace; direction: ltr; }
-    .signal-track { height: 4px; margin-top: 7px; overflow: hidden; background: #172637; border-radius: 9px; }
-    .signal-fill { height: 100%; background: linear-gradient(90deg, #927747, #d2b36d); border-radius: inherit; }
-    .signal-fill.red { background: linear-gradient(90deg, #973f48, #df7474); }
-    .signal-fill.green { background: linear-gradient(90deg, #3a806f, #78c0a0); }
-    .signal-fill.blue { background: linear-gradient(90deg, #476f8b, #81b3d3); }
-    .signal-fill.gold { background: linear-gradient(90deg, #927747, #d2b36d); }
-    .signal-footnote { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 11px; color: #738699; border-top: 1px solid var(--line); font-size: 9px; }
-    .signal-footnote i { color: var(--green); font-size: 8px; }
-    .toolbar {
-      display: grid;
-      grid-template-columns: minmax(210px, 1.5fr) repeat(4, minmax(115px, 1fr));
-      gap: 8px;
-      padding: 12px;
-      border-bottom: 1px solid var(--line);
-    }
-    .search-box, .filter-select {
-      width: 100%;
-      height: 35px;
-      color: #cbd4dc;
-      background: #091522;
-      border: 1px solid rgba(170,187,204,.14);
-      border-radius: 4px;
-      font-size: 10px;
-    }
-    .search-box { padding: 0 11px; }
-    .search-box::placeholder { color: #687c8e; }
-    .filter-select { padding: 0 8px; cursor: pointer; }
-    .table-scroll { overflow-x: auto; scrollbar-color: #344557 transparent; scrollbar-width: thin; }
-    .warning-table { width: 100%; min-width: 1010px; border-collapse: collapse; text-align: right; }
-    .warning-table th {
-      padding: 11px 13px;
-      color: #718396;
-      background: rgba(255,255,255,.012);
-      border-bottom: 1px solid var(--line);
-      font-size: 9px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-    .warning-table td {
-      padding: 11px 13px;
-      color: #cad2da;
-      border-bottom: 1px solid rgba(170,187,204,.07);
-      font-size: 10px;
-      white-space: nowrap;
-    }
-    .warning-table tbody tr { cursor: pointer; transition: background .14s ease; }
-    .warning-table tbody tr:hover { background: rgba(196,160,90,.045); }
-    .warning-table tbody tr:last-child td { border-bottom: 0; }
-    .warning-id { color: #d0b36f; font: 600 10px ui-monospace, monospace; direction: ltr; text-align: right; }
-    .person-name { color: #e3e7e9; font-weight: 500; }
-    .person-code { color: #8495a5; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
-    .severity, .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 7px;
-      border: 1px solid transparent;
-      border-radius: 3px;
-      font-size: 9px;
-    }
-    .severity::before, .status::before { width: 5px; height: 5px; content: ""; border-radius: 50%; background: currentColor; }
-    .severity.critical { color: #f08a8a; background: rgba(226,107,107,.1); border-color: rgba(226,107,107,.2); }
-    .severity.high { color: #d7a466; background: rgba(215,164,102,.1); border-color: rgba(215,164,102,.2); }
-    .severity.medium { color: #c4b06f; background: rgba(196,176,111,.08); border-color: rgba(196,176,111,.17); }
-    .severity.low { color: #85aac5; background: rgba(121,169,206,.09); border-color: rgba(121,169,206,.18); }
-    .status.active { color: #e0a568; background: rgba(224,165,104,.08); border-color: rgba(224,165,104,.18); }
-    .status.closed { color: #7cbd9f; background: rgba(104,184,154,.08); border-color: rgba(104,184,154,.18); }
-    .status.cancelled { color: #e88989; background: rgba(226,107,107,.08); border-color: rgba(226,107,107,.18); }
-    .status.draft { color: #9cb4c9; background: rgba(121,169,206,.08); border-color: rgba(121,169,206,.18); }
-    .date-cell { color: #91a0ae !important; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
-    .table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 0 13px; color: #75879a; border-top: 1px solid var(--line); font-size: 9px; }
-    .table-footer strong { color: #bdc7ce; font: 500 10px ui-monospace, monospace; }
-    .empty-state { padding: 34px 12px; color: var(--muted); text-align: center; font-size: 11px; }
-    .empty-state i { display: block; margin-bottom: 10px; color: #65798c; font-size: 20px; }
-    .placeholder-card {
-      display: grid;
-      place-items: center;
-      min-height: 340px;
-      padding: 28px;
-      text-align: center;
-      background: linear-gradient(145deg, rgba(13,27,42,.94), rgba(9,19,31,.98));
-      border: 1px solid var(--line);
-      border-radius: 6px;
-    }
-    .placeholder-icon { display: grid; place-items: center; width: 55px; height: 55px; margin: 0 auto 16px; color: var(--gold); background: rgba(196,160,90,.08); border: 1px solid rgba(196,160,90,.2); border-radius: 50%; font-size: 19px; }
-    .placeholder-card h2 { margin: 0; color: #e8ebeb; font-size: 17px; font-weight: 500; }
-    .placeholder-card p { max-width: 430px; margin: 9px auto 0; color: #91a1b0; font-size: 11px; line-height: 1.9; }
-    .placeholder-tag { display: inline-flex; align-items: center; gap: 6px; margin-top: 19px; padding: 6px 9px; color: #d1b775; background: rgba(196,160,90,.07); border: 1px solid rgba(196,160,90,.17); border-radius: 3px; font-size: 9px; }
-    .form-preview { width: min(610px, 100%); margin-top: 23px; text-align: right; }
-    .form-preview label { display: block; margin: 0 0 6px; color: #9ba9b6; font-size: 10px; }
-    .form-preview select, .form-preview input, .form-preview textarea { width: 100%; margin-bottom: 13px; padding: 10px; color: #b6c0c8; background: #081421; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; }
-    .form-preview textarea { min-height: 86px; resize: vertical; }
-    .form-preview :disabled { opacity: .65; cursor: not-allowed; }
-    .form-shell { display: block; min-height: unset; padding: 0; text-align: right; }
-    .warning-form { width: min(970px, 100%); margin: 0 auto; text-align: right; }
-    .form-section { margin-top: 15px; padding: 16px; background: linear-gradient(145deg, rgba(13,27,42,.96), rgba(9,19,31,.98)); border: 1px solid var(--line); border-radius: 6px; }
-    .form-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #e0e5e8; font-size: 11px; font-weight: 600; }
-    .form-section-head i { color: var(--gold); }
-    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .form-field { min-width: 0; }
-    .form-field.full { grid-column: 1 / -1; }
-    .form-field label { display: block; margin-bottom: 6px; color: #a4b0bb; font-size: 10px; }
-    .form-field label em { color: var(--red); font-style: normal; }
-    .form-control {
-      width: 100%;
-      min-height: 38px;
-      padding: 9px 10px;
-      color: #e0e5e8;
-      background: #071421;
-      border: 1px solid rgba(170,187,204,.16);
-      border-radius: 4px;
-      font-size: 11px;
-    }
-    .form-control::placeholder { color: #607487; }
-    .form-control:focus { border-color: rgba(196,160,90,.55); outline: 2px solid rgba(196,160,90,.12); }
-    .form-control textarea, textarea.form-control { min-height: 92px; resize: vertical; }
-    .form-help { margin-top: 5px; color: #6e8294; font-size: 9px; line-height: 1.7; }
-    .form-actions { display: flex; align-items: center; justify-content: flex-start; gap: 9px; flex-wrap: wrap; margin-top: 15px; }
-    .button-danger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 37px; padding: 0 13px; color: #e99595; background: rgba(166,54,62,.12); border: 1px solid rgba(226,107,107,.25); border-radius: 4px; cursor: pointer; font-size: 10px; }
-    .button-danger:hover { background: rgba(166,54,62,.2); }
-    .evidence-box { padding: 12px; border: 1px dashed rgba(170,187,204,.24); border-radius: 5px; background: rgba(255,255,255,.015); }
-    .evidence-preview { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #a6b3bd; font-size: 10px; }
-    .evidence-preview img { width: 60px; height: 60px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; }
-    .evidence-preview button { margin-right: auto; padding: 6px 8px; color: #e99595; background: transparent; border: 1px solid rgba(226,107,107,.2); border-radius: 3px; cursor: pointer; font-size: 9px; }
-    .form-storage-note { margin-top: 12px; padding: 10px 12px; color: #c4ad70; background: rgba(196,160,90,.055); border-right: 2px solid var(--gold); font-size: 9px; line-height: 1.8; }
-    .form-storage-note i { margin-left: 4px; }
-    .personnel-search { width: min(370px, 100%); }
-    .personnel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }
-    .person-card { min-width: 0; padding: 14px; background: linear-gradient(145deg, rgba(13,27,42,.95), rgba(9,19,31,.98)); border: 1px solid var(--line); border-radius: 6px; }
-    .person-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .person-avatar { display: grid; place-items: center; width: 37px; height: 37px; color: var(--gold-bright); background: rgba(196,160,90,.08); border: 1px solid rgba(196,160,90,.2); border-radius: 50%; }
-    .person-card h2 { margin: 1px 0 4px; color: #e5e9e9; font-size: 12px; font-weight: 600; }
-    .person-code-label { color: #8597a8; font: 9px ui-monospace, monospace; direction: ltr; text-align: right; }
-    .person-meta { margin-top: 11px; color: #98a7b4; font-size: 10px; line-height: 1.9; }
-    .person-card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); }
-    .person-count { color: #b6c1c9; font-size: 9px; }
-    .person-open { padding: 6px 8px; color: var(--gold-bright); background: rgba(196,160,90,.06); border: 1px solid rgba(196,160,90,.18); border-radius: 3px; cursor: pointer; font-size: 9px; }
-    .profile-banner { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; padding: 17px; background: linear-gradient(110deg, rgba(17,35,50,.96), rgba(12,26,40,.96)); border: 1px solid var(--line); border-radius: 6px; }
-    .profile-banner .person-avatar { width: 50px; height: 50px; flex: 0 0 50px; font-size: 18px; }
-    .profile-banner h2 { margin: 0; color: #eef0ed; font-size: 17px; }
-    .profile-banner p { margin: 5px 0 0; color: #91a2b1; font: 10px/1.7 ui-monospace, sans-serif; direction: ltr; text-align: right; }
-    .profile-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .profile-stat { padding: 11px 13px; background: rgba(12,25,40,.92); border: 1px solid var(--line); border-radius: 5px; }
-    .profile-stat small { color: #8496a7; font-size: 9px; }
-    .profile-stat strong { display: block; margin-top: 5px; color: #e3e7e8; font: 600 17px ui-monospace, monospace; }
-    .profile-record { margin-top: 9px; padding: 13px; background: rgba(11,23,37,.93); border: 1px solid var(--line); border-right: 2px solid var(--gold); border-radius: 5px; cursor: pointer; }
-    .profile-record:hover { background: rgba(16,32,49,.98); }
-    .profile-record-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
-    .profile-record-id { color: var(--gold-bright); font: 600 10px ui-monospace, monospace; direction: ltr; text-align: right; }
-    .profile-record-reason { margin-top: 8px; color: #d1d8dc; font-size: 10px; line-height: 1.8; }
-    .profile-record-meta { margin-top: 7px; color: #8293a3; font-size: 9px; line-height: 1.8; }
-    .timeline { display: grid; gap: 0; margin: 4px 0 0; padding: 0; list-style: none; }
-    .timeline-item { position: relative; padding: 0 18px 14px 0; border-right: 1px solid rgba(196,160,90,.28); }
-    .timeline-item:last-child { padding-bottom: 0; border-right-color: transparent; }
-    .timeline-item::before { position: absolute; top: 3px; right: -4px; width: 7px; height: 7px; content: ""; background: var(--gold); border: 2px solid #112237; border-radius: 50%; }
-    .timeline-title { color: #dfe4e4; font-size: 10px; font-weight: 500; }
-    .timeline-meta { margin-top: 3px; color: #8495a4; font-size: 9px; line-height: 1.7; }
-    .detail-section { margin-top: 13px; padding: 11px; background: rgba(4,12,20,.52); border: 1px solid var(--line); border-radius: 5px; }
-    .detail-section h3 { margin: 0 0 7px; color: var(--gold-bright); font-size: 10px; font-weight: 600; }
-    .detail-section p { margin: 0; color: #c6d0d7; font-size: 10px; line-height: 1.9; white-space: pre-wrap; }
-    .detail-evidence img { display: block; max-width: 100%; max-height: 220px; margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; }
-    .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+p: wrap; gap: 8px; margin-top: 13px; }
+    .review-list { display: grid; gap: 11px; }
+    .review-card { padding: 15px; background: linear-gradient(145deg, rgba(13,27,42,.96), rgba(9,19,31,.98)); border: 1px solid var(--line); border-right: 2px solid var(--gold); border-radius: 6px; }
+    .review-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .review-card h2 { margin: 0; color: #e8ebeb; font-size: 13px; }
+    .review-card-meta { margin-top: 5px; color: #8294a5; font-size: 9px; line-height: 1.7; }
+    .review-card-reason { margin-top: 11px; color: #cbd4da; font-size: 10px; line-height: 1.8; }
+    .review-card textarea { width: 100%; min-height: 62px; margin-top: 10px; padding: 9px; color: #d6dee3; background: #071421; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; resize: vertical; }
+    .review-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+    .button-approve, .button-reject { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 0 11px; border-radius: 4px; cursor: pointer; font-size: 10px; }
+    .button-approve { color: #a9dec6; background: rgba(56,128,103,.14); border: 1px solid rgba(104,184,154,.32); }
+    .button-reject { color: #eda4a4; background: rgba(166,54,62,.12); border: 1px solid rgba(226,107,107,.28); }
+    .review-status-count { display: flex; align-items: center; gap: 8px; padding: 11px 13px; color: #d8c27b; background: rgba(196,160,90,.055); border: 1px solid rgba(196,160,90,.16); border-radius: 5px; font-size: 10px; }
+    .report-breakdown-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .breakdown-list { padding: 6px 13px 12px; }
+    .breakdown-row { padding: 10px 2px; border-bottom: 1px solid rgba(170,187,204,.08); }
+    .breakdown-row:last-child { border-bottom: 0; }
+    .breakdown-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #cbd4da; font-size: 10px; }
+    .breakdown-count { color: #d4bb76; font: 600 10px ui-monospace, monospace; }
+    .breakdown-track { height: 4px; margin-top: 7px; overflow: hidden; background: #172637; border-radius: 8px; }
+    .breakdown-fill { height: 100%; background: linear-gradient(90deg, #94794b, #d2b36d); border-radius: inherit; }
+    .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 13px; }
+    .admin-panel { padding: 14px; }
+    .admin-panel h2 { margin: 0; color: #e3e8e8; font-size: 12px; }
+    .admin-panel > p { margin: 6px 0 12px; color: #8495a4; font-size: 9px; line-height: 1.7; }
+    .admin-inline-form { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; padding: 0 12px 12px; }
+    .admin-inline-form .form-control { flex: 1 1 140px; min-width: 0; }
+    .admin-list { display: grid; gap: 7px; padding: 0 12px 12px; }
+    .admin-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 9px; color: #c9d2d8; background: rgba(255,255,255,.018); border: 1px solid rgba(170,187,204,.08); border-radius: 4px; font-size: 9px; }
+    .admin-list-item small { display: block; margin-top: 3px; color: #7f91a1; font-size: 8px; }
+    .admin-delete { padding: 5px 7px; color: #e99595; background: transparent; border: 1px solid rgba(226,107,107,.2); border-radius: 3px; cursor: pointer; font-size: 8px; }
+    .permission-scroll { overflow-x: auto; padding: 0 12px 12px; }
+    .permission-table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: center; }
+    .permission-table th, .permission-table td { padding: 9px 7px; color: #aebbc5; border-bottom: 1px solid rgba(170,187,204,.09); font-size: 9px; white-space: nowrap; }
+    .permission-table th { color: #d4bd79; font-weight: 500; }
+    .permission-table td:first-child, .permission-table th:first-child { text-align: right; }
+    .permission-table input[type="checkbox"] { accent-color: #c6a45a; width: 14px; height: 14px; cursor: pointer; }
+    .admin-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 12px 12px; padding: 12px; color: #cbd4da; background: rgba(255,255,255,.018); border: 1px solid rgba(170,187,204,.08); border-radius: 4px; font-size: 10px; }
+    .admin-setting small { display: block; margin-top: 4px; color: #8091a0; font-size: 8px; }
+    .admin-setting input { accent-color: #c6a45a; width: 16px; height: 16px; }
+    .access-disclaimer { margin-top: 13px; padding: 11px 13px; color: #c5ad6b; background: rgba(196,160,90,.055); border-right: 2px solid var(--gold); font-size: 9px; line-height: 1.8; }
     .modal-backdrop { overflow-y: auto; }
     .detail-modal { max-height: calc(100vh - 36px); overflow-y: auto; width: min(650px, 100%); }
     .toast.toast-error { border-color: rgba(226,107,107,.55); color: #ffc1c1; }
@@ -581,6 +108,8 @@
       .topbar { min-height: 58px; padding: 0 16px; }
       .topbar-right { gap: 10px; }
       .topbar-left { gap: 8px; }
+      .role-switch-wrap { gap: 4px; font-size: 8px; }
+      .role-select { max-width: 116px; min-height: 29px; padding: 0 5px; font-size: 9px; }
       .topbar-path { font-size: 10px; }
       .prototype-tag { padding: 4px 7px; font-size: 8px; }
       .content { padding: 24px 15px 40px; }
@@ -599,10 +128,14 @@
       .form-grid { grid-template-columns: 1fr; }
       .form-field.full { grid-column: auto; }
       .personnel-grid { grid-template-columns: 1fr; }
+      .admin-grid, .report-breakdown-grid { grid-template-columns: 1fr; }
+      .topbar .prototype-tag { display: none; }
     }
     @media (max-width: 420px) {
       .live-indicator { display: none; }
       .topbar-divider { display: none; }
+      .topbar-path > span:first-child { display: none; }
+      .topbar-left { gap: 5px; }
       .hero-seal { display: none; }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .section-label { margin-top: 20px; }
@@ -631,21 +164,21 @@
     <div class="nav-label">القائمة الرئيسية</div>
     <nav>
       <ul class="nav-list">
-        <li><button class="nav-item active" data-page="dashboard" type="button" aria-current="page"><i class="fa-solid fa-border-all"></i><span>الرئيسية</span></button></li>
-        <li><button class="nav-item" data-page="records" type="button"><i class="fa-solid fa-folder-open"></i><span>سجل التحذيرات</span></button></li>
-        <li><button class="nav-item" data-page="new-warning" type="button"><i class="fa-solid fa-file-circle-plus"></i><span>إصدار تحذير جديد</span></button></li>
-        <li><button class="nav-item" data-page="personnel" type="button"><i class="fa-solid fa-user-shield"></i><span>ملفات الأفراد</span></button></li>
-        <li><button class="nav-item" data-page="review" type="button"><i class="fa-solid fa-clipboard-check"></i><span>المراجعة والاعتماد</span></button></li>
-        <li><button class="nav-item" data-page="reports" type="button"><i class="fa-solid fa-chart-column"></i><span>الإحصائيات والتقارير</span></button></li>
+        <li><button class="nav-item active" data-page="dashboard" data-capability="dashboard" type="button" aria-current="page"><i class="fa-solid fa-border-all"></i><span>الرئيسية</span></button></li>
+        <li><button class="nav-item" data-page="records" data-capability="records" type="button"><i class="fa-solid fa-folder-open"></i><span>سجل التحذيرات</span></button></li>
+        <li><button class="nav-item" data-page="new-warning" data-capability="issue" type="button"><i class="fa-solid fa-file-circle-plus"></i><span>إصدار تحذير جديد</span></button></li>
+        <li><button class="nav-item" data-page="personnel" data-capability="records" type="button"><i class="fa-solid fa-user-shield"></i><span>ملفات الأفراد</span></button></li>
+        <li><button class="nav-item" data-page="review" data-capability="review" type="button"><i class="fa-solid fa-clipboard-check"></i><span>المراجعة والاعتماد</span></button></li>
+        <li><button class="nav-item" data-page="reports" data-capability="dashboard" type="button"><i class="fa-solid fa-chart-column"></i><span>الإحصائيات والتقارير</span></button></li>
       </ul>
     </nav>
     <div class="nav-label">النظام</div>
     <ul class="nav-list">
-      <li><button class="nav-item" data-page="settings" type="button"><i class="fa-solid fa-sliders"></i><span>الصلاحيات والإعدادات</span></button></li>
+      <li><button class="nav-item" data-page="settings" data-capability="admin" type="button"><i class="fa-solid fa-sliders"></i><span>الصلاحيات والإعدادات</span></button></li>
     </ul>
     <div class="sidebar-bottom">
-      <div class="demo-note"><i class="fa-solid fa-circle-info"></i> بيانات تجريبية فقط؛ السجلات التي تنشئها تُحفظ محليًا في هذا المتصفح، وليست قاعدة إنتاجية.</div>
-      <div class="sidebar-version"><span>BR • WARNING SYSTEM</span><span>UI / 01</span></div>
+      <div class="demo-note"><i class="fa-solid fa-circle-info"></i> تبديل الدور والصلاحيات محاكاة واجهة فقط، وليست حماية خادمية.</div>
+      <div class="sidebar-version"><span>BR • WARNING SYSTEM</span><span>UI / 03</span></div>
     </div>
   </aside>
 
@@ -656,8 +189,13 @@
         <div class="topbar-path"><span>BLACKRIDGE CITY</span><span class="topbar-divider"></span><strong id="breadcrumb">الرئيسية</strong></div>
       </div>
       <div class="topbar-left">
+        <label class="role-switch-wrap" for="currentRoleSelect"><span>الدور</span>
+          <select class="role-select" id="currentRoleSelect" aria-label="تبديل الدور التجريبي">
+            <option value="Agent">Agent</option><option value="High Commander">High Commander</option><option value="Senior Commander">Senior Commander</option><option value="CIA CHIEF">CIA CHIEF</option>
+          </select>
+        </label>
         <span class="live-indicator"><span class="live-dot"></span> وضع العرض التجريبي</span>
-        <span class="prototype-tag">PROTOTYPE • PHASE 01</span>
+        <span class="prototype-tag">PROTOTYPE • PHASE 03</span>
         <button class="icon-button" id="infoButton" type="button" aria-label="معلومات النموذج" title="معلومات النموذج"><i class="fa-regular fa-circle-question"></i></button>
       </div>
     </header>
@@ -672,7 +210,7 @@
           </div>
           <div class="heading-actions">
             <span class="date-stamp">13 OCT 2026 • 09:40</span>
-            <button class="button-primary" type="button" data-open-page="new-warning"><i class="fa-solid fa-plus"></i> تحذير جديد</button>
+            <button class="button-primary" type="button" data-open-page="new-warning" data-capability="issue"><i class="fa-solid fa-plus"></i> تحذير جديد</button>
           </div>
         </div>
 
@@ -680,7 +218,7 @@
           <div class="hero-copy">
             <div class="hero-kicker"><i class="fa-solid fa-crosshairs"></i><span>BLACKRIDGE CITY / PERSONNEL OVERSIGHT</span></div>
             <h2>مركز القيادة الإدارية</h2>
-            <p>واجهة موحّدة لمتابعة سجل التحذيرات وحالة المراجعة. هذه معاينة مستقلة للمرحلة الأولى، ببيانات مصطنعة بالكامل.</p>
+            <p>واجهة موحّدة لمتابعة السجلات ومسار المراجعة. هذه معاينة مستقلة ببيانات مصطنعة بالكامل وصلاحيات دور تجريبية.</p>
           </div>
           <div class="hero-seal" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></div>
         </section>
@@ -729,6 +267,10 @@
               <div class="signal-track"><div class="signal-fill green" id="closedBar"></div></div>
               <div class="signal-row" style="margin-top:14px"><span>ملغى</span><span class="signal-number" id="cancelledRatio">—</span></div>
               <div class="signal-track"><div class="signal-fill red" id="cancelledBar"></div></div>
+              <div class="signal-row" style="margin-top:14px"><span>قيد المراجعة</span><span class="signal-number" id="reviewRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill gold" id="reviewBar"></div></div>
+              <div class="signal-row" style="margin-top:14px"><span>مرفوض</span><span class="signal-number" id="rejectedRatio">—</span></div>
+              <div class="signal-track"><div class="signal-fill red" id="rejectedBar"></div></div>
               <div class="signal-row" style="margin-top:14px"><span>مسودة</span><span class="signal-number" id="draftRatio">—</span></div>
               <div class="signal-track"><div class="signal-fill blue" id="draftBar"></div></div>
               <div class="signal-footnote"><i class="fa-solid fa-circle"></i><span>الأرقام مستمدة من السجلات الوهمية في هذه المعاينة.</span></div>
@@ -746,7 +288,7 @@
             <select class="filter-select" id="rankFilter" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
             <select class="filter-select" id="sectorFilter" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
             <select class="filter-select" id="typeFilter" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
-            <select class="filter-select" id="statusFilter" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
+            <select class="filter-select" id="statusFilter" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="قيد المراجعة">قيد المراجعة</option><option value="نشط">نشط</option><option value="مرفوض">مرفوض</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
           </div>
           <div class="table-scroll">
             <table class="warning-table">
@@ -772,7 +314,7 @@
             <select class="filter-select" id="rankFilterRecords" aria-label="تصفية حسب الرتبة"><option value="">كل الرتب</option></select>
             <select class="filter-select" id="sectorFilterRecords" aria-label="تصفية حسب القطاع"><option value="">كل القطاعات</option></select>
             <select class="filter-select" id="typeFilterRecords" aria-label="تصفية حسب نوع التحذير"><option value="">كل الأنواع</option></select>
-            <select class="filter-select" id="statusFilterRecords" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="نشط">نشط</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
+            <select class="filter-select" id="statusFilterRecords" aria-label="تصفية حسب الحالة"><option value="">كل الحالات</option><option value="مسودة">مسودة</option><option value="قيد المراجعة">قيد المراجعة</option><option value="نشط">نشط</option><option value="مرفوض">مرفوض</option><option value="مغلق">مغلق</option><option value="ملغى">ملغى</option></select>
           </div>
           <div class="table-scroll">
             <table class="warning-table">
@@ -786,7 +328,7 @@
 
       <section class="page-view hidden" id="page-new-warning" data-title="إصدار تحذير جديد">
         <div class="page-heading">
-          <div><div class="eyebrow">COMMAND // NEW NOTICE</div><h1 id="warningFormTitle">إصدار تحذير جديد</h1><p class="page-description">أدخل بيانات تجريبية لإنشاء سجل داخل هذا النموذج.</p></div>
+          <div><div class="eyebrow">COMMAND // NEW NOTICE</div><h1 id="warningFormTitle">إصدار تحذير جديد</h1><p class="page-description">التحذير المرسل ينتقل إلى قائمة المراجعة قبل أن يصبح نشطًا.</p></div>
           <div class="heading-actions"><span class="prototype-tag"><i class="fa-solid fa-flask"></i> وضع تجريبي</span></div>
         </div>
         <form class="warning-form" id="warningForm" novalidate>
@@ -822,7 +364,7 @@
           </section>
           <div class="form-storage-note"><i class="fa-solid fa-database"></i> التخزين تجريبي في `localStorage` لهذا المتصفح فقط؛ ليس قاعدة بيانات إنتاجية ولا تتم مزامنة البيانات بين الأجهزة.</div>
           <div class="form-actions">
-            <button class="button-primary" type="submit" id="submitWarningButton"><i class="fa-solid fa-paper-plane"></i> إصدار التحذير التجريبي</button>
+            <button class="button-primary" type="submit" id="submitWarningButton" data-capability="issue"><i class="fa-solid fa-paper-plane"></i> إرسال للمراجعة</button>
             <button class="button-secondary" type="button" id="saveDraftButton"><i class="fa-solid fa-floppy-disk"></i> حفظ كمسودة</button>
             <button class="button-danger hidden" type="button" id="cancelEditButton"><i class="fa-solid fa-xmark"></i> إلغاء التعديل</button>
           </div>
@@ -852,8 +394,9 @@
         </section>
       </section>
       <section class="page-view hidden" id="page-review" data-title="المراجعة والاعتماد">
-        <div class="page-heading"><div><div class="eyebrow">REVIEW // AUTHORIZATION</div><h1>المراجعة والاعتماد</h1><p class="page-description">مساحة مبدئية لمسار مراجعة التحذيرات واعتمادها.</p></div></div>
-        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-clipboard-check"></i></div><h2>مسار الاعتماد غير مفعّل</h2><p>يعرض هذا القسم حالة الواجهة فقط. قواعد المراجعة وسير الاعتماد لم تُنفذ في هذه المرحلة.</p><span class="placeholder-tag"><i class="fa-solid fa-hourglass-half"></i> مرحلة لاحقة</span></div></div>
+        <div class="page-heading"><div><div class="eyebrow">REVIEW // AUTHORIZATION</div><h1>المراجعة والاعتماد</h1><p class="page-description">راجع التحذيرات المرسلة، وأضف ملاحظة اختيارية عند الاعتماد أو الرفض.</p></div><span class="prototype-tag">مراجعة تجريبية • لا اعتماد خارجي</span></div>
+        <div class="review-status-count"><i class="fa-solid fa-hourglass-half"></i><span id="reviewSummary">—</span></div>
+        <div class="review-list" id="reviewQueue" style="margin-top:12px"></div>
       </section>
       <section class="page-view hidden" id="page-reports" data-title="الإحصائيات والتقارير">
         <div class="page-heading"><div><div class="eyebrow">INTELLIGENCE // REPORTS</div><h1>الإحصائيات والتقارير</h1><p class="page-description">ملخص المؤشرات المعروضة من عينة البيانات التجريبية.</p></div><div class="heading-actions"><button class="button-secondary" type="button" data-open-page="dashboard"><i class="fa-solid fa-arrow-right"></i> العودة للرئيسية</button></div></div>
@@ -863,11 +406,41 @@
           <article class="stat-card safe"><div class="stat-top"><span class="stat-label">التحذيرات المغلقة</span><span class="stat-icon"><i class="fa-solid fa-circle-check"></i></span></div><div class="stat-value report-closed">—</div></article>
           <article class="stat-card"><div class="stat-top"><span class="stat-label">الأفراد ذوو التحذيرات</span><span class="stat-icon"><i class="fa-solid fa-user-tag"></i></span></div><div class="stat-value report-personnel">—</div></article>
         </div>
+        <div class="report-breakdown-grid">
+          <section class="panel"><div class="panel-header"><div class="panel-title"><i class="fa-solid fa-layer-group"></i> حسب النوع</div><span class="panel-caption">كل السجلات</span></div><div class="breakdown-list" id="typeBreakdown"></div></section>
+          <section class="panel"><div class="panel-header"><div class="panel-title"><i class="fa-solid fa-location-dot"></i> حسب القطاع</div><span class="panel-caption">كل السجلات</span></div><div class="breakdown-list" id="sectorBreakdown"></div></section>
+          <section class="panel"><div class="panel-header"><div class="panel-title"><i class="fa-solid fa-list-check"></i> حسب الحالة</div><span class="panel-caption">كل السجلات</span></div><div class="breakdown-list" id="statusBreakdown"></div></section>
+        </div>
         <p class="prototype-footnote"><i class="fa-solid fa-circle-info"></i> هذه المؤشرات توضيحية فقط، ولا تمثل سجلًا تشغيليًا.</p>
       </section>
       <section class="page-view hidden" id="page-settings" data-title="الصلاحيات والإعدادات">
-        <div class="page-heading"><div><div class="eyebrow">SYSTEM // ACCESS CONTROL</div><h1>الصلاحيات والإعدادات</h1><p class="page-description">معاينة الهيكل المقترح لإعدادات النظام وصلاحياته.</p></div></div>
-        <div class="placeholder-card"><div><div class="placeholder-icon"><i class="fa-solid fa-sliders"></i></div><h2>الإعدادات غير مفعّلة</h2><p>لا توجد حسابات أو صلاحيات متصلة بهذا النموذج. ستُحدد الأدوار وسياسات الوصول ضمن مرحلة التنفيذ الوظيفي.</p><span class="placeholder-tag"><i class="fa-solid fa-lock"></i> واجهة فقط • لا مصادقة</span></div></div>
+        <div class="page-heading"><div><div class="eyebrow">SYSTEM // ACCESS CONTROL</div><h1>الصلاحيات والإعدادات</h1><p class="page-description">إدارة وهمية لحسابات العرض والرتب ومصفوفة الصلاحيات.</p></div></div>
+        <div class="admin-panel panel">
+          <h2 style="padding:14px 14px 0">مصفوفة الصلاحيات التجريبية</h2>
+          <p style="padding:0 14px">غيّر الوصول لكل دور في هذه المعاينة فقط. لا توجد مصادقة ولا تحقق على خادم.</p>
+          <div class="permission-scroll"><table class="permission-table"><thead id="permissionHead"></thead><tbody id="permissionRows"></tbody></table></div>
+        </div>
+        <div class="admin-grid">
+          <section class="admin-panel panel">
+            <h2>حسابات العرض التجريبية</h2><p>إنشاء أو إزالة أسماء تجريبية؛ هذا لا ينشئ مستخدمين حقيقيين ولا يسجل دخولًا.</p>
+            <form class="admin-inline-form" id="demoUserForm">
+              <input class="form-control" id="demoUserName" maxlength="60" required placeholder="اسم حساب تجريبي">
+              <select class="form-control" id="demoUserRole" required><option value="">اختر الدور</option><option>Agent</option><option>High Commander</option><option>Senior Commander</option><option>CIA CHIEF</option></select>
+              <button class="button-primary" type="submit"><i class="fa-solid fa-user-plus"></i> إضافة</button>
+            </form>
+            <div class="admin-list" id="demoUserList"></div>
+          </section>
+          <section class="admin-panel panel">
+            <h2>إدارة الرتب التجريبية</h2><p>أضف رتبة تظهر في نموذج التحذير التجريبي؛ التغيير محلي لهذا المتصفح.</p>
+            <form class="admin-inline-form" id="demoRankForm"><input class="form-control" id="demoRankName" maxlength="45" required placeholder="اسم الرتبة"><button class="button-primary" type="submit"><i class="fa-solid fa-plus"></i> إضافة رتبة</button></form>
+            <div class="admin-list" id="demoRankList"></div>
+          </section>
+        </div>
+        <section class="admin-panel panel" style="margin-top:12px">
+          <h2>إعدادات النموذج</h2><p>الخيارات التالية تؤثر على هذه المعاينة فقط.</p>
+          <label class="admin-setting"><span>طلب إرفاق صورة عند إرسال التحذير للمراجعة<small>لا ينطبق على المسودات، ويمكن تغييره من هنا.</small></span><input type="checkbox" id="requireEvidenceToggle"></label>
+        </section>
+        <div class="access-disclaimer"><i class="fa-solid fa-triangle-exclamation"></i> هذه محاكاة صلاحيات في JavaScript و`localStorage` بالمتصفح. لا توفر حماية حقيقية، ولا تمنع تجاوز الواجهة عبر أدوات المتصفح، ولا يوجد خادم أو قاعدة بيانات.</div>
       </section>
     </div>
   </main>
@@ -883,6 +456,7 @@
       <section class="detail-section hidden" id="detailNotesSection"><h3>ملاحظات إضافية</h3><p id="detailNotes"></p></section>
       <section class="detail-section detail-evidence hidden" id="detailEvidenceSection"><h3>المرفق التوضيحي</h3><p id="detailEvidenceName"></p><img id="detailEvidenceImage" alt="مرفق توضيحي تجريبي"></section>
       <section class="detail-section"><h3>التسلسل الزمني</h3><ul class="timeline" id="detailTimeline"></ul></section>
+      <section class="detail-section hidden" id="detailReviewNoteSection"><h3>ملاحظة الاعتماد أو الرفض (اختيارية)</h3><textarea id="detailReviewNote" maxlength="700" class="form-control" placeholder="أضف ملاحظة المراجعة…"></textarea></section>
       <div class="detail-actions" id="detailActions"></div>
       <div class="detail-disclaimer"><i class="fa-solid fa-circle-info"></i> سجل وهمي لعرض التفاعل فقط — لا توجد بيانات شخصية حقيقية.</div>
     </article>
@@ -894,6 +468,85 @@
 
     // All records below are invented UI fixtures; no real personnel data is used.
     const STORAGE_KEY = "blackridge.warningPrototype.records.v1";
+    const ROLE_STORAGE_KEY = "blackridge.warningPrototype.role.v1";
+    const USERS_STORAGE_KEY = "blackridge.warningPrototype.users.v1";
+    const RANKS_STORAGE_KEY = "blackridge.warningPrototype.ranks.v1";
+    const PERMISSIONS_STORAGE_KEY = "blackridge.warningPrototype.permissions.v1";
+    const SETTINGS_STORAGE_KEY = "blackridge.warningPrototype.settings.v1";
+    const DEMO_ROLES = ["Agent", "High Commander", "Senior Commander", "CIA CHIEF"];
+    const DEFAULT_PERMISSIONS = {
+      "Agent": { dashboard: true, records: true },
+      "High Commander": { dashboard: true, records: true, issue: true, editDraft: true },
+      "Senior Commander": { dashboard: true, records: true, review: true, close: true, cancel: true },
+      "CIA CHIEF": { dashboard: true, records: true, issue: true, editDraft: true, review: true, close: true, cancel: true, admin: true }
+    };
+    const PERMISSION_COLUMNS = [
+      ["records", "عرض السجل"],
+      ["issue", "إصدار التحذير"],
+      ["editDraft", "تعديل المسودات"],
+      ["review", "مراجعة / اعتماد"],
+      ["close", "إغلاق"],
+      ["cancel", "إلغاء"],
+      ["admin", "إدارة النظام"]
+    ];
+    const DEFAULT_RANKS = ["جندي", "عريف", "رقيب", "رقيب أول", "ملازم", "ملازم أول", "نقيب", "رائد", "مسؤول تجريبي"];
+
+    function readDemoState(key, fallback) {
+      try {
+        const value = window.localStorage.getItem(key);
+        return value === null ? fallback : JSON.parse(value);
+      } catch (error) {
+        console.warn(`تعذّرت قراءة إعداد النموذج ${key}.`, error);
+        return fallback;
+      }
+    }
+
+    function saveDemoState(key, value) {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (error) {
+        console.error(`تعذّر حفظ إعداد النموذج ${key}.`, error);
+        showToast("تعذّر الحفظ في تخزين هذا المتصفح.", "error");
+        return false;
+      }
+    }
+
+    const storedRole = readDemoState(ROLE_STORAGE_KEY, "High Commander");
+    let currentRole = DEMO_ROLES.includes(storedRole) ? storedRole : "High Commander";
+    const loadedUsers = readDemoState(USERS_STORAGE_KEY, null);
+    let demoUsers = Array.isArray(loadedUsers) ? loadedUsers : [
+      { id: "DEMO-AGENT-01", name: "وكيل تجريبي 01", role: "Agent", fixed: true },
+      { id: "DEMO-HC-01", name: "قائد تجريبي 01", role: "High Commander", fixed: true },
+      { id: "DEMO-SC-01", name: "قائد أقدم تجريبي 01", role: "Senior Commander", fixed: true },
+      { id: "DEMO-CIA-01", name: "رئيس تجريبي 01", role: "CIA CHIEF", fixed: true }
+    ];
+    const loadedRanks = readDemoState(RANKS_STORAGE_KEY, []);
+    let demoRanks = [...new Set([...DEFAULT_RANKS, ...(Array.isArray(loadedRanks) ? loadedRanks.filter((rank) => typeof rank === "string") : [])])];
+    const loadedOverrides = readDemoState(PERMISSIONS_STORAGE_KEY, {});
+    let permissionOverrides = loadedOverrides && typeof loadedOverrides === "object" && !Array.isArray(loadedOverrides) ? loadedOverrides : {};
+    const loadedSettings = readDemoState(SETTINGS_STORAGE_KEY, {});
+    let demoSettings = { requireEvidence: false, ...(loadedSettings && typeof loadedSettings === "object" ? loadedSettings : {}) };
+    let currentProfileCode = "";
+
+    function can(permission) {
+      if (currentRole === "CIA CHIEF") return true;
+      const override = permissionOverrides[currentRole];
+      if (override && Object.prototype.hasOwnProperty.call(override, permission)) return Boolean(override[permission]);
+      return Boolean(DEFAULT_PERMISSIONS[currentRole]?.[permission]);
+    }
+
+    const pageCapabilities = {
+      dashboard: "dashboard",
+      records: "records",
+      "new-warning": "issue",
+      personnel: "records",
+      profile: "records",
+      review: "review",
+      reports: "dashboard",
+      settings: "admin"
+    };
+
     const seededWarningRecords = [
       { id: "WRN-26041", name: "نسر تجريبي 01", code: "BR-TR-041", rank: "ملازم", sector: "القطاع الشمالي", type: "انضباطي", severity: "مرتفع", status: "نشط", date: "2026-10-12" },
       { id: "WRN-26040", name: "صقر تجريبي 02", code: "BR-TR-028", rank: "رقيب أول", sector: "القطاع الغربي", type: "التزام بالإجراءات", severity: "متوسط", status: "نشط", date: "2026-10-11" },
@@ -974,9 +627,10 @@
     };
 
     const severityClass = { "حرج": "critical", "مرتفع": "high", "متوسط": "medium", "منخفض": "low" };
-    const statusClass = { "مسودة": "draft", "نشط": "active", "مغلق": "closed", "ملغى": "cancelled" };
+    const statusClass = { "مسودة": "draft", "قيد المراجعة": "review", "نشط": "active", "مرفوض": "rejected", "مغلق": "closed", "ملغى": "cancelled" };
     let toastTimer;
     let selectedEvidence = null;
+    let currentPage = "dashboard";
 
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (char) => ({
@@ -1058,6 +712,8 @@
       const closed = warningRecords.filter((record) => record.status === "مغلق").length;
       const cancelled = warningRecords.filter((record) => record.status === "ملغى").length;
       const drafts = warningRecords.filter((record) => record.status === "مسودة").length;
+      const pending = warningRecords.filter((record) => record.status === "قيد المراجعة").length;
+      const rejected = warningRecords.filter((record) => record.status === "مرفوض").length;
       const people = new Set(warningRecords.map((record) => record.code)).size;
       document.getElementById("statTotal").textContent = warningRecords.length;
       document.getElementById("statActive").textContent = active;
@@ -1070,18 +726,247 @@
       document.getElementById("activeRatio").textContent = `${active} / ${warningRecords.length}`;
       document.getElementById("closedRatio").textContent = `${closed} / ${warningRecords.length}`;
       document.getElementById("cancelledRatio").textContent = `${cancelled} / ${warningRecords.length}`;
+      document.getElementById("reviewRatio").textContent = `${pending} / ${warningRecords.length}`;
+      document.getElementById("rejectedRatio").textContent = `${rejected} / ${warningRecords.length}`;
       document.getElementById("draftRatio").textContent = `${drafts} / ${warningRecords.length}`;
-      document.getElementById("activeBar").style.width = `${Math.round((active / warningRecords.length) * 100)}%`;
-      document.getElementById("closedBar").style.width = `${Math.round((closed / warningRecords.length) * 100)}%`;
-      document.getElementById("cancelledBar").style.width = `${Math.round((cancelled / warningRecords.length) * 100)}%`;
-      document.getElementById("draftBar").style.width = `${Math.round((drafts / warningRecords.length) * 100)}%`;
+      const percent = (value) => `${warningRecords.length ? Math.round((value / warningRecords.length) * 100) : 0}%`;
+      document.getElementById("activeBar").style.width = percent(active);
+      document.getElementById("closedBar").style.width = percent(closed);
+      document.getElementById("cancelledBar").style.width = percent(cancelled);
+      document.getElementById("reviewBar").style.width = percent(pending);
+      document.getElementById("rejectedBar").style.width = percent(rejected);
+      document.getElementById("draftBar").style.width = percent(drafts);
+    }
+
+    function renderBreakdown(targetId, field) {
+      const counts = new Map();
+      for (const record of warningRecords) {
+        const value = record[field] || "غير محدد";
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ar"));
+      const target = document.getElementById(targetId);
+      target.innerHTML = entries.length ? entries.map(([label, count]) => `
+        <div class="breakdown-row"><div class="breakdown-top"><span>${escapeHtml(label)}</span><span class="breakdown-count">${count}</span></div>
+        <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((count / warningRecords.length) * 100)}%"></div></div></div>`).join("")
+        : `<div class="empty-state">لا توجد بيانات كافية للإحصاء.</div>`;
+    }
+
+    function renderReports() {
+      renderBreakdown("typeBreakdown", "type");
+      renderBreakdown("sectorBreakdown", "sector");
+      renderBreakdown("statusBreakdown", "status");
+    }
+
+    function renderReviewQueue() {
+      const queue = warningRecords.filter((record) => record.status === "قيد المراجعة")
+        .sort((a, b) => new Date(b.createdAt || `${b.date}T00:00:00`) - new Date(a.createdAt || `${a.date}T00:00:00`));
+      document.getElementById("reviewSummary").textContent = queue.length
+        ? `${queue.length} تحذير${queue.length === 1 ? "" : "ات"} بانتظار قرار المراجعة`
+        : "لا توجد تحذيرات بانتظار المراجعة.";
+      const target = document.getElementById("reviewQueue");
+      if (!queue.length) {
+        target.innerHTML = `<div class="panel empty-state"><i class="fa-solid fa-clipboard-check"></i>قائمة المراجعة فارغة حاليًا؛ التحذيرات المرسلة ستظهر هنا.</div>`;
+        return;
+      }
+      target.innerHTML = queue.map((record) => `
+        <article class="review-card" data-review-id="${escapeHtml(record.id)}">
+          <div class="review-card-head"><div><h2>${escapeHtml(record.name)} • ${escapeHtml(record.type)}</h2><div class="review-card-meta">${escapeHtml(record.id)} • ${escapeHtml(record.code)} • ${escapeHtml(record.rank)} • ${escapeHtml(record.sector)} • ${formatDate(record.date)}</div></div><span class="status review">قيد المراجعة</span></div>
+          <div class="review-card-reason"><strong>السبب:</strong> ${escapeHtml(record.reason || "—")}<br><strong>التفاصيل:</strong> ${escapeHtml(record.details || "—")}<br><strong>المسؤول المُصدر:</strong> ${escapeHtml(record.officer || "غير محدد")}</div>
+          <button type="button" class="button-secondary" data-review-details="${escapeHtml(record.id)}" style="margin-top:9px">فتح التفاصيل</button>
+          <textarea maxlength="700" data-review-note="${escapeHtml(record.id)}" aria-label="ملاحظة المراجعة" placeholder="ملاحظة اعتماد أو سبب رفض (اختياري)">${escapeHtml(record.reviewNote || "")}</textarea>
+          <div class="review-card-actions">
+            <button class="button-approve" type="button" data-review-action="approve" data-record-id="${escapeHtml(record.id)}"><i class="fa-solid fa-check"></i> اعتماد وتفعيل</button>
+            <button class="button-reject" type="button" data-review-action="reject" data-record-id="${escapeHtml(record.id)}"><i class="fa-solid fa-xmark"></i> رفض</button>
+          </div>
+        </article>`).join("");
+      target.querySelectorAll("[data-review-details]").forEach((button) => button.addEventListener("click", () => openDetails(button.dataset.reviewDetails)));
+      target.querySelectorAll("[data-review-action]").forEach((button) => button.addEventListener("click", () => {
+        const id = button.dataset.recordId;
+        const note = target.querySelector(`[data-review-note="${CSS.escape(id)}"]`)?.value.trim() || "";
+        reviewDecision(id, button.dataset.reviewAction, note);
+      }));
+    }
+
+    function roleCan(role, permission) {
+      if (role === "CIA CHIEF") return true;
+      const override = permissionOverrides[role];
+      if (override && Object.prototype.hasOwnProperty.call(override, permission)) return Boolean(override[permission]);
+      return Boolean(DEFAULT_PERMISSIONS[role]?.[permission]);
+    }
+
+    function applyRoleUi() {
+      const selector = document.getElementById("currentRoleSelect");
+      selector.value = currentRole;
+      document.querySelectorAll("[data-capability]").forEach((element) => {
+        element.classList.toggle("hidden", !can(element.dataset.capability));
+      });
+      if (!can(pageCapabilities[currentPage] || "dashboard")) setPage("dashboard");
+    }
+
+    function changeDemoRole(role) {
+      if (!DEMO_ROLES.includes(role)) {
+        showToast("الدور المختار غير معروف.", "error");
+        return;
+      }
+      const previousRole = currentRole;
+      currentRole = role;
+      if (!saveDemoState(ROLE_STORAGE_KEY, currentRole)) {
+        currentRole = previousRole;
+        document.getElementById("currentRoleSelect").value = previousRole;
+        return;
+      }
+      applyRoleUi();
+      setPage("dashboard");
+      showToast(`تم التبديل إلى الدور التجريبي: ${role}.`, "success");
+    }
+
+    function renderPermissionMatrix() {
+      document.getElementById("permissionHead").innerHTML = `<tr><th>الدور</th>${PERMISSION_COLUMNS.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr>`;
+      document.getElementById("permissionRows").innerHTML = DEMO_ROLES.map((role) => `
+        <tr><td>${escapeHtml(role)}</td>${PERMISSION_COLUMNS.map(([permission]) => {
+          const checked = roleCan(role, permission) ? "checked" : "";
+          const fixed = role === "CIA CHIEF" ? "disabled" : "";
+          return `<td><input type="checkbox" data-role-permission="${escapeHtml(role)}" data-permission="${permission}" aria-label="${escapeHtml(role)} — ${escapeHtml(permission)}" ${checked} ${fixed}></td>`;
+        }).join("")}</tr>`).join("");
+      document.querySelectorAll("[data-role-permission]").forEach((checkbox) => checkbox.addEventListener("change", () => {
+        const role = checkbox.dataset.rolePermission;
+        const permission = checkbox.dataset.permission;
+        if (!can("admin") || role === "CIA CHIEF") {
+          checkbox.checked = roleCan(role, permission);
+          showToast("هذه الصلاحية محجوزة لدور CIA CHIEF في المحاكاة.", "error");
+          return;
+        }
+        const previous = permissionOverrides[role] ? { ...permissionOverrides[role] } : null;
+        permissionOverrides[role] = { ...(permissionOverrides[role] || {}), [permission]: checkbox.checked };
+        if (!saveDemoState(PERMISSIONS_STORAGE_KEY, permissionOverrides)) {
+          if (previous) permissionOverrides[role] = previous;
+          else delete permissionOverrides[role];
+          renderPermissionMatrix();
+          return;
+        }
+        renderPermissionMatrix();
+        applyRoleUi();
+        showToast(`تم تحديث صلاحية ${permission} لدور ${role}.`, "success");
+      }));
+    }
+
+    function renderDemoUsers() {
+      const target = document.getElementById("demoUserList");
+      target.innerHTML = demoUsers.length ? demoUsers.map((user) => `
+        <div class="admin-list-item"><span>${escapeHtml(user.name)}<small>${escapeHtml(user.role)} • ${user.fixed ? "حساب عرض أساسي" : "حساب أُضيف محليًا"}</small></span>
+        ${user.fixed ? "" : `<button type="button" class="admin-delete" data-delete-user="${escapeHtml(user.id)}">إزالة</button>`}</div>`).join("")
+        : `<div class="empty-state">لا توجد حسابات عرض؛ أضف حسابًا تجريبيًا.</div>`;
+      target.querySelectorAll("[data-delete-user]").forEach((button) => button.addEventListener("click", () => removeDemoUser(button.dataset.deleteUser)));
+    }
+
+    function renderDemoRanks() {
+      const target = document.getElementById("demoRankList");
+      const customRanks = demoRanks.filter((rank) => !DEFAULT_RANKS.includes(rank));
+      target.innerHTML = customRanks.length ? customRanks.map((rank) => `
+        <div class="admin-list-item"><span>${escapeHtml(rank)}<small>رتبة تجريبية مخصصة</small></span><button type="button" class="admin-delete" data-delete-rank="${escapeHtml(rank)}">إزالة</button></div>`).join("")
+        : `<div class="empty-state">لم تُضف رتب مخصصة بعد.</div>`;
+      target.querySelectorAll("[data-delete-rank]").forEach((button) => button.addEventListener("click", () => removeDemoRank(button.dataset.deleteRank)));
+    }
+
+    function syncRankChoices() {
+      const select = document.getElementById("personRank");
+      const selected = select.value;
+      select.innerHTML = `<option value="">اختر الرتبة</option>${demoRanks.map((rank) => `<option value="${escapeHtml(rank)}">${escapeHtml(rank)}</option>`).join("")}`;
+      if (demoRanks.includes(selected)) select.value = selected;
+    }
+
+    function renderAdminPanel() {
+      renderPermissionMatrix();
+      renderDemoUsers();
+      renderDemoRanks();
+      syncRankChoices();
+      document.getElementById("requireEvidenceToggle").checked = Boolean(demoSettings.requireEvidence);
+      document.getElementById("requireEvidenceToggle").disabled = !can("admin");
+    }
+
+    function addDemoUser(name, role) {
+      if (!can("admin")) {
+        showToast("إدارة الحسابات متاحة لدور CIA CHIEF في المحاكاة فقط.", "error");
+        return;
+      }
+      const cleanedName = name.trim();
+      if (!cleanedName || !DEMO_ROLES.includes(role)) {
+        showToast("أدخل اسمًا تجريبيًا واختر دورًا صحيحًا.", "error");
+        return;
+      }
+      if (demoUsers.some((user) => user.name.toLocaleLowerCase("ar") === cleanedName.toLocaleLowerCase("ar"))) {
+        showToast("يوجد حساب عرض تجريبي بهذا الاسم بالفعل.", "error");
+        return;
+      }
+      const next = [...demoUsers, { id: `DEMO-USER-${Date.now().toString(36).toUpperCase()}`, name: cleanedName, role, fixed: false }];
+      if (!saveDemoState(USERS_STORAGE_KEY, next)) return;
+      demoUsers = next;
+      renderDemoUsers();
+      showToast("أُضيف حساب العرض التجريبي محليًا.", "success");
+    }
+
+    function removeDemoUser(id) {
+      if (!can("admin")) {
+        showToast("إدارة الحسابات غير متاحة لهذا الدور.", "error");
+        return;
+      }
+      const existing = demoUsers.find((user) => user.id === id);
+      if (!existing || existing.fixed) {
+        showToast("لا يمكن إزالة حساب العرض الأساسي.", "error");
+        return;
+      }
+      const next = demoUsers.filter((user) => user.id !== id);
+      if (!saveDemoState(USERS_STORAGE_KEY, next)) return;
+      demoUsers = next;
+      renderDemoUsers();
+      showToast("أُزيل حساب العرض التجريبي.", "success");
+    }
+
+    function addDemoRank(name) {
+      if (!can("admin")) {
+        showToast("إدارة الرتب غير متاحة لهذا الدور.", "error");
+        return;
+      }
+      const rank = name.trim();
+      if (!rank) {
+        showToast("أدخل اسم الرتبة أولًا.", "error");
+        return;
+      }
+      if (demoRanks.some((existing) => existing.toLocaleLowerCase("ar") === rank.toLocaleLowerCase("ar"))) {
+        showToast("هذه الرتبة موجودة بالفعل.", "error");
+        return;
+      }
+      const next = [...demoRanks, rank];
+      if (!saveDemoState(RANKS_STORAGE_KEY, next.filter((item) => !DEFAULT_RANKS.includes(item)))) return;
+      demoRanks = next;
+      renderDemoRanks();
+      syncRankChoices();
+      showToast("أُضيفت الرتبة إلى خيارات النموذج.", "success");
+    }
+
+    function removeDemoRank(rank) {
+      if (!can("admin")) {
+        showToast("إدارة الرتب غير متاحة لهذا الدور.", "error");
+        return;
+      }
+      if (warningRecords.some((record) => record.rank === rank)) {
+        showToast("لا يمكن إزالة رتبة مستخدمة في سجل تحذير.", "error");
+        return;
+      }
+      const next = demoRanks.filter((existing) => existing !== rank);
+      if (!saveDemoState(RANKS_STORAGE_KEY, next.filter((item) => !DEFAULT_RANKS.includes(item)))) return;
+      demoRanks = next;
+      renderDemoRanks();
+      syncRankChoices();
+      showToast("أُزيلت الرتبة التجريبية.", "success");
     }
 
     function renderLatest() {
       const latest = [...warningRecords].sort((a, b) => new Date(b.createdAt || `${b.date}T00:00:00`) - new Date(a.createdAt || `${a.date}T00:00:00`)).slice(0, 4);
       document.getElementById("latestList").innerHTML = latest.map((record) => `
         <div class="latest-item" data-record-id="${escapeHtml(record.id)}" tabindex="0" role="button" aria-label="عرض التحذير ${escapeHtml(record.id)}">
-          <span class="latest-icon ${record.severity === "منخفض" ? "low" : ""}"><i class="fa-solid ${record.status === "مغلق" ? "fa-check" : record.status === "ملغى" ? "fa-ban" : record.status === "مسودة" ? "fa-pen" : "fa-exclamation"}"></i></span>
+          <span class="latest-icon ${record.severity === "منخفض" ? "low" : ""}"><i class="fa-solid ${record.status === "مغلق" ? "fa-check" : record.status === "ملغى" ? "fa-ban" : record.status === "مرفوض" ? "fa-xmark" : record.status === "مسودة" ? "fa-pen" : record.status === "قيد المراجعة" ? "fa-hourglass-half" : "fa-exclamation"}"></i></span>
           <span><span class="latest-title">${escapeHtml(record.name)} <span style="color:#8090a0">• ${escapeHtml(record.type)}</span></span><span class="latest-meta">${escapeHtml(record.id)} &nbsp; / &nbsp; ${escapeHtml(record.code)}</span></span>
           <span class="latest-date">${formatDate(record.date)}</span>
         </div>`).join("");
@@ -1103,6 +988,9 @@
       renderRows("", "warningRows", "resultCount");
       renderRows("Records", "warningRowsRecords", "resultCountRecords");
       renderPersonnel(document.getElementById("personnelSearch").value);
+      renderReviewQueue();
+      renderReports();
+      if (currentProfileCode && !document.getElementById("page-profile").classList.contains("hidden")) openPersonProfile(currentProfileCode);
     }
 
     function renderPersonnel(searchValue = "") {
@@ -1135,6 +1023,7 @@
     }
 
     function openPersonProfile(code) {
+      currentProfileCode = code;
       const records = warningRecords.filter((record) => record.code === code)
         .sort((a, b) => new Date(b.createdAt || `${b.date}T00:00:00`) - new Date(a.createdAt || `${a.date}T00:00:00`));
       if (!records.length) return;
@@ -1210,22 +1099,30 @@
         : `<li class="timeline-item"><div class="timeline-title">لا توجد إجراءات مسجلة بعد</div></li>`;
       const actions = document.getElementById("detailActions");
       const button = (action, label, icon, className) => `<button type="button" class="${className}" data-record-action="${action}"><i class="fa-solid ${icon}"></i> ${label}</button>`;
+      const reviewNoteSection = document.getElementById("detailReviewNoteSection");
+      reviewNoteSection.classList.toggle("hidden", record.status !== "قيد المراجعة" || !can("review"));
+      document.getElementById("detailReviewNote").value = record.reviewNote || "";
+      let actionMarkup = "";
       if (record.status === "مسودة") {
-        actions.innerHTML = button("edit", "تعديل المسودة", "fa-pen-to-square", "button-secondary")
-          + button("issue", "إصدار التحذير", "fa-paper-plane", "button-primary")
-          + button("cancel", "إلغاء المسودة", "fa-ban", "button-danger");
+        if (can("editDraft")) actionMarkup += button("edit", "تعديل المسودة", "fa-pen-to-square", "button-secondary");
+        if (can("cancel")) actionMarkup += button("cancel", "إلغاء المسودة", "fa-ban", "button-danger");
+      } else if (record.status === "قيد المراجعة" && can("review")) {
+        actionMarkup += button("approve", "اعتماد وتفعيل", "fa-check", "button-approve");
+        actionMarkup += button("reject", "رفض", "fa-xmark", "button-reject");
+        if (can("cancel")) actionMarkup += button("cancel", "إلغاء التحذير", "fa-ban", "button-danger");
       } else if (record.status === "نشط") {
-        actions.innerHTML = button("close", "إغلاق التحذير", "fa-circle-check", "button-secondary")
-          + button("cancel", "إلغاء التحذير", "fa-ban", "button-danger");
-      } else {
-        actions.innerHTML = `<span class="placeholder-tag"><i class="fa-solid fa-lock"></i> لا توجد إجراءات متاحة لهذه الحالة</span>`;
+        if (can("close")) actionMarkup += button("close", "إغلاق التحذير", "fa-circle-check", "button-secondary");
+        if (can("cancel")) actionMarkup += button("cancel", "إلغاء التحذير", "fa-ban", "button-danger");
       }
+      actions.innerHTML = actionMarkup || `<span class="placeholder-tag"><i class="fa-solid fa-lock"></i> لا توجد إجراءات متاحة لهذا الدور أو لهذه الحالة</span>`;
       actions.querySelectorAll("[data-record-action]").forEach((actionButton) => {
         actionButton.addEventListener("click", () => {
           const action = actionButton.dataset.recordAction;
           if (action === "edit") {
             closeDetails();
             beginEditDraft(record.id);
+          } else if (action === "approve" || action === "reject") {
+            reviewDecision(record.id, action, document.getElementById("detailReviewNote").value.trim());
           } else {
             changeWarningStatus(record.id, action);
           }
@@ -1305,7 +1202,7 @@
       document.getElementById("editingWarningId").value = "";
       document.getElementById("warningDateTime").value = localDateTimeValue();
       document.getElementById("warningFormTitle").textContent = "إصدار تحذير جديد";
-      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إصدار التحذير التجريبي`;
+      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إرسال للمراجعة`;
       document.getElementById("saveDraftButton").innerHTML = `<i class="fa-solid fa-floppy-disk"></i> حفظ كمسودة`;
       document.getElementById("cancelEditButton").classList.add("hidden");
       selectedEvidence = null;
@@ -1313,6 +1210,10 @@
     }
 
     function beginEditDraft(id) {
+      if (!can("editDraft")) {
+        showToast("هذا الدور لا يملك صلاحية تعديل المسودات.", "error");
+        return;
+      }
       const record = warningRecords.find((item) => item.id === id);
       if (!record || record.status !== "مسودة") {
         showToast("يمكن تعديل المسودات فقط.", "error");
@@ -1335,7 +1236,7 @@
       for (const [id, value] of Object.entries(values)) document.getElementById(id).value = value;
       document.getElementById("editingWarningId").value = record.id;
       document.getElementById("warningFormTitle").textContent = `تعديل المسودة • ${record.id}`;
-      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إصدار التحذير`;
+      document.getElementById("submitWarningButton").innerHTML = `<i class="fa-solid fa-paper-plane"></i> إرسال للمراجعة`;
       document.getElementById("saveDraftButton").innerHTML = `<i class="fa-solid fa-floppy-disk"></i> حفظ التعديلات`;
       document.getElementById("cancelEditButton").classList.remove("hidden");
       selectedEvidence = record.evidence || null;
@@ -1376,6 +1277,10 @@
     }
 
     function saveWarning(status) {
+      if (!can("issue")) {
+        showToast("هذا الدور لا يملك صلاحية إصدار التحذيرات.", "error");
+        return;
+      }
       const form = document.getElementById("warningForm");
       if (!form.checkValidity()) {
         form.reportValidity();
@@ -1390,19 +1295,28 @@
       const editingId = document.getElementById("editingWarningId").value;
       const index = editingId ? warningRecords.findIndex((record) => record.id === editingId) : -1;
       const existing = index >= 0 ? warningRecords[index] : null;
+      if (editingId && !can("editDraft")) {
+        showToast("هذا الدور لا يملك صلاحية تعديل المسودات.", "error");
+        return;
+      }
       if (editingId && (!existing || existing.status !== "مسودة")) {
         showToast("تعذّر تحديث المسودة؛ قد تكون تغيّرت حالتها.", "error");
         return;
       }
+      if (status === "قيد المراجعة" && demoSettings.requireEvidence && !selectedEvidence) {
+        showToast("إرفاق صورة مطلوب حسب إعدادات هذا النموذج.", "error");
+        return;
+      }
       const now = new Date().toISOString();
-      const action = existing
-        ? (status === "نشط" ? "إصدار المسودة" : "تعديل المسودة")
-        : (status === "نشط" ? "إصدار التحذير التجريبي" : "حفظ المسودة");
+      const action = status === "قيد المراجعة"
+        ? "إرسال التحذير للمراجعة"
+        : (existing ? "تعديل المسودة" : "حفظ المسودة");
       const updated = {
         ...(existing || {}),
         ...values,
         id: existing?.id || generateWarningId(),
         status,
+        approvalStatus: status === "قيد المراجعة" ? "بانتظار الاعتماد" : "مسودة",
         custom: true,
         modified: false,
         createdAt: existing?.createdAt || now,
@@ -1421,7 +1335,7 @@
       renderAllData();
       resetWarningForm();
       setPage("dashboard");
-      showToast(`${status === "مسودة" ? "حُفظت المسودة" : "تم إصدار التحذير"} • ${updated.id}`, "success");
+      showToast(`${status === "مسودة" ? "حُفظت المسودة" : "أُرسل التحذير للمراجعة"} • ${updated.id}`, "success");
     }
 
     function changeWarningStatus(id, action) {
@@ -1429,13 +1343,16 @@
       if (index < 0) return;
       const current = warningRecords[index];
       const transitions = {
-        issue: { from: "مسودة", to: "نشط", label: "إصدار المسودة" },
-        close: { from: "نشط", to: "مغلق", label: "إغلاق التحذير" },
-        cancel: { from: ["مسودة", "نشط"], to: "ملغى", label: "إلغاء التحذير" }
+        close: { permission: "close", from: "نشط", to: "مغلق", label: "إغلاق التحذير" },
+        cancel: { permission: "cancel", from: ["مسودة", "قيد المراجعة", "نشط"], to: "ملغى", label: "إلغاء التحذير" }
       };
       const transition = transitions[action];
       const allowedFrom = Array.isArray(transition?.from) ? transition.from : [transition?.from];
-      if (!transition || !allowedFrom.includes(current.status)) {
+      if (!transition || !can(transition.permission)) {
+        showToast("هذا الدور لا يملك صلاحية تنفيذ الإجراء.", "error");
+        return;
+      }
+      if (!allowedFrom.includes(current.status)) {
         showToast("لا يمكن تنفيذ هذا الإجراء على الحالة الحالية.", "error");
         return;
       }
@@ -1443,7 +1360,7 @@
         ...current,
         status: transition.to,
         modified: current.custom ? current.modified : true,
-        timeline: [...(current.timeline || []), { at: new Date().toISOString(), action: transition.label, by: current.officer || "مسؤول تجريبي" }]
+        timeline: [...(current.timeline || []), { at: new Date().toISOString(), action: transition.label, by: currentRole }]
       };
       warningRecords[index] = updated;
       if (!persistWarningRecords()) {
@@ -1454,6 +1371,53 @@
       renderAllData();
       openDetails(id);
       showToast(`تم تحديث الحالة إلى «${updated.status}».`, "success");
+    }
+
+    function reviewDecision(id, decision, note = "") {
+      if (!can("review")) {
+        showToast("هذا الدور لا يملك صلاحية مراجعة التحذيرات.", "error");
+        return;
+      }
+      const index = warningRecords.findIndex((record) => record.id === id);
+      const current = warningRecords[index];
+      if (index < 0 || current.status !== "قيد المراجعة") {
+        showToast("هذا التحذير لم يعد بانتظار المراجعة.", "error");
+        return;
+      }
+      if (decision === "reject" && !note.trim()) {
+        showToast("أدخل سبب الرفض ليُسجل في التسلسل الزمني.", "error");
+        return;
+      }
+      if (!["approve", "reject"].includes(decision)) {
+        showToast("إجراء المراجعة غير معروف.", "error");
+        return;
+      }
+      const approved = decision === "approve";
+      const updated = {
+        ...current,
+        status: approved ? "نشط" : "مرفوض",
+        approvalStatus: approved ? "معتمد" : "مرفوض",
+        reviewNote: note.trim(),
+        modified: current.custom ? current.modified : true,
+        timeline: [...(current.timeline || []), {
+          at: new Date().toISOString(),
+          action: `${approved ? "اعتماد التحذير" : "رفض التحذير"}${note.trim() ? ` — ${note.trim()}` : ""}`,
+          by: currentRole
+        }]
+      };
+      const wasOpen = document.getElementById("detailBackdrop").classList.contains("open");
+      warningRecords[index] = updated;
+      if (!persistWarningRecords()) {
+        warningRecords[index] = current;
+        showToast("تعذّر حفظ قرار المراجعة في المتصفح.", "error");
+        return;
+      }
+      renderAllData();
+      if (wasOpen) {
+        closeDetails();
+        openDetails(id);
+      }
+      showToast(approved ? "تم اعتماد التحذير وتفعيله تجريبيًا." : "رُفض التحذير وسُجل سبب الرفض.", approved ? "success" : "info");
     }
 
     function clearWarningFilters() {
@@ -1477,8 +1441,17 @@
 
     function setPage(page) {
       if (!pageNames[page]) return;
+      const requiredCapability = pageCapabilities[page];
+      if (requiredCapability && !can(requiredCapability)) {
+        showToast(`الوصول إلى «${pageNames[page]}» غير مسموح لهذا الدور التجريبي.`, "error");
+        return;
+      }
+      currentPage = page;
       if (page === "new-warning" && !document.getElementById("editingWarningId").value) resetWarningForm();
       if (page === "personnel") renderPersonnel(document.getElementById("personnelSearch").value);
+      if (page === "review") renderReviewQueue();
+      if (page === "reports") renderReports();
+      if (page === "settings") renderAdminPanel();
       document.querySelectorAll(".page-view").forEach((view) => view.classList.toggle("hidden", view.id !== `page-${page}`));
       document.querySelectorAll(".nav-item[data-page]").forEach((item) => {
         const active = item.dataset.page === page;
@@ -1547,12 +1520,13 @@
       renderRows("Records", "warningRowsRecords", "resultCountRecords");
     });
     document.getElementById("infoButton").addEventListener("click", () => {
-      showToast("بيانات النموذج التجريبي تُحفظ محليًا في هذا المتصفح فقط؛ لا يتصل بـ IBP أو OSD.");
+      showToast("الأدوار وحفظ البيانات محاكاة محلية فقط؛ لا توجد حماية خادمية أو اتصال بـ IBP أو OSD.");
     });
 
+    document.getElementById("currentRoleSelect").addEventListener("change", (event) => changeDemoRole(event.target.value));
     document.getElementById("warningForm").addEventListener("submit", (event) => {
       event.preventDefault();
-      saveWarning("نشط");
+      saveWarning("قيد المراجعة");
     });
     document.getElementById("saveDraftButton").addEventListener("click", () => saveWarning("مسودة"));
     document.getElementById("cancelEditButton").addEventListener("click", () => {
@@ -1574,14 +1548,39 @@
     });
     document.getElementById("personnelSearch").addEventListener("input", (event) => renderPersonnel(event.target.value));
     document.getElementById("backToPersonnel").addEventListener("click", () => setPage("personnel"));
+    document.getElementById("demoUserForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = document.getElementById("demoUserName").value;
+      const role = document.getElementById("demoUserRole").value;
+      addDemoUser(name, role);
+      if (can("admin")) event.currentTarget.reset();
+    });
+    document.getElementById("demoRankForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const input = document.getElementById("demoRankName");
+      addDemoRank(input.value);
+      if (can("admin")) event.currentTarget.reset();
+    });
+    document.getElementById("requireEvidenceToggle").addEventListener("change", (event) => {
+      if (!can("admin")) {
+        event.target.checked = Boolean(demoSettings.requireEvidence);
+        showToast("تعديل إعدادات النموذج غير متاح لهذا الدور.", "error");
+        return;
+      }
+      const previous = Boolean(demoSettings.requireEvidence);
+      demoSettings = { ...demoSettings, requireEvidence: event.target.checked };
+      if (!saveDemoState(SETTINGS_STORAGE_KEY, demoSettings)) {
+        demoSettings = { ...demoSettings, requireEvidence: previous };
+        event.target.checked = previous;
+        return;
+      }
+      showToast(event.target.checked ? "أصبح إرفاق الصورة مطلوبًا عند الإرسال للمراجعة." : "أصبح إرفاق الصورة اختياريًا.", "success");
+    });
 
     resetWarningForm();
-    syncFilterOptions();
-    renderStats();
-    renderLatest();
-    renderRows("", "warningRows", "resultCount");
-    renderRows("Records", "warningRowsRecords", "resultCountRecords");
-    renderPersonnel();
+    renderAllData();
+    renderAdminPanel();
+    applyRoleUi();
     initFilters();
   </script>
 </body>
