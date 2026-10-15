@@ -336,7 +336,7 @@ function registerIBPSocket(socket, ctx) {
       fromBattalionCode: messageUnitLabel(from),
       toBattalionId: to && to.id || '',
       toBattalionCode: messageUnitLabel(to),
-      senderCode: clean(message.senderCode, 100),
+      senderCode: sender,
       subject: clean(message.subject, 120),
       text: clean(message.text, 3000),
       classification: String(message.classification || 'INTERNAL').toUpperCase(),
@@ -344,7 +344,8 @@ function registerIBPSocket(socket, ctx) {
       incoming,
       sent,
       read: readBy.includes(own),
-      canMarkRead: incoming && !readBy.includes(own)
+      canMarkRead: incoming && !readBy.includes(own),
+      canDelete: senior(viewer)
     };
   }
 
@@ -550,6 +551,21 @@ function registerIBPSocket(socket, ctx) {
     }, () => {
       const index = readBy.indexOf(code(actor));
       if (index >= 0) readBy.splice(index, 1);
+    });
+  });
+  socket.on('ibp:message:delete', (payload, cb) => {
+    const actor = gate(cb); if (!actor) return;
+    if (!senior(actor)) return fail(cb, 'حذف الرسائل متاح للقيادة العليا فقط.');
+    const id = clean(payload && (payload.id || payload.messageId), 120);
+    const list = records('ibp_messages');
+    const index = list.findIndex((item) => String(item.id) === id);
+    if (index < 0) return fail(cb, 'الرسالة غير موجودة أو سبق حذفها.');
+    const [message] = list.splice(index, 1);
+    const from = messageUnit(message.fromBattalionId);
+    const to = messageUnit(message.toBattalionId);
+    const auditDetail = messageUnitLabel(from) + ' → ' + messageUnitLabel(to) + ' · ' + id;
+    return persist(actor, 'حذف رسالة بين الكتائب', auditDetail, null, cb, { id }, () => {
+      list.splice(index, 0, message);
     });
   });
   socket.on('ibp:access:get', (payload, cb) => {

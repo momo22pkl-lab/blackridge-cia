@@ -386,6 +386,10 @@ test('messages persist between battalions and are visible only to endpoint membe
   assert.equal(sender.state.ibp_messages.length, 1);
   assert.equal(sender.metrics.saves, 1);
   assert.equal(sender.metrics.audits, 1);
+  assert.equal(sent.message.senderCode, 'MEMBER-1');
+  assert.equal(Object.hasOwn(sent.message, 'senderName'), false);
+  assert.equal(Object.hasOwn(sent.message, 'name'), false);
+  assert.equal(sent.message.canDelete, false);
 
   const recipient = makeHarness(people[6], sender.state);
   const inbox = await recipient.invoke('ibp:messages:list', { box: 'INBOX' });
@@ -400,6 +404,45 @@ test('messages persist between battalions and are visible only to endpoint membe
   assert.equal(hidden.ok, true);
   assert.equal(hidden.messages.length, 0);
   assert.equal(hidden.unreadCount, 0);
+});
+
+test('only senior command can delete battalion messages, and deletion is persisted and audited', async () => {
+  const sender = makeHarness(people[5]);
+  const sent = await sender.invoke('ibp:message:send', {
+    fromBattalionId: 'bat-alpha', toBattalionId: 'bat-bravo',
+    subject: 'Command update', text: 'Proceed as planned.'
+  });
+  const memberAttempt = await sender.invoke('ibp:message:delete', { id: sent.message.id });
+  const highCommander = makeHarness(people[2], sender.state);
+  const highAttempt = await highCommander.invoke('ibp:message:delete', { id: sent.message.id });
+  assert.equal(memberAttempt.ok, false);
+  assert.equal(highAttempt.ok, false);
+  assert.equal(sender.state.ibp_messages.length, 1);
+
+  const senior = makeHarness(people[1], sender.state);
+  const deleted = await senior.invoke('ibp:message:delete', { id: sent.message.id });
+  assert.equal(deleted.ok, true);
+  assert.equal(senior.state.ibp_messages.length, 0);
+  assert.equal(senior.metrics.saves, 1);
+  assert.equal(senior.metrics.audits, 1);
+
+  const failingState = baseState();
+  failingState.ibp_messages = [structuredClone(sent.message)];
+  const failing = makeHarness(people[1], failingState, { failSave: true });
+  const failed = await failing.invoke('ibp:message:delete', { id: sent.message.id });
+  assert.equal(failed.ok, false);
+  assert.equal(failing.state.ibp_messages.length, 1);
+  assert.equal(failing.state.cia_audit_logs.length, 0);
+});
+
+test('the World Command composer exposes the recipient and renders delete controls only from server permission', () => {
+  const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const handlers = fs.readFileSync(path.join(__dirname, '..', 'ibp', 'handlers.js'), 'utf8');
+  assert.match(index, /SEND TO <select id=\\?"brw-message-to/);
+  assert.match(index, /data-br-message-delete=/);
+  assert.match(index, /ibp:message:delete/);
+  assert.match(handlers, /canDelete: senior\(viewer\)/);
+  assert.match(handlers, /if \(!senior\(actor\)\) return fail\(cb, 'حذف الرسائل متاح للقيادة العليا فقط\.'\)/);
 });
 
 test('message sending rejects unauthorized source, same-unit delivery, and excessive classification', async () => {
