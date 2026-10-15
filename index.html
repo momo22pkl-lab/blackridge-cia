@@ -1626,9 +1626,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   #br-world-command-root .brw-message-read-state{color:#88b6c7}
   #br-world-command-root .brw-message-mark-read{padding:3px 6px;border:1px solid rgba(91,195,231,.23);border-radius:3px;background:rgba(30,111,141,.16);color:#a8e3f2;font:7px "Courier New",monospace;cursor:pointer}
   #br-world-command-root .brw-message-mark-read:hover{border-color:var(--brw-cyan);background:rgba(30,111,141,.3)}
+  #br-world-command-root .brw-message-delete{padding:3px 6px;border:1px solid rgba(223,91,103,.34);border-radius:3px;background:rgba(120,35,45,.16);color:#f0a2a8;font:7px "Courier New",monospace;cursor:pointer}
+  #br-world-command-root .brw-message-delete:hover{border-color:#df5b67;background:rgba(120,35,45,.3)}
   #br-world-command-root .brw-message-empty{display:grid;min-height:100%;place-content:center;padding:16px;color:#8298a5;text-align:center;font-size:9px;line-height:1.7}
   #br-world-command-root .brw-message-compose{display:grid;gap:7px;padding:9px 11px;border-top:1px solid var(--brw-line);background:rgba(5,14,23,.96)}
-  #br-world-command-root .brw-message-compose-toolbar{display:flex;align-items:center;gap:10px}
+  #br-world-command-root .brw-message-compose-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
   #br-world-command-root .brw-message-compose-toolbar label{display:flex;align-items:center;gap:6px;color:#7892a2;font:7px "Courier New",monospace;letter-spacing:.04em}
   #br-world-command-root .brw-message-compose-toolbar select{max-width:180px;min-width:88px;padding:5px 7px;border:1px solid var(--brw-line);border-radius:3px;outline:0;background:#071521;color:#d4e1e8;font:8px "Courier New",monospace}
   #br-world-command-root .brw-message-compose-row{display:flex;align-items:stretch;gap:7px}
@@ -9103,12 +9105,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const readAction = message.canMarkRead
           ? "<button class=\"brw-message-mark-read\" type=\"button\" data-br-message-read=\"" + worldMessageEscape(message.id) + "\">MARK READ</button>"
           : (message.incoming ? "<span class=\"brw-message-read-state\">" + (message.read ? "READ" : "UNREAD") + "</span>" : "");
-        return "<article class=\"brw-message-row " + (outgoing ? "outgoing" : "incoming") + "\"><span class=\"brw-message-avatar small\">" + worldMessageEscape(worldMessageInitials(avatarCode)) + "</span><div class=\"brw-message-bubble-wrap\"><div class=\"brw-message-meta\"><b>#" + worldMessageEscape(message.senderCode) + "</b><time>" + worldMessageEscape(worldMessageTime(message.createdAt)) + "</time></div><div class=\"brw-message-bubble\"><strong>" + worldMessageEscape(message.subject) + "</strong><p dir=\"auto\">" + worldMessageEscape(message.text) + "</p><div class=\"brw-message-bubble-foot\"><span>" + worldMessageEscape(message.classification) + "</span>" + readAction + "</div></div></div></article>";
+        const deleteAction = message.canDelete
+          ? "<button class=\"brw-message-delete\" type=\"button\" data-br-message-delete=\"" + worldMessageEscape(message.id) + "\">DELETE</button>"
+          : "";
+        return "<article class=\"brw-message-row " + (outgoing ? "outgoing" : "incoming") + "\"><span class=\"brw-message-avatar small\">" + worldMessageEscape(worldMessageInitials(avatarCode)) + "</span><div class=\"brw-message-bubble-wrap\"><div class=\"brw-message-meta\"><b>#" + worldMessageEscape(message.senderCode) + "</b><time>" + worldMessageEscape(worldMessageTime(message.createdAt)) + "</time></div><div class=\"brw-message-bubble\"><strong>" + worldMessageEscape(message.subject) + "</strong><p dir=\"auto\">" + worldMessageEscape(message.text) + "</p><div class=\"brw-message-bubble-foot\"><span>" + worldMessageEscape(message.classification) + "</span>" + readAction + deleteAction + "</div></div></div></article>";
       }).join("");
       const activeName = activeUnit ? worldMessageEscape(activeUnit.code) : "Select a conversation";
       const sourceName = sourceUnits.find((unit) => String(unit.id) === sourceId);
       return "<section class=\"brw-message-workspace\" aria-label=\"Battalion messages\"><aside class=\"brw-message-sidebar\"><div class=\"brw-message-sidebar-head\"><div><span class=\"brw-panel-kicker\">SECURE NETWORK</span><h2>CONVERSATIONS</h2></div><span class=\"brw-message-unread-total\">" + worldMessageState.unreadCount + " UNREAD</span></div><div class=\"brw-message-sidebar-tools\"><label class=\"brw-message-search\"><i class=\"fa-solid fa-magnifying-glass\" aria-hidden=\"true\"></i><input id=\"brw-message-search\" type=\"search\" maxlength=\"100\" placeholder=\"Search battalions...\" value=\"" + worldMessageEscape(worldMessageState.query) + "\" aria-label=\"Search battalions\"></label><select id=\"brw-message-box\" aria-label=\"Filter messages\">" + boxOptions + "</select></div><div id=\"brw-message-threads\" class=\"brw-message-threads\" aria-live=\"polite\">" + threadMarkup + "</div><div id=\"brw-message-search-empty\" class=\"brw-message-empty search-empty\" hidden>No battalions match this search.</div></aside><section class=\"brw-message-chat\"><header class=\"brw-message-chat-head\"><span class=\"brw-message-avatar large\">" + worldMessageEscape(worldMessageInitials(activeUnit && activeUnit.code)) + "</span><div class=\"brw-message-chat-title\"><h2>" + activeName + "</h2><small>" + (sourceName ? "CHANNEL · " + worldMessageEscape(sourceName.code) + " ↔ " + activeName : "SELECT A SOURCE BATTALION") + "</small></div><span class=\"brw-message-secure-status\"><i class=\"brw-live-dot\"></i> SERVER-SCOPED</span><button type=\"button\" class=\"brw-message-refresh\" data-br-message-refresh aria-label=\"Refresh messages\" title=\"Refresh messages\"><i class=\"fa-solid fa-rotate\" aria-hidden=\"true\"></i></button></header><div id=\"brw-message-stream\" class=\"brw-message-stream\" aria-live=\"polite\">" + conversationMarkup + "</div>" +
-        (worldMessageState.canSend ? "<form id=\"brw-message-form\" class=\"brw-message-compose\"><input id=\"brw-message-subject\" type=\"hidden\" value=\"Battalion message\"><select id=\"brw-message-to\" hidden aria-hidden=\"true\">" + targetOptions + "</select><div class=\"brw-message-compose-toolbar\"><label>SEND FROM <select id=\"brw-message-from\">" + sourceOptions + "</select></label><label>CLASSIFICATION <select id=\"brw-message-classification\">" + classificationOptions + "</select></label></div><div class=\"brw-message-compose-row\"><textarea id=\"brw-message-body\" rows=\"2\" maxlength=\"3000\" required placeholder=\"Write a message...\"></textarea><button id=\"brw-message-send\" type=\"submit\" class=\"brw-message-send\"><i class=\"fa-solid fa-paper-plane\" aria-hidden=\"true\"></i><span>SEND</span></button></div><div id=\"brw-message-status\" class=\"brw-message-status\" role=\"status\" aria-live=\"polite\"></div></form>" : "<div class=\"brw-message-compose-disabled\">No active battalion messaging permissions are available for this account.</div>") + "</section></section>";
+        (worldMessageState.canSend ? "<form id=\"brw-message-form\" class=\"brw-message-compose\"><input id=\"brw-message-subject\" type=\"hidden\" value=\"Battalion message\"><div class=\"brw-message-compose-toolbar\"><label>SEND FROM <select id=\"brw-message-from\">" + sourceOptions + "</select></label><label>SEND TO <select id=\"brw-message-to\">" + targetOptions + "</select></label><label>CLASSIFICATION <select id=\"brw-message-classification\">" + classificationOptions + "</select></label></div><div class=\"brw-message-compose-row\"><textarea id=\"brw-message-body\" rows=\"2\" maxlength=\"3000\" required placeholder=\"Write a message...\"></textarea><button id=\"brw-message-send\" type=\"submit\" class=\"brw-message-send\"><i class=\"fa-solid fa-paper-plane\" aria-hidden=\"true\"></i><span>SEND</span></button></div><div id=\"brw-message-status\" class=\"brw-message-status\" role=\"status\" aria-live=\"polite\"></div></form>" : "<div class=\"brw-message-compose-disabled\">No active battalion messaging permissions are available for this account.</div>") + "</section></section>";
     }
     function requestWorldMessages(force) {
       if (worldCommandPage !== "messages") return;
@@ -9195,6 +9200,21 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         requestWorldMessages(true);
       });
     }
+    function deleteWorldMessage(id) {
+      const socket = worldMessageSocket();
+      const message = worldMessageState.messages.find((item) => String(item.id) === String(id));
+      if (!socket || !socket.connected || !message || message.canDelete !== true) return;
+      if (!window.confirm("Permanently delete this message?")) return;
+      socket.emit("ibp:message:delete", { id }, (result) => {
+        if (!result || !result.ok) {
+          const status = content && content.querySelector("#brw-message-status");
+          if (status) status.textContent = result && result.message || "Could not delete this message.";
+          else window.alert(result && result.message || "Could not delete this message.");
+          return;
+        }
+        requestWorldMessages(true);
+      });
+    }
     function setPage(key) {
       const item = pages.find((candidate) => candidate.key === key) || pages[0];
       root.querySelector('#brw-page-title').textContent = item.key === 'command' ? 'COMMAND CENTER' : item.title;
@@ -9234,6 +9254,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (messageThread) { worldMessageState.targetId = messageThread.getAttribute('data-br-message-thread'); content.innerHTML = renderWorldMessages(); return; }
       const messageRead = event.target.closest('[data-br-message-read]');
       if (messageRead) { markWorldMessageRead(messageRead.getAttribute('data-br-message-read')); return; }
+      const messageDelete = event.target.closest('[data-br-message-delete]');
+      if (messageDelete) { deleteWorldMessage(messageDelete.getAttribute('data-br-message-delete')); return; }
       const pageButton = event.target.closest('[data-br-page]');
       if (pageButton) setPage(pageButton.dataset.brPage);
     });
@@ -9244,6 +9266,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const target = event.target;
       if (!target) return;
       if (target.id === 'brw-message-from') { worldMessageState.sourceId = target.value; worldMessageState.targetId = ''; content.innerHTML = renderWorldMessages(); return; }
+      if (target.id === 'brw-message-to') { worldMessageState.targetId = target.value; content.innerHTML = renderWorldMessages(); return; }
       if (target.id === 'brw-message-box') { worldMessageState.box = target.value; content.innerHTML = renderWorldMessages(); return; }
       if (target.id === 'brw-message-classification') worldMessageState.classification = target.value;
     });
