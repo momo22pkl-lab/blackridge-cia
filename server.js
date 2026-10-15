@@ -1367,6 +1367,149 @@ function ibpResolveCode(value) {
   const wanted = clean(value, 100).toUpperCase();
   return wanted ? state.cia_users.find((user) => clean(user.publicCode, 100).toUpperCase() === wanted) || null : null;
 }
+function ibpPersonnelBattalionFor(person) {
+  const wanted = clean(person?.publicCode, 100).toUpperCase();
+  if (!wanted) return null;
+  const units = Array.isArray(state.cia_battalions) ? state.cia_battalions : [];
+  const match = units.find((unit) => {
+    if (!unit || unit.status === 'ARCHIVED') return false;
+    const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+    return members.some((code) => clean(code, 100).toUpperCase() === wanted) ||
+      [unit.commanderCode, unit.deputyCode].some((code) => clean(code, 100).toUpperCase() === wanted);
+  });
+  return match ? {
+    id: clean(match.id, 120),
+    code: clean(match.code || match.id, 32),
+    name: clean(match.nameAr || match.nameEn || match.name || match.code, 100)
+  } : null;
+}
+function ibpPersonnelInScope(actor, target) {
+  if (!actor || !target) return false;
+  if (String(actor.id) === String(target.id) || isLeadership(actor)) return true;
+  if (target.suspended || target.approved === false || target.serviceApproved === false) return false;
+  const viewerCode = clean(actor.publicCode, 100).toUpperCase();
+  const targetCode = clean(target.publicCode, 100).toUpperCase();
+  if (!viewerCode || !targetCode) return false;
+  return (Array.isArray(state.cia_battalions) ? state.cia_battalions : []).some((unit) => {
+    if (!unit || unit.status === 'ARCHIVED') return false;
+    const memberCodes = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+    const unitCodes = [
+      ...memberCodes,
+      unit.commanderCode,
+      unit.deputyCode,
+      unit.seniorCommanderCode
+    ].map((code) => clean(code, 100).toUpperCase()).filter(Boolean);
+    return unitCodes.includes(viewerCode) && unitCodes.includes(targetCode);
+  });
+}
+function ibpPersonnelStatus(person) {
+  if (person?.suspended === true || person?.securityStatus === 'SUSPENDED') return 'SUSPENDED';
+  if (person?.securityStatus === 'SECURITY_RESTRICTED') return 'RESTRICTED';
+  if (person?.approved === false || person?.serviceApproved === false || person?.serviceApprovalPending === true || person?.identityApprovalPending === true || (person?.identityRequired === true && person?.identityApproved !== true)) return 'PENDING APPROVAL';
+  if (person?.activeService === true) return 'ON DUTY';
+  if (person?.online === true) return 'ONLINE';
+  return 'OFF DUTY';
+}
+function ibpPersonnelRecordForViewer(person, viewer) {
+  const canManage = canManageMember(viewer, person);
+  const canEditCode = canManage && person.serviceApproved !== false;
+  const canEditName = isChief(viewer) && canManage;
+  const editableRanks = canManage
+    ? ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER'].filter((rank) => canChangeRank(viewer, person, rank))
+    : [];
+  const canEditBattalion = canManageIBPBattalions(viewer) && !!person.publicCode;
+  const isSelf = String(viewer?.id) === String(person?.id);
+  const canSeeName = isChief(viewer) || isSelf;
+  const unit = ibpPersonnelBattalionFor(person);
+  const record = {
+    id: clean(person.id, 120),
+    publicCode: clean(person.publicCode, 100),
+    rank: normalizeRank(person.rank),
+    rankLabel: rankLabel(person.rank),
+    name: canSeeName ? clean(person.identity?.fullName || person.name, 120) : '',
+    battalion: unit,
+    statusLabel: ibpPersonnelStatus(person),
+    online: person.online === true,
+    activeService: person.activeService === true,
+    serviceApproved: person.serviceApproved !== false,
+    identityApproved: person.identityApproved === true,
+    createdAt: person.createdAt || person.joinedAt || null,
+    lastLoginAt: isLeadership(viewer) || isSelf ? (person.lastLoginAt || null) : null,
+    canEditName,
+    canEditCode,
+    canEditBattalion,
+    editableRanks
+  };
+  return record;
+}
+function updateIBPPersonnelBattalion(person, requestedId) {
+  const wantedCode = clean(person?.publicCode, 100).toUpperCase();
+  const requested = clean(requestedId, 120);
+  if (!wantedCode) return 'The personnel record has no military code to assign.';
+  const activeUnits = (Array.isArray(state.cia_battalions) ? state.cia_battalions : []).filter((unit) => unit && unit.status !== 'ARCHIVED');
+  const selected = requested ? activeUnits.find((unit) => String(unit.id) === requested) : null;
+  if (requested && !selected) return 'The selected active battalion does not exist.';
+  const assignedUnits = activeUnits.filter((unit) => {
+    const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+    return members.some((code) => clean(code, 100).toUpperCase() === wantedCode) ||
+      [unit.commanderCode, unit.deputyCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === wantedCode);
+  });
+  const roleTransfer = assignedUnits.find((unit) => String(unit.id) !== String(selected?.id || '') &&
+    [unit.commanderCode, unit.deputyCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === wantedCode));
+  if (roleTransfer) return 'A battalion commander or deputy assignment must be changed in the battalion command workflow first.';
+  const duplicateUnit = assignedUnits.find((unit) => String(unit.id) !== String(selected?.id || '') &&
+    (Array.isArray(unit.memberCodes) ? unit.memberCodes : []).some((code) => clean(code, 100).toUpperCase() === wantedCode));
+  if (duplicateUnit && selected) return 'This person is already linked to another active battalion; resolve the existing assignment first.';
+  for (const unit of activeUnits) {
+    const current = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+    if (String(unit.id) === String(selected?.id || '')) {
+      if (!current.some((code) => clean(code, 100).toUpperCase() === wantedCode)) unit.memberCodes = [...current, person.publicCode];
+    } else if (current.some((code) => clean(code, 100).toUpperCase() === wantedCode)) {
+      unit.memberCodes = current.filter((code) => clean(code, 100).toUpperCase() !== wantedCode);
+    }
+  }
+  return null;
+}
+function replaceIBPPersonnelCode(oldCode, newCode) {
+  const oldValue = clean(oldCode, 100).toUpperCase();
+  const newValue = clean(newCode, 100);
+  if (!oldValue || !newValue) return;
+  const replace = (value) => clean(value, 100).toUpperCase() === oldValue ? newValue : value;
+  const replaceArray = (value) => {
+    if (!Array.isArray(value)) return value;
+    return [...new Set(value.map(replace))];
+  };
+  for (const unit of Array.isArray(state.cia_battalions) ? state.cia_battalions : []) {
+    if (unit.status === 'ARCHIVED') continue;
+    unit.memberCodes = replaceArray(unit.memberCodes);
+    for (const key of ['commanderCode', 'deputyCode', 'seniorCommanderCode']) {
+      if (clean(unit[key], 100).toUpperCase() === oldValue) unit[key] = newValue;
+    }
+  }
+  for (const collection of [state.cia_operations, state.ibp_operations]) {
+    for (const operation of Array.isArray(collection) ? collection : []) {
+      if (['COMPLETE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(clean(operation.status, 40).toUpperCase())) continue;
+      operation.memberCodes = replaceArray(operation.memberCodes);
+      if (clean(operation.commanderCode, 100).toUpperCase() === oldValue) operation.commanderCode = newValue;
+    }
+  }
+  for (const deployment of Array.isArray(state.ibp_deployments) ? state.ibp_deployments : []) {
+    if (['COMPLETE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(clean(deployment.status, 40).toUpperCase())) continue;
+    deployment.assignedCodes = replaceArray(deployment.assignedCodes);
+  }
+  for (const caseItem of Array.isArray(state.cia_cases) ? state.cia_cases : []) {
+    if (['CLOSED', 'RESOLVED', 'COMPLETE', 'COMPLETED', 'ARCHIVED'].includes(clean(caseItem.status, 40).toUpperCase())) continue;
+    if (clean(caseItem.assignedCode, 100).toUpperCase() === oldValue) caseItem.assignedCode = newValue;
+  }
+  const mapLocations = state.cia_map_locations;
+  if (mapLocations && !Array.isArray(mapLocations) && typeof mapLocations === 'object') {
+    const oldKey = Object.keys(mapLocations).find((key) => key.toUpperCase() === oldValue);
+    if (oldKey) {
+      if (!Object.prototype.hasOwnProperty.call(mapLocations, newValue)) mapLocations[newValue] = mapLocations[oldKey];
+      delete mapLocations[oldKey];
+    }
+  }
+}
 function ibpBattalionForViewer(record, viewer) {
   if (!record || !viewer) return null;
   const memberCodes = [...new Set((Array.isArray(record.memberCodes) ? record.memberCodes : []).map((value) => clean(value,100).toUpperCase()).filter(Boolean))];
@@ -8311,6 +8454,239 @@ socket.on('member:saveIdentity', (payload, cb) => {
        OPERATION / MISSIONS
     ===================================================== */
 
+    const personnelStateBackup = (target = null) => ({
+      target: target ? clone(target) : null,
+      battalions: clone(state.cia_battalions || []),
+      ciaOperations: clone(state.cia_operations || []),
+      ibpOperations: clone(state.ibp_operations || []),
+      deployments: clone(state.ibp_deployments || []),
+      cases: clone(state.cia_cases || []),
+      mapLocations: clone(state.cia_map_locations),
+      auditLogs: clone(state.cia_audit_logs || [])
+    });
+    const restorePersonnelState = (backup, target = null, createdId = '') => {
+      if (target && backup.target) Object.assign(target, backup.target);
+      if (createdId) state.cia_users = state.cia_users.filter((user) => String(user.id) !== String(createdId));
+      state.cia_battalions = backup.battalions;
+      state.cia_operations = backup.ciaOperations;
+      state.ibp_operations = backup.ibpOperations;
+      state.ibp_deployments = backup.deployments;
+      state.cia_cases = backup.cases;
+      state.cia_map_locations = backup.mapLocations;
+      state.cia_audit_logs = backup.auditLogs;
+    };
+    const persistPersonnelMutation = async ({ cb, actor, target, backup, action, details, response, createdId = '', battalionsChanged = false }) => {
+      try {
+        addAuditLog(action, actor, target, details);
+        await saveState();
+      } catch (error) {
+        restorePersonnelState(backup, target, createdId);
+        console.error('[IBP] Personnel persistence failed:', error && error.message || error);
+        return no(cb, 'تعذر حفظ سجل الفرد في قاعدة البيانات. لم يتم اعتماد التغيير.');
+      }
+      emitState();
+      if (battalionsChanged) emitIBPBattalionState();
+      return ok(cb, response);
+    };
+
+    socket.on('ibp:directory:list', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول للخدمة أولاً.');
+      const records = (Array.isArray(state.cia_users) ? state.cia_users : [])
+        .filter((person) => ibpPersonnelInScope(actor, person))
+        .map((person) => ibpPersonnelRecordForViewer(person, actor));
+      const search = clean(payload?.search, 120).toLocaleLowerCase();
+      const people = (search ? records.filter((person) => [
+        person.name, person.publicCode, person.rankLabel, person.battalion?.code, person.battalion?.name, person.statusLabel
+      ].join(' ').toLocaleLowerCase().includes(search)) : records)
+        .sort((a, b) => String(a.publicCode || '').localeCompare(String(b.publicCode || '')));
+      const canManageBattalions = canManageIBPBattalions(actor);
+      const rankOptions = isChief(actor)
+        ? ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER']
+        : isSenior(actor) ? ['AGENT', 'HIGH COMMANDER'] : [];
+      return ok(cb, {
+        people,
+        battalions: canManageBattalions
+          ? (Array.isArray(state.cia_battalions) ? state.cia_battalions : [])
+            .filter((unit) => unit && unit.status !== 'ARCHIVED')
+            .map((unit) => ({
+              id: clean(unit.id, 120),
+              code: clean(unit.code || unit.id, 32),
+              name: clean(unit.nameAr || unit.nameEn || unit.name || unit.code, 100)
+            }))
+          : [],
+        rankOptions,
+        permissions: {
+          canAdd: isLeadership(actor),
+          canManageBattalions,
+          canViewNames: isChief(actor)
+        },
+        viewer: {
+          publicCode: clean(actor.publicCode, 100),
+          name: clean(actor.identity?.fullName || actor.name, 120),
+          rankLabel: rankLabel(actor.rank)
+        }
+      });
+    });
+
+    socket.on('ibp:directory:detail', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول للخدمة أولاً.');
+      const id = clean(payload?.id, 120);
+      const code = clean(payload?.publicCode, 100).toUpperCase();
+      const target = (Array.isArray(state.cia_users) ? state.cia_users : []).find((person) =>
+        (id && String(person.id) === id) ||
+        (code && clean(person.publicCode, 100).toUpperCase() === code)
+      );
+      if (!target || !ibpPersonnelInScope(actor, target)) return no(cb, 'السجل غير موجود أو لا تملك صلاحية الاطلاع عليه.');
+      return ok(cb, { person: ibpPersonnelRecordForViewer(target, actor) });
+    });
+
+    socket.on('ibp:directory:save', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول للخدمة أولاً.');
+      const mode = clean(payload?.mode, 20).toLowerCase();
+      if (mode === 'create') {
+        if (!isLeadership(actor)) return no(cb, 'إضافة أفراد جديدة متاحة لـ CIA CHIEF و SUPREME COMMANDER فقط.');
+        const rawName = clean(payload?.name, 120);
+        if (!rawName) return no(cb, 'أدخل اسم الفرد.');
+        if ((state.cia_users || []).some((person) => lower(person.name) === lower(rawName))) return no(cb, 'اسم الحساب مستخدم بالفعل.');
+        const createRank = normalizeRank(payload?.rank || 'AGENT');
+        const allowedRanks = isChief(actor) ? ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER'] : ['AGENT', 'HIGH COMMANDER'];
+        if (!allowedRanks.includes(createRank)) return no(cb, 'لا تملك صلاحية إنشاء فرد بهذه الرتبة.');
+        const requestedCode = clean(payload?.publicCode, 100).toUpperCase();
+        const publicCode = requestedCode || makePublicCode(createRank);
+        if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(publicCode)) return no(cb, 'الكود العسكري يجب أن يتكون من حرفين أو رقمين على الأقل، ويحتوي أحرفاً أو أرقاماً أو شرطة فقط.');
+        if ((state.cia_users || []).some((person) => clean(person.publicCode, 100).toUpperCase() === publicCode)) return no(cb, 'الكود العسكري مستخدم بالفعل.');
+        const requestedBattalion = clean(payload?.battalionId, 120);
+        if (requestedBattalion && !canManageIBPBattalions(actor)) return no(cb, 'لا تملك صلاحية إسناد الفرد إلى كتيبة.');
+        if (requestedBattalion && !(state.cia_battalions || []).some((unit) => String(unit.id) === requestedBattalion && unit.status !== 'ARCHIVED')) {
+          return no(cb, 'الكتيبة المحددة غير موجودة أو مؤرشفة.');
+        }
+        const id = makeId('USER');
+        const temporarySecretCode = makeSecretCode();
+        const person = normalizeUser({
+          id,
+          name: rawName,
+          rank: createRank,
+          publicCode,
+          secretCode: temporarySecretCode,
+          status: 'بانتظار إكمال الهوية',
+          approved: true,
+          activeService: false,
+          serviceApproved: true,
+          serviceApprovalPending: false,
+          identityApprovalPending: false,
+          identityRequired: true,
+          identityApproved: false,
+          identity: null,
+          suspended: false,
+          securityStatus: 'ACTIVE',
+          online: false,
+          accountId: null,
+          characterOwnerId: id,
+          characterType: 'main',
+          createdAt: now(),
+          addedByCode: clean(actor.publicCode, 100)
+        });
+        const backup = personnelStateBackup();
+        state.cia_users.push(person);
+        if (requestedBattalion) {
+          const assignmentError = updateIBPPersonnelBattalion(person, requestedBattalion);
+          if (assignmentError) {
+            restorePersonnelState(backup, null, id);
+            return no(cb, assignmentError);
+          }
+        }
+        return persistPersonnelMutation({
+          cb,
+          actor,
+          target: person,
+          backup,
+          action: 'إضافة فرد إلى سجل الأفراد',
+          details: `تم إنشاء سجل ${person.publicCode} برتبة ${rankLabel(person.rank)}${requestedBattalion ? ' وإسناده إلى كتيبة.' : '.'}`,
+          response: {
+            person: ibpPersonnelRecordForViewer(person, actor),
+            temporarySecretCode
+          },
+          createdId: id,
+          battalionsChanged: !!requestedBattalion
+        });
+      }
+
+      const id = clean(payload?.id, 120);
+      const target = (state.cia_users || []).find((person) => String(person.id) === id);
+      if (!target || !canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تعديل سجل هذا الفرد.');
+      const backup = personnelStateBackup(target);
+      const rejectUpdate = (message) => {
+        restorePersonnelState(backup, target);
+        return no(cb, message);
+      };
+      const changed = [];
+      let battalionsChanged = false;
+
+      if (payload?.name !== undefined) {
+        if (!isChief(actor)) return rejectUpdate('تغيير اسم الحساب والاسم المعروض متاح لـ CIA CHIEF فقط.');
+        const name = clean(payload.name, 120);
+        if (!name) return rejectUpdate('اسم الفرد لا يمكن أن يكون فارغاً.');
+        if ((state.cia_users || []).some((person) => person.id !== target.id && lower(person.name) === lower(name))) return rejectUpdate('اسم الحساب مستخدم بالفعل.');
+        if (name !== target.name) {
+          target.name = name;
+          if (target.identity && typeof target.identity === 'object') target.identity.fullName = name;
+          changed.push('name');
+        }
+      }
+
+      if (payload?.rank !== undefined) {
+        const rank = normalizeRank(payload.rank);
+        if (!canChangeRank(actor, target, rank)) return rejectUpdate('لا تملك صلاحية تعيين هذه الرتبة لهذا الفرد.');
+        if (rank !== normalizeRank(target.rank)) {
+          target.rank = rank;
+          ensureBank(target).salary = defaultSalaryForRank(rank);
+          changed.push('rank');
+        }
+      }
+
+      if (payload?.publicCode !== undefined) {
+        if (!canManageMember(actor, target) || target.serviceApproved === false) return rejectUpdate('لا تملك صلاحية تغيير الكود العسكري لهذا الفرد.');
+        const publicCode = clean(payload.publicCode, 100).toUpperCase();
+        if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(publicCode)) return rejectUpdate('أدخل كوداً عسكرياً صحيحاً.');
+        if ((state.cia_users || []).some((person) => person.id !== target.id && clean(person.publicCode, 100).toUpperCase() === publicCode)) return rejectUpdate('الكود العسكري مستخدم بالفعل.');
+        const oldCode = clean(target.publicCode, 100);
+        if (publicCode !== oldCode.toUpperCase()) {
+          replaceIBPPersonnelCode(oldCode, publicCode);
+          target.publicCode = publicCode;
+          ensureBank(target);
+          changed.push('publicCode');
+          battalionsChanged = true;
+        }
+      }
+
+      if (payload?.battalionId !== undefined) {
+        if (!canManageIBPBattalions(actor)) return rejectUpdate('تعديل إسناد الكتائب متاح لـ CIA CHIEF و SUPREME COMMANDER فقط.');
+        const requestedBattalion = clean(payload.battalionId, 120);
+        const previousBattalionId = ibpPersonnelBattalionFor(target)?.id || '';
+        if (requestedBattalion !== previousBattalionId) {
+          const assignmentError = updateIBPPersonnelBattalion(target, requestedBattalion);
+          if (assignmentError) return rejectUpdate(assignmentError);
+          battalionsChanged = true;
+          changed.push('battalion');
+        }
+      }
+
+      if (!changed.length) return no(cb, 'لم يتم إدخال أي تغييرات.');
+      target.updatedAt = now();
+      return persistPersonnelMutation({
+        cb,
+        actor,
+        target,
+        backup,
+        action: 'تحديث سجل الأفراد',
+        details: `تم تحديث الحقول: ${changed.join(', ')}.`,
+        response: { person: ibpPersonnelRecordForViewer(target, actor) },
+        battalionsChanged
+      });
+    });
 
     socket.on('ibp:user-language:set', (payload, cb) => {
       const actor = requireSocketUser(socket);
