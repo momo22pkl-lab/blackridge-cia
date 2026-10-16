@@ -4640,10 +4640,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
         const strikeCount = Number(incident.profanityStrikeCount) || 0;
         const strikeLabel = chief && strikeCount > 0 ? `<br>تحذير بسبب ألفاظ مسيئة: ${Math.min(strikeCount, 3)}/3` : '';
+        const canDeleteOwnManualReason = chief && String(incident.actorId || '') === String(currentUser.id || '') && incident.type === 'MANUAL_REVIEW' && incident.action === 'MEMBER_SUSPENDED' && !!incident.reason;
+        const reasonDetail = incident.reason ? `<div class="audit-log-details"><strong>سبب الإجراء:</strong> ${esc(incident.reason)}</div>` : '';
+        const deleteOwnReasonButton = canDeleteOwnManualReason ? `<button type="button" class="btn-main" data-security-delete-own-reason="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السبب الذي كتبته</button>` : '';
         return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
           <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
           <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${strikeLabel}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
-          ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
+          ${reasonDetail}
+          ${deleteOwnReasonButton}
         </div>`;
       };
       const profanitySection = document.getElementById('security-profanity-section');
@@ -4678,6 +4682,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       });
       root.querySelectorAll('[data-security-delete-profanity]').forEach(button => {
         button.onclick = () => deleteProfanityIncidentFromPanel(button.dataset.securityDeleteProfanity);
+      });
+      root.querySelectorAll('[data-security-delete-own-reason]').forEach(button => {
+        button.onclick = () => deleteOwnManualSecurityReason(button.dataset.securityDeleteOwnReason);
       });
 
       const manual = document.getElementById('security-manual-suspend');
@@ -4728,6 +4735,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!confirm('سيُخفى سجل المخالفة من مركز الأمن، مع الاحتفاظ بأثر الإجراء في سجل التدقيق. متابعة؟')) return;
       ciaSocket.emit('security:deleteProfanityIncident', { incidentId }, function(result) {
         if (!result || !result.ok) return alert((result && result.message) || 'تعذر حذف سجل المخالفة.');
+        loadSecurityCenter();
+      });
+    }
+
+    function deleteOwnManualSecurityReason(incidentId) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected || !incidentId) return;
+      if (!confirm('سيُحذف السبب المكتوب من مركز الأمن، مع الاحتفاظ بباقي السجل وأثر الحذف في سجل التدقيق. متابعة؟')) return;
+      ciaSocket.emit('security:deleteOwnManualIncidentReason', { incidentId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر حذف السبب الأمني.');
         loadSecurityCenter();
       });
     }

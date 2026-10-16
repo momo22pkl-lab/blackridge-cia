@@ -3029,6 +3029,42 @@ io.on(
       });
     });
 
+    socket.on('security:deleteOwnManualIncidentReason', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) return no(cb, 'حذف أسباب الإيقاف متاح للقائد فقط.');
+
+      const incident = state.cia_security_incidents.find((item) =>
+        item.id === clean(payload?.incidentId, 120) &&
+        item.actorId === actor.id &&
+        item.type === 'MANUAL_REVIEW' &&
+        item.action === 'MEMBER_SUSPENDED' &&
+        !item.securityCenterHiddenAt &&
+        !!item.reason
+      );
+      if (!incident) return no(cb, 'السبب غير موجود أو لا تملك صلاحية حذفه.');
+
+      const originalReason = incident.reason;
+      incident.reason = '';
+      incident.reasonDeletedAt = now();
+      incident.reasonDeletedBy = actor.id;
+      const target = state.cia_users.find((user) => user.id === incident.userId) || null;
+      if (target && target.suspensionReason === originalReason) target.suspensionReason = '';
+      addAuditLog(
+        'حذف سبب إيقاف أمني من مركز الأمن',
+        actor,
+        target,
+        `incident=${incident.id} // reason_removed=true`
+      );
+      await saveState();
+      emitState();
+      return ok(cb, {
+        ok: true,
+        incidentId: incident.id,
+        message: 'تم حذف السبب من مركز الأمن مع الاحتفاظ بالسجل الأمني وأثر الحذف في سجل التدقيق.'
+      });
+    });
+
     socket.on(
       'shared:data:seed',
       (seed, cb) => {
