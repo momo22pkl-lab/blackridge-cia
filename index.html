@@ -5857,6 +5857,26 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       });
     }
 
+    function reportImageDownloadTarget(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return null;
+      if (/^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[a-z0-9+/]+={0,2}$/i.test(raw)) {
+        return { href: raw, external: false };
+      }
+      try {
+        const url = new URL(raw, window.location.href);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+        return { href: url.href, external: url.origin !== window.location.origin };
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function reportImageDownloadName(reportId) {
+      const safeId = String(reportId || 'record').replace(/[^a-z0-9_-]/gi, '-').slice(0, 80);
+      return `report-${safeId || 'record'}-image`;
+    }
+
     function renderReportsList() {
       const box = document.getElementById('reports-list-box');
       if (!box) return;
@@ -5866,7 +5886,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         box.innerHTML = '<div style="color:var(--text-dim);font-size:.8rem;text-align:center;padding:10px;">لا توجد تقارير حالياً.</div>';
         return;
       }
-      box.innerHTML = visible.map(r => `
+      box.innerHTML = visible.map(r => {
+        const image = reportImageDownloadTarget(r.img);
+        return `
         <div class="card" style="${r.isSecret ? 'border-color:var(--red-alert);background:rgba(239,68,68,0.05);' : ''}">
           <div style="display:flex;justify-content:space-between;font-weight:bold;color:var(--primary-gold);font-size:.85rem;">
             <span>${r.isSecret ? '🔒 [سري للغاية] ' : ''}${esc(r.title)}</span>
@@ -5874,10 +5896,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           </div>
           <div style="font-size:.75rem;color:var(--cyan-glow);margin:3px 0;">المرسل: #${esc(r.code || '')} (${esc(r.author || '')})</div>
           <p style="font-size:.8rem;color:var(--text-bright);line-height:1.5;margin-top:5px;white-space:pre-wrap;">${esc(r.body)}</p>
-          ${r.img ? `<img src="${esc(r.img)}" style="max-width:100%;max-height:200px;border-radius:6px;margin-top:8px;border:1px solid var(--border);">` : ''}
+          ${image ? `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:7px;margin-top:8px;"><img src="${esc(image.href)}" alt="صورة التقرير" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid var(--border);"><a href="${esc(image.href)}" download="${esc(reportImageDownloadName(r.id))}" ${image.external ? 'target="_blank"' : ''} rel="noopener noreferrer" referrerpolicy="no-referrer" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--primary-gold);border-radius:5px;color:var(--primary-gold);font-size:.75rem;text-decoration:none;">⬇ تنزيل صورة التقرير</a></div>` : ''}
           ${leadership ? `<button type="button" onclick="deleteReport('${esc(r.id)}')" style="margin-top:7px;padding:4px 8px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);border-radius:4px;cursor:pointer;">حذف التقرير</button>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     /* SOS System */
@@ -8585,6 +8608,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     "عنوان التقرير / موضوع العملية": "Report title / operation subject",
     "تفاصيل التقرير الاستخباراتي الميداني...": "Field intelligence report details…",
     "رابط صورة الدليل / التقرير (اختياري)": "Evidence or report image link (optional)",
+    "تنزيل صورة التقرير": "Download report image",
     "دليل العملاء وحالة الحضور الميدانية": "Personnel directory and field attendance",
     "الكود الظاهر": "Public code",
     "الاسم (حسب الصلاحية)": "Name (subject to access level)",
