@@ -7474,6 +7474,69 @@ socket.on('member:saveIdentity', (payload, cb) => {
     );
 
     /* =====================================================
+       SOS — AUTHORIZED LIVE LIST
+    ===================================================== */
+
+    socket.on(
+      'sos:list',
+      (payload, cb) => {
+        try {
+          const actor = requireSocketUser(socket);
+          if (!actor) return no(cb, 'Sign in to view the S.O.S. board.');
+
+          const alerts = (Array.isArray(state.cia_sos) ? state.cia_sos : [])
+            .slice(0, 500)
+            .map((alert) => {
+              const rawLocation = alert && alert.location;
+              let location = null;
+              if (rawLocation && typeof rawLocation === 'object') {
+                const lat = Number(rawLocation.lat);
+                const lng = Number(rawLocation.lng);
+                location = {
+                  lat: Number.isFinite(lat) ? lat : null,
+                  lng: Number.isFinite(lng) ? lng : null,
+                  label: clean(rawLocation.label || rawLocation.name || '', 500)
+                };
+              } else if (rawLocation) {
+                location = clean(rawLocation, 500);
+              }
+              const rawCoords = alert?.locationCoords;
+              const locationCoords = rawCoords && typeof rawCoords === 'object'
+                ? {
+                    x: Number.isFinite(Number(rawCoords.x)) ? Number(rawCoords.x) : null,
+                    y: Number.isFinite(Number(rawCoords.y)) ? Number(rawCoords.y) : null
+                  }
+                : null;
+              const countValue = alert?.count ?? alert?.crewCount ?? alert?.membersCount;
+              const count = countValue === null || countValue === undefined || countValue === ''
+                ? null
+                : (Number.isFinite(Number(countValue)) ? Math.max(0, Math.floor(Number(countValue))) : null);
+              return {
+                id: clean(alert?.id, 200),
+                fromCode: clean(alert?.fromCode || alert?.userCode, 100),
+                fromRank: clean(alert?.fromRank || alert?.rankLabel || alert?.rank, 100),
+                location,
+                locationCoords,
+                count,
+                status: clean(alert?.status || alert?.statusCode || 'OPEN', 100),
+                note: clean(alert?.note || alert?.text || '', 2000),
+                at: clean(alert?.at || alert?.createdAt || '', 80),
+                updatedAt: clean(alert?.updatedAt || '', 80)
+              };
+            });
+
+          return ok(cb, {
+            alerts,
+            canManage: isChief(actor) || isSenior(actor) || isHighCommander(actor),
+            servedAt: now()
+          });
+        } catch (error) {
+          return no(cb, error.message || 'Unable to load the S.O.S. board.');
+        }
+      }
+    );
+
+    /* =====================================================
        SOS — BROADCAST
     ===================================================== */
 
