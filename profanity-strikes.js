@@ -42,9 +42,18 @@ function registerProfanityStrike(user) {
   return { count, separated: true, message: STRIKE_MESSAGES.separation };
 }
 
+function resetProfanityStrikes(user) {
+  if (!user || typeof user !== 'object') {
+    throw new TypeError('A user record is required to reset profanity strikes.');
+  }
+  user.profanityStrikes = 0;
+  return 0;
+}
+
 module.exports = {
   STRIKE_MESSAGES,
   isProfanityDetection,
   normalizeProfanityStrikes,
-  registerProfanityStrike
+  registerProfanityStrike,
+  resetProfanityStrikes
 };
