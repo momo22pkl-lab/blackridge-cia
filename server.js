@@ -34,6 +34,50 @@ const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
 
+const ARABIC_PROFANITY_TERMS = Object.freeze([
+  "كسمك",
+  "كس امك",
+  "كس",
+  "كسختك",
+  "كسعيلتك",
+  "كس اختك",
+  "زب",
+  "مص",
+  "نيك",
+  "فشخ",
+  "نكح",
+  "اركب عليه",
+  "اركب على زبي",
+  "يفضح",
+  "يفضح عرضك",
+  "يفضح عيلتك",
+  "يفضح امك",
+  "يضفح اختك",
+  "امك منيوكة",
+  "اختك منيوكة",
+  "يلعن امك",
+  "يلعن اختك",
+  "يلعن شرفك",
+  "امك",
+  "ابوك",
+  "اختك",
+  "ستك",
+  "عيلتك",
+  "يا ابن",
+  "يا ابن العرص",
+  "يامفتزح",
+  "يا مفتزح",
+  "يا شرموط",
+  "يا قحبة",
+  "قحب",
+  "شرموط",
+  "يا ابن النايمة",
+  "يفضح شرفك",
+  "ملهى ليلي",
+  "امك تمص",
+  "يلعن ابو الي خلفك عرص"
+]);
+
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const IS_RENDER_RUNTIME = process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
@@ -1205,7 +1249,11 @@ async function recordModerationViolation(actor, detection, channel) {
 }
 
 async function moderateOutgoingText(actor, text, channel) {
-  const detection = inspectMessage(text, process.env.CIA_SECURITY_BLOCKED_TERMS || '');
+  const configuredTerms = [
+    ARABIC_PROFANITY_TERMS.join('\n'),
+    process.env.CIA_SECURITY_BLOCKED_TERMS || ''
+  ].filter(Boolean).join('\n');
+  const detection = inspectMessage(text, configuredTerms);
   if (!detection) return false;
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
