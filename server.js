@@ -356,7 +356,7 @@ function notificationCanReach(user, details) {
   if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false || user.serviceApproved === false) return false;
   const targetUserId = details.targetUserId ? String(details.targetUserId) : '';
   const sourceUserId = details.sourceUserId ? String(details.sourceUserId) : '';
-  if (details.type === 'SECURITY' && details.leadershipOnly === true) return isSecuritySupervisor(user);
+  if (details.type === 'SECURITY' && details.leadershipOnly === true) return details.chiefOnly === true ? isChief(user) : isSecuritySupervisor(user);
   if (details.type === 'SYSTEM' && details.leadershipOnly === true) return isLeadership(user);
   if (details.type === 'MESSAGE' || details.type === 'SALARY' || details.type === 'TRANSACTION' || details.type === 'FINANCE') {
     return !!targetUserId && user.id === targetUserId;
@@ -1051,6 +1051,22 @@ function addAuditLog(
     state.cia_audit_logs.slice(0, 500);
 }
 
+function isProfanitySecurityIncident(incident) {
+  return !!incident && isProfanityDetection({ type: incident.type });
+}
+
+function isProfanitySeparation(incident) {
+  return isProfanitySecurityIncident(incident) &&
+    incident.action === 'MEMBER_SUSPENDED' &&
+    incident.status === 'SUSPENDED' &&
+    Number(incident.profanityStrikeCount) >= 3;
+}
+
+function securityIncidentCanBeViewed(incident, viewer) {
+  if (!incident || !viewer || incident.securityCenterHiddenAt) return false;
+  return isChief(viewer) || (isSecuritySupervisor(viewer) && isProfanitySeparation(incident));
+}
+
 function recordSecurityEvent({
   actor = null,
   target = null,
@@ -1097,41 +1113,44 @@ function recordSecurityEvent({
   saveState();
   for (const targetSocket of io.sockets.sockets.values()) {
     const viewer = targetSocket.userId ? getUserById(targetSocket.userId) : null;
-    if (viewer && isSecuritySupervisor(viewer)) {
-      targetSocket.emit('security:incident', securityEventForViewer(incident, viewer));
+    if (viewer && securityIncidentCanBeViewed(incident, viewer)) {
+      const visibleIncident = securityEventForViewer(incident, viewer);
+      if (visibleIncident) targetSocket.emit('security:incident', visibleIncident);
     }
   }
   return incident;
 }
 
 function securityEventForViewer(incident, viewer) {
+  if (!securityIncidentCanBeViewed(incident, viewer)) return null;
   const result = {
     id: incident.id,
     publicCode: incident.publicCode,
     rank: incident.rank,
-    actorCode: incident.actorCode || '',
-    actorRank: incident.actorRank || '',
     timestamp: incident.timestamp || incident.at,
     type: incident.type,
     level: incident.level,
-    severity: incident.severity,
     action: incident.action,
     status: incident.status,
-    relatedId: incident.relatedId || null
+    relatedId: incident.relatedId || null,
+    ...(Number.isFinite(incident.profanityStrikeCount) ? { profanityStrikeCount: incident.profanityStrikeCount } : {})
   };
-  if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
-  if (Number.isFinite(incident.profanityStrikeCount)) result.profanityStrikeCount = incident.profanityStrikeCount;
   if (isChief(viewer)) {
     result.userId = incident.userId;
     result.userName = incident.userName;
     result.actorId = incident.actorId;
     result.actorName = incident.actorName;
+    result.actorCode = incident.actorCode || '';
+    result.actorRank = incident.actorRank || '';
+    result.severity = incident.severity;
+    if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
     result.reason = incident.reason;
   }
   return result;
 }
 
 async function notifySecurityLeadership(incident, options = {}) {
+  const profanitySeparation = isProfanitySeparation(incident);
   const priority = incident.level === 'LEVEL 4' || incident.level === 'LEVEL 3'
     ? 'CRITICAL'
     : incident.level === 'LEVEL 2' ? 'HIGH' : 'NOTICE';
@@ -1144,6 +1163,7 @@ async function notifySecurityLeadership(incident, options = {}) {
     sourceCode: incident.publicCode,
     relatedId: incident.id,
     leadershipOnly: true,
+    chiefOnly: !profanitySeparation,
     metadata: {
       incidentId: incident.id,
       publicCode: incident.publicCode,
@@ -1189,6 +1209,11 @@ async function recordModerationViolation(actor, detection, channel) {
     const strike = registerProfanityStrike(actor);
     const separated = strike.separated;
     const channelName = clean(channel, 40).toUpperCase();
+    const memberMessage = strike.count === 1
+      ? 'تحذير أولي رسمي من القيادة بسبب استخدام ألفاظ مسيئة. تم حظر رسالتك. المخالفة 1/3.'
+      : strike.count === 2
+        ? 'تحذير ثانوي رسمي من القيادة بسبب تكرار استخدام ألفاظ مسيئة. تم حظر رسالتك. المخالفة 2/3، والتكرار التالي يؤدي إلى فصلك من الخدمة.'
+        : 'تحذير نهائي: تم فصلك من الخدمة بسبب تكرار المخالفات اللفظية للمرة الثالثة (3/3). يحق للقائد فقط إعادتك للخدمة.';
     const reason = `PROFANITY_STRIKE_${strike.count}${separated ? '_AUTO_SEPARATION' : ''} // ${detection.reason} // CHANNEL_${channelName}`;
 
     const incident = recordSecurityEvent({
@@ -1202,18 +1227,42 @@ async function recordModerationViolation(actor, detection, channel) {
       profanityStrikeCount: strike.count
     });
     const leadershipMessage = separated
-      ? `تم فصل ${clean(actor.name || 'عضو', 120)} (#${clean(actor.publicCode || '—', 100)}) بعد المخالفة ${strike.count}/3. السبب: رصد إساءة لفظية في ${channelName}.`
+      ? `تم فصل #${clean(actor.publicCode || '—', 100)} بعد المخالفة ${strike.count}/3 بسبب إساءة لفظية في ${channelName}.`
       : undefined;
 
     await saveState();
     emitState();
-    if (separated) endRestrictedSessions(actor, strike.message);
+    if (!separated) {
+      const warningId = makeId('WRN');
+      await publishNotifications([actor], {
+        type: 'WARNING',
+        title: 'تحذير رسمي من القيادة',
+        message: memberMessage,
+        priority: 'CRITICAL',
+        targetUserId: actor.id,
+        sourceCode: 'CIA COMMAND',
+        relatedId: warningId,
+        metadata: {
+          warningId,
+          warningType: 'سلوكي',
+          warningContent: memberMessage,
+          allowJustification: false,
+          recipientCode: actor.publicCode || '',
+          recipientName: actor.identity?.fullName || actor.name || '',
+          recipientRank: rankLabel(actor.rank),
+          autoGenerated: true,
+          profanityStrikeCount: strike.count,
+          strikeLimit: 3
+        }
+      });
+    }
+    if (separated) endRestrictedSessions(actor, memberMessage);
     await notifySecurityLeadership(incident, leadershipMessage ? { message: leadershipMessage } : {});
     await saveState();
 
     return {
       blocked: true,
-      message: strike.message,
+      message: memberMessage,
       strikeCount: strike.count,
       separated,
       incident
@@ -1255,6 +1304,7 @@ async function moderateOutgoingText(actor, text, channel) {
   ].filter(Boolean).join('\n');
   const detection = inspectMessage(text, configuredTerms);
   if (!detection) return false;
+  if (actor && isChief(actor) && isProfanityDetection(detection)) return false;
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
     return result && result.blocked === true ? result : true;
@@ -2846,8 +2896,11 @@ io.on(
         const counts = await notificationsStore.countsForUser(actor.id);
         const response = {
           ok: true,
-          incidents: state.cia_security_incidents.slice(0, 300)
-            .map((incident) => securityEventForViewer(incident, actor)),
+          incidents: state.cia_security_incidents
+            .filter((incident) => securityIncidentCanBeViewed(incident, actor))
+            .slice(0, 300)
+            .map((incident) => securityEventForViewer(incident, actor))
+            .filter(Boolean),
           unreadSecurityNotifications: counts.unreadSecurity || 0
         };
         socket.emit('security:logs:result', response);
@@ -2946,6 +2999,34 @@ io.on(
       saveState();
       emitState();
       return ok(cb, { action: 'restore', user: publicUser(target, actor) });
+    });
+
+    socket.on('security:deleteProfanityIncident', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) return no(cb, 'حذف سجلات المخالفات اللفظية متاح للقائد فقط.');
+      const incident = state.cia_security_incidents.find((item) =>
+        item.id === clean(payload?.incidentId, 120) &&
+        isProfanitySecurityIncident(item) &&
+        !item.securityCenterHiddenAt
+      );
+      if (!incident) return no(cb, 'سجل المخالفة غير موجود أو غير قابل للحذف.');
+      incident.securityCenterHiddenAt = now();
+      incident.securityCenterHiddenBy = actor.id;
+      const target = state.cia_users.find((user) => user.id === incident.userId) || null;
+      addAuditLog(
+        'إخفاء سجل مخالفة لفظية من مركز الأمن',
+        actor,
+        target,
+        `incident=${incident.id} // strike=${incident.profanityStrikeCount || 0}/3`
+      );
+      await saveState();
+      emitState();
+      return ok(cb, {
+        ok: true,
+        incidentId: incident.id,
+        message: 'تم حذف سجل المخالفة من مركز الأمن مع الاحتفاظ بأثر الإجراء في سجل التدقيق.'
+      });
     });
 
     socket.on(
