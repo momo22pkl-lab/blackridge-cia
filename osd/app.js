@@ -19,13 +19,6 @@ const TYPES = [
 ];
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
 const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
-const ROLE_PERMISSIONS = {
-  AGENT: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS'],
-  SENIOR: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'VIEW_SIGNER_ROLE'],
-  COMMANDER: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_SIGNER_IDENTITY'],
-  ADMIN: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS', 'EDIT_DRAFTS', 'SUBMIT_FOR_APPROVAL', 'APPROVE_DOCUMENTS', 'SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS', 'REVOKE_DOCUMENTS', 'ARCHIVE_DOCUMENTS', 'DOWNLOAD_DOCUMENTS', 'SHARE_DOCUMENTS', 'VIEW_AUDIT_TRAIL', 'MANAGE_USERS', 'VIEW_SIGNER_ROLE', 'VIEW_SIGNER_IDENTITY']
-};
-
 const COPY = {
   ar: {
     topSystem: 'نظام إدارة الوثائق الرسمية', online: 'متصل', workspace: 'مساحة العمل', center: 'مركز الوثائق', create: 'إنشاء وثيقة',
@@ -64,8 +57,8 @@ const COPY = {
     expiredHint: 'انتهت فترة صلاحية الوثيقة', missingHint: 'لا يوجد سجل مطابق',
     verificationPrivacy: 'لا تعرض صفحة التحقق العامة المحتوى أو الاسم الحقيقي للموقّع.', auditTitle: 'سجل التدقيق',
     noAudit: 'لا توجد أحداث متاحة', auditHint: 'يتطلب عرض هذا السجل صلاحية تدقيق مناسبة.',
-    usersTitle: 'مستخدمو النظام والصلاحيات', addUser: 'إضافة مستخدم',
-    usersCopy: 'صلاحيات API مفروضة على الخادم. إخفاء عناصر الواجهة ليس بديلاً عن التفويض.',
+    usersTitle: 'مستخدمو النظام والصلاحيات', addUser: 'إضافة مستخدم', refreshUsers: 'تحديث الحسابات',
+    usersCopy: 'يُستمد الدور والتصريح من سجل الأفراد؛ لا يمكن إنشاؤهما أو تغييره من هذه الصفحة.',
     privacyTitle: 'خصوصية هوية الموقّع', privacyCopy: 'تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_SIGNER_IDENTITY.',
     signatureModel: 'نموذج التوقيع', recordModel: 'سجل النسخ', auditModel: 'سجل التدقيق',
     signatureDialogTitle: 'التوقيع الرسمي بخط اليد', signatureDialogHint: 'ارسم توقيعك بنفسك بإصبعك أو القلم أو الفأرة. سيُضمّن الرسم في النسخة الصادرة ويُربط ببصمتها.',
@@ -75,9 +68,13 @@ const COPY = {
     signerSignatureAlt: 'التوقيع اليدوي للمُصدر', signatureRecorded: 'توقيع يدوي مسجل في وقت الإصدار',
     footerNote: 'وثائق مستقلة · تحقق من الصلاحية قبل المشاركة', signIn: 'تسجيل الدخول', firstSetup: 'الإعداد الأولي',
     authSubtitle: 'نظام الوثائق الرسمية للقطاعات', username: 'اسم المستخدم', password: 'كلمة المرور',
-    firstSetupRequired: 'إنشاء قائد النظام الأول', setupHint: 'يتطلب OSD_BOOTSTRAP_CODE مضبوطاً على الخادم. لا ترسل الرمز في المحادثة.',
-    bootstrapCode: 'رمز الإعداد الخادمي', displayName: 'الاسم المعروض', createCommander: 'إنشاء حساب القائد',
-    authSecure: 'جلسات آمنة · صلاحيات خادمية · لا توجد بيانات دخول تجريبية',
+    leaderLogin: 'دخول القائد', memberLogin: 'دخول الأفراد', militaryCode: 'الكود العسكري',
+    masterPassword: 'كلمة السر الرئيسية', masterPasswordHint: '12 حرفاً على الأقل',
+    firstSetupRequired: 'تأسيس حساب القائد الأول', setupHint: 'يتطلب رمز تأسيس سرياً مضبوطاً على الخادم وكود القائد المسجل.',
+    bootstrapCode: 'رمز تأسيس الخادم', confirmPassword: 'تأكيد كلمة السر',
+    createLeader: 'حفظ كلمة السر وتأسيس القائد', setupLeaderAction: 'تأسيس حساب القائد لأول مرة',
+    setupCancel: 'العودة إلى دخول القائد', passwordMismatch: 'تأكيد كلمة السر غير مطابق.',
+    authSecure: 'جلسات آمنة · صلاحيات مستمدة من سجل الأفراد · لا توجد صلاحيات تجريبية',
     required: 'يرجى استكمال الحقول المطلوبة.', saved: 'حُفظت المسودة.', submitted: 'أُرسلت الوثيقة للمراجعة.',
     approved: 'تم اعتماد الوثيقة.', issuedMessage: 'تم توقيع الوثيقة وإصدارها.', revokedMessage: 'أُلغيت الوثيقة.',
     archivedMessage: 'أُرشفت الوثيقة.', noPermission: 'ليس لديك صلاحية لهذا الإجراء.',
@@ -94,7 +91,7 @@ const COPY = {
     verifyRevoked: 'DOCUMENT REVOKED', verifyExpired: 'DOCUMENT EXPIRED', verifyNotFound: 'DOCUMENT NOT FOUND',
     verifyFailed: 'DOCUMENT INTEGRITY CHECK FAILED', verifyUnknown: 'DOCUMENT NOT VERIFIED',
     verificationNumber: 'رقم الوثيقة', printNote: 'استخدم خيار Save as PDF في نافذة الطباعة.',
-    titleRequired: 'العنوان مطلوب.', bodyRequired: 'المحتوى مطلوب.', bootstrapCreated: 'تم إنشاء حساب القائد. سجّل الدخول.', created: 'تم إنشاء المستخدم.',
+    titleRequired: 'العنوان مطلوب.', bodyRequired: 'المحتوى مطلوب.', bootstrapCreated: 'تم تأسيس حساب القائد. سجّل الدخول؛ كلمة السر لا تُعرض مرة أخرى.', created: 'تم إنشاء المستخدم.',
     loginFailed: 'تعذر تسجيل الدخول.', setupUnavailable: 'الإعداد الأولي غير متاح. تحقّق من إعداد الخادم.',
     expiryInvalid: 'تاريخ الانتهاء غير صالح.', showIdentity: 'اسم الموقّع ظاهر وفق صلاحيتك.',
     publicSigner: 'AUTHORIZED COMMAND', fileNo: 'رقم الوثيقة', more: 'المزيد',
@@ -145,8 +142,8 @@ const COPY = {
     expiredHint: 'The document has expired', missingHint: 'No matching record exists',
     verificationPrivacy: 'The public verification page does not expose content or the signer’s real name.',
     auditTitle: 'Audit Trail', noAudit: 'No events available', auditHint: 'Viewing this register requires audit permission.',
-    usersTitle: 'System Users & Permissions', addUser: 'Add User',
-    usersCopy: 'API permissions are enforced server-side. Hiding UI controls is not authorization.',
+    usersTitle: 'System Users & Permissions', addUser: 'Add User', refreshUsers: 'Refresh Accounts',
+    usersCopy: 'Roles and clearance come from personnel records; they cannot be created or changed here.',
     privacyTitle: 'Signer Identity Privacy',
     privacyCopy: 'Signer identity is kept in the issue record, but responses conceal the real name unless the viewer has VIEW_SIGNER_IDENTITY.',
     signatureModel: 'Signature Model', recordModel: 'Version Record', auditModel: 'Audit Record',
@@ -157,10 +154,13 @@ const COPY = {
     signerSignatureAlt: 'Issuer handwritten signature', signatureRecorded: 'Handwritten signature recorded at issue',
     footerNote: 'Independent records · Verify access before sharing', signIn: 'Sign In', firstSetup: 'Initial Setup',
     authSubtitle: 'Official Sector Documents System', username: 'Username', password: 'Password',
-    firstSetupRequired: 'Create the first system commander',
-    setupHint: 'OSD_BOOTSTRAP_CODE must be configured on the server. Never send the code in chat.',
-    bootstrapCode: 'Server Setup Code', displayName: 'Display Name', createCommander: 'Create Commander Account',
-    authSecure: 'Secure sessions · server-side authorization · no demo credentials',
+    leaderLogin: 'Leader Login', memberLogin: 'Personnel Login', militaryCode: 'Military Code',
+    masterPassword: 'Master Password', masterPasswordHint: 'At least 12 characters',
+    firstSetupRequired: 'Set up the primary leader account', setupHint: 'A server-side setup code and the registered chief’s military code are required.',
+    bootstrapCode: 'Server Setup Code', confirmPassword: 'Confirm Master Password',
+    createLeader: 'Save Password & Set Up Leader', setupLeaderAction: 'First-time Leader Setup',
+    setupCancel: 'Back to Leader Login', passwordMismatch: 'The password confirmation does not match.',
+    authSecure: 'Secure sessions · permissions derived from personnel records · no demo roles',
     required: 'Complete the required fields.', saved: 'Draft saved.', submitted: 'Document submitted for review.',
     approved: 'Document approved.', issuedMessage: 'Document signed and issued.', revokedMessage: 'Document revoked.',
     archivedMessage: 'Document archived.', noPermission: 'You are not authorized for this action.',
@@ -178,7 +178,7 @@ const COPY = {
     verifyFailed: 'DOCUMENT INTEGRITY CHECK FAILED', verifyUnknown: 'DOCUMENT NOT VERIFIED',
     verificationNumber: 'Document Number', printNote: 'Choose Save as PDF in the print dialog.',
     titleRequired: 'A title is required.', bodyRequired: 'Document content is required.', created: 'User created.',
-    bootstrapCreated: 'Commander account created. Sign in.', loginFailed: 'Sign-in failed.',
+    bootstrapCreated: 'Leader account set up. Sign in; the password will not be shown again.', loginFailed: 'Sign-in failed.',
     setupUnavailable: 'Initial setup is unavailable. Check server configuration.', expiryInvalid: 'Invalid expiry date.',
     showIdentity: 'Signer identity is visible at your permission level.', publicSigner: 'AUTHORIZED COMMAND',
     fileNo: 'DOCUMENT NO.', more: 'More', centerEyebrow: 'OFFICIAL DOCUMENTS CENTER',
@@ -316,7 +316,7 @@ function updateClock() {
 
 function showAuth(show) {
   $('#authScreen').hidden = !show;
-  if (show) $('#loginUsername').focus();
+  if (show) $('#leaderMilitaryCode').focus();
 }
 
 function setPage(page) {
@@ -991,15 +991,15 @@ async function showVersions(id) {
 async function loadUsers() {
   if (!can('MANAGE_USERS')) {
     $('#userList').innerHTML = `<div class="empty-state visible"><b>${escapeHtml(t('noPermission'))}</b></div>`;
-    $('#addUserButton').hidden = true;
+    $('#refreshUsersButton').hidden = true;
     return;
   }
-  $('#addUserButton').hidden = false;
+  $('#refreshUsersButton').hidden = false;
   try {
     const result = await request('/users');
     $('#userList').innerHTML = (result.users || []).map((user) => `<div class="user-row">
-      <span><strong>${escapeHtml(user.display_name)}</strong><small>${escapeHtml(user.username)}</small></span>
-      <select aria-label="Role" data-action="changeUserRole" data-id="${escapeHtml(user.id)}">${Object.keys(ROLE_PERMISSIONS).map((role) => `<option value="${role}" ${role === user.role ? 'selected' : ''}>${role}</option>`).join('')}</select>
+      <span><strong>${escapeHtml(user.display_name || user.military_code || '—')}</strong><small>${escapeHtml(user.military_code || 'UNLINKED')} · ${escapeHtml(user.rank || '—')}</small></span>
+      <span class="user-role">${escapeHtml(user.role)}</span>
       <span class="user-clearance">${escapeHtml(user.clearance)}</span>
       <button class="row-action" data-action="toggleUser" data-id="${escapeHtml(user.id)}" data-enabled="${user.enabled}" aria-label="Toggle access">${user.enabled ? '●' : '○'}</button>
     </div>`).join('') || `<div class="empty-state visible"><b>${escapeHtml(t('noUsers'))}</b></div>`;
@@ -1008,43 +1008,9 @@ async function loadUsers() {
   }
 }
 
-function openUserForm() {
-  if (!can('MANAGE_USERS')) return toast(t('noPermission'), 'error');
-  if ($('#newUserForm')) return $('#newUserForm').remove();
-  const form = document.createElement('form');
-  form.id = 'newUserForm';
-  form.className = 'user-form';
-  form.innerHTML = `<label>${escapeHtml(t('displayName'))}<input name="displayName" required maxlength="120"></label>
-    <label>${escapeHtml(t('username'))}<input name="username" required minlength="3" maxlength="60"></label>
-    <label>${escapeHtml(t('password'))}<input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
-    <label>${escapeHtml(t('role'))}<select name="role">${Object.keys(ROLE_PERMISSIONS).map((role) => `<option value="${role}">${role}</option>`).join('')}</select></label>
-    <label>${escapeHtml(t('clearanceLabel'))}<select name="clearance">${CLASSIFICATIONS.map((classification) => `<option>${classification}</option>`).join('')}</select></label>
-    <button class="button button-primary" type="submit">${escapeHtml(t('createUser'))}</button>`;
-  $('#userList').before(form);
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(form).entries());
-    try {
-      await request('/users', { method: 'POST', body: JSON.stringify({
-        ...values, clearance: values.clearance || 'INTERNAL',
-        permissions: ROLE_PERMISSIONS[values.role] || ROLE_PERMISSIONS.AGENT
-      }) });
-      form.remove();
-      await loadUsers();
-      toast(t('created'));
-    } catch (error) { toast(error.message, 'error'); }
-  });
-}
-
-async function userAction(action, target, value) {
+async function userAction(target, value) {
   try {
-    if (action === 'changeUserRole') {
-      const permissions = ROLE_PERMISSIONS[value] || ROLE_PERMISSIONS.AGENT;
-      const clearance = value === 'AGENT' ? 'INTERNAL' : value === 'SENIOR' ? 'SECRET' : 'TOP SECRET';
-      await request(`/users/${encodeURIComponent(target)}`, { method: 'PATCH', body: JSON.stringify({ role: value, permissions, clearance }) });
-    } else {
-      await request(`/users/${encodeURIComponent(target)}`, { method: 'PATCH', body: JSON.stringify({ enabled: value !== 'true' }) });
-    }
+    await request(`/users/${encodeURIComponent(target)}`, { method: 'PATCH', body: JSON.stringify({ enabled: value !== 'true' }) });
     await loadUsers();
     toast(t('save'));
   } catch (error) { toast(error.message, 'error'); }
@@ -1058,10 +1024,25 @@ function useTemplate(type) {
 }
 
 function showAuthTab(tab) {
-  $$('.auth-tabs button').forEach((button) => button.classList.toggle('active', button.dataset.authTab === tab));
-  $('#loginForm').hidden = tab !== 'login';
-  $('#bootstrapForm').hidden = tab !== 'bootstrap';
+  const selected = tab === 'setup' ? 'leader' : tab;
+  $$('.auth-tabs button').forEach((button) => {
+    const active = button.dataset.authTab === selected;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('#memberLoginForm').hidden = tab !== 'member';
+  $('#leaderLoginForm').hidden = tab !== 'leader';
+  $('#bootstrapForm').hidden = tab !== 'setup';
   $('#authMessage').textContent = '';
+  if (tab !== 'leader') $('#leaderPassword').value = '';
+  if (tab !== 'setup') {
+    $('#bootstrapCode').value = '';
+    $('#bootstrapPassword').value = '';
+    $('#bootstrapPasswordConfirm').value = '';
+  }
+  if (tab === 'member') $('#memberMilitaryCode').focus();
+  else if (tab === 'setup') $('#bootstrapMilitaryCode').focus();
+  else $('#leaderMilitaryCode').focus();
 }
 
 async function showShareDocument(token) {
@@ -1110,7 +1091,7 @@ async function authenticate() {
     $('#userRole').textContent = state.user.role.replaceAll('_', ' ');
     $('#clearanceLabel').textContent = `${state.user.clearance} CLEARANCE`;
     $('#topSector').textContent = 'LOS SANTOS SECTOR';
-    $('#bootstrapTab').hidden = true;
+    $('#bootstrapAction').hidden = true;
     [...$('#docClassification').options].forEach((option) => {
       option.disabled = CLASSIFICATIONS.indexOf(option.value) > CLASSIFICATIONS.indexOf(state.user.clearance);
     });
@@ -1124,10 +1105,9 @@ async function authenticate() {
     try {
       const setup = await request('/bootstrap/status');
       state.bootstrapNeeded = setup.needed;
-      $('#bootstrapTab').hidden = !setup.needed;
+      $('#bootstrapAction').hidden = !(setup.needed && setup.configured);
       if (setup.needed && !setup.configured) {
         $('#authMessage').textContent = t('setupUnavailable');
-        $('#bootstrapTab').disabled = true;
       }
     } catch (statusError) {
       $('#authMessage').textContent = statusError.message;
@@ -1135,33 +1115,70 @@ async function authenticate() {
   }
 }
 
-$('#loginForm').addEventListener('submit', async (event) => {
+$('#memberLoginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('#authMessage').textContent = '';
   try {
     await request('/auth/login', { method: 'POST', body: JSON.stringify({
-      username: $('#loginUsername').value,
-      password: $('#loginPassword').value
+      mode: 'member',
+      militaryCode: $('#memberMilitaryCode').value
     }) });
     await authenticate();
   } catch (error) { $('#authMessage').textContent = error.message || t('loginFailed'); }
 });
 
+$('#leaderLoginForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  $('#authMessage').textContent = '';
+  const password = $('#leaderPassword').value;
+  try {
+    await request('/auth/login', { method: 'POST', body: JSON.stringify({
+      mode: 'leader',
+      militaryCode: $('#leaderMilitaryCode').value,
+      password
+    }) });
+    $('#leaderPassword').value = '';
+    await authenticate();
+  } catch (error) {
+    $('#leaderPassword').value = '';
+    $('#authMessage').textContent = error.message || t('loginFailed');
+  }
+});
+
 $('#bootstrapForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('#authMessage').textContent = '';
+  const password = $('#bootstrapPassword').value;
+  const confirmPassword = $('#bootstrapPasswordConfirm').value;
+  if (password !== confirmPassword) {
+    $('#authMessage').textContent = t('passwordMismatch');
+    return;
+  }
   try {
     await request('/bootstrap', { method: 'POST', body: JSON.stringify({
       bootstrapCode: $('#bootstrapCode').value,
-      displayName: $('#bootstrapName').value,
-      username: $('#bootstrapUsername').value,
-      password: $('#bootstrapPassword').value
+      militaryCode: $('#bootstrapMilitaryCode').value,
+      masterPassword: password,
+      confirmPassword
     }) });
-    showAuthTab('login');
-    $('#loginUsername').value = $('#bootstrapUsername').value;
-    toast(t('bootstrapCreated'));
-  } catch (error) { $('#authMessage').textContent = error.message; }
+    $('#leaderMilitaryCode').value = $('#bootstrapMilitaryCode').value;
+    $('#bootstrapCode').value = '';
+    $('#bootstrapPassword').value = '';
+    $('#bootstrapPasswordConfirm').value = '';
+    state.bootstrapNeeded = false;
+    $('#bootstrapAction').hidden = true;
+    showAuthTab('leader');
+    $('#authMessage').textContent = t('bootstrapCreated');
+  } catch (error) {
+    $('#bootstrapCode').value = '';
+    $('#bootstrapPassword').value = '';
+    $('#bootstrapPasswordConfirm').value = '';
+    $('#authMessage').textContent = error.message;
+  }
 });
+
+$('#bootstrapAction').addEventListener('click', () => showAuthTab('setup'));
+$('#setupCancel').addEventListener('click', () => showAuthTab('leader'));
 
 $('#documentForm').addEventListener('submit', saveDraft);
 $('#verifyForm').addEventListener('submit', (event) => {
@@ -1209,7 +1226,7 @@ document.addEventListener('click', async (event) => {
       await printDocument(result.document, { includeShareLink: true });
     } else if (action === 'showAudit') await loadAudit(id);
     else if (action === 'showVersions') await showVersions(id);
-    else if (action === 'openUserForm') openUserForm();
+    else if (action === 'refreshUsers') await loadUsers();
     else if (action === 'resetFilters') {
       $('#archiveSearch').value = '';
       $('#filterType').value = '';
@@ -1220,7 +1237,7 @@ document.addEventListener('click', async (event) => {
     else if (action === 'previewDraft') {
       renderPreview();
       toast(t('previewDraft'));
-    } else if (action === 'toggleUser') await userAction(action, id, target.dataset.enabled);
+    } else if (action === 'toggleUser') await userAction(id, target.dataset.enabled);
     else if (action === 'verifyShared') {
       $('#documentModal').hidden = true;
       state.publicMode = false;
@@ -1243,12 +1260,6 @@ document.addEventListener('keydown', (event) => {
     $('#signatureModal').hidden = true;
   }
 });
-
-document.addEventListener('change', async (event) => {
-  const target = event.target.closest('[data-action="changeUserRole"]');
-  if (target) await userAction('changeUserRole', target.dataset.id, target.value);
-});
-
 
 initSelects();
 renderTemplates();

@@ -77,7 +77,19 @@ app.use((req, res, next) => {
   if (/^\/cia-data\.json(?:\.tmp)?$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
-const osdRouter = createOsdRouter({ getPool: () => postgresPool });
+const osdRouter = createOsdRouter({
+  getPool: () => postgresPool,
+  getPersonnel: () => state.cia_users.map((person) => ({
+    id: person.id,
+    militaryCode: clean(person.publicCode, 100).toUpperCase(),
+    displayName: clean(person.identity?.fullName || person.name || '', 120),
+    rank: normalizeRank(person.rank),
+    active: person.approved !== false &&
+      person.serviceApproved !== false &&
+      person.suspended !== true &&
+      person.securityStatus === 'ACTIVE'
+  }))
+});
 const osdPublicFiles = new Set([
   '/', '/index.html', '/styles.css', '/app.js', '/qr-code.js',
   '/share.html', '/share.css', '/share.js'

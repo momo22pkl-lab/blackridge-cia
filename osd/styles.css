@@ -408,6 +408,7 @@ tbody tr:hover td { background: rgba(255,255,255,.018); }
 .auth-form label { display: grid; gap: 5px; color: #a2adb6; font-size: 9px; }
 .auth-form input { height: 35px; padding: 0 10px; }
 .auth-submit { width: 100%; margin-top: 2px; }
+.auth-setup-link { min-height: 40px; }
 .setup-warning { display: grid; gap: 5px; padding: 9px; border: 1px solid rgba(209,174,105,.17); border-radius: 4px; color: #d2b975; background: rgba(209,174,105,.035); }
 .setup-warning b { font-size: 9px; }
 .setup-warning span { color: #87929c; font-size: 8px; line-height: 1.6; }
@@ -713,6 +714,20 @@ html[dir="ltr"] .paper-preview { direction: ltr; }
 }
 
 @media screen and (max-width: 650px) {
+  .auth-screen {
+    align-items: start;
+    overflow-y: auto;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  }
+  .auth-card {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    margin: auto 0;
+    padding: 19px;
+  }
+  .auth-tabs button { min-height: 42px; font-size: 12px; }
+  .auth-form input { height: 46px; font-size: 16px; }
+  .auth-submit { min-height: 44px; }
   .workspace { display: block; }
   .sidebar {
     width: 100%;

@@ -4,10 +4,12 @@
   const $ = (selector) => document.querySelector(selector);
   const token = new URLSearchParams(location.search).get('token') || '';
   const arabic = /^ar\b/i.test(navigator.language || '');
+  let loginMode = 'member';
   const labels = arabic ? {
     lang: 'ar', direction: 'rtl', access: 'رابط وثيقة آمن', loginTitle: 'سجّل الدخول لمشاهدة الوثيقة الداخلية',
-    loginDescription: 'تتطلب هذه الوثيقة حساب OSD وصلاحية التصنيف المناسبة.', username: 'اسم المستخدم',
-    password: 'كلمة المرور', signIn: 'تسجيل الدخول', invalid: 'رابط المشاركة غير صالح أو انتهت صلاحيته أو تم إلغاؤه.',
+    loginDescription: 'تتطلب هذه الوثيقة كوداً عسكرياً مسجلاً وتصريحاً مناسباً.', code: 'الكود العسكري',
+    memberLogin: 'دخول الأفراد', leaderLogin: 'دخول القائد', password: 'كلمة السر الرئيسية',
+    signIn: 'تسجيل الدخول', invalid: 'رابط المشاركة غير صالح أو انتهت صلاحيته أو تم إلغاؤه.',
     denied: 'لا تملك صلاحية مشاهدة هذه الوثيقة.', loading: 'جارٍ تحميل الوثيقة…',
     valid: 'سجل الإصدار وسلامة النسخة مطابقان', openVerify: 'فتح سجل التحقق',
     expires: 'تنتهي صلاحية رابط المشاركة في',
@@ -20,8 +22,9 @@
   } : {
     lang: 'en', direction: 'ltr', access: 'SECURE DOCUMENT LINK',
     loginTitle: 'Sign in to view this internal document',
-    loginDescription: 'This document requires an OSD account with sufficient classification clearance.',
-    username: 'Username', password: 'Password', signIn: 'Sign in',
+    loginDescription: 'This document requires a registered military code with sufficient clearance.',
+    code: 'Military Code', memberLogin: 'Personnel Login', leaderLogin: 'Leader Login',
+    password: 'Master Password', signIn: 'Sign in',
     invalid: 'The share link is invalid, expired, revoked, or the document is unavailable.',
     denied: 'Your account is not authorized to view this document.', loading: 'Loading document…',
     openVerify: 'Open verification record', print: 'Print / Save PDF', expires: 'Share link expires',
@@ -38,8 +41,10 @@
   $('#accessLabel').textContent = labels.access;
   $('#loginTitle').textContent = labels.loginTitle;
   $('#loginDescription').textContent = labels.loginDescription;
-  $('#usernameLabel').textContent = labels.username;
+  $('#militaryCodeLabel').textContent = labels.code;
   $('#passwordLabel').textContent = labels.password;
+  $('#memberLoginTab').textContent = labels.memberLogin;
+  $('#chiefLoginTab').textContent = labels.leaderLogin;
   $('#loginButton').textContent = labels.signIn;
   $('#protectedNotice').querySelector('b').textContent = labels.protected;
   $('#protectedNotice').querySelector('span').textContent = labels.screenshotNotice;
@@ -58,7 +63,20 @@
     $('#loginPanel').hidden = false;
     $('#errorPanel').hidden = true;
     $('#documentFrame').hidden = true;
-    $('#loginUsername').focus();
+    $('#loginMilitaryCode').focus();
+  }
+
+  function setLoginMode(mode) {
+    loginMode = mode === 'leader' ? 'leader' : 'member';
+    const leader = loginMode === 'leader';
+    $('#memberLoginTab').classList.toggle('active', !leader);
+    $('#chiefLoginTab').classList.toggle('active', leader);
+    $('#memberLoginTab').setAttribute('aria-pressed', String(!leader));
+    $('#chiefLoginTab').setAttribute('aria-pressed', String(leader));
+    $('#leaderPasswordField').hidden = !leader;
+    $('#loginPassword').required = leader;
+    $('#loginPassword').value = '';
+    $('#loginError').textContent = '';
   }
 
   async function loadShare() {
@@ -167,8 +185,13 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: $('#loginUsername').value, password: $('#loginPassword').value })
+        body: JSON.stringify({
+          mode: loginMode,
+          militaryCode: $('#loginMilitaryCode').value,
+          ...(loginMode === 'leader' ? { password: $('#loginPassword').value } : {})
+        })
       });
+      $('#loginPassword').value = '';
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         $('#loginError').textContent = data.error || labels.loginFailed;
@@ -182,6 +205,10 @@
       $('#loginButton').disabled = false;
     }
   });
+
+  $('#memberLoginTab').addEventListener('click', () => setLoginMode('member'));
+  $('#chiefLoginTab').addEventListener('click', () => setLoginMode('leader'));
+  setLoginMode('member');
 
   $('#printButton').addEventListener('click', () => window.print());
   document.addEventListener('contextmenu', (event) => {

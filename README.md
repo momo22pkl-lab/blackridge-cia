@@ -20,7 +20,7 @@ Run npm test to check the PostgreSQL state-store adapter.
 
 ## Official Sector Documents (OSD)
 
-OSD is a separate document system at `/osd/`, with independent tables and accounts; it does not combine records with the CIA dashboard or map. It requires the PostgreSQL `DATABASE_URL` and server-side `OSD_BOOTSTRAP_CODE` (at least 24 random characters) and `OSD_SIGNING_SECRET` (at least 32 random bytes). See [the OSD setup and scope notes](osd/README.md). Never commit either secret.
+OSD is a separate document system at `/osd/`, with independent document tables and sessions; it does not combine documents with the CIA dashboard or map. OSD identities are linked to active, approved CIA personnel records and roles/clearance are derived server-side from the recorded rank. First-time chief setup requires a registered `CIA CHIEF` military code and server-side `OSD_BOOTSTRAP_CODE` (at least 24 random characters); the selected master password is stored only as a salted scrypt hash. Personnel sign in with their military code; the primary chief signs in with that code and the master password. OSD also requires `OSD_SIGNING_SECRET` (at least 32 random bytes). See [the OSD setup and scope notes](osd/README.md). Never commit either secret.
 
 ## Intelligence notification center
 

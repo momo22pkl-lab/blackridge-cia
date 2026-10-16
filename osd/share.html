@@ -21,9 +21,13 @@
       <div class="eyebrow">OSD ACCOUNT ACCESS</div>
       <h1 id="loginTitle">Sign in to view this internal document</h1>
       <p id="loginDescription">The document is protected by your OSD account and assigned clearance.</p>
+      <div class="auth-tabs" role="tablist" aria-label="Sign-in type">
+        <button type="button" id="memberLoginTab" class="active" aria-pressed="true">Personnel Login</button>
+        <button type="button" id="chiefLoginTab" aria-pressed="false">Leader Login</button>
+      </div>
       <form id="loginForm">
-        <label><span id="usernameLabel">Username</span><input id="loginUsername" autocomplete="username" required></label>
-        <label><span id="passwordLabel">Password</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <label><span id="militaryCodeLabel">Military Code</span><input id="loginMilitaryCode" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="100" required></label>
+        <label id="leaderPasswordField" hidden><span id="passwordLabel">Master Password</span><input id="loginPassword" type="password" autocomplete="current-password" minlength="12" maxlength="200"></label>
         <button type="submit" id="loginButton">Sign in</button>
       </form>
       <p class="error-message" id="loginError" role="alert"></p>
