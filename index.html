@@ -5690,80 +5690,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       });
     }
 
-    const CHAT_SECURITY_BLOCKED_TERMS = Object.freeze([
-      "كسمك",
-      "كس امك",
-      "كس",
-      "كسختك",
-      "كسعيلتك",
-      "كس اختك",
-      "زب",
-      "مص",
-      "نيك",
-      "فشخ",
-      "نكح",
-      "اركب عليه",
-      "اركب على زبي",
-      "يفضح",
-      "يفضح عرضك",
-      "يفضح عيلتك",
-      "يفضح امك",
-      "يضفح اختك",
-      "امك منيوكة",
-      "اختك منيوكة",
-      "يلعن امك",
-      "يلعن اختك",
-      "يلعن شرفك",
-      "امك",
-      "ابوك",
-      "اختك",
-      "ستك",
-      "عيلتك",
-      "يا ابن",
-      "يا ابن العرص",
-      "يامفتزح",
-      "يا مفتزح",
-      "يا شرموط",
-      "يا قحبة",
-      "قحب",
-      "شرموط",
-      "يا ابن النايمة",
-      "يفضح شرفك",
-      "ملهى ليلي",
-      "امك تمص",
-      "يلعن ابو الي خلفك عرص"
-    ]);
-
-    function normalizeChatSecurityText(value) {
-      return String(value == null ? '' : value)
-        .normalize('NFKC')
-        .toLocaleLowerCase('en')
-        .replace(/\p{Cf}/gu, '')
-        .replace(/[\u064B-\u065F\u0670]/gu, '')
-        .replace(/\u0640/gu, '')
-        .replace(/[أإآٱ]/gu, 'ا')
-        .replace(/ى/gu, 'ي')
-        .replace(/ة/gu, 'ه')
-        .replace(/\s+/gu, ' ')
-        .trim();
-    }
-
-    function hasBlockedChatTerm(value) {
-      const normalized = normalizeChatSecurityText(value);
-      return CHAT_SECURITY_BLOCKED_TERMS.some(term => {
-        const phrase = normalizeChatSecurityText(term).replace(/\s+/gu, '\\s+');
-        return new RegExp('(^|[^\\p{L}\\p{N}])' + phrase + '(?=$|[^\\p{L}\\p{N}])', 'u').test(normalized);
-      });
-    }
-
     function sendChatMessage() {
       const input = document.getElementById('chat-input');
       const text = input ? input.value.trim() : '';
       if ((!text && !chatImageBase64) || !currentUser || !ciaSocket || !ciaSocket.connected) return;
-      if (text && hasBlockedChatTerm(text)) {
-        alert('تحتوي الرسالة على ألفاظ غير مسموح بها.');
-        return;
-      }
 
       const privSel = document.getElementById('private-user-select');
       const targetUserCode = activeChatMode === 'private' && privSel ? privSel.value : null;
