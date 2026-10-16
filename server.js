@@ -1419,7 +1419,7 @@ function ibpPersonnelRecordForViewer(person, viewer) {
     : [];
   const canEditBattalion = canManageIBPBattalions(viewer) && !!person.publicCode;
   const isSelf = String(viewer?.id) === String(person?.id);
-  const canSeeName = isChief(viewer) || isSelf;
+  const canSeeName = isChief(viewer);
   const unit = ibpPersonnelBattalionFor(person);
   const record = {
     id: clean(person.id, 120),

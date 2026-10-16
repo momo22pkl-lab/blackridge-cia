@@ -211,6 +211,10 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(memberList.ok, true);
   assert.deepEqual(memberList.people.map((person) => person.publicCode).sort(), ['AG-101', 'AG-102', createResponse.person.publicCode].sort());
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').name, '');
+  assert.equal(memberList.people.find((person) => person.publicCode === 'AG-101').name, '', 'a member must not see their own name in the personnel directory');
+  const selfDetail = await member.emit('ibp:directory:detail', { id: 'alpha-1' });
+  assert.equal(selfDetail.ok, true);
+  assert.equal(selfDetail.person.name, '', 'self-detail must keep the name private outside CIA Chief');
   const forbiddenDetail = await member.emit('ibp:directory:detail', { id: 'bravo-1' });
   assert.equal(forbiddenDetail.ok, false);
   const forbiddenCreate = await member.emit('ibp:directory:save', { mode: 'create', name: 'Unauthorized Recruit', rank: 'AGENT' });
