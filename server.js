@@ -10207,6 +10207,69 @@ socket.on('member:saveIdentity', (payload, cb) => {
 );
 
 io.on('connection', (socket) => {
+  socket.on('brw:intelligence:overview', (payload, callback) => {
+    const reply = typeof callback === 'function' ? callback : () => {};
+    const actor = requireSocketUser(socket);
+    if (!actor) return reply({ ok: false, message: 'Authentication is required to view intelligence.' });
+    const rank = rankLevel(actor.rank);
+    const senior = isChief(actor) || isSenior(actor);
+    const actorCode = clean(actor.publicCode, 100).toUpperCase();
+    const allUnits = Array.isArray(state.cia_battalions) ? state.cia_battalions : [];
+    const unitInScope = (unit) => {
+      if (!unit) return false;
+      if (senior) return true;
+      if (!actorCode) return false;
+      const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+      const memberMatch = members.some((code) => clean(code, 100).toUpperCase() === actorCode);
+      if (memberMatch || clean(unit.commanderCode, 100).toUpperCase() === actorCode) return true;
+      return rank >= 2 && [unit.commanderCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === actorCode);
+    };
+    const visibleUnits = allUnits.filter((unit) => unit && String(unit.status || '').toUpperCase() !== 'ARCHIVED' && unitInScope(unit));
+    const visibleUnitIds = new Set(visibleUnits.map((unit) => String(unit.id)));
+    const classificationOrder = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
+    const classificationLevel = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, SECRET: 3, 'TOP SECRET': 4 };
+    const clearance = isChief(actor) ? 4 : isSenior(actor) ? 3 : Math.min(2, rank);
+    const classifications = classificationOrder.filter((value) => classificationLevel[value] <= clearance);
+    const records = Array.isArray(state.ibp_intelligence) ? state.ibp_intelligence : [];
+    const visibleRecords = records.filter((item) => {
+      const classification = String(item && item.classification || 'INTERNAL').replace(/_/g, ' ').toUpperCase();
+      return item && classificationLevel[classification] !== undefined && classificationLevel[classification] <= clearance && (!item.battalionId || visibleUnitIds.has(String(item.battalionId)));
+    }).sort((a, b) => String(b.createdAt || b.at || '').localeCompare(String(a.createdAt || a.at || '')));
+    const battalions = visibleUnits.map((unit) => ({
+      id: clean(unit.id, 120),
+      code: clean(unit.code || unit.name || unit.id, 48),
+      canManage: senior || (rank >= 2 && unitInScope(unit))
+    }));
+    const items = visibleRecords.slice(0, 500).map((item) => {
+      const unit = visibleUnits.find((candidate) => String(candidate.id) === String(item.battalionId));
+      return {
+        id: clean(item.id, 120),
+        title: clean(item.title, 140),
+        type: clean(item.type || 'INTELLIGENCE', 80),
+        classification: String(item.classification || 'INTERNAL').replace(/_/g, ' ').toUpperCase(),
+        battalionId: item.battalionId ? clean(item.battalionId, 120) : '',
+        battalionCode: clean(item.battalionCode || unit && (unit.code || unit.name) || '', 48),
+        summary: clean(item.summary || '', 1800),
+        authorCode: clean(item.authorCode || '', 100),
+        createdAt: item.createdAt || item.at || ''
+      };
+    });
+    const operations = (Array.isArray(state.ibp_operations) ? state.ibp_operations : []).filter((operation) => {
+      if (!operation) return false;
+      const unit = allUnits.find((candidate) => String(candidate.id) === String(operation.battalionId));
+      const members = Array.isArray(operation.memberCodes) ? operation.memberCodes : [];
+      return (unit && unitInScope(unit)) || (actorCode && members.some((code) => clean(code, 100).toUpperCase() === actorCode)) || (actorCode && clean(operation.commanderCode, 100).toUpperCase() === actorCode);
+    }).map((operation) => ({
+      id: clean(operation.id, 120),
+      status: clean(operation.status || 'PLANNED', 40).toUpperCase(),
+      priority: clean(operation.priority || 'NORMAL', 40).toUpperCase(),
+      battalionId: operation.battalionId ? clean(operation.battalionId, 120) : ''
+    }));
+    return reply({ ok: true, items, totalIntel: visibleRecords.length, operations, battalions, classifications, canCreate: rank >= 2 });
+  });
+});
+
+io.on('connection', (socket) => {
   registerIBPSocket(socket, {
     getState: () => state,
     requireSocketUser,
