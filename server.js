@@ -27,7 +27,7 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
-const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
+const { canRestoreSecurityMember, inspectMessage, normalizeMessage } = require('./security-moderation');
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
@@ -77,6 +77,30 @@ const ARABIC_PROFANITY_TERMS = Object.freeze([
   "امك تمص",
   "يلعن ابو الي خلفك عرص"
 ]);
+
+const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze([...ARABIC_PROFANITY_TERMS, 'خرا']);
+const SECURITY_BLOCKED_TERM_LIMIT = 250;
+
+function normalizeSecurityBlockedTerms(value) {
+  const terms = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(value) ? value : []) {
+    const term = normalizeMessage(String(entry == null ? '' : entry));
+    if ([...term].length < 2 || [...term].length > 80 || !/^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term)) continue;
+    if (seen.has(term)) continue;
+    seen.add(term);
+    terms.push(term);
+    if (terms.length >= SECURITY_BLOCKED_TERM_LIMIT) break;
+  }
+  return terms;
+}
+
+function getSecurityBlockedTerms() {
+  if (!state.systemConfig || typeof state.systemConfig !== 'object' || Array.isArray(state.systemConfig)) state.systemConfig = {};
+  const terms = normalizeSecurityBlockedTerms(state.systemConfig.securityBlockedTerms ?? DEFAULT_SECURITY_BLOCKED_TERMS);
+  state.systemConfig.securityBlockedTerms = terms;
+  return terms;
+}
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
@@ -229,7 +253,7 @@ const EMPTY_STATE = {
       'CIA CHIEF': SYSTEM.defaultSalary
     }
   },
-  systemConfig: {}
+  systemConfig: { securityBlockedTerms: [...DEFAULT_SECURITY_BLOCKED_TERMS] }
 };
 
 function clone(obj) {
@@ -255,7 +279,10 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     },
     systemConfig: withoutBootstrapCodes({
       ...base.systemConfig,
-      ...(parsed.systemConfig || {})
+      ...(parsed.systemConfig || {}),
+      securityBlockedTerms: normalizeSecurityBlockedTerms(
+        parsed.systemConfig?.securityBlockedTerms ?? base.systemConfig.securityBlockedTerms
+      )
     }),
     cia_chats: {
       global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
@@ -1302,7 +1329,7 @@ async function recordModerationViolation(actor, detection, channel) {
 
 async function moderateOutgoingText(actor, text, channel) {
   const configuredTerms = [
-    ARABIC_PROFANITY_TERMS.join('\n'),
+    getSecurityBlockedTerms().join('\n'),
     process.env.CIA_SECURITY_BLOCKED_TERMS || ''
   ].filter(Boolean).join('\n');
   const detection = inspectMessage(text, configuredTerms);
@@ -2899,6 +2926,7 @@ io.on(
         const counts = await notificationsStore.countsForUser(actor.id);
         const response = {
           ok: true,
+          ...(isChief(actor) ? { blockedTerms: getSecurityBlockedTerms() } : {}),
           incidents: state.cia_security_incidents
             .filter((incident) => securityIncidentCanBeViewed(incident, actor))
             .slice(0, 300)
@@ -2912,6 +2940,58 @@ io.on(
         console.error('[BLACK RIDGE] Security center read failed:', error.message);
         return no(cb, 'تعذر تحميل سجل الأمن.');
       }
+    });
+
+    socket.on('security:manageBlockedTerm', async (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) {
+        const incident = recordSecurityEvent({
+          actor,
+          target: actor,
+          action: 'UNAUTHORIZED_DICTIONARY_EDIT',
+          type: 'ACCESS_CONTROL',
+          level: 3,
+          reason: 'ONLY_CIA_CHIEF_CAN_EDIT_PROFANITY_DICTIONARY',
+          status: 'BLOCKED'
+        });
+        await notifySecurityLeadership(incident);
+        return no(cb, 'إدارة معجم الكلمات متاحة لـ CIA CHIEF فقط.');
+      }
+
+      const action = String(payload?.action || '').trim().toLowerCase();
+      const term = normalizeMessage(String(payload?.term || ''));
+      if (!['add', 'remove'].includes(action)) return no(cb, 'اختر إضافة كلمة أو إزالتها.');
+      if ([...term].length < 2 || [...term].length > 80 || !/^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term)) {
+        return no(cb, 'اكتب كلمة أو عبارة من حرفين إلى 80 حرفًا، من دون رموز.');
+      }
+
+      const current = getSecurityBlockedTerms();
+      const exists = current.includes(term);
+      let updated;
+      if (action === 'add') {
+        if (exists) return ok(cb, { ok: true, action, blockedTerms: current, message: 'هذه الكلمة موجودة بالفعل في المعجم.' });
+        if (current.length >= SECURITY_BLOCKED_TERM_LIMIT) return no(cb, 'وصل المعجم إلى الحد الأقصى للكلمات.');
+        updated = [...current, term];
+      } else {
+        if (!exists) return no(cb, 'الكلمة غير موجودة في المعجم.');
+        updated = current.filter((entry) => entry !== term);
+      }
+
+      state.systemConfig.securityBlockedTerms = updated;
+      try {
+        await saveState();
+      } catch (error) {
+        state.systemConfig.securityBlockedTerms = current;
+        console.error('[BLACK RIDGE] Failed to save profanity dictionary:', error.message);
+        return no(cb, 'تعذر حفظ التغيير في معجم الكلمات.');
+      }
+      return ok(cb, {
+        ok: true,
+        action,
+        blockedTerms: updated,
+        message: action === 'add' ? 'تمت إضافة الكلمة إلى المعجم.' : 'تمت إزالة الكلمة من المعجم.'
+      });
     });
 
     socket.on('security:suspendMember', async (payload, cb) => {
