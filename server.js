@@ -1144,7 +1144,10 @@ function securityEventForViewer(incident, viewer) {
     result.actorRank = incident.actorRank || '';
     result.severity = incident.severity;
     if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
-    result.reason = incident.reason;
+    const suspendedMember = incident.type === 'MANUAL_REVIEW' && incident.action === 'MEMBER_SUSPENDED'
+      ? state.cia_users.find((user) => user.id === incident.userId)
+      : null;
+    result.reason = redactSecurityReason(incident.reason || suspendedMember?.suspensionReason || '');
   }
   return result;
 }
@@ -3039,16 +3042,17 @@ io.on(
         item.actorId === actor.id &&
         item.type === 'MANUAL_REVIEW' &&
         item.action === 'MEMBER_SUSPENDED' &&
-        !item.securityCenterHiddenAt &&
-        !!item.reason
+        !item.securityCenterHiddenAt
       );
       if (!incident) return no(cb, 'السبب غير موجود أو لا تملك صلاحية حذفه.');
 
-      const originalReason = incident.reason;
+      const target = state.cia_users.find((user) => user.id === incident.userId) || null;
+      const originalReason = incident.reason || target?.suspensionReason || '';
+      if (!originalReason) return no(cb, 'لا يوجد سبب محفوظ لهذا السجل.');
+
       incident.reason = '';
       incident.reasonDeletedAt = now();
       incident.reasonDeletedBy = actor.id;
-      const target = state.cia_users.find((user) => user.id === incident.userId) || null;
       if (target && target.suspensionReason === originalReason) target.suspensionReason = '';
       addAuditLog(
         'حذف سبب إيقاف أمني من مركز الأمن',
