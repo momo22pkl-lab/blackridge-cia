@@ -28,7 +28,7 @@ const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
 const { canRestoreSecurityMember, inspectMessage } = require('./security-moderation');
-const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike } = require('./profanity-strikes');
+const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
@@ -2928,6 +2928,7 @@ io.on(
       target.securityStatus = 'ACTIVE';
       target.suspended = false;
       target.suspensionReason = '';
+      resetProfanityStrikes(target);
       target.activeService = false;
       target.online = false;
       target.radioOnline = false;
@@ -9152,6 +9153,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       target.activeService = false;
       target.suspended = false;
       target.suspensionReason = '';
+      resetProfanityStrikes(target);
       target.status = 'خارج الخدمة';
       const incident = recordSecurityEvent({
         actor,
