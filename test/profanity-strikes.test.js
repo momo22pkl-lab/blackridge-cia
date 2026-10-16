@@ -6,7 +6,8 @@ const {
   STRIKE_MESSAGES,
   isProfanityDetection,
   normalizeProfanityStrikes,
-  registerProfanityStrike
+  registerProfanityStrike,
+  resetProfanityStrikes
 } = require('../profanity-strikes');
 
 test('profanity detection types use the dedicated strike flow, not threat types', () => {
@@ -70,4 +71,24 @@ test('normalized strike counts survive JSON persistence and invalid values reset
   assert.equal(normalizeProfanityStrikes(-3), 0);
   assert.equal(normalizeProfanityStrikes('not-a-number'), 0);
   assert.equal(normalizeProfanityStrikes(Infinity), 0);
+});
+
+
+test('restoring a member resets the profanity counter for a fresh three-strike cycle', () => {
+  const user = {
+    profanityStrikes: 3,
+    securityViolationCount: 4,
+    securityStatus: 'ACTIVE',
+    suspended: false
+  };
+
+  assert.equal(resetProfanityStrikes(user), 0);
+  assert.equal(user.profanityStrikes, 0);
+  assert.equal(user.securityViolationCount, 4);
+  assert.equal(user.securityStatus, 'ACTIVE');
+  assert.equal(user.suspended, false);
+
+  const nextStrike = registerProfanityStrike(user);
+  assert.equal(nextStrike.count, 1);
+  assert.equal(nextStrike.separated, false);
 });
