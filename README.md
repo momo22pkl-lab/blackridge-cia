@@ -18,6 +18,10 @@ Before claiming the first CIA CHIEF, set `CIA_CHIEF_REGISTRATION_CODE` and `CIA_
 Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
 Run npm test to check the PostgreSQL state-store adapter.
 
+## Field reports
+
+The main CIA dashboard's field-report deletion and image-download requirements are documented in [docs/field-report-requirements.md](docs/field-report-requirements.md). These requirements are separate from the signed OSD document workspace below.
+
 ## Official Sector Documents (OSD)
 
 OSD is a separate document system at `/osd/`, with independent document tables and sessions; it does not combine documents with the CIA dashboard or map. OSD identities are linked to active, approved CIA personnel records and roles/clearance are derived server-side from the recorded rank. First-time chief setup requires a registered `CIA CHIEF` military code and server-side `OSD_BOOTSTRAP_CODE` (at least 24 random characters); the selected master password is stored only as a salted scrypt hash. Personnel sign in with their military code; the primary chief signs in with that code and the master password. OSD also requires `OSD_SIGNING_SECRET` (at least 32 random bytes). See [the OSD setup and scope notes](osd/README.md). Never commit either secret.
