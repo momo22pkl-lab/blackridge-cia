@@ -1,6 +1,6 @@
 # OSD — Official Sector Documents
 
-OSD is a standalone document workspace served at `/osd/` with its own API at `/api/osd/`. It does not read or write IBP documents, maps, or application-state JSON.
+OSD is a separate document workspace served at `/osd/` with its own API at `/api/osd/`. It keeps its document, approval, verification, audit, and share records in OSD tables, while authenticating people against the active CIA personnel records in the main application.
 
 ## Server configuration
 
@@ -16,13 +16,15 @@ openssl rand -hex 24
 openssl rand -hex 32
 ```
 
-Add the generated values as deployment secrets/environment variables. Do not put them in source control, browser code, or a support message. Visit `/osd/` and use **Initial Setup** once to create the first OSD commander. The bootstrap code is not stored in the database; after the first account is created, the bootstrap endpoint is permanently closed.
+Add the generated values as deployment secrets/environment variables. Do not put them in source control, browser code, or a support message. Visit `/osd/` and use **First-time Leader Setup** once with the military code of the registered, active `CIA CHIEF` and a new master password (12–200 characters). The setup code is not stored in the database. The password is stored as a salted scrypt hash; the setup endpoint cannot be used again after a primary chief account is established, and there is no in-app password reset or replacement route.
+
+Members and other registered leadership accounts sign in with their military code only. OSD will reject codes that are not linked to an active, approved personnel record. Only the provisioned primary `CIA CHIEF` account receives `ADMIN` and user-management permissions; other roles and clearances are derived from the personnel record's rank. An OSD user can enable or disable access, but cannot change a rank, role, clearance, or permission through the browser.
 
 Without PostgreSQL, the OSD API fails closed and does not create documents. Without `OSD_SIGNING_SECRET`, existing records can be read, but signed issue actions are disabled and verification reports that the document cannot be verified.
 
 ## Included workflow
 
-- Separate OSD accounts, role-based clearance, individual server-enforced permissions, password hashing, expiring HttpOnly sessions, same-origin writes, and login throttling.
+- Separate OSD document storage, personnel-linked identities, rank-derived clearance and server-enforced permissions, a hashed primary-chief password, expiring HttpOnly sessions, same-origin writes, and login throttling.
 - Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, expiring and revocable share links, and public verification.
 - Dedicated share viewer links that open the document directly. Anonymous links are restricted to `PUBLIC` documents; internal links require an active OSD session, `VIEW_DOCUMENTS`, and sufficient server-checked clearance.
 - Protected viewing hides print/download controls, suppresses ordinary copy/selection actions, and can display a recipient watermark. These browser-side measures reduce casual copying but cannot prevent screenshots, photographs, or browser-level access.
@@ -36,7 +38,7 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 ## Current boundaries
 
 - A scannable QR code is generated locally from the public verification URL. Public verification reveals only status and document number for classified records; public records may additionally reveal type, classification, version, and issue time. Verification never returns the document body, recipient, or real signer identity.
-- Share settings add columns to the OSD share table through the existing idempotent OSD schema initialization. No production database is changed by this source branch; a server startup after deployment will apply the schema additions.
+- OSD identity columns and indexes are added through idempotent schema initialization. These changes preserve existing document, approval, verification, audit, and share rows; startup after deployment applies the additive identity migration.
 - PDF output uses the browser's print-to-PDF pipeline, not a server-side PDF renderer.
 - The handwritten image records the signer's drawn mark; the server HMAC proves that the stored issued snapshot has not changed, but neither mechanism is a government digital signature or a legal-identity verification service.
 - Hash chaining and database triggers make version/audit mutation detectable within the application. A database owner can still alter database structure or secrets; this is not a compliance certification or protection against a fully compromised host.
@@ -44,4 +46,4 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 
 ## Checks
 
-Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, public/internal share policy, expiry and revocation decisions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Database-backed login/logout and live browser print rendering require an isolated test database and browser; they are not exercised by these unit tests.
+Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, one-time chief setup, hashed master-password storage, leader and military-code login, invalid and inactive codes, role escalation rejection, public/internal share policy, expiry and revocation decisions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Authentication routes are exercised against a database test double; production PostgreSQL contents and live browser rendering require separate live-environment checks.

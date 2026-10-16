@@ -27,11 +27,11 @@ const ROLE_DEFAULTS = Object.freeze({
   },
   COMMANDER: {
     clearance: 'TOP SECRET',
-    permissions: [...ALL_PERMISSIONS.filter((permission) => permission !== 'MANAGE_USERS' && permission !== 'VIEW_REAL_SIGNER_IDENTITY'), 'MANAGE_USERS']
+    permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'MANAGE_USERS' && permission !== 'VIEW_REAL_SIGNER_IDENTITY')
   },
   ADMIN: {
     clearance: 'TOP SECRET',
-    permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'VIEW_REAL_SIGNER_IDENTITY')
+    permissions: [...ALL_PERMISSIONS]
   }
 });
 const SESSION_HOURS = 8;
@@ -48,10 +48,24 @@ CREATE TABLE IF NOT EXISTS osd_users (
   role TEXT NOT NULL CHECK (role IN ('AGENT','SENIOR','COMMANDER','ADMIN')),
   clearance TEXT NOT NULL CHECK (clearance IN ('PUBLIC','INTERNAL','CONFIDENTIAL','SECRET','TOP SECRET')),
   permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  military_code TEXT,
+  personnel_id TEXT,
+  is_primary_chief BOOLEAN NOT NULL DEFAULT FALSE,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS military_code TEXT;
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS personnel_id TEXT;
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS is_primary_chief BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE osd_users ALTER COLUMN password_salt DROP NOT NULL;
+ALTER TABLE osd_users ALTER COLUMN password_hash DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS osd_users_military_code_idx
+  ON osd_users(military_code) WHERE military_code IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS osd_users_personnel_id_idx
+  ON osd_users(personnel_id) WHERE personnel_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS osd_users_primary_chief_idx
+  ON osd_users(is_primary_chief) WHERE is_primary_chief = TRUE;
 CREATE TABLE IF NOT EXISTS osd_sessions (
   token_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES osd_users(id) ON DELETE CASCADE,
@@ -276,6 +290,39 @@ function validPassword(value) {
   return typeof value === 'string' && value.length >= 12 && value.length <= 200;
 }
 
+function normalizeMilitaryCode(value) {
+  return cleanText(value, 100).toUpperCase();
+}
+
+function isEligiblePersonnel(person) {
+  return !!person &&
+    person.active !== false &&
+    person.approved !== false &&
+    person.serviceApproved !== false &&
+    person.suspended !== true &&
+    person.securityStatus !== 'SUSPENDED' &&
+    person.securityStatus !== 'SECURITY_RESTRICTED' &&
+    person.dismissed !== true;
+}
+
+function findPersonnelByCode(people, value) {
+  const wanted = normalizeMilitaryCode(value);
+  if (!wanted || wanted === 'PENDING' || !Array.isArray(people)) return null;
+  const matches = people.filter((person) =>
+    normalizeMilitaryCode(person.militaryCode || person.publicCode || person.code) === wanted);
+  return matches.length === 1 && isEligiblePersonnel(matches[0]) ? matches[0] : null;
+}
+
+function roleProfileForPersonnel(person, isPrimaryChief = false) {
+  const rank = cleanText(person?.rank, 100).toUpperCase();
+  let role = 'AGENT';
+  if (rank === 'CIA CHIEF') role = isPrimaryChief ? 'ADMIN' : 'COMMANDER';
+  else if (rank === 'SUPREME COMMANDER' || rank === 'SENIOR COMMANDER CIA') role = 'COMMANDER';
+  else if (rank === 'HIGH COMMANDER') role = 'SENIOR';
+  const profile = ROLE_DEFAULTS[role];
+  return { role, clearance: profile.clearance, permissions: [...profile.permissions] };
+}
+
 function allowedPermissions(value) {
   return Array.isArray(value) && value.every((permission) => ALL_PERMISSIONS.includes(permission))
     ? [...new Set(value)]
@@ -492,7 +539,7 @@ async function appendAudit(client, { documentId = null, actorId = null, actorLab
   );
 }
 
-function createOsdRouter({ getPool, env = process.env } = {}) {
+function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env } = {}) {
   const express = require('express');
   const router = express.Router();
   let schemaPromise = null;
@@ -541,6 +588,143 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
 
   router.use(sameOrigin);
 
+  function personnelRoster() {
+    const people = typeof getPersonnel === 'function' ? getPersonnel() : [];
+    return Array.isArray(people) ? people : [];
+  }
+
+  function personnelForAccount(account) {
+    const people = personnelRoster();
+    const byId = account?.personnel_id
+      ? people.find((person) => String(person.id || '') === String(account.personnel_id))
+      : null;
+    if (account?.personnel_id) return isEligiblePersonnel(byId) ? byId : null;
+    return findPersonnelByCode(people, account?.military_code);
+  }
+
+  function publicUser(account, person) {
+    const militaryCode = normalizeMilitaryCode(person?.militaryCode || person?.publicCode || person?.code);
+    const profile = roleProfileForPersonnel(person, account?.is_primary_chief === true);
+    return {
+      id: account.id,
+      username: account.username,
+      militaryCode,
+      displayName: cleanText(person?.displayName || person?.name || account.display_name, 120),
+      rank: cleanText(person?.rank, 100).toUpperCase(),
+      role: profile.role,
+      clearance: profile.clearance,
+      permissions: profile.permissions,
+      enabled: account.enabled === true
+    };
+  }
+
+  async function findAccountForPersonnel(client, person) {
+    const personnelId = String(person.id || '');
+    const militaryCode = normalizeMilitaryCode(person.militaryCode || person.publicCode || person.code);
+    const linked = await client.query(
+      `SELECT * FROM osd_users
+       WHERE personnel_id = $1 OR military_code = $2
+       ORDER BY CASE WHEN personnel_id = $1 THEN 0 ELSE 1 END LIMIT 2`,
+      [personnelId, militaryCode]
+    );
+    if (linked.rows.length > 1) {
+      throw Object.assign(new Error('This military code is linked to conflicting document accounts.'), { status: 409 });
+    }
+    if (linked.rows.length) {
+      const account = linked.rows[0];
+      if (account.personnel_id && String(account.personnel_id) !== personnelId) {
+        throw Object.assign(new Error('This military code is already linked to a different personnel record.'), { status: 409 });
+      }
+      return account;
+    }
+    const legacy = await client.query(
+      `SELECT * FROM osd_users
+       WHERE LOWER(username) = LOWER($1) AND military_code IS NULL AND personnel_id IS NULL LIMIT 1`,
+      [militaryCode]
+    );
+    return legacy.rows[0] || null;
+  }
+
+  async function linkPersonnelAccount(pool, person, options = {}) {
+    const personnelId = String(person?.id || '');
+    const militaryCode = normalizeMilitaryCode(person?.militaryCode || person?.publicCode || person?.code);
+    if (!personnelId || !militaryCode || !isEligiblePersonnel(person)) {
+      throw Object.assign(new Error('This military code is not attached to an active personnel account.'), { status: 401 });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (options.initializeChief) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('osd-chief-bootstrap'))");
+        const existingChief = await client.query('SELECT id FROM osd_users WHERE is_primary_chief = TRUE LIMIT 1');
+        if (existingChief.rows.length) {
+          throw Object.assign(new Error('The primary chief account has already been initialized.'), { status: 409 });
+        }
+      }
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`osd-personnel:${personnelId}`]);
+      const account = await findAccountForPersonnel(client, person);
+      const isPrimaryChief = options.initializeChief === true || account?.is_primary_chief === true;
+      const profile = roleProfileForPersonnel(person, isPrimaryChief);
+      let saved;
+      if (account) {
+        const result = await client.query(
+          `UPDATE osd_users SET military_code=$2,personnel_id=$3,display_name=$4,role=$5,
+           clearance=$6,permissions=$7::jsonb,is_primary_chief=$8,
+           password_salt=COALESCE($9,password_salt),password_hash=COALESCE($10,password_hash),
+           enabled=CASE WHEN $11 THEN TRUE ELSE enabled END,updated_at=NOW()
+           WHERE id=$1 RETURNING *`,
+          [
+            account.id, militaryCode, personnelId,
+            cleanText(person.displayName || person.name || account.display_name, 120),
+            profile.role, profile.clearance, JSON.stringify(profile.permissions), isPrimaryChief,
+            options.passwordSalt || null, options.passwordHash || null, options.initializeChief === true
+          ]
+        );
+        saved = result.rows[0];
+      } else {
+        const id = crypto.randomUUID();
+        const username = `cia-${sha256(personnelId).slice(0, 32)}`;
+        const result = await client.query(
+          `INSERT INTO osd_users
+           (id,username,display_name,password_salt,password_hash,role,clearance,permissions,
+            military_code,personnel_id,is_primary_chief,enabled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,TRUE) RETURNING *`,
+          [
+            id, username, cleanText(person.displayName || person.name || militaryCode, 120),
+            options.passwordSalt || null, options.passwordHash || null, profile.role,
+            profile.clearance, JSON.stringify(profile.permissions), militaryCode, personnelId, isPrimaryChief
+          ]
+        );
+        saved = result.rows[0];
+        await appendAudit(client, {
+          actorId: id,
+          actorLabel: profile.role,
+          action: options.initializeChief ? 'OSD PRIMARY CHIEF ACCOUNT INITIALIZED' : 'OSD PERSONNEL ACCOUNT LINKED',
+          metadata: { militaryCode, rank: cleanText(person.rank, 100).toUpperCase() }
+        });
+      }
+      if (!saved) throw new Error('The OSD personnel account could not be saved.');
+      if (options.initializeChief && account) {
+        await appendAudit(client, {
+          actorId: saved.id,
+          actorLabel: 'ADMIN',
+          action: 'OSD PRIMARY CHIEF ACCOUNT INITIALIZED',
+          metadata: { militaryCode }
+        });
+      }
+      await client.query('COMMIT');
+      return saved;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      if (error.code === '23505') {
+        throw Object.assign(new Error('This military code or personnel account is already linked.'), { status: 409 });
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async function loadUser(req, pool) {
     const cookie = String(req.headers.cookie || '').split(';').map((item) => item.trim())
       .find((item) => item.startsWith('osd_session='));
@@ -552,20 +736,19 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
     }
     if (!token || token.length > 200) return null;
     const result = await pool.query(
-      `SELECT u.id, u.username, u.display_name, u.role, u.clearance, u.permissions
+      `SELECT u.id, u.username, u.display_name, u.role, u.clearance, u.permissions,
+              u.military_code, u.personnel_id, u.is_primary_chief, u.enabled
        FROM osd_sessions s JOIN osd_users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.expires_at > NOW() AND u.enabled = TRUE`,
       [sha256(token)]
     );
     if (!result.rows.length) return null;
-    return {
-      id: result.rows[0].id,
-      username: result.rows[0].username,
-      displayName: result.rows[0].display_name,
-      role: result.rows[0].role,
-      clearance: result.rows[0].clearance,
-      permissions: Array.isArray(result.rows[0].permissions) ? result.rows[0].permissions : []
-    };
+    const account = result.rows[0];
+    const person = personnelForAccount(account);
+    const currentMilitaryCode = normalizeMilitaryCode(person?.militaryCode || person?.publicCode || person?.code);
+    if (!person || !account.military_code || !account.personnel_id ||
+        normalizeMilitaryCode(account.military_code) !== currentMilitaryCode) return null;
+    return publicUser(account, person);
   }
 
   function currentUser(req, res, next) {
@@ -668,47 +851,39 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
   router.get('/bootstrap/status', asyncRoute(async (req, res) => {
     const pool = await poolOr503(res);
     if (!pool) return;
-    const result = await pool.query('SELECT EXISTS(SELECT 1 FROM osd_users) AS initialized');
-    res.json({ needed: !result.rows[0].initialized, configured: !!cleanText(env.OSD_BOOTSTRAP_CODE, 300) });
+    const result = await pool.query('SELECT EXISTS(SELECT 1 FROM osd_users WHERE is_primary_chief = TRUE) AS initialized');
+    const bootstrapCode = cleanText(env.OSD_BOOTSTRAP_CODE, 300);
+    res.json({ needed: !result.rows[0].initialized, configured: bootstrapCode.length >= 24 });
   }));
 
   router.post('/bootstrap', asyncRoute(async (req, res) => {
     const pool = await poolOr503(res);
     if (!pool) return;
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'تجاوزت عدد المحاولات. انتظر 15 دقيقة ثم أعد المحاولة.' });
     const configuredCode = cleanText(env.OSD_BOOTSTRAP_CODE, 300);
-    if (configuredCode.length < 24) return res.status(503).json({ error: 'Set OSD_BOOTSTRAP_CODE to a random value of at least 24 characters before initial setup.' });
-    if (!safeEqual(cleanText(req.body?.bootstrapCode, 300), configuredCode)) return res.status(403).json({ error: 'Invalid setup code.' });
-    const username = cleanText(req.body?.username, 60).toLowerCase();
-    const displayName = cleanText(req.body?.displayName, 120);
-    const password = req.body?.password;
-    if (!/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username)) return res.status(400).json({ error: 'Username must be 3–60 letters, numbers, dots, underscores or hyphens.' });
-    if (!displayName || !validPassword(password)) return res.status(400).json({ error: 'Display name is required; password must be at least 12 characters.' });
+    if (configuredCode.length < 24) return res.status(503).json({ error: 'إعداد القائد الأول غير متاح؛ يجب تهيئة OSD_BOOTSTRAP_CODE على الخادم.' });
+    if (!safeEqual(cleanText(req.body?.bootstrapCode, 300), configuredCode)) return res.status(403).json({ error: 'رمز التأسيس غير صحيح.' });
+    const militaryCode = normalizeMilitaryCode(req.body?.militaryCode);
+    const person = findPersonnelByCode(personnelRoster(), militaryCode);
+    if (!person || cleanText(person.rank, 100).toUpperCase() !== 'CIA CHIEF') {
+      return res.status(403).json({ error: 'لا يمكن تأسيس القيادة إلا بكود القائد المعتمد والمسجل في النظام.' });
+    }
+    const password = req.body?.masterPassword;
+    const confirmPassword = req.body?.confirmPassword;
+    if (!validPassword(password)) return res.status(400).json({ error: 'يجب أن تتكون كلمة السر الرئيسية من 12 إلى 200 حرف.' });
+    if (password !== confirmPassword) return res.status(400).json({ error: 'تأكيد كلمة السر غير مطابق.' });
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = await passwordHash(password, salt);
-    const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('osd-bootstrap'))");
-      const existing = await client.query('SELECT 1 FROM osd_users LIMIT 1');
-      if (existing.rows.length) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({ error: 'OSD is already initialized.' });
-      }
-      const id = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO osd_users (id,username,display_name,password_salt,password_hash,role,clearance,permissions)
-         VALUES ($1,$2,$3,$4,$5,'COMMANDER','TOP SECRET',$6::jsonb)`,
-        [id, username, displayName, salt, hash, JSON.stringify(ROLE_DEFAULTS.COMMANDER.permissions)]
-      );
-      await appendAudit(client, { actorId: id, actorLabel: 'COMMANDER', action: 'OSD COMMANDER ACCOUNT CREATED', metadata: { username } });
-      await client.query('COMMIT');
-      res.status(201).json({ created: true });
+      const account = await linkPersonnelAccount(pool, person, {
+        initializeChief: true,
+        passwordSalt: salt,
+        passwordHash: hash
+      });
+      res.status(201).json({ created: true, militaryCode: account.military_code });
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      if (error.code === '23505') return res.status(409).json({ error: 'Username is already in use.' });
+      if (error.status === 409) return res.status(409).json({ error: error.message });
       throw error;
-    } finally {
-      client.release();
     }
   }));
 
@@ -716,31 +891,52 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
     const pool = await poolOr503(res);
     if (!pool) return;
     if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
-    const username = cleanText(req.body?.username, 60).toLowerCase();
-    const password = typeof req.body?.password === 'string' ? req.body.password.slice(0, 200) : '';
-    const result = await pool.query('SELECT * FROM osd_users WHERE username = $1 AND enabled = TRUE', [username]);
-    const user = result.rows[0];
-    const supplied = user ? await passwordHash(password, user.password_salt) : await passwordHash(password, 'osd-static-user-not-found');
-    if (!user || !safeEqual(supplied, user.password_hash)) return res.status(401).json({ error: 'Username or password is incorrect.' });
+    const mode = cleanText(req.body?.mode, 20).toLowerCase();
+    if (!['leader', 'member'].includes(mode)) return res.status(400).json({ error: 'اختر نوع الدخول.' });
+    const militaryCode = normalizeMilitaryCode(req.body?.militaryCode);
+    const person = findPersonnelByCode(personnelRoster(), militaryCode);
+    const password = typeof req.body?.password === 'string' ? req.body.password.slice(0, 201) : '';
+    let account = null;
+
+    if (mode === 'leader') {
+      const isRegisteredChief = person && cleanText(person.rank, 100).toUpperCase() === 'CIA CHIEF';
+      const result = isRegisteredChief
+        ? await pool.query(
+          `SELECT * FROM osd_users WHERE personnel_id = $1 OR military_code = $2 ORDER BY CASE WHEN personnel_id = $1 THEN 0 ELSE 1 END LIMIT 2`,
+          [String(person.id), militaryCode]
+        )
+        : { rows: [] };
+      account = result.rows.length === 1 && result.rows[0].is_primary_chief === true &&
+        String(result.rows[0].personnel_id || '') === String(person?.id || '') &&
+        normalizeMilitaryCode(result.rows[0].military_code) === militaryCode
+        ? result.rows[0]
+        : null;
+      const supplied = await passwordHash(password, account?.password_salt || 'osd-static-chief-not-found');
+      if (!isRegisteredChief || !account || account.enabled !== true ||
+          !validPassword(password) || !safeEqual(supplied, account.password_hash)) {
+        return res.status(401).json({ error: 'بيانات القائد غير صحيحة أو لا تطابق الحساب المعتمد.' });
+      }
+    } else {
+      const isChiefCode = person && cleanText(person.rank, 100).toUpperCase() === 'CIA CHIEF';
+      if (!person || isChiefCode) {
+        return res.status(401).json({ error: 'الكود العسكري غير صحيح أو غير مسجل لحساب فرد أو قيادة.' });
+      }
+      account = await linkPersonnelAccount(pool, person);
+      if (account.enabled !== true) {
+        return res.status(403).json({ error: 'هذا الحساب موقوف؛ راجع القائد المعتمد.' });
+      }
+    }
+
     const token = crypto.randomBytes(32).toString('base64url');
     const tokenHash = sha256(token);
     await pool.query('DELETE FROM osd_sessions WHERE expires_at < NOW()');
     await pool.query(
       `INSERT INTO osd_sessions (token_hash,user_id,expires_at) VALUES ($1,$2,NOW() + INTERVAL '${SESSION_HOURS} hours')`,
-      [tokenHash, user.id]
+      [tokenHash, account.id]
     );
     loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
     res.setHeader('Set-Cookie', sessionCookie(token, req));
-    res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        displayName: user.display_name,
-        role: user.role,
-        clearance: user.clearance,
-        permissions: user.permissions
-      }
-    });
+    res.json({ user: publicUser(account, person) });
   }));
 
   router.get('/auth/me', currentUser, (req, res) => {
@@ -1322,118 +1518,72 @@ function createOsdRouter({ getPool, env = process.env } = {}) {
 
   router.get('/users', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
     const result = await req.osdPool.query(
-      `SELECT id,username,display_name,role,clearance,permissions,enabled,created_at
+      `SELECT id,username,display_name,role,clearance,permissions,enabled,created_at,
+              military_code,personnel_id,is_primary_chief
        FROM osd_users ORDER BY created_at`
     );
-    res.json({ users: result.rows });
+    const users = result.rows.map((account) => {
+      const person = personnelForAccount(account);
+      if (!person) {
+        return {
+          id: account.id,
+          military_code: account.military_code,
+          display_name: account.display_name,
+          role: 'UNLINKED',
+          clearance: '—',
+          enabled: account.enabled === true,
+          rank: 'UNLINKED'
+        };
+      }
+      const user = publicUser(account, person);
+      return {
+        id: user.id,
+        military_code: user.militaryCode,
+        display_name: user.displayName,
+        role: user.role,
+        clearance: user.clearance,
+        enabled: user.enabled,
+        rank: user.rank
+      };
+    });
+    res.json({ users });
   }));
 
   router.post('/users', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
-    const username = cleanText(req.body?.username, 60).toLowerCase();
-    const displayName = cleanText(req.body?.displayName, 120);
-    const role = cleanText(req.body?.role, 20).toUpperCase();
-    const password = req.body?.password;
-    if (!ROLE_DEFAULTS[role]) return res.status(400).json({ error: 'Choose a valid role.' });
-    if (!/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username)) return res.status(400).json({ error: 'Username must be 3–60 letters, numbers, dots, underscores or hyphens.' });
-    if (!displayName || !validPassword(password)) return res.status(400).json({ error: 'Display name is required; password must be at least 12 characters.' });
-    let permissions = ROLE_DEFAULTS[role].permissions;
-    if (req.body?.permissions !== undefined) {
-      permissions = allowedPermissions(req.body.permissions);
-      if (!permissions) return res.status(400).json({ error: 'One or more permissions are invalid.' });
-    }
-    const clearance = cleanText(req.body?.clearance, 40).toUpperCase();
-    if (!CLASSIFICATIONS.includes(clearance)) return res.status(400).json({ error: 'Choose a valid clearance.' });
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = await passwordHash(password, salt);
-    const id = crypto.randomUUID();
-    const client = await req.osdPool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO osd_users (id,username,display_name,password_salt,password_hash,role,clearance,permissions)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
-        [id, username, displayName, salt, hash, role, clearance, JSON.stringify(permissions)]
-      );
-      await appendAudit(client, {
-        actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'OSD USER CREATED',
-        metadata: { username, role }
-      });
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      if (error.code === '23505') return res.status(409).json({ error: 'Username is already in use.' });
-      throw error;
-    } finally {
-      client.release();
-    }
-    res.status(201).json({ user: { id, username, displayName, role, clearance, permissions, enabled: true } });
+    return res.status(403).json({ error: 'OSD accounts are created only from verified active military codes; roles and permissions come from the personnel record.' });
   }));
 
   router.patch('/users/:id', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
+    const requestedFields = Object.keys(req.body || {});
+    if (requestedFields.some((field) => field !== 'enabled')) {
+      return res.status(400).json({ error: 'Role, rank, clearance, password and permissions cannot be changed through this endpoint; they are derived from the personnel record.' });
+    }
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'Only an enabled/disabled access state may be changed.' });
     if (req.params.id === req.osdUser.id && req.body?.enabled === false) return res.status(400).json({ error: 'You cannot disable your own account.' });
-    const fields = [];
-    const values = [cleanText(req.params.id, 100)];
-    let nextPermissions = null;
-    if (typeof req.body?.enabled === 'boolean') {
-      values.push(req.body.enabled);
-      fields.push(`enabled=$${values.length}`);
-    }
-    if (req.body?.role !== undefined) {
-      const role = cleanText(req.body.role, 20).toUpperCase();
-      if (!ROLE_DEFAULTS[role]) return res.status(400).json({ error: 'Choose a valid role.' });
-      values.push(role);
-      fields.push(`role=$${values.length}`);
-      values.push(JSON.stringify(ROLE_DEFAULTS[role].permissions));
-      fields.push(`permissions=$${values.length}::jsonb`);
-      nextPermissions = ROLE_DEFAULTS[role].permissions;
-      values.push(ROLE_DEFAULTS[role].clearance);
-      fields.push(`clearance=$${values.length}`);
-    }
-    if (req.body?.permissions !== undefined) {
-      const permissions = allowedPermissions(req.body.permissions);
-      if (!permissions) return res.status(400).json({ error: 'One or more permissions are invalid.' });
-      values.push(JSON.stringify(permissions));
-      fields.push(`permissions=$${values.length}::jsonb`);
-      nextPermissions = permissions;
-    }
-    if (req.body?.clearance !== undefined) {
-      const clearance = cleanText(req.body.clearance, 40).toUpperCase();
-      if (!CLASSIFICATIONS.includes(clearance)) return res.status(400).json({ error: 'Choose a valid clearance.' });
-      values.push(clearance);
-      fields.push(`clearance=$${values.length}`);
-    }
-    if (!fields.length) return res.status(400).json({ error: 'No supported user fields provided.' });
-    if (req.params.id === req.osdUser.id && nextPermissions && !nextPermissions.includes('MANAGE_USERS')) {
-      return res.status(400).json({ error: 'You cannot remove your own user-management permission.' });
-    }
-    values.push(new Date().toISOString());
-    fields.push(`updated_at=$${values.length}`);
     const client = await req.osdPool.connect();
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `UPDATE osd_users SET ${fields.join(',')} WHERE id=$1 RETURNING id,username,display_name,role,clearance,permissions,enabled,created_at`,
-        values
+        `UPDATE osd_users SET enabled=$2,updated_at=NOW() WHERE id=$1
+         RETURNING id,username,display_name,enabled,created_at,military_code,personnel_id,is_primary_chief`,
+        [cleanText(req.params.id, 100), req.body.enabled]
       );
       if (!result.rows.length) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'User not found.' });
       }
-      const managers = await client.query(
-        `SELECT COUNT(*)::int AS count FROM osd_users
-         WHERE enabled=TRUE AND permissions @> $1::jsonb`,
-        [JSON.stringify(['MANAGE_USERS'])]
-      );
-      if (!managers.rows[0]?.count) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({ error: 'At least one enabled user must retain user-management permission.' });
-      }
       await appendAudit(client, {
         actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'OSD USER UPDATED',
-        metadata: { userId: req.params.id, changedFields: Object.keys(req.body || {}).filter((key) => ['enabled', 'role', 'permissions', 'clearance'].includes(key)) }
+        metadata: { userId: req.params.id, changedFields: ['enabled'] }
       });
       await client.query('COMMIT');
-      res.json({ user: result.rows[0] });
+      const account = result.rows[0];
+      const person = personnelForAccount(account);
+      res.json({
+        user: person
+          ? { ...publicUser(account, person), createdAt: account.created_at }
+          : { id: account.id, militaryCode: account.military_code, displayName: account.display_name, role: 'UNLINKED', enabled: account.enabled }
+      });
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
@@ -1470,10 +1620,14 @@ module.exports = {
   canReadClassification,
   canonicalJson,
   createOsdRouter,
+  findPersonnelByCode,
+  isEligiblePersonnel,
   nextMinorVersion,
+  normalizeMilitaryCode,
   normalizeDocument,
   normalizeShareOptions,
   normalizeSignatureImage,
+  roleProfileForPersonnel,
   safeEqual,
   safeDocument,
   sectorCode,
