@@ -2676,6 +2676,16 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <div class="classified-title" style="font-size:.78rem;">سجل التحذيرات بسبب الألفاظ — للقائد فقط</div>
           <div id="security-profanity-warnings" style="margin-top:10px;"></div>
         </section>
+        <section id="security-dictionary-section" style="display:none;margin-top:12px;">
+          <div class="security-line"></div>
+          <div class="classified-title" style="font-size:.78rem;">معجم الكلمات المحظورة — إدارة CIA CHIEF</div>
+          <p style="font-size:.68rem;color:var(--text-dim);line-height:1.6;margin:7px 0;">تُحظر الرسالة عند استخدام كلمة من المعجم. المخالفة الأولى والثانية تحذير، والثالثة تؤدي إلى الفصل من الخدمة.</p>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+            <input id="security-blocked-term-input" class="input-field" type="text" maxlength="80" autocomplete="off" placeholder="اكتب كلمة أو عبارة مسيئة" style="flex:1;min-width:170px;margin:0;">
+            <button type="button" class="btn-action" onclick="manageSecurityBlockedTerm('add')" style="width:auto;margin:0;padding:10px 14px;">إضافة كلمة إلى المعجم</button>
+          </div>
+          <div id="security-blocked-terms-list" style="display:grid;gap:6px;margin-top:10px;max-height:270px;overflow:auto;"></div>
+        </section>
         <div class="security-line"></div>
         <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
         <div id="security-active-alerts" style="margin-top:10px;"></div>
@@ -2718,6 +2728,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let serverHasChief = null;
     let auditLogs = [];
     let securityIncidents = [];
+    let securityBlockedTerms = [];
     let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
@@ -4574,6 +4585,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function applySecurityCenterResult(result) {
       if (!result || !result.ok) return;
       securityIncidents = Array.isArray(result.incidents) ? result.incidents : [];
+      securityBlockedTerms = Array.isArray(result.blockedTerms) ? result.blockedTerms : [];
       unreadSecurityNotificationCount = Number(result.unreadSecurityNotifications) || 0;
       renderSecurityCenter();
     }
@@ -4590,6 +4602,50 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       });
     }
 
+    function renderSecurityBlockedTerms(chief) {
+      const section = document.getElementById('security-dictionary-section');
+      const list = document.getElementById('security-blocked-terms-list');
+      if (section) section.style.display = chief ? 'block' : 'none';
+      if (!list) return;
+      if (!chief) {
+        list.innerHTML = '';
+        return;
+      }
+      const terms = Array.isArray(securityBlockedTerms) ? securityBlockedTerms : [];
+      list.innerHTML = terms.length
+        ? terms.map(term => '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;border:1px solid #303b49;border-radius:5px;background:#090d13;"><span>' + esc(term) + '</span><button type="button" data-security-remove-term="' + esc(term) + '" style="padding:5px 10px;background:#251014;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">إزالة</button></div>').join('')
+        : '<div class="identity-meta" style="padding:9px;">المعجم فارغ.</div>';
+      list.querySelectorAll('[data-security-remove-term]').forEach(button => {
+        button.addEventListener('click', () => manageSecurityBlockedTerm('remove', button.getAttribute('data-security-remove-term')));
+      });
+    }
+
+    function manageSecurityBlockedTerm(action, term) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      const input = document.getElementById('security-blocked-term-input');
+      const value = String(term == null ? (input && input.value) || '' : term).trim();
+      if (!value) {
+        alert('اكتب الكلمة التي تريد إضافتها.');
+        if (input) input.focus();
+        return;
+      }
+      if (action === 'remove' && !confirm('هل تريد إزالة «' + value + '» من معجم الحظر؟')) return;
+      if (!ciaSocket || !ciaSocket.connected) {
+        alert('الاتصال بالخادم غير متاح الآن.');
+        return;
+      }
+      ciaSocket.emit('security:manageBlockedTerm', { action, term: value }, function(result) {
+        if (!result || !result.ok) {
+          alert((result && result.message) || 'تعذر تحديث معجم الكلمات.');
+          return;
+        }
+        securityBlockedTerms = Array.isArray(result.blockedTerms) ? result.blockedTerms : [];
+        if (action === 'add' && input) input.value = '';
+        renderSecurityCenter();
+        alert(result.message || 'تم تحديث معجم الكلمات.');
+      });
+    }
+
     function renderSecurityCenter() {
       const root = document.getElementById('security-panel');
       if (!root) return;
@@ -4601,9 +4657,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         });
         const profanitySection = document.getElementById('security-profanity-section');
         if (profanitySection) profanitySection.style.display = 'none';
+        const dictionarySection = document.getElementById('security-dictionary-section');
+        if (dictionarySection) dictionarySection.style.display = 'none';
         return;
       }
       const chief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      renderSecurityBlockedTerms(chief);
       const isProfanityIncident = incident => ['PROFANITY','MORSE_PROFANITY','OBFUSCATED_PROFANITY'].includes(String(incident && incident.type || '').toUpperCase());
       const isProfanitySeparation = incident => isProfanityIncident(incident) && incident.action === 'MEMBER_SUSPENDED' && incident.status === 'SUSPENDED' && Number(incident.profanityStrikeCount) >= 3;
       const visibleSecurityIncidents = (securityIncidents || []).filter(incident => chief || isProfanitySeparation(incident));
