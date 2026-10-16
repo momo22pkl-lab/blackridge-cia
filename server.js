@@ -9264,7 +9264,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on('report:delete', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
-      if (!isLeadership(actor)) return no(cb, 'حذف التقارير متاح للقيادة فقط.');
+      if (!isLeadership(actor)) return no(cb, 'حذف التقارير متاح لـ CIA CHIEF وSenior Commander CIA فقط.');
       const id = clean(payload?.id || payload?.reportId, 200);
       const exists = state.cia_reports.some((report) => String(report.id) === String(id));
       if (!exists) return no(cb, 'التقرير غير موجود.');
