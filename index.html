@@ -78,6 +78,65 @@
     .sos-list-card { border:1px solid rgba(239,68,68,.42); border-right:3px solid var(--red-alert); background:rgba(20,5,8,.72); padding:10px; border-radius:6px; margin-bottom:8px; }
     .sos-list-card .sos-meta { color:var(--text-dim); font-size:.66rem; line-height:1.7; }
     .sos-list-card .sos-main { color:var(--text-bright); font-size:.76rem; line-height:1.7; white-space:pre-wrap; }
+    .sos-command-shell { max-width:1180px; margin:0 auto; color:#dbe4ef; }
+    .sos-command-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin:0 0 14px; }
+    .sos-command-kicker { color:#718198; font:700 .56rem monospace; letter-spacing:1.8px; }
+    .sos-command-title { color:#f3f6fa; font-size:1.02rem; letter-spacing:.08em; margin:4px 0; }
+    .sos-command-subtitle { color:#8593a5; font-size:.7rem; line-height:1.65; max-width:680px; }
+    .sos-refresh-button,.sos-map-button { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 11px; border:1px solid #26384a; border-radius:5px; background:#0b1520; color:#a9c3d7; font:700 .62rem monospace; letter-spacing:.06em; cursor:pointer; }
+    .sos-refresh-button:hover,.sos-map-button:hover { border-color:#48a8c7; color:#d9f5ff; }
+    .sos-connection { display:flex; align-items:center; gap:8px; margin:0 0 12px; padding:8px 10px; border:1px solid #1b3040; border-radius:5px; background:#07111a; color:#91a3b6; font:700 .58rem monospace; letter-spacing:.08em; }
+    .sos-connection-dot { width:7px; height:7px; border-radius:50%; background:#e6ac50; box-shadow:0 0 9px currentColor; }
+    .sos-connection.online .sos-connection-dot { color:#42d49a; background:#42d49a; }
+    .sos-connection.offline .sos-connection-dot { color:#ef626b; background:#ef626b; }
+    .sos-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-bottom:12px; }
+    .sos-metric { min-height:72px; padding:11px 12px; border:1px solid #1d2c3a; border-radius:7px; background:linear-gradient(145deg,#0b1520,#081019); }
+    .sos-metric-label { color:#74869a; font:700 .53rem monospace; letter-spacing:.11em; }
+    .sos-metric-value { display:block; margin-top:6px; color:#e9f0f7; font:800 1.12rem monospace; }
+    .sos-metric.critical { border-color:rgba(239,68,68,.3); }
+    .sos-metric.critical .sos-metric-value { color:#ff777e; }
+    .sos-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; margin-bottom:13px; }
+    .sos-action-card { min-height:88px; display:flex; align-items:center; gap:11px; padding:13px; text-align:left; border:1px solid #213344; border-radius:7px; background:linear-gradient(145deg,#0d1924,#09121b); color:#cbd9e7; cursor:pointer; transition:border-color .15s ease,transform .15s ease,background .15s ease; }
+    .sos-action-card:hover { border-color:#3f819d; background:#0d1d29; transform:translateY(-1px); }
+    .sos-action-card.emergency { border-color:rgba(239,68,68,.58); background:linear-gradient(145deg,rgba(47,16,21,.9),#0b121b); }
+    .sos-action-card.emergency:hover { border-color:#ff6b73; }
+    .sos-action-icon { width:36px; height:36px; flex:0 0 36px; display:grid; place-items:center; border:1px solid #29465b; border-radius:7px; color:#7ac9e7; background:#0a1b27; font-size:1rem; }
+    .sos-action-card.emergency .sos-action-icon { color:#ff737a; border-color:rgba(239,68,68,.4); background:rgba(127,29,29,.16); }
+    .sos-action-copy { display:flex; flex-direction:column; gap:4px; }
+    .sos-action-copy strong { color:#e9f0f7; font-size:.68rem; letter-spacing:.04em; }
+    .sos-action-copy small { color:#8190a1; font-size:.58rem; line-height:1.45; }
+    .sos-test-result { display:none; margin:-3px 0 12px; padding:9px 11px; border:1px solid rgba(69,190,145,.35); border-radius:5px; background:rgba(10,44,35,.35); color:#8ce0bd; font-size:.64rem; line-height:1.5; }
+    .sos-test-result.visible { display:block; }
+    .sos-board { overflow:hidden; border:1px solid #1d2c3a; border-radius:8px; background:linear-gradient(150deg,#0a131d,#070e15); }
+    .sos-board-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 13px; border-bottom:1px solid #1c2a37; }
+    .sos-board-title { color:#dce6f0; font:800 .66rem monospace; letter-spacing:.1em; }
+    .sos-board-meta { color:#78899b; font:600 .53rem monospace; letter-spacing:.05em; }
+    .sos-board-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+    .sos-alert-list { padding:12px; }
+    .sos-list-card { border-right:3px solid #ed555d; border-color:rgba(239,68,68,.35); background:linear-gradient(145deg,rgba(24,13,17,.88),rgba(9,15,22,.9)); padding:12px; border-radius:6px; margin-bottom:9px; }
+    .sos-list-card:last-child { margin-bottom:0; }
+    .sos-alert-card-head { display:flex; justify-content:space-between; align-items:center; gap:9px; margin-bottom:8px; }
+    .sos-alert-id { color:#ff777e; font:800 .66rem monospace; }
+    .sos-alert-status { padding:3px 7px; border:1px solid rgba(239,68,68,.4); border-radius:3px; color:#ff9b9f; font:800 .51rem monospace; letter-spacing:.06em; }
+    .sos-alert-status.resolved { border-color:rgba(69,190,145,.35); color:#8ce0bd; }
+    .sos-alert-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 12px; color:#9aabba; font-size:.62rem; line-height:1.5; }
+    .sos-alert-fields b { color:#cbd7e2; font-weight:700; }
+    .sos-alert-note { margin-top:9px; padding:8px 9px; border:1px solid #1e2a36; border-radius:4px; color:#c3d0dc; background:#080e14; font-size:.65rem; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .sos-alert-controls { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+    .sos-alert-controls button { padding:5px 8px; border:1px solid #34485a; border-radius:4px; background:#0a1721; color:#a9c3d7; font:700 .52rem monospace; cursor:pointer; }
+    .sos-alert-controls button:hover { border-color:#54aac5; color:#e1f7ff; }
+    .sos-alert-controls button.danger { border-color:rgba(239,68,68,.45); color:#ff858b; }
+    .sos-empty { padding:22px 12px; text-align:center; }
+    .sos-empty-icon { display:grid; place-items:center; width:38px; height:38px; margin:0 auto 8px; border:1px solid #29465b; border-radius:50%; color:#74b8d4; background:#0a1924; }
+    .sos-empty strong { display:block; color:#d7e3ed; font:800 .67rem monospace; letter-spacing:.12em; }
+    .sos-empty p { max-width:440px; margin:6px auto 0; color:#798a9c; font-size:.6rem; line-height:1.6; }
+    .sos-form-status { min-height:1.4em; margin-top:7px; color:#90a2b4; font-size:.63rem; line-height:1.5; }
+    .sos-contact-card { max-width:480px; text-align:left; border-color:#42647a; }
+    .sos-contact-card textarea { min-height:110px; resize:vertical; text-align:left; }
+    .sos-contact-actions { display:flex; gap:8px; }
+    .sos-contact-actions button { flex:1; }
+    @media (max-width:720px) { .sos-actions { grid-template-columns:1fr; } .sos-action-card { min-height:70px; } }
+    @media (max-width:520px) { .sos-command-head { align-items:flex-start; } .sos-command-title { font-size:.9rem; } .sos-metrics { gap:6px; } .sos-metric { min-height:65px; padding:9px; } .sos-metric-value { font-size:.95rem; } .sos-alert-fields { grid-template-columns:1fr; } .sos-board-head { align-items:flex-start; flex-direction:column; } }
     .dashboard-alerts-card { margin:0 0 15px; padding:14px; border:1px solid rgba(239,68,68,.55); border-right:4px solid var(--red-alert); border-radius:10px; background:linear-gradient(145deg,rgba(21,9,12,.98),rgba(7,10,15,.98)); box-shadow:inset 0 0 25px rgba(239,68,68,.035),0 10px 25px rgba(0,0,0,.28); cursor:pointer; outline:none; }
     .dashboard-alerts-card:hover { border-color:rgba(239,68,68,.85); transform:translateY(-1px); transition:.15s ease; }
     .dashboard-alerts-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -2345,13 +2404,62 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
     <!-- S.O.S Alerts Section -->
     <div id="sos-alerts" class="view-pane">
-      <h3 style="margin-bottom:10px;color:var(--red-alert);font-size:1rem;"><i class="fa-solid fa-triangle-exclamation"></i> بلاغات الطوارئ S.O.S</h3>
-      <div class="card" style="border-color:rgba(239,68,68,.45);">
-        <div style="font-size:.72rem;color:var(--text-dim);margin-bottom:10px;">جميع البلاغات المحفوظة تظهر لكل العناصر. الحذف متاح فقط لـ CIA CHIEF و Senior Commander CIA.</div>
-        <div id="sos-alerts-list"></div>
-        <button type="button" onclick="showPane('sos-history-map-view', document.querySelector('[onclick*=\"sos-history-map-view\"]'))" style="width:100%;padding:10px;margin-top:10px;background:#111827;color:#ef4444;border:1px solid #ef4444;border-radius:6px;cursor:pointer;font-weight:bold;">
-          <i class="fa-solid fa-map-location-dot"></i> عرض البلاغات على خريطة الاستغاثة
-        </button>
+      <section class="sos-command-shell" dir="ltr" aria-label="Critical SOS control">
+        <header class="sos-command-head">
+          <div>
+            <div class="sos-command-kicker">LOS SANTOS SECTOR // EMERGENCY CHANNEL</div>
+            <h3 class="sos-command-title"><i class="fa-solid fa-triangle-exclamation" style="color:#ef626b;"></i> CRITICAL SOS</h3>
+            <p class="sos-command-subtitle">Live emergency reports and response tools for authorized sector personnel.</p>
+          </div>
+          <button class="sos-refresh-button" type="button" data-sos-refresh><i class="fa-solid fa-rotate"></i> REFRESH</button>
+        </header>
+        <div id="sos-connection-state" class="sos-connection" role="status"><span class="sos-connection-dot"></span><span id="sos-connection-label">CHECKING SECURE LINK</span></div>
+        <div class="sos-metrics" aria-label="S.O.S status">
+          <article class="sos-metric critical"><div class="sos-metric-label">ACTIVE ALERTS</div><strong id="sos-active-count" class="sos-metric-value">—</strong></article>
+          <article class="sos-metric"><div class="sos-metric-label">SAVED RECORDS</div><strong id="sos-total-count" class="sos-metric-value">—</strong></article>
+          <article class="sos-metric"><div class="sos-metric-label">LATEST REPORT</div><strong id="sos-latest-time" class="sos-metric-value" style="font-size:.75rem;">—</strong></article>
+        </div>
+        <div class="sos-actions" aria-label="Emergency actions">
+          <button class="sos-action-card emergency" type="button" onclick="openSOSModal()">
+            <span class="sos-action-icon"><i class="fa-solid fa-bell"></i></span>
+            <span class="sos-action-copy"><strong>REPORT EMERGENCY</strong><small>Send a live S.O.S. with location and response details.</small></span>
+          </button>
+          <button class="sos-action-card" type="button" onclick="runSOSTest()">
+            <span class="sos-action-icon"><i class="fa-solid fa-tower-broadcast"></i></span>
+            <span class="sos-action-copy"><strong>TEST SOS</strong><small>Check this screen locally. No alert is broadcast or saved.</small></span>
+          </button>
+          <button class="sos-action-card" type="button" onclick="openSOSContactModal()">
+            <span class="sos-action-icon"><i class="fa-solid fa-headset"></i></span>
+            <span class="sos-action-copy"><strong>CONTACT COMMAND</strong><small>Send a private request to the command support channel.</small></span>
+          </button>
+        </div>
+        <div id="sos-test-result" class="sos-test-result" role="status" aria-live="polite"></div>
+        <section class="sos-board" aria-label="S.O.S alert records">
+          <header class="sos-board-head">
+            <div><div class="sos-board-title">LIVE ALERT REGISTER</div><div class="sos-board-meta">SERVER-SAVED REPORTS · ROLE-RESTRICTED CONTROLS</div></div>
+            <div class="sos-board-tools">
+              <span id="sos-board-count" class="sos-board-meta">0 RECORDS</span>
+              <button class="sos-map-button" type="button" onclick="showPane('sos-history-map-view', null)"><i class="fa-solid fa-map-location-dot"></i> MAP</button>
+            </div>
+          </header>
+          <div id="sos-alerts-list" class="sos-alert-list" aria-live="polite"><div class="sos-empty"><strong>LOADING S.O.S. REGISTER</strong><p>Connecting to the authorized server feed.</p></div></div>
+        </section>
+      </section>
+      <div id="sos-contact-modal" class="modal-overlay" dir="ltr" style="display:none;" aria-modal="true" role="dialog" aria-labelledby="sos-contact-title">
+        <div class="auth-card sos-contact-card" dir="ltr">
+          <div class="sos-command-kicker">SECURE SUPPORT CHANNEL</div>
+          <h2 id="sos-contact-title">CONTACT COMMAND</h2>
+          <p style="color:var(--text-dim);font-size:.68rem;line-height:1.6;margin:8px 0;">This sends a private support message to authorized leadership. For immediate danger, use Report Emergency instead.</p>
+          <form id="sos-contact-form">
+            <label for="sos-contact-text" style="display:block;color:#9aabba;font-size:.65rem;text-align:left;">MESSAGE</label>
+            <textarea id="sos-contact-text" class="input-field" maxlength="2000" required placeholder="Describe what command should know..."></textarea>
+            <div id="sos-contact-status" class="sos-form-status" role="status" aria-live="polite"></div>
+            <div class="sos-contact-actions">
+              <button class="btn-action" type="submit" style="margin-top:4px;background:#111827;color:var(--cyan-glow);border:1px solid var(--cyan-glow);">SEND TO COMMAND</button>
+              <button class="btn-action" type="button" onclick="closeSOSContactModal()" style="margin-top:4px;background:transparent;color:var(--text-dim);border:1px solid #34404d;">CANCEL</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
     <!-- SOS Emergency History Map -->
@@ -3381,8 +3489,16 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       ciaSocket.on('sos:alert', function(data) {
         if (!data) return;
         showRedScreenSOS(data);
+        if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
       });
-      ciaSocket.on('sos:deleted', function() { renderSOSAlerts(); });
+      ciaSocket.on('sos:deleted', function() {
+        renderSOSAlerts();
+        if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
+      });
+      ciaSocket.on('sos:updated', function() {
+        renderSOSAlerts();
+        if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
+      });
     }
 
     let registeredUsers = getStoredData('cia_users', []);
@@ -4639,6 +4755,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
 
       if (paneId === 'tactical-map-view') setTimeout(function(){ initGTAMap(); }, 250);
+      if (paneId === 'sos-alerts') setTimeout(function(){ renderSOSAlerts(); requestSOSAlerts(true); }, 0);
       if (paneId === 'sos-history-map-view') setTimeout(function(){ initSOSHistoryMap(); }, 50);
       if (paneId === 'bank') setTimeout(loadBankDirectory, 50);
       if (paneId === 'operations') setTimeout(function(){ loadTacticalOperations(); loadOperationAgentDirectory(); }, 50);
@@ -6151,6 +6268,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         document.getElementById('sos-count-input').value='';
         document.getElementById('sos-note-input').value='';
         renderSOSAlerts();
+        requestSOSAlerts(true);
       });
     }
 
@@ -6158,31 +6276,184 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       try { return new Date(value).toLocaleString('ar-JO', {dateStyle:'short', timeStyle:'medium'}); } catch(e) { return value || ''; }
     }
 
+    function formatSOSClock(value) {
+      const date=new Date(value || '');
+      return Number.isNaN(date.getTime())?'—':date.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    }
+
+    let sosListRequestPending = false;
+    let sosListLastRequestedAt = 0;
+
+    function setSOSConnectionState(state, label) {
+      const indicator = document.getElementById('sos-connection-state');
+      const text = document.getElementById('sos-connection-label');
+      if (!indicator || !text) return;
+      indicator.classList.remove('online', 'offline');
+      if (state === 'online') indicator.classList.add('online');
+      if (state === 'offline') indicator.classList.add('offline');
+      text.textContent = label;
+    }
+
+    function requestSOSAlerts(force) {
+      if (!ciaSocket || !ciaSocket.connected) {
+        sosListRequestPending = false;
+        setSOSConnectionState('offline', 'SERVER LINK OFFLINE · RECONNECT TO REFRESH');
+        renderSOSAlerts();
+        return;
+      }
+      if (sosListRequestPending || (!force && Date.now() - sosListLastRequestedAt < 10000)) return;
+      sosListRequestPending = true;
+      sosListLastRequestedAt = Date.now();
+      setSOSConnectionState('', 'REQUESTING AUTHORIZED S.O.S. FEED');
+      ciaSocket.emit('sos:list', {}, function(result) {
+        sosListRequestPending = false;
+        if (!result || !result.ok) {
+          setSOSConnectionState('offline', 'S.O.S. FEED UNAVAILABLE · RETRY');
+          const list = document.getElementById('sos-alerts-list');
+          if (list) list.innerHTML = '<div class="sos-empty"><strong>FEED UNAVAILABLE</strong><p>' + esc((result && result.message) || 'Reconnect and refresh the authorized server feed.') + '</p></div>';
+          return;
+        }
+        if (Array.isArray(result.alerts)) sosAlerts = result.alerts;
+        setSOSConnectionState('online', 'SECURE LINK ACTIVE · LIVE SERVER FEED');
+        renderSOSAlerts();
+      });
+    }
+
+    function sosLocationLabel(location) {
+      if (location && typeof location === 'object') {
+        if (location.label) return String(location.label);
+        const coords = [location.lat, location.lng].filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)));
+        return coords.length ? coords.join(', ') : 'LOCATION NOT PROVIDED';
+      }
+      return String(location || 'LOCATION NOT PROVIDED');
+    }
+
+    function sosIsActive(alert) {
+      return !['RESOLVED', 'CLOSED', 'CANCELLED', 'ARCHIVED'].includes(String(alert && (alert.status || alert.statusCode) || 'OPEN').toUpperCase());
+    }
+
     function renderSOSAlerts() {
       const list=document.getElementById('sos-alerts-list');
       const countEl=document.getElementById('dashboard-alert-count');
       const preview=document.getElementById('dashboard-alert-preview');
-      if(!list && !preview) return;
+      const activeCountEl=document.getElementById('sos-active-count');
+      const totalCountEl=document.getElementById('sos-total-count');
+      const latestTimeEl=document.getElementById('sos-latest-time');
+      const boardCountEl=document.getElementById('sos-board-count');
+      if(!list && !preview && !activeCountEl && !totalCountEl) return;
       const leadership=currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank));
       const rows=Array.isArray(sosAlerts)?sosAlerts:[];
-      if(countEl) countEl.textContent=String(rows.length);
+      const activeRows=rows.filter(sosIsActive);
+      if(countEl) countEl.textContent=String(activeRows.length);
+      if(activeCountEl) activeCountEl.textContent=String(activeRows.length);
+      if(totalCountEl) totalCountEl.textContent=String(rows.length);
+      if(boardCountEl) boardCountEl.textContent=rows.length+' '+(rows.length===1?'RECORD':'RECORDS');
+      if(latestTimeEl) latestTimeEl.textContent=rows[0]?formatSOSClock(rows[0].at || rows[0].createdAt):'—';
       if(preview){
-        const latest=rows[0];
+        const latest=activeRows[0] || rows[0];
         preview.innerHTML=latest
-          ? `<strong style="color:var(--red-alert);">S.O.S #${esc(latest.id||'')} — ${esc(latest.location||'موقع غير محدد')}</strong><br><span>${esc(latest.fromCode ? '#'+latest.fromCode : 'غير محدد')} • ${esc(latest.status||'غير محدد')}</span>`
+          ? `<strong style="color:var(--red-alert);">S.O.S #${esc(latest.id||'')} — ${esc(sosLocationLabel(latest.location))}</strong><br><span>${esc(latest.fromCode ? '#'+latest.fromCode : 'غير محدد')} • ${esc(latest.status||'غير محدد')}</span>`
           : 'لا توجد بلاغات S.O.S حالياً.';
       }
       if(!list) return;
-      list.innerHTML=rows.map(a=>`
-        <div class="sos-list-card">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-            <strong style="color:var(--red-alert);font-size:.8rem;">S.O.S #${esc(a.id || '')}</strong>
-            <span style="color:var(--text-dim);font-size:.62rem;">${esc(formatSOSDate(a.at))}</span>
-          </div>
-          <div class="sos-meta">المرسل: #${esc(a.fromCode || '')}<br>الرتبة: ${esc(a.fromRank || 'AGENT')}<br>الموقع: ${esc(a.location || 'غير محدد')}<br>عدد الأفراد: ${esc(a.count || 'غير محدد')}<br>حالة الخطر: ${esc(a.status || 'غير محدد')}</div>
-          ${a.note ? `<div class="sos-main">${esc(a.note)}</div>` : ''}
-          ${leadership ? `<button type="button" onclick="deleteSOSAlert('${esc(a.id)}')" style="margin-top:7px;background:transparent;border:1px solid var(--red-alert);color:var(--red-alert);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:.65rem;">حذف البلاغ</button>` : ''}
-        </div>`).join('') || '<div class="identity-meta" style="padding:15px;text-align:center;">لا توجد بلاغات S.O.S محفوظة.</div>';
+      if(!rows.length) {
+        list.innerHTML='<div class="sos-empty"><span class="sos-empty-icon"><i class="fa-solid fa-tower-broadcast"></i></span><strong>NO ACTIVE ALERTS</strong><p>The secure feed is connected. New emergency reports will appear here as soon as they are sent.</p></div>';
+        return;
+      }
+      list.innerHTML=rows.map(a=>{
+        const status=String(a.status || a.statusCode || 'OPEN').toUpperCase();
+        const resolved=!sosIsActive(a);
+        const countValue=a.count ?? a.crewCount ?? a.membersCount;
+        const count=countValue===null || countValue===undefined || countValue===''?'NOT REPORTED':String(countValue);
+        const controls=leadership
+          ? `<div class="sos-alert-controls">${sosIsActive(a)?`<button type="button" data-sos-status-id="${esc(a.id)}" data-sos-status="ACKNOWLEDGED">ACKNOWLEDGE</button><button type="button" data-sos-status-id="${esc(a.id)}" data-sos-status="RESOLVED">MARK RESOLVED</button>`:''}<button type="button" class="danger" data-sos-delete-id="${esc(a.id)}">DELETE RECORD</button></div>`
+          : '';
+        return `<article class="sos-list-card"><div class="sos-alert-card-head"><strong class="sos-alert-id">S.O.S // ${esc(a.id || 'UNASSIGNED')}</strong><span class="sos-alert-status${resolved?' resolved':''}">${esc(status)}</span></div><div class="sos-alert-fields"><span>REPORTING UNIT <b>#${esc(a.fromCode || 'UNKNOWN')}</b></span><span>RANK <b>${esc(a.fromRank || 'AGENT')}</b></span><span>LOCATION <b>${esc(sosLocationLabel(a.location))}</b></span><span>PERSONNEL <b>${esc(count)}</b></span><span>REPORTED <b>${esc(formatSOSDate(a.at || a.createdAt))}</b></span></div>${a.note ? `<div class="sos-alert-note">${esc(a.note)}</div>` : ''}${controls}</article>`;
+      }).join('');
+    }
+
+    function runSOSTest() {
+      const result=document.getElementById('sos-test-result');
+      if(!result) return;
+      const connected=!!(ciaSocket && ciaSocket.connected);
+      result.textContent=connected
+        ? 'LOCAL SYSTEM TEST COMPLETE — the secure link is connected. No alert was broadcast, stored, or sent to personnel.'
+        : 'LOCAL DISPLAY TEST COMPLETE — the server link is offline. No alert was broadcast, stored, or sent to personnel.';
+      result.classList.add('visible');
+      setSOSConnectionState(connected ? 'online' : 'offline', connected ? 'SECURE LINK ACTIVE · LOCAL TEST ONLY' : 'SERVER LINK OFFLINE · LOCAL TEST ONLY');
+    }
+
+    function openSOSContactModal() {
+      const modal=document.getElementById('sos-contact-modal');
+      const input=document.getElementById('sos-contact-text');
+      const status=document.getElementById('sos-contact-status');
+      if(status) status.textContent='';
+      if(modal) modal.style.display='flex';
+      if(input) input.focus();
+    }
+
+    function closeSOSContactModal() {
+      const modal=document.getElementById('sos-contact-modal');
+      if(modal) modal.style.display='none';
+    }
+
+    function sendSOSCommandContact(event) {
+      event.preventDefault();
+      const input=document.getElementById('sos-contact-text');
+      const status=document.getElementById('sos-contact-status');
+      const text=input ? input.value.trim() : '';
+      if(!text) { if(status) status.textContent='Enter a message for command.'; return false; }
+      if(!currentUser || !ciaSocket || !ciaSocket.connected) { if(status) status.textContent='Sign in and reconnect to send a command message.'; return false; }
+      const submit=document.querySelector('#sos-contact-form button[type="submit"]');
+      if(submit) submit.disabled=true;
+      if(status) status.textContent='Sending through the secure support channel…';
+      let threadId='', ownerToken='';
+      try {
+        threadId=localStorage.getItem('cia_sos_support_thread_id') || '';
+        ownerToken=localStorage.getItem('cia_sos_support_thread_token') || '';
+      } catch(error) {}
+      ciaSocket.emit('support:send', {
+        name:currentUser.name || currentUser.publicCode || 'IBP operator',
+        text:'SOS COMMAND CONTACT\\n'+text,
+        threadId,
+        ownerToken
+      }, function(response) {
+        if(submit) submit.disabled=false;
+        if(!response || !response.ok) {
+          if(status) status.textContent=(response && response.message) || 'The message could not be sent. Retry when the secure link is available.';
+          return;
+        }
+        try {
+          if(response.threadId) localStorage.setItem('cia_sos_support_thread_id',response.threadId);
+          if(response.ownerToken) localStorage.setItem('cia_sos_support_thread_token',response.ownerToken);
+        } catch(error) {}
+        if(input) input.value='';
+        if(status) status.textContent='Message delivered to the command support channel.';
+      });
+      return false;
+    }
+
+    const sosPage=document.getElementById('sos-alerts');
+    if(sosPage) {
+      sosPage.addEventListener('click',function(event) {
+        const refresh=event.target.closest('[data-sos-refresh]');
+        if(refresh) { requestSOSAlerts(true); return; }
+        const statusButton=event.target.closest('[data-sos-status-id]');
+        if(statusButton) updateSOSStatus(statusButton.dataset.sosStatusId,statusButton.dataset.sosStatus);
+        const deleteButton=event.target.closest('[data-sos-delete-id]');
+        if(deleteButton) deleteSOSAlert(deleteButton.dataset.sosDeleteId);
+      });
+    }
+    const sosContactForm=document.getElementById('sos-contact-form');
+    if(sosContactForm) sosContactForm.addEventListener('submit',sendSOSCommandContact);
+
+    function updateSOSStatus(id,status) {
+      if(!currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
+      if(!ciaSocket || !ciaSocket.connected) { alert('The secure server connection is unavailable.'); return; }
+      ciaSocket.emit('sos:updateStatus',{id,status},function(result) {
+        if(!result || !result.ok) { alert((result && result.message) || 'Unable to update the S.O.S. status.'); return; }
+        requestSOSAlerts(true);
+      });
     }
 
     function deleteSOSAlert(id) {
