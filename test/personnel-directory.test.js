@@ -183,6 +183,7 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(leaderList.ok, true);
   assert.equal(leaderList.people.length, 4);
   assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').name, 'Alpha Member');
+  assert.equal(leaderList.viewer.name, 'Chief Test');
   assert.equal(leaderList.permissions.canAdd, true);
   assert.deepEqual(leaderList.rankOptions, ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER']);
 
@@ -211,6 +212,7 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(memberList.ok, true);
   assert.deepEqual(memberList.people.map((person) => person.publicCode).sort(), ['AG-101', 'AG-102', createResponse.person.publicCode].sort());
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').name, '');
+  assert.equal(memberList.viewer.name, '', 'non-leaders must not receive a name in viewer metadata');
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-101').name, '', 'a member must not see their own name in the personnel directory');
   const selfDetail = await member.emit('ibp:directory:detail', { id: 'alpha-1' });
   assert.equal(selfDetail.ok, true);

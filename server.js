@@ -8523,7 +8523,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         },
         viewer: {
           publicCode: clean(actor.publicCode, 100),
-          name: clean(actor.identity?.fullName || actor.name, 120),
+          name: isChief(actor) ? clean(actor.identity?.fullName || actor.name, 120) : '',
           rankLabel: rankLabel(actor.rank)
         }
       });
