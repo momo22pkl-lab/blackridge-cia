@@ -1572,6 +1572,64 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   #br-world-command-root .brw-quote-panel::after { position: absolute; right: 0; bottom: 0; width: 100%; height: 38px; content: ""; opacity: .2; background: linear-gradient(180deg, transparent, #102536); clip-path: polygon(0 100%,0 70%,8% 55%,13% 64%,19% 30%,25% 58%,31% 42%,37% 64%,44% 18%,51% 60%,57% 35%,64% 70%,72% 28%,79% 56%,85% 20%,92% 63%,100% 38%,100% 100%); }
   #br-world-command-root .brw-quote-panel p { position: relative; z-index: 1; margin: 0; color: #c2ccd2; font: 8px/1.65 "Courier New", monospace; letter-spacing: .11em; }
   #br-world-command-root .brw-quote-panel small { position: relative; z-index: 1; margin-top: 6px; color: var(--brw-gold); font: 7px "Courier New", monospace; }
+  #br-world-command-root .brw-intel-page { display:grid; gap:10px; }
+  #br-world-command-root .brw-intel-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:9px; border:1px solid var(--brw-line); border-radius:4px; background:rgba(8,18,27,.88); }
+  #br-world-command-root .brw-intel-filter { min-height:32px; display:flex; align-items:center; gap:7px; flex:1 1 175px; min-width:150px; padding:0 8px; border:1px solid rgba(116,159,184,.22); border-radius:3px; color:#82a4b4; background:#06101a; }
+  #br-world-command-root .brw-intel-filter input,#br-world-command-root .brw-intel-filter select { width:100%; min-width:0; border:0; outline:0; color:#d4e0e6; background:transparent; font:8px "Courier New",monospace; }
+  #br-world-command-root .brw-intel-filter select option { color:#d4e0e6; background:#07111b; }
+  #br-world-command-root .brw-intel-filter input::placeholder { color:#708392; }
+  #br-world-command-root .brw-intel-button { min-height:32px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:0 10px; border:1px solid rgba(86,201,239,.3); border-radius:3px; color:#a9dfef; background:rgba(17,63,83,.24); font:8px "Courier New",monospace; cursor:pointer; }
+  #br-world-command-root .brw-intel-button:hover { border-color:var(--brw-cyan); color:#e5f8ff; }
+  #br-world-command-root .brw-intel-button.gold { border-color:rgba(214,177,104,.42); color:#e5d19c; background:rgba(111,82,33,.16); }
+  #br-world-command-root .brw-intel-button:disabled { opacity:.55; cursor:wait; }
+  #br-world-command-root .brw-intel-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+  #br-world-command-root .brw-intel-stat { min-width:0; min-height:82px; display:grid; align-content:space-between; gap:7px; padding:10px; border:1px solid rgba(86,201,239,.16); border-radius:4px; background:linear-gradient(145deg,rgba(9,29,44,.92),rgba(5,13,21,.96)); }
+  #br-world-command-root .brw-intel-stat-label { display:flex; align-items:center; gap:7px; color:#8fa5b2; font:7px "Courier New",monospace; letter-spacing:.08em; }
+  #br-world-command-root .brw-intel-stat-label i { color:var(--brw-cyan); font-size:10px; }
+  #br-world-command-root .brw-intel-stat.red .brw-intel-stat-label i { color:var(--brw-red); }
+  #br-world-command-root .brw-intel-stat.gold .brw-intel-stat-label i { color:var(--brw-gold); }
+  #br-world-command-root .brw-intel-stat-value { color:#f0f4f6; font:600 22px/1 "Segoe UI",Arial,sans-serif; }
+  #br-world-command-root .brw-intel-stat-note { color:#657d8d; font:6px "Courier New",monospace; letter-spacing:.06em; }
+  #br-world-command-root .brw-intel-panel { overflow:hidden; border:1px solid var(--brw-line); border-radius:4px; background:var(--brw-panel); }
+  #br-world-command-root .brw-intel-panel-head { min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 11px; border-bottom:1px solid var(--brw-line); }
+  #br-world-command-root .brw-intel-panel-head h2 { margin:0; color:#e1e9ed; font-size:10px; letter-spacing:.08em; }
+  #br-world-command-root .brw-intel-panel-head small { display:block; margin-top:3px; color:#728795; font:7px "Courier New",monospace; }
+  #br-world-command-root .brw-intel-list { padding:3px 9px 8px; }
+  #br-world-command-root .brw-intel-row { border-bottom:1px solid rgba(116,159,184,.1); }
+  #br-world-command-root .brw-intel-row:last-child { border-bottom:0; }
+  #br-world-command-root .brw-intel-row summary { min-height:42px; display:grid; grid-template-columns:22px minmax(0,1fr) auto auto; align-items:center; gap:8px; padding:5px 2px; list-style:none; cursor:pointer; }
+  #br-world-command-root .brw-intel-row summary::-webkit-details-marker { display:none; }
+  #br-world-command-root .brw-intel-row summary:hover .brw-intel-title { color:#fff; }
+  #br-world-command-root .brw-intel-icon { width:20px; height:20px; display:grid; place-items:center; border:1px solid rgba(86,201,239,.32); border-radius:50%; color:var(--brw-cyan); font-size:8px; }
+  #br-world-command-root .brw-intel-icon.threat { border-color:rgba(240,94,103,.46); color:var(--brw-red); }
+  #br-world-command-root .brw-intel-row-copy { min-width:0; }
+  #br-world-command-root .brw-intel-title { display:block; overflow:hidden; color:#d6e0e5; font-size:9px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
+  #br-world-command-root .brw-intel-meta { display:block; overflow:hidden; margin-top:3px; color:#748795; font:7px "Courier New",monospace; text-overflow:ellipsis; white-space:nowrap; }
+  #br-world-command-root .brw-intel-badge { padding:3px 6px; border:1px solid rgba(86,201,239,.24); border-radius:3px; color:#9bd9eb; background:rgba(40,134,165,.12); font:6px "Courier New",monospace; white-space:nowrap; }
+  #br-world-command-root .brw-intel-badge.threat { border-color:rgba(240,94,103,.35); color:#ff9ba0; background:rgba(127,29,36,.22); }
+  #br-world-command-root .brw-intel-time { color:#718493; font:7px "Courier New",monospace; white-space:nowrap; }
+  #br-world-command-root .brw-intel-detail { padding:8px 10px 10px 30px; color:#b4c2ca; font-size:9px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #br-world-command-root .brw-intel-detail small { display:block; margin-top:7px; color:#6e8491; font:7px "Courier New",monospace; }
+  #br-world-command-root .brw-intel-empty { padding:24px 12px; color:#8195a2; text-align:center; font-size:9px; line-height:1.7; }
+  #br-world-command-root .brw-intel-alert { padding:9px 11px; border:1px solid rgba(222,111,116,.3); border-radius:3px; color:#efb1b3; background:rgba(95,29,34,.16); font-size:8px; }
+  #br-world-command-root .brw-intel-alert.success { border-color:rgba(89,210,163,.24); color:#a6e2c8; background:rgba(25,83,62,.16); }
+  #br-world-command-root .brw-intel-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; padding:11px; border-bottom:1px solid var(--brw-line); background:rgba(5,13,20,.48); }
+  #br-world-command-root .brw-intel-form h3 { grid-column:1/-1; margin:0; color:#dce7eb; font-size:10px; }
+  #br-world-command-root .brw-intel-field { display:grid; gap:5px; color:#8194a0; font-size:8px; }
+  #br-world-command-root .brw-intel-field.full { grid-column:1/-1; }
+  #br-world-command-root .brw-intel-field input,#br-world-command-root .brw-intel-field select,#br-world-command-root .brw-intel-field textarea { width:100%; min-width:0; padding:8px; border:1px solid #2a414f; border-radius:3px; color:#d5e0e6; background:#07111a; font:inherit; font-size:9px; }
+  #br-world-command-root .brw-intel-field textarea { min-height:84px; resize:vertical; line-height:1.6; }
+  #br-world-command-root .brw-intel-field option { color:#d5e0e6; background:#07111a; }
+  #br-world-command-root .brw-intel-form-actions { grid-column:1/-1; display:flex; justify-content:flex-end; gap:7px; }
+  @media (max-width:900px) { #br-world-command-root .brw-intel-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:520px) {
+    #br-world-command-root .brw-intel-toolbar { align-items:stretch; }
+    #br-world-command-root .brw-intel-filter { flex-basis:100%; }
+    #br-world-command-root .brw-intel-row summary { grid-template-columns:22px minmax(0,1fr) auto; }
+    #br-world-command-root .brw-intel-time { grid-column:2/-1; }
+    #br-world-command-root .brw-intel-form { grid-template-columns:1fr; }
+    #br-world-command-root .brw-intel-field.full,#br-world-command-root .brw-intel-form h3,#br-world-command-root .brw-intel-form-actions { grid-column:1; }
+  }
   #br-world-command-root .brw-placeholder { min-height: 330px; display: grid; place-items: center; padding: 24px; border: 1px solid var(--brw-line); border-radius: 5px; text-align: center; background: radial-gradient(ellipse at 50% 44%, rgba(19,75,99,.15), transparent 54%), #07111b; }
   #br-world-command-root .brw-placeholder-card { max-width: 460px; }
   #br-world-command-root .brw-placeholder-icon { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 14px; border: 1px solid rgba(86,201,239,.32); border-radius: 50%; color: var(--brw-cyan); background: rgba(16,55,75,.24); box-shadow: 0 0 25px rgba(86,201,239,.09); font-size: 20px; }
@@ -9122,7 +9180,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       { key: 'personnel', label: 'PERSONNEL', icon: 'fa-users', title: 'PERSONNEL', description: 'Live, permission-scoped personnel records from the current system database.' },
       { key: 'messages', label: 'MESSAGES', icon: 'fa-envelope', title: 'MESSAGES', description: 'Secure battalion communications are available here.' },
       { key: 'bank', label: 'BANK', icon: 'fa-building-columns', title: 'BANK', description: 'Bank and finance tools are reserved for a later phase.' },
-      { key: 'intelligence', label: 'INTELLIGENCE', icon: 'fa-fingerprint', title: 'INTELLIGENCE', description: 'Intelligence workflows are reserved for a later phase.' }
+      { key: 'intelligence', label: 'INTELLIGENCE', icon: 'fa-fingerprint', title: 'INTELLIGENCE', description: 'Live intelligence briefings and operations within your battalion scope.' }
     ];
     const icon = (name) => '<i class="fa-solid ' + name + '" aria-hidden="true"></i>';
     const nav = pages.map((item) =>
@@ -9219,6 +9277,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         '<div class="brw-quote-panel"><p>“INTELLIGENCE IS NOT WHAT YOU KNOW.<br>IT IS WHAT YOU DO WITH WHAT YOU KNOW.”</p><small>— BLACK RIDGE</small></div>';
     }
 
+    const worldIntelligenceState = { items: [], operations: [], battalions: [], classifications: [], canCreate: false, loaded: false, loading: false, formOpen: false, saving: false, unitId: '', search: '', error: '', message: '', messageType: 'success', lastRequestedAt: 0, sequence: 0 };
     const personnel = {
       people: [],
       battalions: [],
@@ -9593,6 +9652,105 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         requestWorldMessages(true);
       });
     }
+    function isThreatBrief(item) {
+      const type = String(item && item.type || '').toUpperCase();
+      const explicitThreat = item && (item.isThreat === true || item.threat === true);
+      return !!explicitThreat || type.includes('THREAT') || type.includes('تهديد');
+    }
+    function intelligenceTime(value) {
+      const date = new Date(value || '');
+      return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+    function renderIntelligencePage() {
+      const data = worldIntelligenceState;
+      const scopedItems = data.items.filter((item) => !data.unitId || String(item.battalionId || '') === String(data.unitId));
+      const scopedOperations = data.operations.filter((item) => !data.unitId || String(item.battalionId || '') === String(data.unitId));
+      const query = String(data.search || '').trim().toLocaleLowerCase();
+      const rows = scopedItems.filter((item) => !query || [item.title, item.summary, item.type, item.classification, item.battalionCode].some((value) => String(value || '').toLocaleLowerCase().includes(query)));
+      const activeCount = scopedOperations.filter((item) => ['ACTIVE', 'ALERT', 'IN_PROGRESS'].includes(String(item.status || '').toUpperCase())).length;
+      const threatCount = scopedItems.filter(isThreatBrief).length;
+      const eligibleOperations = scopedOperations.filter((item) => !['CANCELLED', 'ARCHIVED'].includes(String(item.status || '').toUpperCase()));
+      const completedOperations = eligibleOperations.filter((item) => String(item.status || '').toUpperCase() === 'COMPLETE').length;
+      const completionRate = eligibleOperations.length ? Math.round(completedOperations / eligibleOperations.length * 100) + '%' : '—';
+      const unitOptions = '<option value="">ALL VISIBLE BATTALIONS</option>' + data.battalions.map((unit) => '<option value="' + htmlEscape(unit.id) + '"' + (String(unit.id) === String(data.unitId) ? ' selected' : '') + '>' + htmlEscape(unit.code || unit.name || unit.id) + '</option>').join('');
+      const createUnits = data.battalions.filter((unit) => unit.canManage);
+      const createUnitOptions = '<option value="">SECTOR-WIDE</option>' + createUnits.map((unit) => '<option value="' + htmlEscape(unit.id) + '">' + htmlEscape(unit.code || unit.name || unit.id) + '</option>').join('');
+      const classifications = data.classifications.map((value) => '<option value="' + htmlEscape(value) + '">' + htmlEscape(value) + '</option>').join('');
+      const createForm = data.formOpen && data.canCreate
+        ? '<form id="brw-intel-create-form" class="brw-intel-form"><h3>NEW INTELLIGENCE BRIEF</h3>' +
+          '<label class="brw-intel-field full">TITLE<input name="title" maxlength="140" required autocomplete="off" placeholder="Brief title"></label>' +
+          '<label class="brw-intel-field">TYPE<select name="type"><option value="INTELLIGENCE">INTELLIGENCE</option><option value="THREAT">THREAT</option></select></label>' +
+          '<label class="brw-intel-field">CLASSIFICATION<select name="classification">' + classifications + '</select></label>' +
+          '<label class="brw-intel-field full">BATTALION<select name="battalionId">' + createUnitOptions + '</select></label>' +
+          '<label class="brw-intel-field full">SUMMARY<textarea name="summary" maxlength="1800" required placeholder="Enter the authorized briefing summary"></textarea></label>' +
+          '<div class="brw-intel-form-actions"><span id="brw-intel-form-status" class="brw-intel-meta" role="status"></span><button class="brw-intel-button gold" type="submit"' + (data.saving ? ' disabled' : '') + '>SAVE BRIEF</button><button class="brw-intel-button" type="button" data-br-intel-form-cancel>CANCEL</button></div></form>'
+        : '';
+      const listMarkup = data.loading && !data.loaded
+        ? '<div class="brw-intel-empty" role="status">Loading authorized intelligence…</div>'
+        : data.error && !data.loaded
+          ? '<div class="brw-intel-empty" role="status">The authorized feed is unavailable. Use Refresh after reconnecting.</div>'
+        : rows.length
+          ? rows.slice(0, 30).map((item) => {
+              const threat = isThreatBrief(item);
+              const unit = item.battalionCode || 'SECTOR-WIDE';
+              return '<details class="brw-intel-row"><summary><span class="brw-intel-icon' + (threat ? ' threat' : '') + '"><i class="fa-solid ' + (threat ? 'fa-triangle-exclamation' : 'fa-location-dot') + '" aria-hidden="true"></i></span><span class="brw-intel-row-copy"><b class="brw-intel-title">' + htmlEscape(item.title || 'Untitled intelligence brief') + '</b><small class="brw-intel-meta">' + htmlEscape(unit) + ' · ' + htmlEscape(item.type || 'INTELLIGENCE') + '</small></span><span class="brw-intel-badge' + (threat ? ' threat' : '') + '">' + htmlEscape(item.classification || 'INTERNAL') + '</span><time class="brw-intel-time">' + htmlEscape(intelligenceTime(item.createdAt || item.at)) + '</time></summary><div class="brw-intel-detail">' + htmlEscape(item.summary || 'No summary provided.') + '<small>' + htmlEscape(item.authorCode ? 'AUTHOR ' + item.authorCode + ' · ' : '') + htmlEscape(item.battalionCode || 'SECTOR-WIDE') + '</small></div></details>';
+            }).join('')
+          : '<div class="brw-intel-empty">' + (data.search ? 'No intelligence briefs match this search.' : 'No intelligence briefs are available in your authorized battalion scope yet.') + '</div>';
+      const alert = data.error ? '<div class="brw-intel-alert" role="alert">' + htmlEscape(data.error) + '</div>' : '';
+      const notice = data.message ? '<div class="brw-intel-alert ' + (data.messageType === 'error' ? '' : 'success') + '" role="status">' + htmlEscape(data.message) + '</div>' : '';
+      return '<section class="brw-intel-page" aria-label="Intelligence dashboard">' + alert + notice +
+        '<div class="brw-intel-toolbar"><label class="brw-intel-filter"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><select id="brw-intel-battalion-filter" aria-label="Filter by battalion">' + unitOptions + '</select></label>' +
+        '<label class="brw-intel-filter"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="brw-intel-search" type="search" value="' + htmlEscape(data.search) + '" placeholder="Search intelligence…" aria-label="Search intelligence"></label>' +
+        '<button class="brw-intel-button" type="button" data-br-intel-refresh' + (data.loading ? ' disabled' : '') + '><i class="fa-solid fa-rotate" aria-hidden="true"></i> REFRESH</button>' +
+        (data.canCreate ? '<button class="brw-intel-button gold" type="button" data-br-intel-create-toggle><i class="fa-solid fa-plus" aria-hidden="true"></i> NEW BRIEF</button>' : '') + '</div>' +
+        '<div class="brw-intel-metrics"><article class="brw-intel-stat"><span class="brw-intel-stat-label"><i class="fa-solid fa-file-shield" aria-hidden="true"></i>TOTAL INTEL</span><strong class="brw-intel-stat-value">' + (data.loaded ? scopedItems.length : '—') + '</strong><small class="brw-intel-stat-note">VISIBLE AT YOUR CLEARANCE</small></article>' +
+        '<article class="brw-intel-stat"><span class="brw-intel-stat-label"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i>ACTIVE OPS</span><strong class="brw-intel-stat-value">' + (data.loaded ? activeCount : '—') + '</strong><small class="brw-intel-stat-note">ACTIVE · ALERT · IN PROGRESS</small></article>' +
+        '<article class="brw-intel-stat red"><span class="brw-intel-stat-label"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>THREAT REPORTS</span><strong class="brw-intel-stat-value">' + (data.loaded ? threatCount : '—') + '</strong><small class="brw-intel-stat-note">EXPLICITLY CLASSIFIED AS THREAT</small></article>' +
+        '<article class="brw-intel-stat gold"><span class="brw-intel-stat-label"><i class="fa-solid fa-chart-simple" aria-hidden="true"></i>COMPLETION RATE</span><strong class="brw-intel-stat-value">' + (data.loaded ? completionRate : '—') + '</strong><small class="brw-intel-stat-note">COMPLETED / NON-CANCELLED OPS</small></article></div>' +
+        '<section class="brw-intel-panel"><header class="brw-intel-panel-head"><div><h2>LATEST INTELLIGENCE</h2><small>' + (data.loaded ? rows.length + (rows.length === 1 ? ' MATCHING BRIEF' : ' MATCHING BRIEFS') : 'AUTHORIZED FEED') + '</small></div><span class="brw-count">' + (data.loaded ? scopedItems.length : '—') + '</span></header>' + createForm + '<div class="brw-intel-list">' + listMarkup + '</div></section></section>';
+    }
+    function requestWorldIntelligence(force) {
+      if (worldCommandPage !== 'intelligence') return;
+      const socket = window.blackRidgeSocket;
+      if (!socket || !socket.connected) {
+        worldIntelligenceState.loading = false;
+        worldIntelligenceState.error = 'Secure server connection unavailable. Reconnect and retry.';
+        if (content) content.innerHTML = renderIntelligencePage();
+        const live = root.querySelector('#brw-live-label');
+        if (live) live.textContent = 'INTELLIGENCE · OFFLINE';
+        const footer = root.querySelector('#brw-footer-state');
+        if (footer) footer.textContent = 'INTELLIGENCE SERVICE · CONNECTION REQUIRED';
+        return;
+      }
+      if (!force && Date.now() - worldIntelligenceState.lastRequestedAt < 15000) return;
+      const sequence = ++worldIntelligenceState.sequence;
+      worldIntelligenceState.lastRequestedAt = Date.now();
+      worldIntelligenceState.loading = true;
+      worldIntelligenceState.error = '';
+      if (content) content.innerHTML = renderIntelligencePage();
+      socket.emit('brw:intelligence:overview', {}, (result) => {
+        if (sequence !== worldIntelligenceState.sequence) return;
+        worldIntelligenceState.loading = false;
+        if (!result || result.ok !== true) {
+          worldIntelligenceState.error = result && result.message || 'Intelligence data could not be loaded. Check your session and retry.';
+        } else {
+          worldIntelligenceState.error = '';
+          worldIntelligenceState.items = Array.isArray(result.items) ? result.items : [];
+          worldIntelligenceState.operations = Array.isArray(result.operations) ? result.operations : [];
+          worldIntelligenceState.battalions = Array.isArray(result.battalions) ? result.battalions : [];
+          worldIntelligenceState.classifications = Array.isArray(result.classifications) ? result.classifications : [];
+          worldIntelligenceState.canCreate = result.canCreate === true;
+          worldIntelligenceState.loaded = true;
+          if (worldIntelligenceState.unitId && !worldIntelligenceState.battalions.some((unit) => String(unit.id) === String(worldIntelligenceState.unitId))) worldIntelligenceState.unitId = '';
+        }
+        if (worldCommandPage === 'intelligence' && content) content.innerHTML = renderIntelligencePage();
+        const live = root.querySelector('#brw-live-label');
+        if (live) live.textContent = worldIntelligenceState.error ? 'INTELLIGENCE · OFFLINE' : 'LIVE · ACCESS-SCOPED INTELLIGENCE';
+        const footer = root.querySelector('#brw-footer-state');
+        if (footer) footer.textContent = worldIntelligenceState.error ? 'INTELLIGENCE SERVICE · CONNECTION REQUIRED' : 'INTELLIGENCE · CLEARANCE AND BATTALION SCOPED';
+      });
+    }
+
     function setPage(key) {
       const item = pages.find((candidate) => candidate.key === key) || pages[0];
       if (item.key !== 'personnel' && personnel.message && personnel.message.oneTime) personnel.message = null;
@@ -9602,16 +9760,19 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       root.querySelector('#brw-page-title').textContent = item.key === 'command' ? 'COMMAND CENTER' : item.title;
       root.querySelector('#brw-page-description').textContent = item.key === 'command' ? 'Unified overview of Black Ridge command channels.' : item.description;
       worldCommandPage = item.key;
-      content.innerHTML = item.key === 'command' ? renderDashboard() : item.key === 'personnel' ? renderPersonnelPage() : item.key === 'messages' ? renderWorldMessages() : renderPlaceholder(item);
+      content.innerHTML = item.key === 'command' ? renderDashboard() : item.key === 'personnel' ? renderPersonnelPage() : item.key === 'messages' ? renderWorldMessages() : item.key === 'intelligence' ? renderIntelligencePage() : renderPlaceholder(item);
       const liveLabel = root.querySelector('#brw-live-label');
       const footerState = root.querySelector('#brw-footer-state');
       if (liveLabel) liveLabel.textContent = item.key === 'personnel'
         ? (personnel.loaded ? 'LIVE PERSONNEL DIRECTORY' : 'SECURE PERSONNEL DIRECTORY')
+        : item.key === 'intelligence' ? (worldIntelligenceState.loaded ? 'LIVE · ACCESS-SCOPED INTELLIGENCE' : 'SECURE INTELLIGENCE FEED')
         : item.key === 'messages' ? 'LIVE · SERVER-SCOPED DATA' : 'PREVIEW INTERFACE';
       if (footerState) footerState.textContent = item.key === 'personnel'
         ? 'PERSONNEL · ROLE-SCOPED DATABASE RECORDS'
+        : item.key === 'intelligence' ? 'INTELLIGENCE · CLEARANCE AND BATTALION SCOPED'
         : item.key === 'messages' ? 'LIVE MESSAGING · SERVER AUTHORIZED' : 'OTHER MODULES · PREVIEW ONLY';
       if (item.key === 'messages') requestWorldMessages(true);
+      if (item.key === 'intelligence') requestWorldIntelligence(true);
       sidebarPanels.innerHTML = item.key === 'command' ? renderSidePanels() : '';
       sidebarPanels.hidden = item.key !== 'command';
       root.querySelectorAll('.brw-nav-button').forEach((button) => {
@@ -9635,6 +9796,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (typeof window.exitIBPWorkspace === 'function') window.exitIBPWorkspace();
         return;
       }
+      const intelRefresh = event.target.closest('[data-br-intel-refresh]');
+      if (intelRefresh) { requestWorldIntelligence(true); return; }
+      const intelCreateToggle = event.target.closest('[data-br-intel-create-toggle]');
+      if (intelCreateToggle) { worldIntelligenceState.formOpen = !worldIntelligenceState.formOpen; worldIntelligenceState.message = ''; content.innerHTML = renderIntelligencePage(); return; }
+      const intelFormCancel = event.target.closest('[data-br-intel-form-cancel]');
+      if (intelFormCancel) { worldIntelligenceState.formOpen = false; worldIntelligenceState.message = ''; content.innerHTML = renderIntelligencePage(); return; }
       const personnelAction = event.target.closest('[data-personnel-action]');
       if (personnelAction) {
         const action = personnelAction.dataset.personnelAction;
@@ -9693,6 +9860,34 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (typeof nextInput.setSelectionRange === 'function') nextInput.setSelectionRange(selectionStart, selectionEnd);
       }
     });
+    root.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!form || form.id !== 'brw-intel-create-form') return;
+      event.preventDefault();
+      if (worldIntelligenceState.saving) return;
+      const socket = window.blackRidgeSocket;
+      const status = form.querySelector('#brw-intel-form-status');
+      const submit = form.querySelector('button[type="submit"]');
+      if (!socket || !socket.connected) { if (status) status.textContent = 'Secure server connection unavailable. Reconnect and retry.'; return; }
+      const values = new FormData(form);
+      const payload = { title: String(values.get('title') || '').trim(), type: String(values.get('type') || 'INTELLIGENCE'), classification: String(values.get('classification') || 'INTERNAL'), battalionId: String(values.get('battalionId') || ''), summary: String(values.get('summary') || '').trim() };
+      if (!payload.title || !payload.summary) { if (status) status.textContent = 'Enter a title and summary.'; return; }
+      worldIntelligenceState.saving = true;
+      if (submit) { submit.disabled = true; submit.textContent = 'SAVING…'; }
+      if (status) status.textContent = 'Saving to the authorized intelligence record…';
+      socket.emit('ibp:intelligence:create', payload, (result) => {
+        worldIntelligenceState.saving = false;
+        if (!result || result.ok !== true) {
+          if (status) status.textContent = result && result.message || 'The briefing could not be saved. Check your permissions and retry.';
+          if (submit) { submit.disabled = false; submit.textContent = 'SAVE BRIEF'; }
+          return;
+        }
+        worldIntelligenceState.formOpen = false;
+        worldIntelligenceState.message = 'Intelligence brief saved.';
+        worldIntelligenceState.messageType = 'success';
+        requestWorldIntelligence(true);
+      });
+    });
     root.addEventListener('submit', async (event) => {
       const form = event.target;
       if (!form || form.id !== 'brw-personnel-form') return;
@@ -9739,6 +9934,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     if (liveSocket && typeof liveSocket.on === 'function') {
       liveSocket.on('state:update', () => {
         if (personnel.active && !personnel.mode) loadPersonnel();
+        if (worldCommandPage === 'intelligence') requestWorldIntelligence(false);
       });
     }
     root.addEventListener('submit', (event) => {
@@ -9747,10 +9943,20 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     root.addEventListener('change', (event) => {
       const target = event.target;
       if (!target) return;
+      if (target.id === 'brw-intel-battalion-filter') { worldIntelligenceState.unitId = target.value || ''; content.innerHTML = renderIntelligencePage(); return; }
       if (target.id === 'brw-message-from') { worldMessageState.sourceId = target.value; worldMessageState.targetId = ''; content.innerHTML = renderWorldMessages(); return; }
       if (target.id === 'brw-message-to') { worldMessageState.targetId = target.value; content.innerHTML = renderWorldMessages(); return; }
       if (target.id === 'brw-message-box') { worldMessageState.box = target.value; content.innerHTML = renderWorldMessages(); return; }
       if (target.id === 'brw-message-classification') worldMessageState.classification = target.value;
+    });
+    root.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!target || target.id !== 'brw-intel-search') return;
+      const cursor = target.selectionStart;
+      worldIntelligenceState.search = target.value || '';
+      content.innerHTML = renderIntelligencePage();
+      const next = content.querySelector('#brw-intel-search');
+      if (next) { next.focus(); if (typeof next.setSelectionRange === 'function') next.setSelectionRange(cursor, cursor); }
     });
     root.addEventListener('input', (event) => {
       const target = event.target;
@@ -9766,8 +9972,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const empty = content.querySelector('#brw-message-search-empty');
       if (empty) empty.hidden = visible > 0 || !query;
     });
-    if (window.blackRidgeSocket) window.blackRidgeSocket.on('connect', () => { if (worldCommandPage === 'messages') requestWorldMessages(true); });
+    if (window.blackRidgeSocket) window.blackRidgeSocket.on('connect', () => { if (worldCommandPage === 'messages') requestWorldMessages(true); if (worldCommandPage === 'intelligence') requestWorldIntelligence(true); });
     window.setInterval(() => { if (worldCommandPage === 'messages') requestWorldMessages(false); }, 20000);
+    window.setInterval(() => { if (worldCommandPage === 'intelligence') requestWorldIntelligence(false); }, 30000);
     if (typeof window.openIBPHome === 'function') {
       const openExistingCenter = window.openIBPHome;
       window.openIBPHome = function () {
