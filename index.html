@@ -2671,6 +2671,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
         <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. السجل الأمني لا يحتفظ بنص الرسائل المحظورة؛ بيانات الأسماء والتفاصيل الحساسة تظهر لـ CIA CHIEF فقط.</p>
         <div id="security-summary" style="margin:12px 0;"></div>
+        <section id="security-profanity-section" style="display:none;margin-top:12px;">
+          <div class="security-line"></div>
+          <div class="classified-title" style="font-size:.78rem;">سجل التحذيرات بسبب الألفاظ — للقائد فقط</div>
+          <div id="security-profanity-warnings" style="margin-top:10px;"></div>
+        </section>
         <div class="security-line"></div>
         <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
         <div id="security-active-alerts" style="margin-top:10px;"></div>
@@ -4590,26 +4595,33 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!root) return;
       const allowed = !!currentUser && ['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank));
       if (!allowed) {
-        ['security-summary','security-active-alerts','security-restricted-members','security-manual-suspend','security-incident-list'].forEach(id => {
+        ['security-summary','security-profanity-warnings','security-active-alerts','security-restricted-members','security-manual-suspend','security-incident-list'].forEach(id => {
           const box = document.getElementById(id);
           if (box) box.innerHTML = '';
         });
+        const profanitySection = document.getElementById('security-profanity-section');
+        if (profanitySection) profanitySection.style.display = 'none';
         return;
       }
       const chief = normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      const isProfanityIncident = incident => ['PROFANITY','MORSE_PROFANITY','OBFUSCATED_PROFANITY'].includes(String(incident && incident.type || '').toUpperCase());
+      const isProfanitySeparation = incident => isProfanityIncident(incident) && incident.action === 'MEMBER_SUSPENDED' && incident.status === 'SUSPENDED' && Number(incident.profanityStrikeCount) >= 3;
+      const visibleSecurityIncidents = (securityIncidents || []).filter(incident => chief || isProfanitySeparation(incident));
+      const profanityWarnings = chief ? visibleSecurityIncidents.filter(incident => isProfanityIncident(incident) && Number(incident.profanityStrikeCount) > 0) : [];
+      const separatedCodes = new Set(visibleSecurityIncidents.filter(isProfanitySeparation).map(incident => String(incident.publicCode || '').toUpperCase()).filter(Boolean));
       const allMembers = Array.isArray(registeredUsers) ? registeredUsers : [];
-      const restricted = allMembers.filter(user => user && (user.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(user.securityStatus)));
+      const restricted = allMembers.filter(user => user && (user.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(user.securityStatus)) && (chief || separatedCodes.has(String(user.publicCode || '').toUpperCase())));
       const currentStatusFor = incident => allMembers.find(user =>
         (incident.userId && user.id === incident.userId) ||
         (incident.publicCode && user.publicCode === incident.publicCode)
       );
-      const activeAlerts = (securityIncidents || []).filter(incident => {
+      const activeAlerts = visibleSecurityIncidents.filter(incident => {
         if (incident.status === 'REVIEW_REQUIRED') return true;
         if (!['SUSPENDED','SECURITY_RESTRICTED'].includes(incident.status)) return false;
         const member = currentStatusFor(incident);
         return !!member && (member.suspended === true || ['SECURITY_RESTRICTED','SUSPENDED'].includes(member.securityStatus));
       }).slice(0, 30);
-      const restored = (securityIncidents || []).filter(incident => incident.action === 'MEMBER_RESTORED').length;
+      const restored = visibleSecurityIncidents.filter(incident => incident.action === 'MEMBER_RESTORED').length;
       const summary = document.getElementById('security-summary');
       if (summary) summary.innerHTML = `
         <div style="display:flex;gap:9px;flex-wrap:wrap;">
@@ -4626,12 +4638,26 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           : incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد';
         const actor = incident.actorName || incident.actorCode;
         const actorLabel = actor ? `بواسطة ${esc(incident.actorName || '#' + incident.actorCode)}${incident.actorRank ? ` · ${esc(incident.actorRank)}` : ''}` : '';
+        const strikeCount = Number(incident.profanityStrikeCount) || 0;
+        const strikeLabel = chief && strikeCount > 0 ? `<br>تحذير بسبب ألفاظ مسيئة: ${Math.min(strikeCount, 3)}/3` : '';
         return `<div class="audit-log-item" style="border-right:3px solid ${String(incident.level || '').includes('3') || String(incident.level || '').includes('4') ? '#ef4444' : '#facc15'};">
           <div class="audit-log-title">${esc(incident.action || 'SECURITY_EVENT')} — ${esc(incident.level || incident.severity || 'LEVEL 1')}</div>
-          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
+          <div class="audit-log-meta">${who} · ${esc(incident.rank || '')}<br>${esc(incident.type || '')} · ${esc(incident.status || '')}${strikeLabel}${actorLabel ? `<br>${actorLabel}` : ''}<br>${esc(date)}</div>
           ${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}
         </div>`;
       };
+      const profanitySection = document.getElementById('security-profanity-section');
+      const profanityWarningsBox = document.getElementById('security-profanity-warnings');
+      if (profanitySection) profanitySection.style.display = chief ? 'block' : 'none';
+      if (profanityWarningsBox) profanityWarningsBox.innerHTML = chief && profanityWarnings.length
+        ? profanityWarnings.slice(0, 100).map(incident => {
+            const count = Math.max(1, Math.min(3, Number(incident.profanityStrikeCount) || 1));
+            const phase = count === 1 ? 'تحذير أولي' : count === 2 ? 'تحذير ثانوي' : 'فصل نهائي';
+            const who = incident.userName ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}` : (incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد');
+            const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+            return `<div class="audit-log-item" style="border-right:3px solid ${count >= 3 ? '#ef4444' : '#facc15'};"><div class="audit-log-title">${who}</div><div class="audit-log-meta">${phase} بسبب استخدام ألفاظ مسيئة · ${count}/3 · ${esc(date)}</div>${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}<button type="button" class="btn-main" data-security-delete-profanity="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السجل من مركز الأمن</button></div>`;
+          }).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد تحذيرات لفظية مسجلة.</div>';
       const alertsBox = document.getElementById('security-active-alerts');
       if (alertsBox) alertsBox.innerHTML = activeAlerts.length
         ? activeAlerts.map(describe).join('')
@@ -4640,15 +4666,18 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const restrictedBox = document.getElementById('security-restricted-members');
       if (restrictedBox) {
         restrictedBox.innerHTML = restricted.length
-          ? restricted.map(user => `<div class="audit-log-item"><div class="audit-log-title">${esc(user.name || user.publicCode || 'عضو')}</div>
+          ? restricted.map(user => `<div class="audit-log-item"><div class="audit-log-title">${esc(chief ? (user.name || user.publicCode || 'عضو') : (user.publicCode ? '#' + user.publicCode : 'عضو مفصول'))}</div>
               <div class="audit-log-meta">#${esc(user.publicCode || '—')} · ${esc(user.rank || 'AGENT')} · ${esc(user.securityStatus || (user.suspended ? 'SUSPENDED' : 'RESTRICTED'))}</div>
-              ${user.suspensionReason ? `<div class="audit-log-details">${esc(user.suspensionReason)}</div>` : ''}
+              ${chief && user.suspensionReason ? `<div class="audit-log-details">${esc(user.suspensionReason)}</div>` : ''}
               ${chief ? `<button type="button" class="btn-main" data-security-restore="${esc(user.id)}" style="margin-top:8px;background:#166534;">استعادة بواسطة CIA CHIEF</button>` : ''}
             </div>`).join('')
-          : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حسابات مقيّدة أو موقوفة.</div>';
+          : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حسابات مقيّدة أو موقوفة ضمن صلاحيتك.</div>';
       }
       root.querySelectorAll('[data-security-restore]').forEach(button => {
         button.onclick = () => restoreSecurityMember(button.dataset.securityRestore);
+      });
+      root.querySelectorAll('[data-security-delete-profanity]').forEach(button => {
+        button.onclick = () => deleteProfanityIncidentFromPanel(button.dataset.securityDeleteProfanity);
       });
 
       const manual = document.getElementById('security-manual-suspend');
@@ -4668,9 +4697,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
 
       const incidentsBox = document.getElementById('security-incident-list');
-      if (incidentsBox) incidentsBox.innerHTML = securityIncidents.length
-        ? securityIncidents.slice(0, 100).map(describe).join('')
-        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حوادث مسجلة.</div>';
+      if (incidentsBox) incidentsBox.innerHTML = visibleSecurityIncidents.length
+        ? visibleSecurityIncidents.slice(0, 100).map(describe).join('')
+        : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد حوادث ضمن صلاحيتك.</div>';
     }
 
     function suspendSecurityMemberFromPanel() {
@@ -4690,6 +4719,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!confirm('سيُرفع الإيقاف الأمني، لكن الحساب سيبقى خارج الخدمة حتى يبدأ العضو الخدمة بنفسه. تأكيد الاستعادة؟')) return;
       ciaSocket.emit('security:restoreMember', { userId }, function(result) {
         if (!result || !result.ok) return alert((result && result.message) || 'تعذرت استعادة العضو.');
+        loadSecurityCenter();
+      });
+    }
+
+    function deleteProfanityIncidentFromPanel(incidentId) {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || !ciaSocket || !ciaSocket.connected || !incidentId) return;
+      if (!confirm('سيُخفى سجل المخالفة من مركز الأمن، مع الاحتفاظ بأثر الإجراء في سجل التدقيق. متابعة؟')) return;
+      ciaSocket.emit('security:deleteProfanityIncident', { incidentId }, function(result) {
+        if (!result || !result.ok) return alert((result && result.message) || 'تعذر حذف سجل المخالفة.');
         loadSecurityCenter();
       });
     }
