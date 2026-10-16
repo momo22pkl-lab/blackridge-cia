@@ -1104,7 +1104,8 @@ function recordSecurityEvent({
   status = 'REVIEW_REQUIRED',
   relatedId = null,
   notificationCount = null,
-  profanityStrikeCount = null
+  profanityStrikeCount = null,
+  profanityTerm = null
 }) {
   const timestamp = now();
   const incident = {
@@ -1127,7 +1128,10 @@ function recordSecurityEvent({
     status: clean(status, 40).toUpperCase(),
     ...(relatedId ? { relatedId: clean(relatedId, 200) } : {}),
     ...(Number.isFinite(notificationCount) ? { notificationCount } : {}),
-    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {})
+    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {}),
+    ...(isProfanitySecurityIncident({ type }) && typeof profanityTerm === 'string' && clean(profanityTerm, 80)
+      ? { profanityTerm: clean(profanityTerm, 80) }
+      : {})
   };
   state.cia_security_incidents.unshift(incident);
   state.cia_security_incidents = state.cia_security_incidents.slice(0, 2000);
@@ -1169,6 +1173,9 @@ function securityEventForViewer(incident, viewer) {
     result.actorName = incident.actorName;
     result.actorCode = incident.actorCode || '';
     result.actorRank = incident.actorRank || '';
+    if (isProfanitySecurityIncident(incident) && incident.profanityTerm) {
+      result.profanityTerm = clean(incident.profanityTerm, 80);
+    }
     result.severity = incident.severity;
     if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
     const suspendedMember = incident.type === 'MANUAL_REVIEW' && incident.action === 'MEMBER_SUSPENDED'
@@ -1254,7 +1261,8 @@ async function recordModerationViolation(actor, detection, channel) {
       level: separated ? 3 : 1,
       reason,
       status: separated ? 'SUSPENDED' : 'REVIEW_REQUIRED',
-      profanityStrikeCount: strike.count
+      profanityStrikeCount: strike.count,
+      profanityTerm: detection.matchedTerm || null
     });
     const leadershipMessage = separated
       ? `تم فصل #${clean(actor.publicCode || '—', 100)} بعد المخالفة ${strike.count}/3 بسبب إساءة لفظية في ${channelName}.`
