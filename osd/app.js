@@ -78,7 +78,7 @@ const COPY = {
     required: 'يرجى استكمال الحقول المطلوبة.', saved: 'حُفظت المسودة.', submitted: 'أُرسلت الوثيقة للمراجعة.',
     approved: 'تم اعتماد الوثيقة.', issuedMessage: 'تم توقيع الوثيقة وإصدارها.', revokedMessage: 'أُلغيت الوثيقة.',
     archivedMessage: 'أُرشفت الوثيقة.', noPermission: 'ليس لديك صلاحية لهذا الإجراء.',
-    createFailed: 'تعذر حفظ الوثيقة.', noRecords: 'لا توجد سجلات متاحة.', print: 'طباعة / حفظ PDF',
+    createFailed: 'تعذر حفظ الوثيقة.', noRecords: 'لا توجد سجلات متاحة.', print: 'طباعة / حفظ PDF', imageDownload: 'تنزيل صورة التقرير', imageDownloaded: 'تم تنزيل صورة التقرير.', autoShareFailed: 'تم إصدار الوثيقة، لكن تعذر إنشاء رابط المشاركة تلقائياً. يمكنك إنشاؤه من نافذة المشاركة.',
     editDraft: 'تعديل المسودة', amendDocument: 'إنشاء إصدار جديد', sendReview: 'إرسال للاعتماد', approve: 'اعتماد', signIssue: 'توقيع وإصدار',
     revoke: 'إلغاء الوثيقة', archiveAction: 'أرشفة', share: 'إنشاء رابط آمن', auditAction: 'سجل التدقيق',
     versions: 'سجل الإصدارات', close: 'إغلاق', verificationCode: 'رمز التحقق', issuedLabel: 'تاريخ الإصدار',
@@ -164,7 +164,7 @@ const COPY = {
     required: 'Complete the required fields.', saved: 'Draft saved.', submitted: 'Document submitted for review.',
     approved: 'Document approved.', issuedMessage: 'Document signed and issued.', revokedMessage: 'Document revoked.',
     archivedMessage: 'Document archived.', noPermission: 'You are not authorized for this action.',
-    createFailed: 'Could not save the document.', noRecords: 'No records available.', print: 'Print / Save PDF',
+    createFailed: 'Could not save the document.', noRecords: 'No records available.', print: 'Print / Save PDF', imageDownload: 'Download Report Image', imageDownloaded: 'Report image downloaded.', autoShareFailed: 'The document was issued, but automatic sharing failed. You can create a link from the share panel.',
     editDraft: 'Edit Draft', amendDocument: 'Create Amendment', sendReview: 'Submit for Approval', approve: 'Approve', signIssue: 'Sign & Issue',
     revoke: 'Revoke', archiveAction: 'Archive', share: 'Create Secure Link', auditAction: 'Audit Trail',
     versions: 'Version History', close: 'Close', verificationCode: 'Verification Code', issuedLabel: 'Issued At',
@@ -228,6 +228,8 @@ const SHARE_COPY = {
     revokeConfirm: 'Revoke this share link? It will stop working immediately.'
   }
 };
+
+const documentShareLinks = new Map();
 
 const state = {
   user: null,
@@ -535,7 +537,10 @@ function modalActions(document) {
   if (document.status === 'PENDING APPROVAL' && can('APPROVE_DOCUMENTS')) actions.push(`<button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>`);
   if (document.status === 'APPROVED' && can('ISSUE_DOCUMENTS') && can('SIGN_DOCUMENTS')) actions.push(`<button class="button button-primary" data-action="issueDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('signIssue'))}</button>`);
   if (activeIssued && can('CREATE_DOCUMENTS')) actions.push(`<button class="button button-outline" data-action="amendDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('amendDocument'))}</button>`);
-  if (activeIssued && can('DOWNLOAD_DOCUMENTS')) actions.push(`<button class="button button-outline" data-action="printDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('print'))}</button>`);
+  if (activeIssued && can('DOWNLOAD_DOCUMENTS')) {
+    actions.push(`<button class="button button-outline" data-action="printDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('print'))}</button>`);
+    actions.push(`<button class="button button-outline" data-action="downloadDocumentImage" data-id="${escapeHtml(document.id)}">${escapeHtml(t('imageDownload'))}</button>`);
+  }
   if (activeIssued && can('SHARE_DOCUMENTS')) actions.push(`<button class="button button-outline" data-action="shareDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('share'))}</button>`);
   if (document.status === 'ISSUED' && can('REVOKE_DOCUMENTS')) actions.push(`<button class="button button-quiet" data-action="revokeDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('revoke'))}</button>`);
   if (['ISSUED', 'REVOKED', 'EXPIRED'].includes(document.status) && can('ARCHIVE_DOCUMENTS')) actions.push(`<button class="button button-quiet" data-action="archiveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('archiveAction'))}</button>`);
@@ -752,7 +757,10 @@ async function confirmSignatureAndIssue() {
     await loadDocuments();
     toast(t('issuedMessage'));
     const issued = state.documents.find((document) => document.id === issuedId);
-    if (issued) showDocument(issued);
+    if (issued) {
+      showDocument(issued);
+      if (can('SHARE_DOCUMENTS')) await shareDocument(issuedId, { autoCreate: true });
+    }
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -760,7 +768,7 @@ async function confirmSignatureAndIssue() {
   }
 }
 
-async function shareDocument(id) {
+async function shareDocument(id, { autoCreate = false } = {}) {
   if (!can('SHARE_DOCUMENTS')) return toast(t('noPermission'), 'error');
   const documentData = state.documents.find((item) => item.id === id);
   if (!documentData) return;
@@ -788,6 +796,13 @@ async function shareDocument(id) {
     $('#shareDownloadRow').hidden = $('#shareProtected').checked;
   });
   await refreshShareLinks(id);
+  if (autoCreate) {
+    try {
+      await createShareLink(id);
+    } catch (error) {
+      toast(t('autoShareFailed') + ' ' + error.message, 'error');
+    }
+  }
 }
 
 async function refreshShareLinks(id) {
@@ -820,6 +835,7 @@ async function createShareLink(id) {
     })
   });
   const url = new URL(result.url, location.origin).toString();
+  documentShareLinks.set(String(id), { url, shareId: result.shareId });
   const resultPanel = $('#shareResult');
   resultPanel.hidden = false;
   resultPanel.innerHTML = `<b>${escapeHtml(st('created'))}</b><input id="createdShareUrl" value="${escapeHtml(url)}" readonly aria-label="Share URL"><button class="button button-outline" data-action="copyShareLink">${escapeHtml(st('copy'))}</button>`;
@@ -836,6 +852,8 @@ async function createShareLink(id) {
 async function revokeShareLink(id, shareId) {
   if (!window.confirm(st('revokeConfirm'))) return;
   await request(`/documents/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+  const cachedShare = documentShareLinks.get(String(id));
+  if (cachedShare && cachedShare.shareId === shareId) documentShareLinks.delete(String(id));
   await refreshShareLinks(id);
   toast(st('revoked'));
 }
@@ -880,20 +898,113 @@ async function waitForPrintAssets(root) {
   }));
 }
 
+function addShareLinkToPaper(paper, shareUrl) {
+  const shareBlock = paper.querySelector('[data-print-share]');
+  if (!shareBlock) return;
+  if (!shareUrl) { shareBlock.remove(); return; }
+  const caption = shareBlock.querySelector('.paper-share-caption');
+  const link = shareBlock.querySelector('[data-share-url]');
+  if (caption) caption.textContent = state.language === 'ar' ? 'رابط عرض آمن · صالح لمدة 14 يومًا' : 'READ-ONLY VIEW LINK · VALID FOR 14 DAYS';
+  if (link) { link.href = shareUrl; link.textContent = shareUrl; }
+  shareBlock.hidden = false;
+}
+
+async function blobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('A document image could not be prepared for export.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function downloadDocumentImage(documentData) {
+  const source = $('#livePreview');
+  if (!source) throw new Error('The official document preview is unavailable.');
+  renderPreview(documentData);
+  const width = 794;
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = 'position:fixed;left:-100000px;top:0;width:' + width + 'px;z-index:-1;pointer-events:none;';
+  const paper = source.cloneNode(true);
+  paper.removeAttribute('id');
+  paper.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+  Object.assign(paper.style, { width: width + 'px', maxWidth: 'none', minHeight: '0', height: 'auto', overflow: 'visible', boxSizing: 'border-box', margin: '0', padding: '28px 32px 24px', boxShadow: 'none' });
+  const cachedShare = documentShareLinks.get(String(documentData && documentData.id || ''));
+  addShareLinkToPaper(paper, cachedShare && cachedShare.url || '');
+  host.append(paper);
+  document.body.append(host);
+  let svgUrl = '';
+  let pngUrl = '';
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    await Promise.all(Array.from(paper.querySelectorAll('img')).filter((image) => !image.hidden && image.getAttribute('src')).map(async (image) => {
+      if (image.src.startsWith('data:')) return;
+      const response = await fetch(image.src, { credentials: 'same-origin' });
+      if (!response.ok) throw new Error('A document image could not be loaded.');
+      image.src = await blobAsDataUrl(await response.blob());
+    }));
+    await waitForPrintAssets(paper);
+    const stylesheetResponse = await fetch('/osd/styles.css', { credentials: 'same-origin' });
+    if (!stylesheetResponse.ok) throw new Error('Document styles could not be loaded for image export.');
+    const stylesheet = await stylesheetResponse.text();
+    const paperHeight = Math.max(1, Math.ceil(Math.max(paper.scrollHeight, paper.getBoundingClientRect().height)));
+    const markup = new XMLSerializer().serializeToString(paper);
+    const escapedStyles = stylesheet.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + paperHeight + '" viewBox="0 0 ' + width + ' ' + paperHeight + '">' + '<foreignObject x="0" y="0" width="' + width + '" height="' + paperHeight + '">' + '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + width + 'px;height:' + paperHeight + 'px;overflow:visible"><style>' + escapedStyles + '</style>' + markup + '</div></foreignObject></svg>';
+    svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    const image = new Image();
+    image.decoding = 'async';
+    const imageReady = new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('The document could not be rendered as an image on this browser.')); });
+    image.src = svgUrl;
+    await imageReady;
+    const pixelRatio = Math.min(3, Math.sqrt(12000000 / (width * paperHeight)));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * pixelRatio));
+    canvas.height = Math.max(1, Math.round(paperHeight * pixelRatio));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser could not prepare the report image.');
+    context.fillStyle = '#f0eee7';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('This browser could not create the report PNG.');
+    const safeNumber = String((documentData && (documentData.documentNumber || documentData.id)) || 'document').replace(/[^a-z0-9_-]/gi, '-').slice(0, 80) || 'document';
+    const downloadUrl = URL.createObjectURL(blob);
+    pngUrl = downloadUrl;
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = 'report-' + safeNumber + '.png';
+    anchor.rel = 'noopener';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60000);
+    pngUrl = '';
+    toast(t('imageDownloaded'));
+  } finally {
+    if (svgUrl) URL.revokeObjectURL(svgUrl);
+    if (pngUrl) URL.revokeObjectURL(pngUrl);
+    host.remove();
+  }
+}
+
 async function printDocument(documentData, { includeShareLink = false } = {}) {
   const source = $('#livePreview');
   if (!source) throw new Error('The official document preview is unavailable.');
   renderPreview(documentData);
 
-  let shareUrl = '';
-  if (includeShareLink && documentData?.id && can('SHARE_DOCUMENTS')) {
+  const cachedShare = documentShareLinks.get(String(documentData?.id || ''));
+  let shareUrl = cachedShare?.url || '';
+  if (includeShareLink && documentData?.id && !shareUrl && can('SHARE_DOCUMENTS')) {
     try {
       const share = await request('/documents/' + encodeURIComponent(documentData.id) + '/share', {
         method: 'POST',
         body: JSON.stringify({ permissions: ['VIEW', 'VERIFY'], expiresInDays: 14 })
       });
-      shareUrl = share.url || '';
-      if (!shareUrl) throw new Error('The share service returned no URL.');
+      shareUrl = new URL(share.url || '', location.origin).toString();
+      if (!share.url) throw new Error('The share service returned no URL.');
+      documentShareLinks.set(String(documentData.id), { url: shareUrl, shareId: share.shareId });
     } catch (error) {
       const message = state.language === 'ar'
         ? 'تعذر إنشاء رابط العرض؛ سيُطبع التقرير من دونه: ' + error.message
@@ -911,16 +1022,7 @@ async function printDocument(documentData, { includeShareLink = false } = {}) {
   paper.removeAttribute('id');
   paper.classList.add('print-document');
   paper.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
-  const shareBlock = paper.querySelector('[data-print-share]');
-  if (shareBlock && shareUrl) {
-    const caption = shareBlock.querySelector('.paper-share-caption');
-    const link = shareBlock.querySelector('[data-share-url]');
-    if (caption) caption.textContent = state.language === 'ar' ? 'رابط عرض آمن · صالح لمدة 14 يومًا' : 'READ-ONLY VIEW LINK · VALID FOR 14 DAYS';
-    if (link) { link.href = shareUrl; link.textContent = shareUrl; }
-    shareBlock.hidden = false;
-  } else if (shareBlock) {
-    shareBlock.remove();
-  }
+  addShareLinkToPaper(paper, shareUrl);
   printRoot.append(paper);
   document.body.append(printRoot);
 
@@ -1224,6 +1326,9 @@ document.addEventListener('click', async (event) => {
     else if (action === 'printDocument') {
       const result = await request(`/documents/${encodeURIComponent(id)}/download`, { method: 'POST', body: '{}' });
       await printDocument(result.document, { includeShareLink: true });
+    } else if (action === 'downloadDocumentImage') {
+      const result = await request(`/documents/${encodeURIComponent(id)}/download`, { method: 'POST', body: '{}' });
+      await downloadDocumentImage(result.document);
     } else if (action === 'showAudit') await loadAudit(id);
     else if (action === 'showVersions') await showVersions(id);
     else if (action === 'refreshUsers') await loadUsers();
