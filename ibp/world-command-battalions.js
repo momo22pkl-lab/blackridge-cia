@@ -27,7 +27,7 @@
     selectedId: '',
     mode: '',
     polygon: [],
-    viewport: { x: 0, y: 0, w: 1000, h: 700 },
+    viewport: { x: 0, y: 0, w: 700, h: 960 },
     loading: false,
     refreshing: false,
     timer: null,
@@ -228,55 +228,40 @@
     renderSideSummary();
   }
   function mapBase() {
-    const island = 'M 502 18 C 484 24 470 39 462 57 C 451 75 431 76 418 92 C 402 105 403 125 386 139 C 370 151 374 173 357 190 C 341 207 345 229 329 247 C 313 266 325 288 308 307 C 293 327 304 348 288 368 C 274 389 290 408 278 430 C 269 451 285 468 287 488 C 293 507 310 520 316 537 C 326 555 346 564 354 581 C 368 599 386 607 395 624 C 408 643 427 650 439 635 C 454 625 467 611 484 606 C 499 593 511 576 525 561 C 542 545 548 525 564 507 C 580 489 575 468 594 450 C 610 432 604 411 621 392 C 637 372 628 351 644 332 C 660 312 648 291 663 273 C 679 252 663 232 676 214 C 688 194 672 174 677 155 C 678 137 660 122 664 103 C 660 85 641 74 638 56 C 624 43 609 38 590 43 C 573 37 560 24 545 34 C 529 25 516 17 502 18 Z';
+    const island = 'M 345 14 C 375 14 400 31 427 51 L 468 55 C 494 64 518 82 522 106 L 537 126 C 552 145 557 164 545 181 L 526 201 C 520 222 501 239 478 252 C 464 271 447 286 422 298 L 437 320 C 450 339 444 358 458 378 C 471 397 458 418 462 440 C 472 460 476 482 473 503 C 486 522 477 546 472 568 C 480 589 469 610 454 631 C 442 653 430 675 414 697 C 402 720 388 743 373 764 C 363 788 348 810 333 828 C 321 853 300 876 281 894 C 263 914 242 936 222 946 C 204 954 184 944 163 935 C 143 925 126 911 116 891 C 106 871 122 850 132 829 C 143 808 136 787 124 766 C 112 744 102 724 94 702 C 82 681 73 659 65 637 C 50 619 42 597 45 575 C 35 554 41 533 46 511 C 39 491 45 470 56 450 C 52 430 58 410 69 391 C 65 370 70 350 80 330 C 72 310 78 290 90 270 C 83 250 90 231 102 214 C 96 194 102 175 116 157 C 113 138 121 119 137 103 C 142 84 158 68 177 57 C 194 45 214 37 233 29 C 257 20 280 13 302 13 C 320 11 334 14 345 14 Z';
     return [
-      '<svg id="br2-map-svg" class="br2-map-svg" viewBox="0 0 1000 700" role="img" aria-label="Interactive Los Santos battalion map">',
-      '<defs>',
-      '<linearGradient id="br2-map-ocean" x2="0" y2="1"><stop stop-color="#2879b6"/><stop offset="1" stop-color="#13558f"/></linearGradient>',
-      '<linearGradient id="br2-map-land" x1="0" y1="0" x2=".85" y2="1"><stop stop-color="#d1d2b9"/><stop offset=".55" stop-color="#bac4b1"/><stop offset="1" stop-color="#aebaa8"/></linearGradient>',
-      '<pattern id="br2-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M46 0H0V46" fill="none" stroke="#d5edf5" stroke-opacity=".07" stroke-width="1"/></pattern>',
-      '<pattern id="br2-city-grid" width="18" height="17" patternUnits="userSpaceOnUse"><path d="M18 0H0V17" fill="none" stroke="#586775" stroke-opacity=".64" stroke-width="1.3"/></pattern>',
-      '<pattern id="br2-terrain-dots" width="22" height="20" patternUnits="userSpaceOnUse"><circle cx="4" cy="5" r="1" fill="#697764" fill-opacity=".25"/><circle cx="16" cy="14" r="1.2" fill="#697764" fill-opacity=".2"/></pattern>',
-      '<clipPath id="br2-land-clip"><path d="' + island + '"/></clipPath>',
-      '</defs>',
-      '<rect width="1000" height="700" fill="url(#br2-map-ocean)"/>',
-      '<rect width="1000" height="700" fill="url(#br2-map-grid)" opacity=".6"/>',
-      '<path d="' + island + '" fill="none" stroke="#e6eee3" stroke-opacity=".48" stroke-width="36"/>',
-      '<path d="' + island + '" fill="none" stroke="#d9d4ae" stroke-opacity=".92" stroke-width="14"/>',
-      '<path class="br2-map-land" style="fill:url(#br2-map-land);stroke:#728575;stroke-width:2.5" d="' + island + '"/>',
-      '<g clip-path="url(#br2-land-clip)">',
-      '<rect x="250" y="10" width="470" height="660" fill="url(#br2-terrain-dots)" opacity=".72"/>',
-      '<path d="M390 78 423 48 463 58 487 83 472 111 441 120 411 105ZM516 57 553 43 584 57 603 82 587 103 552 101 528 82ZM337 181 366 156 399 161 418 186 404 213 371 222 345 204Z" fill="#8c9b7d" fill-opacity=".28" stroke="#778873" stroke-opacity=".35" stroke-width="2"/>',
-      '<path d="M381 124C413 94 443 95 471 115S528 139 564 119 605 111 629 134M354 158C389 132 420 136 445 153S500 175 534 154 594 145 642 171M327 218C359 193 391 195 418 212M359 248C393 225 423 228 449 245S506 265 542 246 604 239 650 267M300 288C339 266 374 270 405 286M309 324C345 302 382 303 413 321S476 342 512 322 582 314 635 342M284 375C326 350 361 356 389 375M291 412C330 388 362 392 394 411S455 430 487 411 559 402 610 428M296 461C337 437 373 441 402 458M317 500C351 477 382 480 412 497S469 516 501 497 552 487 584 501" fill="none" stroke="#798874" stroke-opacity=".4" stroke-width="2"/>',
-      '<path d="M456 177C481 164 515 166 539 179 552 187 551 201 538 210 518 224 486 222 466 214 450 208 445 190 456 177Z" fill="#347eaa" stroke="#e3ddbd" stroke-width="5"/><path d="M465 187C486 177 513 179 533 189" fill="none" stroke="#9bc8d4" stroke-opacity=".65" stroke-width="2"/>',
-      '<text class="br2-map-label" x="479" y="202">ALAMO SEA</text>',
-      '<path d="M450 50C420 101 431 143 408 185S385 247 400 290 394 353 374 395 371 462 389 503 404 558 424 602M600 63C621 117 603 159 622 199S620 260 600 302 599 361 614 399 582 463 560 495 543 548 503 588" fill="none" stroke="#e9e1bd" stroke-opacity=".9" stroke-width="5"/>',
-      '<path d="M450 50C420 101 431 143 408 185S385 247 400 290 394 353 374 395 371 462 389 503 404 558 424 602M600 63C621 117 603 159 622 199S620 260 600 302 599 361 614 399 582 463 560 495 543 548 503 588" fill="none" stroke="#7e7562" stroke-opacity=".8" stroke-width="1.5"/>',
-      '<path d="M279 472C332 457 369 453 410 465S478 475 520 455 584 434 622 445M271 486C328 469 370 467 409 480S478 489 526 469 586 450 616 461M299 515C339 500 375 497 408 511S470 522 508 501 557 483 588 493M332 548C356 534 385 533 410 544S456 552 478 536 524 520 550 527" fill="none" stroke="#625f59" stroke-opacity=".72" stroke-width="2"/>',
-      '<path d="M328 503 400 484 455 498 491 527 484 572 449 608 408 627 379 605 353 576 327 546Z" fill="#9ea8a7" fill-opacity=".66" stroke="#707d7c" stroke-opacity=".8" stroke-width="2"/>',
-      '<path d="M328 503 400 484 455 498 491 527 484 572 449 608 408 627 379 605 353 576 327 546Z" fill="url(#br2-city-grid)" opacity=".96"/>',
-      '<path d="M334 534C365 523 389 516 420 525S456 543 482 549M347 557C378 544 408 541 441 551S465 565 480 573M370 586C393 570 416 566 448 578M368 511 390 604M392 497 415 620M417 493 438 615M442 500 462 593M346 528 469 564M356 547 459 586" fill="none" stroke="#485966" stroke-opacity=".88" stroke-width="2"/>',
-      '<path d="M349 590 320 619 303 640 325 651 355 631 379 607Z" fill="#a9b1ab" stroke="#687773" stroke-width="2"/><path d="M320 619 354 631M331 607 364 619M314 632 345 643M344 604 330 645" stroke="#52616a" stroke-width="1.5"/>',
-      '<path d="M293 462C316 452 341 443 369 440M299 481C323 468 345 462 372 459M306 501C329 489 353 482 380 479M311 522C331 510 351 504 380 501M319 544C337 530 356 525 385 522M330 565C346 550 365 546 394 543M347 585C362 570 381 567 411 562M376 606C392 587 409 582 438 579" fill="none" stroke="#e8e2c8" stroke-opacity=".92" stroke-width="3"/>',
-      '<text class="br2-map-label" x="396" y="557">LOS SANTOS</text><text class="br2-map-label" x="349" y="582">DOWNTOWN</text><text class="br2-map-label" x="450" y="467">VINEWOOD</text><text class="br2-map-label" x="385" y="330">GRAND SENORA</text><text class="br2-map-label" x="472" y="93">BLAINE COUNTY</text>',
-      '<text class="br2-map-label" x="288" y="402">VESPUCCI</text><text class="br2-map-label" x="566" y="367">SANDY SHORES</text>',
-      '</g>',
-      '<path d="' + island + '" fill="none" stroke="#718773" stroke-opacity=".8" stroke-width="2.5"/>',
-      '<text class="br2-map-water-label" x="213" y="398" transform="rotate(-78 213 398)">PACIFIC OCEAN</text><text class="br2-map-water-label" x="719" y="380" transform="rotate(78 719 380)">SAN ANDREAS</text>',
-      '<rect x="375" y="12" width="250" height="30" rx="8" fill="#071b2b" fill-opacity=".88" stroke="#d8e2d1" stroke-opacity=".6"/><text x="500" y="32" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" fill="#f4f1d9" font-family="Arial,sans-serif" font-size="17" font-weight="700">كتائب لوس سانتوس</text>',
-      '<text class="br2-map-coord" x="22" y="680">LOS SANTOS Â· BATTALION GRID</text><text class="br2-map-coord" x="878" y="680">NORTH â</text>',
-      '<rect id="br2-map-hit" x="0" y="0" width="1000" height="700" fill="transparent" pointer-events="all"/><g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>'
+      '<svg id="br2-map-svg" class="br2-map-svg" viewBox="0 0 700 960" role="img" aria-label="Interactive Los Santos battalion map">',
+      '<defs><clipPath id="br2-land-clip"><path d="' + island + '"/></clipPath></defs>',
+      '<rect x="-160" y="-190" width="1020" height="1340" fill="#2168a5" pointer-events="none"/>',
+      '<image id="br2-los-santos-map" x="0" y="0" width="700" height="960" href="/ibp/los-santos-map-reference.jpg" preserveAspectRatio="none" pointer-events="none"/>',
+      '<path id="br2-map-hit" d="' + island + '" fill="transparent" pointer-events="all"/>',
+      '<g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>'
     ].join('');
+  }
+  function projectMapPoint(point) {
+    const x = Number(point && point.x);
+    const y = Number(point && point.y);
+    return { x: 60 + Math.max(0, Math.min(1000, Number.isFinite(x) ? x : 0)) * 0.48, y: Math.max(0, Math.min(700, Number.isFinite(y) ? y : 0)) * (960 / 700) };
+  }
+  function svgPoint(svg, event) {
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const position = point.matrixTransform(matrix.inverse());
+    return { x: position.x, y: position.y };
   }
   function areaMarkup(unit) {
     if (!unit.operationArea) return '';
     const color = safeColor(unit.color);
     const area = unit.operationArea;
     if (area.type === 'CIRCLE' && area.center) {
-      return '<circle class="br2-area" cx="' + Number(area.center.x) + '" cy="' + Number(area.center.y) + '" r="' + Number(area.radius) + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
+      const center = projectMapPoint(area.center);
+      return '<circle class="br2-area" cx="' + center.x + '" cy="' + center.y + '" r="' + (Number(area.radius) * 0.81) + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
     }
     if (area.type === 'POLYGON' && Array.isArray(area.points) && area.points.length > 2) {
-      return '<polygon class="br2-area" points="' + area.points.map((point) => Number(point.x) + ',' + Number(point.y)).join(' ') + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
+      return '<polygon class="br2-area" points="' + area.points.map((point) => { const p = projectMapPoint(point); return p.x + ',' + p.y; }).join(' ') + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
     }
     return '';
   }
@@ -290,18 +275,22 @@
     areas.innerHTML = state.battalions.map(areaMarkup).join('');
     trails.innerHTML = state.battalions.map((unit) => {
       const color = safeColor(unit.color);
-      return (unit.movementHistory || []).slice(-4).map((move) => move.from && move.to
-        ? '<path class="br2-trail" stroke="' + color + '" d="M' + move.from.x + ' ' + move.from.y + ' L' + move.to.x + ' ' + move.to.y + '"/>' : '').join('');
+      return (unit.movementHistory || []).slice(-4).map((move) => {
+        if (!move.from || !move.to) return '';
+        const from = projectMapPoint(move.from);
+        const to = projectMapPoint(move.to);
+        return '<path class="br2-trail" stroke="' + color + '" d="M' + from.x + ' ' + from.y + ' L' + to.x + ' ' + to.y + '"/>';
+      }).join('');
     }).join('');
     ops.innerHTML = state.battalions.map((unit) => {
       const op = unit.currentOperation;
-      const pos = op && op.position;
+      const pos = op && op.position ? projectMapPoint(op.position) : null;
       if (!pos) return '';
       return '<g transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) + ')"><circle r="10" fill="#111914" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><path d="M-4 0h8M0-4v8" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><title>' + escapeHtml(op.name) + '</title></g>';
     }).join('');
     markers.innerHTML = state.battalions.map((unit) => {
       if (!unit.mapPosition) return '';
-      const pos = unit.mapPosition;
+      const pos = projectMapPoint(unit.mapPosition);
       const color = safeColor(unit.color);
       const selectedClass = String(unit.id) === String(state.selectedId) ? ' selected' : '';
       return '<g class="br2-marker' + selectedClass + '" data-br2-unit="' + escapeHtml(unit.id) + '" transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) + ')">' +
@@ -309,22 +298,18 @@
         '<circle r="15" fill="#101713" stroke="' + color + '" stroke-width="2"/>' +
         '<g transform="translate(-10 -10) scale(.42)">' + (EMBLEMS[String(unit.emblem || '').toUpperCase()] || EMBLEMS.SHIELD) + '</g>' +
         '<circle cx="13" cy="-13" r="4" fill="' + (unit.status === 'ALERT' ? '#fa8d6b' : unit.status === 'STANDBY' ? '#929d94' : '#84d6a6') + '" stroke="#101713" stroke-width="2"/>' +
-        '<rect x="-58" y="27" width="116" height="36" rx="7" fill="#091d2b" fill-opacity=".92" stroke="' + color + '" stroke-opacity=".78"/><text class="br2-marker-label" x="0" y="42" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" fill="#f4f1d9">كتيبة</text><text class="br2-marker-label" x="0" y="57" text-anchor="middle" fill="' + color + '">' + escapeHtml(unit.name || unit.code) + '</text><title>' + escapeHtml(unit.code) + ' · ' + escapeHtml(unit.status) + '</title></g>';
+        '<rect x="-68" y="26" width="136" height="40" rx="7" fill="#071827" fill-opacity=".96" stroke="' + color + '" stroke-opacity=".9"/><text x="0" y="42" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" fill="#ffffff" font-family="Arial,sans-serif" font-size="15" font-weight="700">كتيبة</text><text x="0" y="58" text-anchor="middle" fill="' + color + '" font-family="Arial,sans-serif" font-size="13" font-weight="700">' + escapeHtml(String(unit.name || unit.code).slice(0, 22)) + '</text><title>' + escapeHtml(unit.code) + ' · ' + escapeHtml(unit.status) + '</title></g>';
     }).join('');
-    const pts = state.polygon.map((point) => Number(point.x) + ',' + Number(point.y)).join(' ');
+    const pts = state.polygon.map(projectMapPoint).map((point) => point.x + ',' + point.y).join(' ');
     draft.innerHTML = state.mode === 'polygon' && state.polygon.length
-      ? '<polyline points="' + pts + '" fill="none" stroke="#f3e6bd" stroke-width="3" stroke-dasharray="6 5"/>' +
-        state.polygon.map((point) => '<circle cx="' + point.x + '" cy="' + point.y + '" r="5" fill="#f3e6bd"/>').join('')
+      ? '<polyline points="' + pts + '" fill="none" stroke="#f3e6bd" stroke-width="4" stroke-dasharray="8 7"/>' +
+        state.polygon.map((raw) => { const point = projectMapPoint(raw); return '<circle cx="' + point.x + '" cy="' + point.y + '" r="7" fill="#f3e6bd"/>'; }).join('')
       : '';
   }
   function mapPoint(svg, event) {
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return null;
-    const position = point.matrixTransform(matrix.inverse());
-    return { x: Math.max(0, Math.min(1000, Math.round(position.x))), y: Math.max(0, Math.min(700, Math.round(position.y))) };
+    const position = svgPoint(svg, event);
+    if (!position) return null;
+    return { x: Math.max(0, Math.min(1000, Math.round((position.x - 60) / 0.48))), y: Math.max(0, Math.min(700, Math.round(position.y * (700 / 960)))) };
   }
   function modeHint() {
     if (state.mode === 'location') return 'SET BATTALION LOCATION · Select a point on the map.';
@@ -357,12 +342,12 @@
     let moved = false;
     svg.addEventListener('wheel', (event) => {
       event.preventDefault();
-      const point = mapPoint(svg, event);
+      const point = svgPoint(svg, event);
       if (!point) return;
       const factor = event.deltaY < 0 ? .84 : 1.19;
       const old = state.viewport;
-      const w = Math.max(280, Math.min(1000, old.w * factor));
-      const h = w * .7;
+      const w = Math.max(180, Math.min(1000, old.w * factor));
+      const h = w * (960 / 700);
       state.viewport = { x: point.x - (point.x - old.x) * (w / old.w), y: point.y - (point.y - old.y) * (h / old.h), w, h };
       svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, w, h].join(' '));
     }, { passive: false });
@@ -396,6 +381,7 @@
       }
       if (moved) return;
       if (!state.mode) return;
+      if (!event.target.closest('#br2-map-hit')) return;
       const unit = selected();
       if (!unit || !unit.canManage) return notify('Select a battalion you are authorized to manage.', true);
       const point = mapPoint(svg, event);
@@ -536,16 +522,16 @@
       if (!svg) return;
       const factor = name === 'zoom-in' ? .8 : 1.25;
       const old = state.viewport;
-      const w = Math.max(280, Math.min(1000, old.w * factor));
-      const h = w * .7;
+      const w = Math.max(180, Math.min(1000, old.w * factor));
+      const h = w * (960 / 700);
       state.viewport = { x: old.x + (old.w - w) / 2, y: old.y + (old.h - h) / 2, w, h };
       svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, w, h].join(' '));
       return;
     }
     if (name === 'reset-map') {
-      state.viewport = { x: 0, y: 0, w: 1000, h: 700 };
+      state.viewport = { x: 0, y: 0, w: 700, h: 960 };
       const svg = document.getElementById('br2-map-svg');
-      if (svg) svg.setAttribute('viewBox', '0 0 1000 700');
+      if (svg) svg.setAttribute('viewBox', '0 0 700 960');
       return;
     }
   }
