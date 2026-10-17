@@ -9449,11 +9449,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       { key: 'battalions', label: 'BATTALIONS', icon: 'fa-shield-halved', title: 'BATTALIONS', description: 'Battalion command pages will be built in a later phase.' },
       { key: 'map', label: 'LOS SANTOS MAP', icon: 'fa-map-location-dot', title: 'LOS SANTOS MAP', description: 'Tactical map tools are reserved for a later phase.' },
       { key: 'operations', label: 'OPERATIONS', icon: 'fa-crosshairs', title: 'OPERATIONS', description: 'Operations planning and records will be built in a later phase.' },
-      { key: 'sos', label: 'SOS', icon: 'fa-tower-broadcast', title: 'CRITICAL SOS', description: 'SOS intake and response workflows are reserved for a later phase.' },
       { key: 'reports', label: 'REPORTS', icon: 'fa-file-lines', title: 'REPORTS', description: 'Report authoring and review are reserved for a later phase.' },
       { key: 'personnel', label: 'PERSONNEL', icon: 'fa-users', title: 'PERSONNEL', description: 'Live, permission-scoped personnel records from the current system database.' },
       { key: 'messages', label: 'MESSAGES', icon: 'fa-envelope', title: 'MESSAGES', description: 'Secure battalion communications are available here.' },
-      { key: 'bank', label: 'BANK', icon: 'fa-building-columns', title: 'BANK', description: 'Bank and finance tools are reserved for a later phase.' },
       { key: 'intelligence', label: 'INTELLIGENCE', icon: 'fa-fingerprint', title: 'INTELLIGENCE', description: 'Live intelligence briefings and operations within your battalion scope.' }
     ];
     const icon = (name) => '<i class="fa-solid ' + name + '" aria-hidden="true"></i>';
@@ -9539,9 +9537,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         compactRow('OP', 'Operation Steel', 'Paleto Bay · Preview', 'ONGOING', 'green') +
         compactRow('OP', 'Operation Horizon', 'San Andreas · Preview', 'PLANNED', 'gold') +
         compactRow('OP', 'Operation Viper', 'El Burro Heights · Preview', 'PLANNED', 'gold'), 'operations') +
-        panel('fa-tower-broadcast', 'CRITICAL SOS', '02',
-        compactRow('!', 'S.O.S #7842', 'Los Santos · Demo item', 'DEMO', 'red') +
-        compactRow('!', 'S.O.S #7839', 'Sandy Shores · Demo item', 'DEMO', 'red'), 'sos', true) +
         panel('fa-file-lines', 'RECENT REPORTS', '05',
         compactRow('R', 'RPT-2026-0412', 'Operation report', 'DEMO', 'cyan') +
         compactRow('R', 'RPT-2026-0411', 'Intelligence report', 'DEMO', 'gold') +
