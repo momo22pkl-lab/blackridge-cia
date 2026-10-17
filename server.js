@@ -10270,6 +10270,106 @@ io.on('connection', (socket) => {
 });
 
 io.on('connection', (socket) => {
+  socket.on('brw:reports:overview', (payload, callback) => {
+    const reply = typeof callback === 'function' ? callback : () => {};
+    const actor = requireSocketUser(socket);
+    if (!actor) return reply({ ok: false, message: 'Authentication is required to view reports.' });
+    const rank = rankLevel(actor.rank);
+    const senior = isChief(actor) || isSenior(actor);
+    const actorCode = clean(actor.publicCode, 100).toUpperCase();
+    const allUnits = Array.isArray(state.cia_battalions) ? state.cia_battalions : [];
+    const unitInScope = (unit) => {
+      if (!unit) return false;
+      if (senior) return true;
+      if (!actorCode) return false;
+      const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+      if (members.some((code) => clean(code, 100).toUpperCase() === actorCode) || clean(unit.commanderCode, 100).toUpperCase() === actorCode) return true;
+      return rank >= 2 && [unit.commanderCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === actorCode);
+    };
+    const visibleUnits = allUnits.filter((unit) => unit && String(unit.status || '').toUpperCase() !== 'ARCHIVED' && unitInScope(unit));
+    const visibleUnitIds = new Set(visibleUnits.map((unit) => String(unit.id)));
+    const classificationOrder = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
+    const classificationLevel = { PUBLIC: 0, INTERNAL: 1, CONFIDENTIAL: 2, SECRET: 3, 'TOP SECRET': 4 };
+    const clearance = isChief(actor) ? 4 : isSenior(actor) ? 3 : Math.min(2, rank);
+    const normalizeClassification = (value) => String(value || 'INTERNAL').replace(/_/g, ' ').toUpperCase();
+    const allowedByClearance = (value) => {
+      const classification = normalizeClassification(value);
+      const level = Object.prototype.hasOwnProperty.call(classificationLevel, classification) ? classificationLevel[classification] : 1;
+      return level <= clearance;
+    };
+    const reportClassificationAllowed = (value, unit) => allowedByClearance(value) || (normalizeClassification(value) === 'INTERNAL' && !!unit && unitInScope(unit));
+    const reportUnit = (report) => report && report.battalionId ? allUnits.find((unit) => String(unit.id) === String(report.battalionId)) || null : null;
+    const canManageReportUnit = (unit) => !!actor && (senior || (!!unit && ((actorCode && clean(unit.commanderCode, 100).toUpperCase() === actorCode) || (rank >= 2 && unitInScope(unit)))));
+    const canReviewReports = (unit) => !!actor && (senior || (!!unit && canManageReportUnit(unit)) || (rank >= 2 && (!unit || unitInScope(unit))));
+    const isReportAuthor = (report) => !!actorCode && clean(report && report.authorCode, 100).toUpperCase() === actorCode;
+    const reportVisible = (report) => {
+      if (!report) return false;
+      const unit = reportUnit(report);
+      const author = isReportAuthor(report);
+      if (!reportClassificationAllowed(report.classification, unit) && !(author && allowedByClearance(report.classification))) return false;
+      if (senior || author) return true;
+      return !!unit && unitInScope(unit);
+    };
+    const reportStatuses = new Set(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED']);
+    const safeReport = (report) => {
+      const unit = reportUnit(report);
+      const author = isReportAuthor(report);
+      const manager = canManageReportUnit(unit);
+      const rawStatus = String(report.status || '').toUpperCase();
+      const status = reportStatuses.has(rawStatus) ? rawStatus : 'SUBMITTED';
+      const canEdit = status !== 'APPROVED' && (senior || manager || (author && ['DRAFT', 'REJECTED'].includes(status)));
+      return {
+        id: clean(report.id, 120),
+        reportNumber: clean(report.reportNumber || report.id, 120),
+        title: clean(report.title, 140),
+        type: clean(report.type, 50) || 'SECTOR',
+        battalionId: unit ? clean(unit.id, 120) : '',
+        battalionCode: clean(report.battalionCode || unit && unit.code || '', 32),
+        classification: normalizeClassification(report.classification),
+        summary: clean(report.summary || '', 500),
+        text: clean(report.text || '', 5000),
+        status,
+        authorCode: clean(report.authorCode || '', 100),
+        createdAt: report.createdAt || '',
+        updatedAt: report.updatedAt || '',
+        reviewedAt: report.reviewedAt || '',
+        canEdit,
+        canReview: canReviewReports(unit) && ['SUBMITTED', 'IN_REVIEW'].includes(status),
+        canApprove: senior && status === 'IN_REVIEW',
+        history: (senior || manager || author) && Array.isArray(report.history) ? report.history.slice(-20).map((entry) => ({ action: clean(entry.action, 40), from: clean(entry.from, 30), to: clean(entry.to, 30), actorCode: clean(entry.actorCode, 100), at: entry.at || '' })) : []
+      };
+    };
+    const filters = payload && typeof payload === 'object' ? payload : {};
+    const requestedStatus = clean(filters.status || 'ALL', 32).toUpperCase();
+    const battalionId = clean(filters.battalionId, 120);
+    const query = clean(filters.query, 100).toLocaleLowerCase();
+    const requestedPage = Number(filters.page);
+    const pageSizeInput = Number(filters.pageSize);
+    const pageSize = Math.max(5, Math.min(50, Number.isFinite(pageSizeInput) ? Math.floor(pageSizeInput) : 5));
+    const matches = (Array.isArray(state.ibp_reports) ? state.ibp_reports : [])
+      .filter(reportVisible)
+      .filter((report) => requestedStatus === 'ALL' || !reportStatuses.has(requestedStatus) || String(report.status || 'SUBMITTED').toUpperCase() === requestedStatus)
+      .filter((report) => !battalionId || String(report.battalionId || '') === battalionId)
+      .filter((report) => !query || [report.reportNumber, report.id, report.title, report.type, report.summary, report.text, report.battalionCode, report.authorCode].some((value) => String(value || '').toLocaleLowerCase().includes(query)))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    const total = matches.length;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.max(1, Math.min(pages, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 1));
+    const reports = matches.slice((page - 1) * pageSize, page * pageSize).map(safeReport);
+    const battalions = visibleUnits.map((unit) => ({
+      id: clean(unit.id, 120),
+      code: clean(unit.code || unit.id, 32),
+      name: clean(unit.name || unit.nameEn || unit.code || unit.id, 80),
+      canManage: canManageReportUnit(unit),
+      classifications: classificationOrder.filter((value) => classificationLevel[value] <= clearance || (value === 'INTERNAL' && unitInScope(unit)))
+    }));
+    const canCreate = rank >= 2 || senior || visibleUnits.some((unit) => canManageReportUnit(unit));
+    const classifications = classificationOrder.filter((value) => classificationLevel[value] <= clearance);
+    return reply({ ok: true, reports, battalions, classifications, canCreate, permissions: { create: canCreate, review: canReviewReports(null), sectorWide: senior || rank >= 2 }, total, page, pages, pageSize });
+  });
+});
+
+io.on('connection', (socket) => {
   registerIBPSocket(socket, {
     getState: () => state,
     requireSocketUser,
