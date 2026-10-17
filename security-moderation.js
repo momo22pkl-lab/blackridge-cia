@@ -193,8 +193,7 @@ function inspectMessage(value, configuredTerms = '') {
           type: 'OBFUSCATED_PROFANITY',
           level: 3,
           reason: 'UNICODE_LOOKALIKE_BYPASS',
-          source: 'unicode-lookalike',
-          matchedTerm: rule.term
+          source: 'unicode-lookalike'
         };
       }
       return {
@@ -202,7 +201,6 @@ function inspectMessage(value, configuredTerms = '') {
         level: rule.level,
         reason: morseDecoded ? 'MORSE_DECODED_PROFANITY' : 'PROFANITY_MATCH',
         source: morseDecoded ? 'morse' : 'direct',
-        matchedTerm: rule.term,
         ...(morseDecoded ? { decodedText: morseDecoded } : {})
       };
     }
@@ -217,8 +215,7 @@ function inspectMessage(value, configuredTerms = '') {
           type: 'OBFUSCATED_PROFANITY',
           level: 3,
           reason: 'OBFUSCATION_BYPASS',
-          source: variant.source,
-          matchedTerm: rule.term
+          source: variant.source
         };
       }
     }
@@ -230,8 +227,7 @@ function inspectMessage(value, configuredTerms = '') {
         type: 'OBFUSCATED_PROFANITY',
         level: 3,
         reason: 'UNICODE_LOOKALIKE_BYPASS',
-        source: 'unicode-lookalike',
-        matchedTerm: rule.term
+        source: 'unicode-lookalike'
       };
     }
   }
