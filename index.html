@@ -2888,7 +2888,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     <div id="security-panel" class="view-pane">
       <div class="classified-shell" dir="rtl">
         <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
-        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. السجل الأمني لا يحتفظ بنص الرسائل المحظورة؛ بيانات الأسماء والتفاصيل الحساسة تظهر لـ CIA CHIEF فقط.</p>
+        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. لا تُحفظ الرسائل المحظورة كاملة؛ يُسجّل اللفظ المطابق للمعجم في سجل التحذيرات ويظهر لـ CIA CHIEF فقط.</p>
         <div id="security-summary" style="margin:12px 0;"></div>
         <section id="security-profanity-section" style="display:none;margin-top:12px;">
           <div class="security-line"></div>
@@ -4946,7 +4946,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
             const phase = count === 1 ? 'تحذير أولي' : count === 2 ? 'تحذير ثانوي' : 'فصل نهائي';
             const who = incident.userName ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}` : (incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد');
             const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
-            return `<div class="audit-log-item" style="border-right:3px solid ${count >= 3 ? '#ef4444' : '#facc15'};"><div class="audit-log-title">${who}</div><div class="audit-log-meta">${phase} بسبب استخدام ألفاظ مسيئة · ${count}/3 · ${esc(date)}</div>${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}<button type="button" class="btn-main" data-security-delete-profanity="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السجل من مركز الأمن</button></div>`;
+            const termDetail = incident.profanityTerm
+              ? `<div class="audit-log-details"><strong>اللفظ المسجّل:</strong> ${esc(incident.profanityTerm)}</div>`
+              : '<div class="audit-log-details">اللفظ غير متوفر في هذا السجل.</div>';
+            return `<div class="audit-log-item" style="border-right:3px solid ${count >= 3 ? '#ef4444' : '#facc15'};"><div class="audit-log-title">${who}</div><div class="audit-log-meta">${phase} بسبب استخدام ألفاظ مسيئة · ${count}/3 · ${esc(date)}</div>${termDetail}${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}<button type="button" class="btn-main" data-security-delete-profanity="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السجل من مركز الأمن</button></div>`;
           }).join('')
         : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد تحذيرات لفظية مسجلة.</div>';
       const alertsBox = document.getElementById('security-active-alerts');

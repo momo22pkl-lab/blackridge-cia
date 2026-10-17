@@ -27,7 +27,7 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
-const { canRestoreSecurityMember, inspectMessage, normalizeMessage } = require('./security-moderation');
+const { canRestoreSecurityMember, inspectMessage, normalizeMessage, parseBlockedTerms } = require('./security-moderation');
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
@@ -1104,7 +1104,8 @@ function recordSecurityEvent({
   status = 'REVIEW_REQUIRED',
   relatedId = null,
   notificationCount = null,
-  profanityStrikeCount = null
+  profanityStrikeCount = null,
+  profanityTerm = null
 }) {
   const timestamp = now();
   const incident = {
@@ -1127,7 +1128,10 @@ function recordSecurityEvent({
     status: clean(status, 40).toUpperCase(),
     ...(relatedId ? { relatedId: clean(relatedId, 200) } : {}),
     ...(Number.isFinite(notificationCount) ? { notificationCount } : {}),
-    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {})
+    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {}),
+    ...(isProfanitySecurityIncident({ type }) && typeof profanityTerm === 'string' && clean(profanityTerm, 80)
+      ? { profanityTerm: clean(profanityTerm, 80) }
+      : {})
   };
   state.cia_security_incidents.unshift(incident);
   state.cia_security_incidents = state.cia_security_incidents.slice(0, 2000);
@@ -1169,6 +1173,9 @@ function securityEventForViewer(incident, viewer) {
     result.actorName = incident.actorName;
     result.actorCode = incident.actorCode || '';
     result.actorRank = incident.actorRank || '';
+    if (isProfanitySecurityIncident(incident) && incident.profanityTerm) {
+      result.profanityTerm = clean(incident.profanityTerm, 80);
+    }
     result.severity = incident.severity;
     if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
     const suspendedMember = incident.type === 'MANUAL_REVIEW' && incident.action === 'MEMBER_SUSPENDED'
@@ -1254,7 +1261,8 @@ async function recordModerationViolation(actor, detection, channel) {
       level: separated ? 3 : 1,
       reason,
       status: separated ? 'SUSPENDED' : 'REVIEW_REQUIRED',
-      profanityStrikeCount: strike.count
+      profanityStrikeCount: strike.count,
+      profanityTerm: detection.matchedTerm || null
     });
     const leadershipMessage = separated
       ? `تم فصل #${clean(actor.publicCode || '—', 100)} بعد المخالفة ${strike.count}/3 بسبب إساءة لفظية في ${channelName}.`
@@ -1327,6 +1335,64 @@ async function recordModerationViolation(actor, detection, channel) {
   return incident;
 }
 
+const DEFAULT_ENGLISH_PROFANITY_TERMS = Object.freeze(['fuck', 'shit', 'bitch', 'asshole', 'motherfucker']);
+const PROFANITY_LEET_MAP = Object.freeze({ '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g' });
+const PROFANITY_ARABIZI_MAP = Object.freeze({ '2': 'ء', '3': 'ع', '5': 'خ', '6': 'ط', '7': 'ح', '9': 'ص' });
+
+function findMatchedProfanityTerm(value, detection) {
+  const source = detection && detection.decodedText ? detection.decodedText : String(value == null ? '' : value);
+  const normalized = normalizeMessage(source);
+  if (!normalized) return '';
+
+  const terms = [...new Set([
+    ...DEFAULT_ENGLISH_PROFANITY_TERMS,
+    ...getSecurityBlockedTerms(),
+    ...parseBlockedTerms(process.env.CIA_SECURITY_BLOCKED_TERMS || '').map((rule) => rule.term)
+  ].map((term) => normalizeMessage(term)).filter(Boolean))];
+  const candidates = new Set([normalized]);
+  const punctuationCollapsed = normalized
+    .split(/\s+/u)
+    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
+    .join(' ')
+    .trim();
+  if (punctuationCollapsed) candidates.add(punctuationCollapsed);
+
+  const addWordForms = (word) => {
+    const forms = new Set([word]);
+    const collapsed = word.replace(/(.)\1{2,}/gu, '$1');
+    forms.add(collapsed);
+    if (/[a-z]/u.test(word) && /\d/u.test(word)) {
+      forms.add(word.replace(/[01345789]/gu, (digit) => PROFANITY_LEET_MAP[digit] || digit));
+      forms.add(word.replace(/[235679]/gu, (digit) => PROFANITY_ARABIZI_MAP[digit] || digit));
+    }
+    for (const form of forms) {
+      candidates.add(form);
+      if ([...form].length >= 4) candidates.add([...form].reverse().join(''));
+    }
+  };
+  const words = normalized.match(/[\p{L}\p{N}]+/gu) || [];
+  for (const word of words) addWordForms(word);
+  let singleLetterRun = '';
+  const flushSingleLetters = () => {
+    if ([...singleLetterRun].length >= 4) addWordForms(singleLetterRun);
+    singleLetterRun = '';
+  };
+  for (const piece of normalized.split(/[^\p{L}\p{N}]+/gu).filter(Boolean)) {
+    if ([...piece].length === 1) singleLetterRun += piece;
+    else flushSingleLetters();
+  }
+  flushSingleLetters();
+
+  const wordSequence = (candidate) => normalizeMessage(candidate).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  for (const term of terms) {
+    const paddedTerm = ' ' + wordSequence(term) + ' ';
+    for (const candidate of candidates) {
+      if ((' ' + wordSequence(candidate) + ' ').includes(paddedTerm)) return term;
+    }
+  }
+  return '';
+}
+
 async function moderateOutgoingText(actor, text, channel) {
   const configuredTerms = [
     getSecurityBlockedTerms().join('\n'),
@@ -1334,6 +1400,9 @@ async function moderateOutgoingText(actor, text, channel) {
   ].filter(Boolean).join('\n');
   const detection = inspectMessage(text, configuredTerms);
   if (!detection) return false;
+  if (isProfanityDetection(detection)) {
+    detection.matchedTerm = findMatchedProfanityTerm(text, detection);
+  }
   if (actor && isChief(actor) && isProfanityDetection(detection)) return false;
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
