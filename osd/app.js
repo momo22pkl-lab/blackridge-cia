@@ -918,6 +918,31 @@ async function blobAsDataUrl(blob) {
   });
 }
 
+async function inlineDataSvgImages(root) {
+  const svgImages = Array.from(root.querySelectorAll('img')).filter((image) =>
+    (image.getAttribute('src') || '').toLowerCase().startsWith('data:image/svg+xml')
+  );
+  await Promise.all(svgImages.map(async (image) => {
+    const response = await fetch(image.getAttribute('src'));
+    if (!response.ok) throw new Error('A document vector image could not be prepared for export.');
+    const svgMarkup = await response.text();
+    const parsed = new DOMParser().parseFromString(svgMarkup, 'image/svg+xml');
+    const rootElement = parsed.documentElement;
+    if (rootElement.localName !== 'svg' || parsed.querySelector('parsererror')) {
+      throw new Error('A document vector image could not be prepared for export.');
+    }
+    const svg = document.importNode(rootElement, true);
+    Array.from(image.attributes).forEach((attribute) => {
+      if (attribute.name === 'src' || attribute.name === 'alt' || /^on/i.test(attribute.name)) return;
+      svg.setAttribute(attribute.name, attribute.value);
+    });
+    const alt = image.getAttribute('alt');
+    if (alt) svg.setAttribute('aria-label', alt);
+    svg.setAttribute('role', 'img');
+    image.replaceWith(svg);
+  }));
+}
+
 async function downloadDocumentImage(documentData) {
   const source = $('#livePreview');
   if (!source) throw new Error('The official document preview is unavailable.');
@@ -937,6 +962,7 @@ async function downloadDocumentImage(documentData) {
   let svgUrl = '';
   let pngUrl = '';
   try {
+    await inlineDataSvgImages(paper);
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     await Promise.all(Array.from(paper.querySelectorAll('img')).filter((image) => !image.hidden && image.getAttribute('src')).map(async (image) => {
       if (image.src.startsWith('data:')) return;

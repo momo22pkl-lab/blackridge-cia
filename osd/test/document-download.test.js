@@ -42,3 +42,12 @@ test('PNG export embeds document images, rasterizes at high resolution, and down
   assert.ok(exporter.includes("anchor.download = 'report-' + safeNumber + '.png'"));
   assert.ok(app.includes("action === 'downloadDocumentImage'"));
 });
+
+test('PNG export inlines SVG data-image QR codes before canvas rasterization', () => {
+  const helper = section('async function inlineDataSvgImages(root)', 'async function downloadDocumentImage(');
+  const exporter = section('async function downloadDocumentImage(documentData)', 'async function printDocument(');
+  assert.ok(helper.includes("startsWith('data:image/svg+xml')"));
+  assert.ok(helper.includes('document.importNode(rootElement, true)'));
+  assert.ok(helper.includes('image.replaceWith(svg)'));
+  assert.ok(exporter.indexOf('await inlineDataSvgImages(paper)') < exporter.indexOf('new XMLSerializer().serializeToString(paper)'));
+});
