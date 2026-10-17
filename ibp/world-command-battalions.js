@@ -456,7 +456,7 @@
     modal.innerHTML = '<section class="br2-modal-card" role="dialog" aria-modal="true" aria-labelledby="br2-editor-title"><div class="br2-card-head"><div><div class="br2-kicker">BATTALION RECORD</div><h2 class="br2-title" id="br2-editor-title">' + (editing ? 'EDIT BATTALION' : 'CREATE BATTALION') + '</h2></div><button class="br2-button" type="button" data-br2-action="close-editor">CLOSE</button></div>' +
       '<form id="br2-battalion-form" class="br2-card-body"><div class="br2-form-grid">' +
       field('name', 'BATTALION NAME', unit && (unit.name || unit.code), 'text', true) +
-      field('code', 'BATTALION CODE', unit && unit.code, 'text', !editing) +
+      field('code', 'BATTALION CODE', unit && unit.code, 'text', true) +
       (editing ? '' : field('commanderCode', 'BATTALION COMMANDER · PUBLIC CODE', '', 'text', true)) +
       (editing ? '' : field('deputyCode', 'DEPUTY COMMANDER · PUBLIC CODE', '', 'text', false)) +
       (editing ? '' : field('sector', 'SECTOR', '', 'text', true)) +
@@ -483,7 +483,6 @@
     if (error) error.textContent = '';
     try {
       if (editing) {
-        delete values.code;
         await rpc('ibp:phase2:update', Object.assign({ battalionId: selected().id }, values));
         notify('Battalion record updated.');
       } else {

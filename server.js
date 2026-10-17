@@ -1623,10 +1623,12 @@ function ibpPersonnelRecordForViewer(person, viewer) {
   const canManage = canManageMember(viewer, person);
   const canEditCode = canManage && person.serviceApproved !== false;
   const canEditName = isChief(viewer) && canManage;
+  const canViewSalary = isChief(viewer);
+  const canEditSalary = canViewSalary && canManage;
   const editableRanks = canManage
     ? ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER'].filter((rank) => canChangeRank(viewer, person, rank))
     : [];
-  const canEditBattalion = canManageIBPBattalions(viewer) && !!person.publicCode;
+  const canEditBattalion = canManage && canManageIBPBattalions(viewer) && !!person.publicCode;
   const isSelf = String(viewer?.id) === String(person?.id);
   const canSeeName = isChief(viewer);
   const unit = ibpPersonnelBattalionFor(person);
@@ -1636,6 +1638,7 @@ function ibpPersonnelRecordForViewer(person, viewer) {
     rank: normalizeRank(person.rank),
     rankLabel: rankLabel(person.rank),
     name: canSeeName ? clean(person.identity?.fullName || person.name, 120) : '',
+    salary: canViewSalary ? ensureBank(person).salary : null,
     battalion: unit,
     statusLabel: ibpPersonnelStatus(person),
     online: person.online === true,
@@ -1646,6 +1649,8 @@ function ibpPersonnelRecordForViewer(person, viewer) {
     lastLoginAt: isLeadership(viewer) || isSelf ? (person.lastLoginAt || null) : null,
     canEditName,
     canEditCode,
+    canViewSalary,
+    canEditSalary,
     canEditBattalion,
     editableRanks
   };
@@ -1666,9 +1671,11 @@ function updateIBPPersonnelBattalion(person, requestedId) {
   const roleTransfer = assignedUnits.find((unit) => String(unit.id) !== String(selected?.id || '') &&
     [unit.commanderCode, unit.deputyCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === wantedCode));
   if (roleTransfer) return 'A battalion commander or deputy assignment must be changed in the battalion command workflow first.';
-  const duplicateUnit = assignedUnits.find((unit) => String(unit.id) !== String(selected?.id || '') &&
-    (Array.isArray(unit.memberCodes) ? unit.memberCodes : []).some((code) => clean(code, 100).toUpperCase() === wantedCode));
-  if (duplicateUnit && selected) return 'This person is already linked to another active battalion; resolve the existing assignment first.';
+  const memberUnits = assignedUnits.filter((unit) =>
+    (Array.isArray(unit.memberCodes) ? unit.memberCodes : [])
+      .some((code) => clean(code, 100).toUpperCase() === wantedCode)
+  );
+  if (memberUnits.length > 1) return 'This person is linked to multiple active battalions; resolve the duplicate assignments first.';
   for (const unit of activeUnits) {
     const current = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
     if (String(unit.id) === String(selected?.id || '')) {
@@ -2563,30 +2570,7 @@ function canSetSalary(
   actor,
   target
 ) {
-  if (!actor || !target) {
-    return false;
-  }
-
-  if (isChief(actor)) {
-    return true;
-  }
-
-  if (isSenior(actor)) {
-    return (
-      target.id !== actor.id &&
-      !isChief(target) &&
-      !isSenior(target)
-    );
-  }
-
-  if (isHighCommander(actor)) {
-    return (
-      normalizeRank(target.rank) ===
-      'AGENT'
-    );
-  }
-
-  return false;
+  return !!actor && !!target && isChief(actor);
 }
 
 function statusLabelForResult(
@@ -9065,6 +9049,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
           if (assignmentError) return rejectUpdate(assignmentError);
           battalionsChanged = true;
           changed.push('battalion');
+        }
+      }
+
+      if (payload?.salary !== undefined) {
+        if (!isChief(actor)) return rejectUpdate('تعديل الراتب الفردي متاح للقائد CIA CHIEF فقط.');
+        const salary = parseMoney(payload.salary);
+        if (!Number.isFinite(salary) || salary < 0) return rejectUpdate('قيمة الراتب غير صحيحة.');
+        const bank = ensureBank(target);
+        if (bank.salary !== salary) {
+          bank.salary = salary;
+          changed.push('salary');
         }
       }
 
