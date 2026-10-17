@@ -27,7 +27,7 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
-const { canRestoreSecurityMember, inspectMessage, normalizeMessage } = require('./security-moderation');
+const { canRestoreSecurityMember, inspectMessage, normalizeMessage, parseBlockedTerms } = require('./security-moderation');
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
@@ -1335,6 +1335,64 @@ async function recordModerationViolation(actor, detection, channel) {
   return incident;
 }
 
+const DEFAULT_ENGLISH_PROFANITY_TERMS = Object.freeze(['fuck', 'shit', 'bitch', 'asshole', 'motherfucker']);
+const PROFANITY_LEET_MAP = Object.freeze({ '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g' });
+const PROFANITY_ARABIZI_MAP = Object.freeze({ '2': 'ء', '3': 'ع', '5': 'خ', '6': 'ط', '7': 'ح', '9': 'ص' });
+
+function findMatchedProfanityTerm(value, detection) {
+  const source = detection && detection.decodedText ? detection.decodedText : String(value == null ? '' : value);
+  const normalized = normalizeMessage(source);
+  if (!normalized) return '';
+
+  const terms = [...new Set([
+    ...DEFAULT_ENGLISH_PROFANITY_TERMS,
+    ...getSecurityBlockedTerms(),
+    ...parseBlockedTerms(process.env.CIA_SECURITY_BLOCKED_TERMS || '').map((rule) => rule.term)
+  ].map((term) => normalizeMessage(term)).filter(Boolean))];
+  const candidates = new Set([normalized]);
+  const punctuationCollapsed = normalized
+    .split(/\s+/u)
+    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
+    .join(' ')
+    .trim();
+  if (punctuationCollapsed) candidates.add(punctuationCollapsed);
+
+  const addWordForms = (word) => {
+    const forms = new Set([word]);
+    const collapsed = word.replace(/(.)\1{2,}/gu, '$1');
+    forms.add(collapsed);
+    if (/[a-z]/u.test(word) && /\d/u.test(word)) {
+      forms.add(word.replace(/[01345789]/gu, (digit) => PROFANITY_LEET_MAP[digit] || digit));
+      forms.add(word.replace(/[235679]/gu, (digit) => PROFANITY_ARABIZI_MAP[digit] || digit));
+    }
+    for (const form of forms) {
+      candidates.add(form);
+      if ([...form].length >= 4) candidates.add([...form].reverse().join(''));
+    }
+  };
+  const words = normalized.match(/[\p{L}\p{N}]+/gu) || [];
+  for (const word of words) addWordForms(word);
+  let singleLetterRun = '';
+  const flushSingleLetters = () => {
+    if ([...singleLetterRun].length >= 4) addWordForms(singleLetterRun);
+    singleLetterRun = '';
+  };
+  for (const piece of normalized.split(/[^\p{L}\p{N}]+/gu).filter(Boolean)) {
+    if ([...piece].length === 1) singleLetterRun += piece;
+    else flushSingleLetters();
+  }
+  flushSingleLetters();
+
+  const wordSequence = (candidate) => normalizeMessage(candidate).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  for (const term of terms) {
+    const paddedTerm = ' ' + wordSequence(term) + ' ';
+    for (const candidate of candidates) {
+      if ((' ' + wordSequence(candidate) + ' ').includes(paddedTerm)) return term;
+    }
+  }
+  return '';
+}
+
 async function moderateOutgoingText(actor, text, channel) {
   const configuredTerms = [
     getSecurityBlockedTerms().join('\n'),
@@ -1342,6 +1400,9 @@ async function moderateOutgoingText(actor, text, channel) {
   ].filter(Boolean).join('\n');
   const detection = inspectMessage(text, configuredTerms);
   if (!detection) return false;
+  if (isProfanityDetection(detection)) {
+    detection.matchedTerm = findMatchedProfanityTerm(text, detection);
+  }
   if (actor && isChief(actor) && isProfanityDetection(detection)) return false;
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
