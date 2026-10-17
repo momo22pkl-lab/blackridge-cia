@@ -183,6 +183,7 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
+  '/ibp/los-santos-map-reference.jpg': path.join('ibp', 'los-santos-map-reference.jpg'),
   '/brand-seal.jpg': path.join('blackridge-personnel-module', 'public', 'blackridge-official-seal.jpg')
 });
 
