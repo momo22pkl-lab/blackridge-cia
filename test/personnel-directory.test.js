@@ -116,6 +116,7 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   const seedState = {
     cia_users: [
       makeUser('chief-1', 'Chief Test', 'CIA CHIEF', 'CHIEF-001', '1101'),
+      makeUser('senior-1', 'Senior Test', 'SUPREME COMMANDER', 'SEN-001', '1105'),
       makeUser('alpha-1', 'Alpha Member', 'AGENT', 'AG-101', '1102', { bank: { balance: 70, militaryCodeLinked: true }, bankAccount: 'AG-101' }),
       makeUser('alpha-2', 'Second Alpha', 'AGENT', 'AG-102', '1103', { bank: { balance: 25, militaryCodeLinked: true }, bankAccount: 'AG-102' }),
       makeUser('bravo-1', 'Bravo Member', 'AGENT', 'AG-201', '1104')
@@ -181,11 +182,22 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
 
   const leaderList = await chief.emit('ibp:directory:list', {});
   assert.equal(leaderList.ok, true);
-  assert.equal(leaderList.people.length, 4);
+  assert.equal(leaderList.people.length, 5);
   assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').name, 'Alpha Member');
   assert.equal(leaderList.viewer.name, 'Chief Test');
   assert.equal(leaderList.permissions.canAdd, true);
   assert.deepEqual(leaderList.rankOptions, ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER']);
+  assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-102').canEditSalary, true);
+
+  const chiefDetail = await chief.emit('ibp:directory:detail', { id: 'chief-1' });
+  assert.equal(chiefDetail.ok, true);
+  assert.equal(chiefDetail.person.canViewSalary, true);
+  assert.equal(chiefDetail.person.canEditSalary, false, 'a user cannot edit their own personnel record');
+  assert.equal(chiefDetail.person.canEditBattalion, false, 'self-assignment is managed through battalion command, not the personnel editor');
+
+  const bankSalaryUpdate = await chief.emit('bank:setSalary', { publicCode: 'AG-102', salary: 725 });
+  assert.equal(bankSalaryUpdate.ok, true, 'CIA Chief should be able to set an individual salary');
+  assert.equal(bankSalaryUpdate.salary, 725);
 
   const createResponse = await chief.emit('ibp:directory:save', {
     mode: 'create',
@@ -212,6 +224,8 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(memberList.ok, true);
   assert.deepEqual(memberList.people.map((person) => person.publicCode).sort(), ['AG-101', 'AG-102', createResponse.person.publicCode].sort());
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').name, '');
+  assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').salary, null);
+  assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').canEditSalary, false);
   assert.equal(memberList.viewer.name, '', 'non-leaders must not receive a name in viewer metadata');
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-101').name, '', 'a member must not see their own name in the personnel directory');
   const selfDetail = await member.emit('ibp:directory:detail', { id: 'alpha-1' });
@@ -224,10 +238,23 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   const forbiddenEdit = await member.emit('ibp:directory:save', { id: 'alpha-2', rank: 'HIGH COMMANDER' });
   assert.equal(forbiddenEdit.ok, false);
 
+  const senior = await connectPollingSocket(baseUrl);
+  const seniorLogin = await senior.emit('auth:login', { name: 'Senior Test', code: '1105' });
+  assert.equal(seniorLogin.ok, true);
+  const seniorSalaryEdit = await senior.emit('bank:setSalary', { publicCode: 'AG-102', salary: 9999 });
+  assert.equal(seniorSalaryEdit.ok, false, 'non-chief command must not set an individual salary');
+  const seniorDirectorySalaryEdit = await senior.emit('ibp:directory:save', { id: 'alpha-2', salary: 9999 });
+  assert.equal(seniorDirectorySalaryEdit.ok, false);
+  assert.match(seniorDirectorySalaryEdit.message, /CIA CHIEF/);
+  const seniorList = await senior.emit('ibp:directory:list', {});
+  assert.equal(seniorList.people.find((person) => person.publicCode === 'AG-102').salary, null);
+
   const detailResponse = await chief.emit('ibp:directory:detail', { id: 'alpha-2' });
   assert.equal(detailResponse.ok, true);
   assert.equal(detailResponse.person.name, 'Second Alpha');
   assert.equal(detailResponse.person.canEditCode, true);
+  assert.equal(detailResponse.person.salary, 725);
+  assert.equal(detailResponse.person.canEditSalary, true);
 
   const invalidEdit = await chief.emit('ibp:directory:save', {
     mode: 'edit',
@@ -247,16 +274,20 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
     name: 'Second Alpha Updated',
     rank: 'HIGH COMMANDER',
     publicCode: 'AG-777',
-    battalionId: 'unit-alpha'
+    battalionId: 'unit-bravo',
+    salary: 810
   });
   assert.equal(editResponse.ok, true, 'authorized personnel edit failed: ' + JSON.stringify(editResponse));
   assert.equal(editResponse.person.publicCode, 'AG-777');
   assert.equal(editResponse.person.rank, 'HIGH COMMANDER');
+  assert.equal(editResponse.person.salary, 810);
   savedState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   const updatedUser = savedState.cia_users.find((person) => person.id === 'alpha-2');
   assert.equal(updatedUser.name, 'Second Alpha Updated');
   assert.equal(updatedUser.bankAccount, 'AG-777');
-  assert.ok(savedState.cia_battalions[0].memberCodes.includes('AG-777'));
+  assert.equal(updatedUser.bank.salary, 810);
+  assert.equal(savedState.cia_battalions[0].memberCodes.includes('AG-777'), false);
+  assert.ok(savedState.cia_battalions[1].memberCodes.includes('AG-777'));
   assert.equal(savedState.cia_battalions[0].memberCodes.includes('AG-102'), false);
   assert.deepEqual(savedState.cia_battalions[2].memberCodes, ['AG-102'], 'archived battalion membership remains historical');
   assert.deepEqual(savedState.ibp_operations[0].memberCodes, ['AG-777']);
@@ -268,10 +299,12 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(Object.hasOwn(savedState.cia_map_locations, 'AG-102'), false);
 
   await member.close();
+  await senior.close();
   await chief.close();
   const html = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
   assert.match(html, /ibp:directory:list/);
   assert.match(html, /ibp:directory:detail/);
   assert.match(html, /ibp:directory:save/);
+  assert.match(html, /name="salary"/);
   assert.doesNotMatch(html, /AG-217|AG-104|AG-332|AG-276/);
 });

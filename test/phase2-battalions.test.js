@@ -217,6 +217,25 @@ test('invalid colors, emblems, and coordinates are rejected without mutation', a
   assert.equal(harness.metrics.saves, 0);
 });
 
+test('authorized battalion managers can change unit name and code, while duplicate codes are rejected', async () => {
+  const chief = makeHarness(people[0]);
+  const updated = await chief.invoke('ibp:phase2:update', {
+    battalionId: 'bat-alpha',
+    code: 'ALPHA-NORTH',
+    name: 'Northern Alpha'
+  });
+  assert.equal(updated.ok, true);
+  assert.equal(chief.state.cia_battalions[0].code, 'ALPHA-NORTH');
+  assert.equal(chief.state.cia_battalions[0].name, 'Northern Alpha');
+
+  const duplicate = await chief.invoke('ibp:phase2:update', {
+    battalionId: 'bat-alpha',
+    code: 'BRAVO'
+  });
+  assert.equal(duplicate.ok, false);
+  assert.equal(chief.state.cia_battalions[0].code, 'ALPHA-NORTH');
+});
+
 test('the Phase 2 client asset is registered by the existing IBP page router', () => {
   const routes = new Map();
   const app = { get: (route, handler) => routes.set(route, handler) };
@@ -231,6 +250,8 @@ test('the Phase 2 client asset is registered by the existing IBP page router', (
   });
   assert.equal(type, 'application/javascript');
   assert.ok(file.endsWith('/ibp/world-command-battalions.js'));
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(indexHtml, /<script src="\/world-command-battalions\.js"><\/script>/);
 });
 
 test('battalion commanders can create deduplicated, persisted reports for their own unit', async () => {

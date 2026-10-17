@@ -663,6 +663,14 @@ function registerIBPSocket(socket, ctx) {
     const battalion = units().find((unit) => String(unit.id) === String(payload && payload.battalionId));
     if (!battalion || battalion.status === 'ARCHIVED' || !phase2CanManage(actor, battalion)) return fail(cb, 'لا تملك صلاحية إدارة هذه الكتيبة.');
     const patch = {};
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'code')) {
+      const codeValue = clean(payload.code, 32).toUpperCase().replace(/\s+/g, '-');
+      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(codeValue)) return fail(cb, 'أدخل رمز كتيبة فريداً من حرفين إلى 32 حرفاً أو رقماً.');
+      if (units().some((unit) => String(unit.id) !== String(battalion.id) && String(unit.code || '').toUpperCase() === codeValue)) {
+        return fail(cb, 'رمز الكتيبة مستخدم بالفعل.');
+      }
+      patch.code = codeValue;
+    }
     if (Object.prototype.hasOwnProperty.call(payload || {}, 'name')) {
       const name = clean(payload.name, 100);
       if (!name) return fail(cb, 'اسم الكتيبة مطلوب.');
