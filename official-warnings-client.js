@@ -254,17 +254,14 @@
     playWarningSound();
     overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false');
     closeButton.focus();
-    const connection = socket();
-    if (connection && connection.connected) {
-      connection.emit('notification:read', { id: warning.id }, (result) => {
-        if (result && result.ok && activeWarning && activeWarning.id === warning.id) {
-          activeWarning.readAt = result.notification && result.notification.readAt || new Date().toISOString();
-        }
-      });
-    }
   }
   function markReadAndClose() {
     if (!activeWarning) return;
+    const warningId = activeWarning.id;
+    const connection = socket();
+    if (connection && connection.connected) {
+      connection.emit('notification:read', { id: warningId });
+    }
     stopWarningSound();
     activeWarning = null;
     const overlay = $('ow-warning-overlay');
@@ -300,7 +297,7 @@
     if (!current || !current.authenticated || !current.user) {
       sessionKey = '';
       if (card) card.hidden = true;
-      activeWarning = null; queue.length = 0;
+      activeWarning = null; queue.length = 0; shown.clear();
       stopWarningSound();
       const overlay = $('ow-warning-overlay');
       if (overlay) { overlay.classList.remove('is-open'); overlay.setAttribute('aria-hidden', 'true'); }
@@ -316,6 +313,11 @@
   const connection = socket();
   if (connection) {
     connection.on('connect', () => { sessionKey = ''; syncSession(); });
+    connection.on('auth:login:result', (result) => {
+      if (!result || !result.ok) return;
+      sessionKey = '';
+      syncSession();
+    });
     connection.on('notification:new', (row) => {
       if (!row) return;
       if (row.type === 'WARNING') enqueueWarning(row);
