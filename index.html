@@ -7,6 +7,45 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/notifications.css" rel="stylesheet">
   <link href="/official-warnings.css" rel="stylesheet">
+  <style id="profanity-strike-dialog-css">
+#pr-strike-overlay{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:14px;background:rgba(0,0,0,.86);backdrop-filter:blur(5px)}
+.pr-strike-dialog{position:relative;width:min(480px,100%);max-height:min(88vh,760px);overflow:auto;padding:clamp(18px,5vw,26px);color:#f8eded;background:linear-gradient(145deg,#2a0b0e,#170709 62%,#090607);border:1px solid #7d2229;border-top:4px solid #c52732;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 38px rgba(139,0,0,.24);font-family:inherit;animation:pr-strike-enter .18s ease-out}
+.pr-strike-dialog:before{position:absolute;inset:0;content:"";pointer-events:none;opacity:.055;background:repeating-linear-gradient(0deg,transparent 0,transparent 4px,#ff2636 5px)}
+.pr-strike-dialog>*{position:relative}.pr-strike-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid #542025}
+.pr-strike-brand{color:#f0dede;font:800 .68rem/1.5 monospace;letter-spacing:.11em}.pr-strike-classification{margin-top:4px;color:#b27c80;font:600 .56rem/1.6 monospace;letter-spacing:.09em}
+.pr-strike-count{flex:none;padding:7px 9px;color:#ffb8bc;background:#3a0d12;border:1px solid #9c2933;border-radius:4px;font:800 .64rem monospace}
+.pr-strike-heading{display:flex;align-items:center;gap:10px;margin:18px 0 10px}.pr-strike-icon{display:grid;flex:none;width:32px;height:32px;place-items:center;color:#fff;background:#981e28;border-radius:5px;font:900 1.1rem monospace;box-shadow:0 0 16px rgba(205,39,50,.32)}
+.pr-strike-title{margin:0;color:#fff0f0;font-size:1.08rem;line-height:1.5}.pr-strike-message{margin:0;padding:14px;color:#f3dddd;background:rgba(8,4,5,.64);border:1px solid #492025;border-inline-start:3px solid #b5222c;border-radius:5px;font-size:.84rem;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere}
+.pr-strike-actions{display:flex;justify-content:flex-start;margin-top:18px}.pr-strike-ack{min-width:130px;padding:10px 16px;color:#fff;background:linear-gradient(180deg,#9d202a,#6f121a);border:1px solid #c34049;border-radius:5px;font:800 .76rem/1.4 system-ui,sans-serif;cursor:pointer;transition:filter .15s,transform .15s}
+.pr-strike-ack:hover{filter:brightness(1.18);transform:translateY(-1px)}.pr-strike-ack:focus-visible{outline:2px solid #ffc4c7;outline-offset:3px}
+@keyframes pr-strike-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:520px){.pr-strike-dialog{padding:18px 16px}.pr-strike-title{font-size:1rem}.pr-strike-message{font-size:.78rem}}@media(prefers-reduced-motion:reduce){.pr-strike-dialog{animation:none}.pr-strike-ack{transition:none}}
+  </style>
+  <script id="profanity-strike-dialog-js">
+    (function(){
+      var queue=[];var active=false;
+      window.isProfanityStrikeWarning=function(message){return /تحذير\s+(?:أولي|ثانوي|نهائي)|المخالفة\s*[123]\s*\/\s*3|المخالفات اللفظية للمرة الثالثة/i.test(String(message||''));};
+      function showNext(){
+        if(active||!queue.length||!document.body)return;active=true;var item=queue.shift();
+        var overlay=document.createElement('div');overlay.id='pr-strike-overlay';overlay.setAttribute('dir','rtl');
+        var dialog=document.createElement('section');dialog.className='pr-strike-dialog';dialog.setAttribute('role','alertdialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','pr-strike-title');dialog.setAttribute('aria-describedby','pr-strike-message');
+        var header=document.createElement('header');header.className='pr-strike-header';var identity=document.createElement('div');
+        var brand=document.createElement('div');brand.className='pr-strike-brand';brand.textContent='BLACK RIDGE CITY CIA';
+        var classification=document.createElement('div');classification.className='pr-strike-classification';classification.textContent='SECURITY NOTICE // القيادة';identity.append(brand,classification);
+        var match=String(item.message||'').match(/(?:المخالفة\s*)?([123])\s*\/\s*3/);var count=document.createElement('span');count.className='pr-strike-count';count.textContent=match?'المخالفة '+match[1]+' / 3':'تنبيه رسمي';header.append(identity,count);
+        var heading=document.createElement('div');heading.className='pr-strike-heading';var icon=document.createElement('span');icon.className='pr-strike-icon';icon.setAttribute('aria-hidden','true');icon.textContent='!';
+        var title=document.createElement('h2');title.id='pr-strike-title';title.className='pr-strike-title';title.textContent=match&&match[1]==='3'?'تحذير نهائي':'تحذير رسمي من القيادة';heading.append(icon,title);
+        var body=document.createElement('p');body.id='pr-strike-message';body.className='pr-strike-message';body.textContent=String(item.message||'تم رصد مخالفة لفظية.');
+        var actions=document.createElement('div');actions.className='pr-strike-actions';var acknowledge=document.createElement('button');acknowledge.type='button';acknowledge.className='pr-strike-ack';acknowledge.textContent='تأكيد الاطلاع';actions.appendChild(acknowledge);
+        dialog.append(header,heading,body,actions);overlay.appendChild(dialog);var closed=false;
+        function finish(){if(closed)return;closed=true;document.removeEventListener('keydown',onKey,true);overlay.remove();active=false;item.resolve();showNext();}
+        function onKey(event){if(event.key==='Escape'){event.preventDefault();finish();}}
+        acknowledge.addEventListener('click',finish);document.addEventListener('keydown',onKey,true);document.body.appendChild(overlay);acknowledge.focus();
+      }
+      window.showProfanityStrikeWarning=function(message){return new Promise(function(resolve){queue.push({message:String(message||''),resolve:resolve});showNext();});};
+    })();
+  </script>
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -3133,14 +3172,21 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
       ciaSocket.on('security:restricted', function(result) {
         const message = (result && result.reason) || 'تم تقييد الحساب أمنيًا. راجع القيادة.';
+        const finishRestriction = function() {
+          currentUser = null;
+          try {
+            localStorage.removeItem('cia_last_login_name');
+            localStorage.removeItem('cia_last_login_code');
+          } catch (e) {}
+          window.dispatchEvent(new Event('blackridge:logout'));
+          location.reload();
+        };
+        if (window.isProfanityStrikeWarning && window.isProfanityStrikeWarning(message) && typeof window.showProfanityStrikeWarning === 'function') {
+          window.showProfanityStrikeWarning(message).then(finishRestriction);
+          return;
+        }
         alert(message);
-        currentUser = null;
-        try {
-          localStorage.removeItem('cia_last_login_name');
-          localStorage.removeItem('cia_last_login_code');
-        } catch (e) {}
-        window.dispatchEvent(new Event('blackridge:logout'));
-        location.reload();
+        finishRestriction();
       });
 
       ciaSocket.on('admin:member:result', function(result) {
@@ -3152,7 +3198,14 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
 
       ciaSocket.on('chat:send:result', function(result) {
-        if (result && !result.ok) alert(result.message || 'تعذر إرسال الرسالة.');
+        if (!result || result.ok) return;
+        const message = String(result.message || 'تعذر إرسال الرسالة.');
+        if (/تحذير\s+(?:أولي|ثانوي)|المخالفة\s*[12]\s*\/\s*3/i.test(message) && typeof window.showProfanityStrikeWarning === 'function') {
+          window.showProfanityStrikeWarning(message);
+          return;
+        }
+        if (/تحذير\s+نهائي|3\s*\/\s*3/i.test(message)) return;
+        alert(message);
       });
 
       ciaSocket.on('connect', function() {
