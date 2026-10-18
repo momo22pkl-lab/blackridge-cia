@@ -2905,7 +2905,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
             <input id="security-blocked-term-input" class="input-field" type="text" maxlength="80" autocomplete="off" placeholder="اكتب كلمة أو عبارة مسيئة" style="flex:1;min-width:170px;margin:0;">
             <button type="button" class="btn-action" onclick="manageSecurityBlockedTerm('add')" style="width:auto;margin:0;padding:10px 14px;">إضافة كلمة إلى المعجم</button>
           </div>
-          <div id="security-blocked-terms-list" style="display:grid;gap:6px;margin-top:10px;max-height:270px;overflow:auto;"></div>
+          <button id="security-blocked-terms-toggle" type="button" class="btn-action" aria-controls="security-blocked-terms-list" aria-expanded="false" onclick="toggleSecurityBlockedTermsVisibility()" style="width:auto;margin:8px 0 0;padding:7px 10px;">إظهار الكلمات المحظورة</button>
+          <div id="security-blocked-terms-list" aria-hidden="true" style="display:none;gap:6px;margin-top:10px;max-height:270px;overflow:auto;"></div>
         </section>
         <div class="security-line"></div>
         <div class="classified-title" style="font-size:.78rem;">التنبيهات والحالات المفتوحة</div>
@@ -2950,6 +2951,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let auditLogs = [];
     let securityIncidents = [];
     let securityBlockedTerms = [];
+    let securityBlockedTermsVisible = false;
     let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
@@ -4837,9 +4839,18 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function renderSecurityBlockedTerms(chief) {
       const section = document.getElementById('security-dictionary-section');
       const list = document.getElementById('security-blocked-terms-list');
+      const toggle = document.getElementById('security-blocked-terms-toggle');
       if (section) section.style.display = chief ? 'block' : 'none';
+      if (!chief) securityBlockedTermsVisible = false;
+      if (toggle) {
+        toggle.textContent = securityBlockedTermsVisible ? 'إخفاء الكلمات المحظورة' : 'إظهار الكلمات المحظورة';
+        toggle.setAttribute('aria-expanded', String(chief && securityBlockedTermsVisible));
+      }
       if (!list) return;
-      if (!chief) {
+      const visible = chief && securityBlockedTermsVisible;
+      list.style.display = visible ? 'grid' : 'none';
+      list.setAttribute('aria-hidden', String(!visible));
+      if (!visible) {
         list.innerHTML = '';
         return;
       }
@@ -4850,6 +4861,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       list.querySelectorAll('[data-security-remove-term]').forEach(button => {
         button.addEventListener('click', () => manageSecurityBlockedTerm('remove', button.getAttribute('data-security-remove-term')));
       });
+    }
+
+    function toggleSecurityBlockedTermsVisibility() {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      securityBlockedTermsVisible = !securityBlockedTermsVisible;
+      renderSecurityBlockedTerms(true);
     }
 
     function manageSecurityBlockedTerm(action, term) {
