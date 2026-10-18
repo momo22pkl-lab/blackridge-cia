@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 function section(start, end) {
   const startAt = app.indexOf(start);
@@ -43,6 +44,10 @@ test('PNG export uses bundled html2canvas, same-origin/CORS-safe rendering, and 
   assert.ok(exporter.includes('await window.html2canvas(paper'));
   assert.ok(exporter.includes('useCORS: true'));
   assert.ok(exporter.includes('allowTaint: false'));
+  assert.ok(exporter.includes('const width = 1123;'));
+  assert.ok(exporter.includes('const pageHeight = 794;'));
+  assert.ok(exporter.includes("minHeight: pageHeight + 'px'"));
+  assert.ok(exporter.includes('Math.max(pageHeight, Math.ceil'));
   assert.ok(exporter.includes("canvas.toBlob(resolve, 'image/png')"));
   assert.ok(exporter.includes("anchor.download = 'report-' + safeNumber + '.png'"));
   assert.ok(!exporter.includes('<foreignObject'));
@@ -59,4 +64,13 @@ test('PNG export rasterizes the generated SVG QR to a PNG and prepares image ass
   assert.ok(prep.includes('rasterContext.drawImage(vector, 0, 0, raster.width, raster.height)'));
   assert.ok(prep.includes("raster.toBlob(resolve, 'image/png')"));
   assert.ok(exporter.indexOf('await prepareDocumentImagesForPng(paper)') < exporter.indexOf('window.html2canvas(paper'));
+});
+
+test('report editor supports per-section font and color with safe text rendering', () => {
+  assert.ok(page.includes('id="reportSections"'));
+  assert.ok(app.includes('data-report-section-color type="color"'));
+  assert.ok(app.includes('data-report-section-font'));
+  assert.ok(app.includes('paragraph.textContent = section.text'));
+  assert.ok(app.includes('safeReportColor(section.color)'));
+  assert.ok(app.includes('safeReportFont(section.fontFamily)'));
 });

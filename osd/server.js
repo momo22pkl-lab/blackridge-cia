@@ -36,6 +36,8 @@ const ROLE_DEFAULTS = Object.freeze({
 });
 const SESSION_HOURS = 8;
 const MAX_BODY_LENGTH = 30000;
+const DEFAULT_REPORT_COLOR = '#34332e';
+const REPORT_FONT_FAMILIES = new Set(['IBM Plex Sans Arabic', 'IBM Plex Mono', 'Inter', 'Arial', 'Georgia', 'Tahoma']);
 const loginAttempts = new Map();
 
 const SCHEMA_SQL = `
@@ -498,10 +500,27 @@ function normalizeDocument(input) {
   const sector = cleanText(input?.sector, 120);
   const classification = cleanText(input?.classification, 40).toUpperCase();
   const recipient = cleanText(input?.recipient, 200);
-  const bodyText = cleanText(input?.body, MAX_BODY_LENGTH);
-  const notes = cleanText(input?.notes, 3000);
-  const references = Array.isArray(input?.references)
-    ? input.references.slice(0, 20).map((item) => cleanText(item, 300)).filter(Boolean)
+  const bodyInput = input?.body;
+  const bodyText = cleanText(typeof bodyInput === 'string' ? bodyInput : bodyInput?.text, MAX_BODY_LENGTH);
+  const notes = cleanText(input?.notes ?? bodyInput?.notes, 3000);
+  const referenceInput = Array.isArray(input?.references) ? input.references : bodyInput?.references;
+  const references = Array.isArray(referenceInput)
+    ? referenceInput.slice(0, 20).map((item) => cleanText(item, 300)).filter(Boolean)
+    : [];
+  const sectionInput = Array.isArray(input?.sections) ? input.sections : bodyInput?.sections;
+  let remainingSectionText = MAX_BODY_LENGTH;
+  const sections = Array.isArray(sectionInput)
+    ? sectionInput.slice(0, 40).map((section) => {
+      const text = cleanText(typeof section?.text === 'string' ? section.text : '', Math.max(0, remainingSectionText));
+      remainingSectionText -= text.length;
+      const color = cleanText(section?.color, 16);
+      const fontFamily = cleanText(section?.fontFamily, 80);
+      return {
+        text,
+        color: /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_REPORT_COLOR,
+        fontFamily: REPORT_FONT_FAMILIES.has(fontFamily) ? fontFamily : 'IBM Plex Sans Arabic'
+      };
+    }).filter((section) => section.text)
     : [];
   const expiresAt = input?.expiresAt ? new Date(input.expiresAt) : null;
 
@@ -512,13 +531,15 @@ function normalizeDocument(input) {
   if (!bodyText) throw Object.assign(new Error('Document content is required.'), { status: 400 });
   if (input?.expiresAt && Number.isNaN(expiresAt.getTime())) throw Object.assign(new Error('Expiration date is invalid.'), { status: 400 });
   if (expiresAt && expiresAt.getTime() <= Date.now()) throw Object.assign(new Error('Expiration must be in the future.'), { status: 400 });
+  const body = { text: bodyText, notes, references };
+  if (sections.length) body.sections = sections;
   return {
     type: documentType,
     title,
     sector,
     classification,
     recipient,
-    body: { text: bodyText, notes, references },
+    body,
     expiresAt: expiresAt ? expiresAt.toISOString() : null
   };
 }
@@ -1031,7 +1052,7 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
         type: prior.type, title: prior.title, sector: prior.sector,
         classification: prior.classification, recipient: prior.recipient,
         body: prior.body?.text, notes: prior.body?.notes,
-        references: prior.body?.references, expiresAt: prior.expiresAt
+        references: prior.body?.references, sections: prior.body?.sections, expiresAt: prior.expiresAt
       });
       if (!canReadClassification(req.osdUser, snapshot.classification)) {
         await client.query('ROLLBACK');

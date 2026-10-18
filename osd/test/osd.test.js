@@ -186,6 +186,26 @@ test('document normalization accepts only supported types and classifications', 
   assert.throws(() => normalizeDocument({ type: 'OFFICIAL MEMORANDUM', title: 'X', sector: 'Y', classification: 'UNMARKED', body: 'Z' }), /valid classification/);
 });
 
+test('report sections preserve text while allowing only safe colors and bundled font families', () => {
+  const draft = normalizeDocument({
+    type: 'INTELLIGENCE REPORT',
+    title: 'Styled report',
+    sector: 'Los Santos',
+    classification: 'INTERNAL',
+    body: 'Opening paragraph\nClosing paragraph',
+    sections: [
+      { text: 'Opening paragraph', color: '#A24B35', fontFamily: 'Georgia' },
+      { text: '<b>Closing paragraph</b>', color: 'red; background:url(javascript:alert(1))', fontFamily: 'Arial, sans-serif' }
+    ]
+  });
+
+  assert.deepEqual(draft.body.sections, [
+    { text: 'Opening paragraph', color: '#a24b35', fontFamily: 'Georgia' },
+    { text: '<b>Closing paragraph</b>', color: '#34332e', fontFamily: 'IBM Plex Sans Arabic' }
+  ]);
+  assert.equal(draft.body.text, 'Opening paragraph\nClosing paragraph');
+});
+
 test('sector numbering code is deterministic and classification list is ordered', () => {
   assert.equal(sectorCode('Los Santos Sector'), 'LSS');
   assert.equal(sectorCode(''), 'SE');
