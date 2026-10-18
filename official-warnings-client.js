@@ -6,6 +6,52 @@
   let activeWarning = null;
   const queue = [];
   const shown = new Set();
+  const warningSound = new Audio('/warning-alert.mp3');
+  warningSound.preload = 'auto';
+  warningSound.volume = 0.8;
+  let warningSoundPrimed = false;
+  let warningSoundPriming = false;
+
+  function primeWarningSound() {
+    if (warningSoundPrimed || warningSoundPriming) return;
+    warningSoundPriming = true;
+    const wasMuted = warningSound.muted;
+    warningSound.muted = true;
+    let attempt;
+    try { attempt = warningSound.play(); }
+    catch (_error) { warningSound.muted = wasMuted; warningSoundPriming = false; return; }
+    if (attempt && typeof attempt.then === 'function') {
+      attempt.then(() => {
+        warningSound.pause();
+        warningSound.currentTime = 0;
+        warningSound.muted = wasMuted;
+        warningSoundPrimed = true;
+        warningSoundPriming = false;
+      }).catch(() => {
+        warningSound.muted = wasMuted;
+        warningSoundPriming = false;
+      });
+    } else {
+      warningSound.pause();
+      warningSound.currentTime = 0;
+      warningSound.muted = wasMuted;
+      warningSoundPrimed = true;
+      warningSoundPriming = false;
+    }
+  }
+
+  function playWarningSound() {
+    const button = $('ow-enable-warning-sound');
+    warningSound.currentTime = 0;
+    try {
+      const attempt = warningSound.play();
+      if (attempt && typeof attempt.then === 'function') {
+        attempt.then(() => { if (button) button.hidden = true; }).catch(() => { if (button) button.hidden = false; });
+      }
+    } catch (_error) {
+      if (button) button.hidden = false;
+    }
+  }
 
   function session() {
     try { return typeof window.blackRidgeGetNotificationSession === 'function' ? window.blackRidgeGetNotificationSession() : null; }
@@ -173,10 +219,11 @@
       '<div class="ow-warning-footer"><span id="ow-warning-id"></span><time id="ow-warning-date"></time></div>' +
       '<form id="ow-reply-form" class="ow-reply-area" hidden><label class="ow-reply-label" for="ow-reply-text">التبرير</label><textarea id="ow-reply-text" maxlength="3000" rows="4" placeholder="اكتب تبريرك بالتفصيل"></textarea><p class="ow-reply-note">سيصل التبرير إلى القائد الذي أصدر التحذير ويُحفظ في سجل الإشعارات.</p><div id="ow-reply-status" class="ow-reply-status" role="status" aria-live="polite"></div></form>' +
       '<div id="ow-no-reply-message" class="ow-reply-note" hidden>القائد منع التبرير لهذا التحذير. لا يمكن إرسال رد.</div>' +
-      '<div class="ow-dialog-actions"><button type="button" id="ow-warning-close" class="ow-modal-button">إغلاق وتأكيد الاطلاع</button><button type="submit" form="ow-reply-form" id="ow-reply-submit" class="ow-modal-button primary" hidden>إرسال التبرير</button></div>' +
+      '<div class="ow-dialog-actions"><button type="button" id="ow-enable-warning-sound" class="ow-modal-button" hidden>تشغيل صوت التحذير</button><button type="button" id="ow-warning-close" class="ow-modal-button">إغلاق وتأكيد الاطلاع</button><button type="submit" form="ow-reply-form" id="ow-reply-submit" class="ow-modal-button primary" hidden>إرسال التبرير</button></div>' +
       '</section>';
     document.body.appendChild(overlay);
     $('ow-warning-close').addEventListener('click', markReadAndClose);
+    $('ow-enable-warning-sound').addEventListener('click', playWarningSound);
     $('ow-reply-form').addEventListener('submit', submitReply);
     return overlay;
   }
@@ -195,6 +242,8 @@
     $('ow-reply-text').value = '';
     $('ow-reply-status').textContent = '';
     const closeButton = $('ow-warning-close'); closeButton.disabled = false;
+    const soundButton = $('ow-enable-warning-sound'); if (soundButton) soundButton.hidden = true;
+    playWarningSound();
     overlay.classList.add('is-open'); overlay.setAttribute('aria-hidden', 'false');
     closeButton.focus();
     const connection = socket();
@@ -276,6 +325,9 @@
       }
     });
   }
+  window.addEventListener('pointerdown', primeWarningSound, { once: true, capture: true });
+  window.addEventListener('keydown', primeWarningSound, { once: true, capture: true });
+
   const target = $('ow-target');
   if (target) target.addEventListener('change', updatePersonInfo);
   const form = $('official-warning-form');
