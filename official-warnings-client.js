@@ -9,11 +9,12 @@
   const warningSound = new Audio('/warning-alert.mp3');
   warningSound.preload = 'auto';
   warningSound.volume = 0.8;
+  warningSound.loop = true;
   let warningSoundPrimed = false;
   let warningSoundPriming = false;
 
   function primeWarningSound() {
-    if (warningSoundPrimed || warningSoundPriming) return;
+    if (warningSoundPrimed || warningSoundPriming || activeWarning) return;
     warningSoundPriming = true;
     const wasMuted = warningSound.muted;
     warningSound.muted = true;
@@ -22,8 +23,10 @@
     catch (_error) { warningSound.muted = wasMuted; warningSoundPriming = false; return; }
     if (attempt && typeof attempt.then === 'function') {
       attempt.then(() => {
-        warningSound.pause();
-        warningSound.currentTime = 0;
+        if (!activeWarning) {
+          warningSound.pause();
+          warningSound.currentTime = 0;
+        }
         warningSound.muted = wasMuted;
         warningSoundPrimed = true;
         warningSoundPriming = false;
@@ -51,6 +54,11 @@
     } catch (_error) {
       if (button) button.hidden = false;
     }
+  }
+
+  function stopWarningSound() {
+    warningSound.pause();
+    warningSound.currentTime = 0;
   }
 
   function session() {
@@ -257,6 +265,7 @@
   }
   function markReadAndClose() {
     if (!activeWarning) return;
+    stopWarningSound();
     activeWarning = null;
     const overlay = $('ow-warning-overlay');
     if (overlay) { overlay.classList.remove('is-open'); overlay.setAttribute('aria-hidden', 'true'); }
@@ -269,6 +278,7 @@
     if (value.length < 5) { $('ow-reply-status').textContent = 'اكتب تبريرًا من 5 أحرف على الأقل.'; return; }
     const connection = socket();
     if (!connection || !connection.connected) { $('ow-reply-status').textContent = 'تعذر الاتصال؛ لم يُرسل التبرير.'; return; }
+    stopWarningSound();
     const submit = $('ow-reply-submit'); submit.disabled = true;
     connection.emit('official-warning:respond', { warningId: activeWarning.warningId, response: value }, (result) => {
       submit.disabled = false;
@@ -291,6 +301,7 @@
       sessionKey = '';
       if (card) card.hidden = true;
       activeWarning = null; queue.length = 0;
+      stopWarningSound();
       const overlay = $('ow-warning-overlay');
       if (overlay) { overlay.classList.remove('is-open'); overlay.setAttribute('aria-hidden', 'true'); }
       return;
