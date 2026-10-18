@@ -26,28 +26,37 @@ test('issuing an official document opens an automatically generated protected sh
   assert.ok(app.includes("const permissions = ['VIEW', 'VERIFY']"));
 });
 
-test('issued report actions retain PDF printing and add a separate PNG download action', () => {
+test('issued document actions keep PDF, PNG, share, and permission gates separate', () => {
   const actions = section('function modalActions(document)', 'function showDocument(document)');
   assert.ok(actions.includes('data-action="printDocument"'));
   assert.ok(actions.includes('data-action="downloadDocumentImage"'));
+  assert.ok(actions.includes('data-action="shareDocument"'));
+  assert.ok(actions.includes("can('DOWNLOAD_DOCUMENTS')"));
+  assert.ok(actions.includes("can('SHARE_DOCUMENTS')"));
   assert.ok(app.includes("imageDownload: 'تنزيل صورة التقرير'"));
   assert.ok(app.includes("imageDownload: 'Download Report Image'"));
 });
 
-test('PNG export embeds document images, rasterizes at high resolution, and downloads as PNG', () => {
+test('PNG export uses bundled html2canvas, same-origin/CORS-safe rendering, and a real PNG Blob', () => {
   const exporter = section('async function downloadDocumentImage(documentData)', 'async function printDocument(');
-  assert.ok(exporter.includes('new XMLSerializer().serializeToString(paper)'));
-  assert.ok(exporter.includes('Math.min(3, Math.sqrt(12000000 / (width * paperHeight)))'));
+  assert.ok(app.includes('html2canvas 1.4.1'));
+  assert.ok(exporter.includes('await window.html2canvas(paper'));
+  assert.ok(exporter.includes('useCORS: true'));
+  assert.ok(exporter.includes('allowTaint: false'));
   assert.ok(exporter.includes("canvas.toBlob(resolve, 'image/png')"));
   assert.ok(exporter.includes("anchor.download = 'report-' + safeNumber + '.png'"));
+  assert.ok(!exporter.includes('<foreignObject'));
+  assert.ok(!exporter.includes('new XMLSerializer()'));
   assert.ok(app.includes("action === 'downloadDocumentImage'"));
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'vendor', 'html2canvas.LICENSE')));
 });
 
-test('PNG export inlines SVG data-image QR codes before canvas rasterization', () => {
-  const helper = section('async function inlineDataSvgImages(root)', 'async function downloadDocumentImage(');
+test('PNG export rasterizes the generated SVG QR to a PNG and prepares image assets before capture', () => {
+  const prep = section('async function prepareDocumentImagesForPng(root)', 'async function downloadDocumentImage(');
   const exporter = section('async function downloadDocumentImage(documentData)', 'async function printDocument(');
-  assert.ok(helper.includes("startsWith('data:image/svg+xml')"));
-  assert.ok(helper.includes('document.importNode(rootElement, true)'));
-  assert.ok(helper.includes('image.replaceWith(svg)'));
-  assert.ok(exporter.indexOf('await inlineDataSvgImages(paper)') < exporter.indexOf('new XMLSerializer().serializeToString(paper)'));
+  assert.ok(prep.includes("data:image\\/svg\\+xml"));
+  assert.ok(prep.includes("credentials: 'same-origin', mode: 'cors'"));
+  assert.ok(prep.includes('rasterContext.drawImage(vector, 0, 0, raster.width, raster.height)'));
+  assert.ok(prep.includes("raster.toBlob(resolve, 'image/png')"));
+  assert.ok(exporter.indexOf('await prepareDocumentImagesForPng(paper)') < exporter.indexOf('window.html2canvas(paper'));
 });
