@@ -183,7 +183,8 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
-  '/brand-seal.jpg': path.join('blackridge-personnel-module', 'public', 'blackridge-official-seal.jpg')
+  '/brand-seal.jpg': path.join('blackridge-personnel-module', 'public', 'blackridge-official-seal.jpg'),
+  '/warning-alert.mp3': 'warning-alert.mp3'
 });
 
 for (const [route, file] of Object.entries(publicAssets)) {
