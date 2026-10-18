@@ -181,6 +181,8 @@ const publicAssets = Object.freeze({
   '/notifications-client.js': 'notifications-client.js',
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
+  '/sos-alert-sound.js': 'sos-alert-sound.js',
+  '/sos-alert.mp3': 'sos-alert.mp3',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
   '/brand-seal.jpg': path.join('blackridge-personnel-module', 'public', 'blackridge-official-seal.jpg'),

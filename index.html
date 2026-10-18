@@ -1895,11 +1895,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <div class="sos-alert-badge">S.O.S // LIVE</div>
       <div id="sos-banner-content" class="sos-banner-content"></div>
       <div class="sos-alert-actions">
+        <button id="sos-audio-enable" type="button" hidden onclick="window.SOSAlertSound && window.SOSAlertSound.enable()" style="background:#7f1d1d;color:#fff;border-color:#ef626b;"><i class="fa-solid fa-volume-high"></i> تشغيل الصوت</button>
         <button type="button" onclick="dismissSOSBanner()"><i class="fa-solid fa-forward-step"></i> تخطي التنبيه</button>
         <span id="sos-timer-tag">يختفي تلقائياً خلال 30 ثانية</span>
       </div>
     </div>
   </div>
+  <script src="/sos-alert-sound.js"></script>
 
   <!-- SOS Input Modal -->
   <div id="sos-input-modal" class="modal-overlay" style="display: none;">
@@ -2927,7 +2929,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let morseAuditLogs = [];
     let activeChatMode = 'global';
     let sosTimer = null;
-    let sosAlarmTimer = null;
+    let currentSOSBannerId = null;
     let uploadedImageBase64 = "";
     let chatImageBase64 = "";
     let audioCtx = null;
@@ -3491,11 +3493,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         showRedScreenSOS(data);
         if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
       });
-      ciaSocket.on('sos:deleted', function() {
+      ciaSocket.on('sos:deleted', function(data) {
+        if (data && currentSOSBannerId !== null && String(data.id) === currentSOSBannerId) dismissSOSBanner();
         renderSOSAlerts();
         if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
       });
-      ciaSocket.on('sos:updated', function() {
+      ciaSocket.on('sos:updated', function(alert) {
+        if (alert && currentSOSBannerId !== null && String(alert.id) === currentSOSBannerId && !sosIsActive(alert)) dismissSOSBanner();
         renderSOSAlerts();
         if (document.getElementById('sos-alerts')?.classList.contains('active')) requestSOSAlerts(true);
       });
@@ -6472,6 +6476,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const content=document.getElementById('sos-banner-content');
       const timerTag=document.getElementById('sos-timer-tag');
       if(!banner) return;
+      currentSOSBannerId=alert.id == null ? null : String(alert.id);
       const text=`المرسل: #${alert.fromCode || 'غير محدد'}
 الرتبة: ${alert.fromRank || 'غير محددة'}
 الموقع: ${alert.location || 'غير محدد'}
@@ -6480,7 +6485,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 وقت البلاغ: ${formatSOSDate(alert.at)}${alert.note ? `\nالمعلومات الإضافية: ${alert.note}` : ''}`;
       if(content) content.innerText=text;
       banner.style.display='flex';
-      playRadioBeep(1500);
+      window.SOSAlertSound?.start(currentSOSBannerId);
       clearTimeout(sosTimer);
       if(window.sosCountdownTimer) clearInterval(window.sosCountdownTimer);
       let remaining=30;
@@ -6498,6 +6503,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if(banner) banner.style.display='none';
       clearTimeout(sosTimer);
       if(window.sosCountdownTimer) { clearInterval(window.sosCountdownTimer); window.sosCountdownTimer=null; }
+      window.SOSAlertSound?.stop(currentSOSBannerId);
+      currentSOSBannerId=null;
     }
 
     /* Chief Panel Admin Functions */
