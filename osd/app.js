@@ -42,6 +42,7 @@ const TYPES = [
 ];
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
 const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
+const REPORT_FONTS = ['IBM Plex Sans Arabic', 'IBM Plex Mono', 'Inter', 'Arial', 'Georgia', 'Tahoma'];
 const COPY = {
   ar: {
     topSystem: 'نظام إدارة الوثائق الرسمية', online: 'متصل', workspace: 'مساحة العمل', center: 'مركز الوثائق', create: 'إنشاء وثيقة',
@@ -60,7 +61,12 @@ const COPY = {
     documentDetails: 'بيانات الوثيقة', details: 'البيانات', preview: 'المعاينة', review: 'المراجعة', documentType: 'نوع الوثيقة',
     typeHint: 'اختر القالب المناسب لمحتوى الوثيقة.', title: 'العنوان', titleHint: 'سيظهر العنوان كما هو في النسخة الصادرة.',
     sector: 'القطاع', classification: 'درجة السرية', recipient: 'المستلم / الجهة', body: 'محتوى الوثيقة',
-    bodyHint: 'يدعم المحرر النصوص والفقرات والمراجع. لا تُدخل بيانات حساسة لا حاجة لها.', notes: 'ملاحظات داخلية',
+    bodyHint: 'اكتب نص الوثيقة وقسّمه إلى أجزاء لتنسيق كل جزء بشكل مستقل. لا تُدخل بيانات حساسة لا حاجة لها.',
+    reportFormatHint: 'أضف كل فقرة كجزء مستقل، ثم حدّد لون الخط ونوعه لكل جزء.',
+    addReportSection: '＋ إضافة جزء', removeReportSection: 'حذف الجزء', reportSection: 'الجزء',
+    sectionText: 'نص الجزء', sectionColor: 'لون الخط', sectionFont: 'نوع الخط',
+    reportTextPlaceholder: 'اكتب نص هذا الجزء هنا',
+    notes: 'ملاحظات داخلية',
     expiry: 'تاريخ انتهاء اختياري', references: 'المراجع', timestampHint: 'يُنشئ الخادم رقم الوثيقة والطابع الزمني عند الحفظ أو الإصدار. لا يستطيع النموذج تغيير وقت الإصدار.',
     cancel: 'إلغاء', previewDocument: 'معاينة الوثيقة', saveDraft: 'حفظ كمسودة', previewPane: 'معاينة الوثيقة', live: 'مباشر',
     previewNotIssued: 'معاينة فقط — لا تُعد وثيقة صادرة أو موقعة.', templateTip: 'التنسيق جاهز',
@@ -144,7 +150,11 @@ const COPY = {
     preview: 'Preview', review: 'Review', documentType: 'Document Type', typeHint: 'Choose the template for this document.',
     title: 'Title', titleHint: 'The title appears as entered on the issued version.', sector: 'Sector',
     classification: 'Classification', recipient: 'Recipient / Office', body: 'Document Content',
-    bodyHint: 'Plain text, paragraphs and references are supported. Avoid unnecessary sensitive details.',
+    bodyHint: 'Write the document as separate sections so each section can have its own font and color. Avoid unnecessary sensitive details.',
+    reportFormatHint: 'Add each paragraph as a separate section, then choose its font color and family.',
+    addReportSection: '＋ Add section', removeReportSection: 'Remove section', reportSection: 'Section',
+    sectionText: 'Section text', sectionColor: 'Font color', sectionFont: 'Font family',
+    reportTextPlaceholder: 'Write this section here',
     notes: 'Internal Notes', expiry: 'Optional Expiry Date', references: 'References',
     timestampHint: 'The server creates the document number and timestamps. A form cannot set the issue time.',
     cancel: 'Cancel', previewDocument: 'Preview Document', saveDraft: 'Save Draft', previewPane: 'Document Preview',
@@ -306,6 +316,7 @@ function setLanguage(language) {
   $$('.lang-toggle').forEach((button) => { button.textContent = language === 'ar' ? 'EN' : 'عربي'; });
   $$('[data-i18n]').forEach((element) => { element.textContent = t(element.dataset.i18n); });
   $$('[data-i18n-placeholder]').forEach((element) => { element.placeholder = t(element.dataset.i18nPlaceholder); });
+  updateReportSectionControls();
   renderPageHeading();
   renderRows();
   renderPreview();
@@ -459,8 +470,76 @@ function initSelects() {
   $('#docClassification').value = 'INTERNAL';
 }
 
+function safeReportColor(value) {
+  const color = String(value || '');
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#34332e';
+}
+
+function safeReportFont(value) {
+  return REPORT_FONTS.includes(value) ? value : REPORT_FONTS[0];
+}
+
+function readAllReportSections() {
+  return $$('#reportSections [data-report-section]').map((card) => ({
+    text: card.querySelector('[data-report-section-text]').value,
+    color: safeReportColor(card.querySelector('[data-report-section-color]').value),
+    fontFamily: safeReportFont(card.querySelector('[data-report-section-font]').value)
+  }));
+}
+
+function readReportSections() {
+  return readAllReportSections().filter((section) => section.text.trim());
+}
+
+function reportSectionMarkup(section = {}, index = 0) {
+  const color = safeReportColor(section.color);
+  const fontFamily = safeReportFont(section.fontFamily);
+  const fontOptions = REPORT_FONTS.map((font) =>
+    `<option value="${escapeHtml(font)}"${font === fontFamily ? ' selected' : ''}>${escapeHtml(font)}</option>`
+  ).join('');
+  return `
+    <section class="report-section-card" data-report-section>
+      <div class="report-section-head">
+        <b data-report-section-index>${escapeHtml(t('reportSection'))} ${String(index + 1).padStart(2, '0')}</b>
+        <button class="button button-quiet report-section-remove" type="button" data-action="removeReportSection" aria-label="${escapeHtml(t('removeReportSection'))}">× ${escapeHtml(t('removeReportSection'))}</button>
+      </div>
+      <label class="report-section-text-field">
+        <span data-i18n="sectionText">${escapeHtml(t('sectionText'))}</span>
+        <textarea data-report-section-text maxlength="30000" rows="4" placeholder="${escapeHtml(t('reportTextPlaceholder'))}">${escapeHtml(section.text || '')}</textarea>
+      </label>
+      <div class="report-section-format">
+        <label><span data-i18n="sectionColor">${escapeHtml(t('sectionColor'))}</span><input data-report-section-color type="color" value="${color}"></label>
+        <label><span data-i18n="sectionFont">${escapeHtml(t('sectionFont'))}</span><select data-report-section-font>${fontOptions}</select></label>
+      </div>
+    </section>`;
+}
+
+function updateReportSectionControls() {
+  const cards = $$('#reportSections [data-report-section]');
+  cards.forEach((card, index) => {
+    card.querySelector('[data-report-section-index]').textContent =
+      `${t('reportSection')} ${String(index + 1).padStart(2, '0')}`;
+    card.querySelector('[data-action="removeReportSection"]').disabled = cards.length <= 1;
+  });
+  $('#addReportSection').disabled = cards.length >= 40;
+}
+
+function syncReportBody() {
+  const sections = readReportSections();
+  $('#docBody').value = sections.map((section) => section.text).join('\n\n').slice(0, 30000);
+  return sections;
+}
+
+function setReportSections(sections) {
+  const values = Array.isArray(sections) && sections.length ? sections.slice(0, 40) : [{}];
+  $('#reportSections').innerHTML = values.map((section, index) => reportSectionMarkup(section, index)).join('');
+  updateReportSectionControls();
+  syncReportBody();
+}
+
 function documentPayload() {
   const expiry = $('#docExpiry').value;
+  const sections = syncReportBody();
   return {
     type: $('#docType').value,
     title: $('#docTitle').value.trim(),
@@ -468,6 +547,7 @@ function documentPayload() {
     classification: $('#docClassification').value,
     recipient: $('#docRecipient').value.trim(),
     body: $('#docBody').value,
+    sections,
     notes: $('#docNotes').value.trim(),
     expiresAt: expiry ? new Date(`${expiry}T23:59:59`).toISOString() : null,
     references: $('#docReferences').value.split(',').map((value) => value.trim()).filter(Boolean),
@@ -482,7 +562,8 @@ function renderPreview(documentData = null) {
     sector: $('#docSector')?.value.trim() || 'LOS SANTOS SECTOR',
     classification: $('#docClassification')?.value || 'INTERNAL',
     recipient: $('#docRecipient')?.value.trim() || '',
-    body: $('#docBody')?.value || ''
+    body: $('#docBody')?.value || '',
+    sections: readReportSections()
   };
   $('#previewClassification').textContent = data.classification || 'INTERNAL';
   $('#paperFooterClassification').textContent = data.classification || 'INTERNAL';
@@ -490,7 +571,22 @@ function renderPreview(documentData = null) {
   $('#previewTitle').textContent = data.title || 'DOCUMENT TITLE';
   $('#previewSector').textContent = String(data.sector || 'LOS SANTOS SECTOR').toUpperCase();
   $('#previewRecipient').textContent = data.recipient ? `TO: ${data.recipient}` : 'TO: AUTHORIZED RECIPIENT';
-  $('#previewBody').textContent = data.body?.text || data.body || (state.language === 'ar' ? 'سيظهر محتوى الوثيقة هنا عند إكمال النموذج.' : 'Your document content will appear here as you complete the form.');
+  const previewBody = $('#previewBody');
+  const sections = Array.isArray(data.sections) ? data.sections : (Array.isArray(data.body?.sections) ? data.body.sections : []);
+  const validSections = sections.filter((section) => typeof section?.text === 'string' && section.text.trim());
+  if (validSections.length) {
+    previewBody.replaceChildren(...validSections.map((section) => {
+      const paragraph = document.createElement('p');
+      paragraph.className = 'paper-content-section';
+      paragraph.textContent = section.text;
+      paragraph.style.color = safeReportColor(section.color);
+      paragraph.style.fontFamily = `"${safeReportFont(section.fontFamily)}", Arial, sans-serif`;
+      return paragraph;
+    }));
+  } else {
+    previewBody.textContent = (typeof data.body === 'string' ? data.body : data.body?.text) ||
+      (state.language === 'ar' ? 'سيظهر محتوى الوثيقة هنا عند إكمال النموذج.' : 'Your document content will appear here as you complete the form.');
+  }
   $('#previewNumber').textContent = data.documentNumber || (state.language === 'ar' ? 'يُنشأ عند الإصدار' : 'GENERATED ON ISSUE');
   $('#previewDate').textContent = formatUtcTimestamp(data.issuedAt);
   $('#previewDocumentId').textContent = data.id || (state.language === 'ar' ? 'يُنشأ عند الحفظ' : 'GENERATED ON SAVE');
@@ -634,7 +730,9 @@ function editDraft(id) {
   $('#docSector').value = doc.sector;
   $('#docClassification').value = doc.classification;
   $('#docRecipient').value = doc.recipient || '';
-  $('#docBody').value = doc.body?.text || '';
+  setReportSections(Array.isArray(doc.body?.sections) && doc.body.sections.length
+    ? doc.body.sections
+    : [{ text: doc.body?.text || '' }]);
   $('#docNotes').value = doc.body?.notes || '';
   $('#docReferences').value = (doc.body?.references || []).join(', ');
   $('#docExpiry').value = doc.expiresAt ? new Date(doc.expiresAt).toISOString().slice(0, 10) : '';
@@ -994,7 +1092,8 @@ async function downloadDocumentImage(documentData) {
   if (!source) throw new Error('The official document preview is unavailable.');
   renderPreview(documentData);
   if (typeof window.html2canvas !== 'function') throw new Error('The document image renderer is unavailable. Reload the page and try again.');
-  const width = 794;
+  const width = 1123;
+  const pageHeight = 794;
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
   host.setAttribute('data-osd-png-export-host', '');
@@ -1002,7 +1101,7 @@ async function downloadDocumentImage(documentData) {
   const paper = source.cloneNode(true);
   paper.removeAttribute('id');
   paper.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
-  Object.assign(paper.style, { width: width + 'px', maxWidth: 'none', minHeight: '0', height: 'auto', overflow: 'visible', boxSizing: 'border-box', margin: '0', padding: '28px 32px 24px', boxShadow: 'none' });
+  Object.assign(paper.style, { width: width + 'px', maxWidth: 'none', minHeight: pageHeight + 'px', height: 'auto', overflow: 'visible', boxSizing: 'border-box', margin: '0', padding: '28px 32px 24px', boxShadow: 'none' });
   const cachedShare = documentShareLinks.get(String(documentData && documentData.id || ''));
   addShareLinkToPaper(paper, cachedShare && cachedShare.url || '');
   host.append(paper);
@@ -1012,7 +1111,7 @@ async function downloadDocumentImage(documentData) {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     await prepareDocumentImagesForPng(paper);
     await waitForPrintAssets(paper);
-    const paperHeight = Math.max(1, Math.ceil(Math.max(paper.scrollHeight, paper.getBoundingClientRect().height)));
+    const paperHeight = Math.max(pageHeight, Math.ceil(Math.max(paper.scrollHeight, paper.getBoundingClientRect().height)));
     const pixelRatio = Math.min(3, Math.sqrt(12000000 / (width * paperHeight)));
     const canvas = await window.html2canvas(paper, {
       backgroundColor: '#f0eee7',
@@ -1346,6 +1445,21 @@ $('#bootstrapAction').addEventListener('click', () => showAuthTab('setup'));
 $('#setupCancel').addEventListener('click', () => showAuthTab('leader'));
 
 $('#documentForm').addEventListener('submit', saveDraft);
+$('#addReportSection').addEventListener('click', () => {
+  const sections = readAllReportSections();
+  if (sections.length >= 40) return;
+  sections.push({});
+  setReportSections(sections);
+  $('#reportSections [data-report-section]:last-child [data-report-section-text]').focus();
+});
+$('#reportSections').addEventListener('input', () => {
+  syncReportBody();
+  renderPreview();
+});
+$('#reportSections').addEventListener('change', () => {
+  syncReportBody();
+  renderPreview();
+});
 $('#verifyForm').addEventListener('submit', (event) => {
   event.preventDefault();
   void verifyIdentifier($('#verifyInput').value.trim());
@@ -1373,6 +1487,15 @@ document.addEventListener('click', async (event) => {
       showAuth(true);
       location.reload();
     } else if (action === 'closeModal') $('#documentModal').hidden = true;
+    else if (action === 'removeReportSection') {
+      const section = target.closest('[data-report-section]');
+      if (section && $$('#reportSections [data-report-section]').length > 1) {
+        section.remove();
+        updateReportSectionControls();
+        syncReportBody();
+        renderPreview();
+      }
+    }
     else if (action === 'clearSignature') clearSignature();
     else if (action === 'cancelSignature') {
       signingDocumentId = null;
@@ -1430,6 +1553,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 initSelects();
+setReportSections([{}]);
 renderTemplates();
 setInterval(updateClock, 1000);
 updateClock();

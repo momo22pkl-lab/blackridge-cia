@@ -106,7 +106,16 @@
                   <label class="form-field"><span data-i18n="classification">درجة السرية <b>*</b></span><select id="docClassification" required></select></label>
                 </div>
                 <label class="form-field"><span data-i18n="recipient">المستلم / الجهة</span><input id="docRecipient" maxlength="200" placeholder="اسم الجهة أو رمزها"></label>
-                <label class="form-field"><span data-i18n="body">محتوى الوثيقة <b>*</b></span><textarea id="docBody" maxlength="30000" required rows="7" placeholder="اكتب المحتوى الرسمي هنا. استخدم أسطراً جديدة للفقرات والقوائم."></textarea><small data-i18n="bodyHint">يدعم المحرر النصوص والفقرات والمراجع. لا تُدخل بيانات حساسة لا حاجة لها.</small></label>
+                <div class="form-field report-body-field">
+                  <span id="reportBodyLabel"><span data-i18n="body">محتوى الوثيقة <b>*</b></span></span>
+                  <div class="report-section-toolbar">
+                    <small data-i18n="reportFormatHint">أضف كل فقرة كجزء مستقل، ثم حدّد لون الخط ونوعه لكل جزء.</small>
+                    <button class="button button-outline report-add-button" id="addReportSection" type="button" data-i18n="addReportSection">＋ إضافة جزء</button>
+                  </div>
+                  <div class="report-section-list" id="reportSections" role="group" aria-labelledby="reportBodyLabel"></div>
+                  <textarea id="docBody" maxlength="30000" hidden aria-hidden="true" tabindex="-1"></textarea>
+                  <small data-i18n="bodyHint">اكتب نص الوثيقة وقسّمه إلى أجزاء لتنسيق كل جزء بشكل مستقل.</small>
+                </div>
                 <div class="form-row">
                   <label class="form-field"><span data-i18n="notes">ملاحظات داخلية</span><input id="docNotes" maxlength="3000" placeholder="اختياري — لا تظهر للمستلم العام"></label>
                   <label class="form-field"><span data-i18n="expiry">تاريخ انتهاء اختياري</span><input id="docExpiry" type="date"></label>
@@ -126,7 +135,7 @@
                 <div class="paper-type" id="previewType">OFFICIAL MEMORANDUM</div>
                 <h2 id="previewTitle">DOCUMENT TITLE</h2>
                 <div class="paper-recipient" id="previewRecipient">TO: AUTHORIZED RECIPIENT</div>
-                <p class="paper-content" id="previewBody">Your official document preview will appear here as you complete the form.</p>
+                <div class="paper-content" id="previewBody">Your official document preview will appear here as you complete the form.</div>
                 <div class="paper-signature"><div><small>AUTHORIZED BY</small><b id="previewSigner">SIGNATURE REQUIRED</b><img id="previewSignature" class="paper-signature-image" alt="Issuer handwritten signature" hidden><span id="previewSignatureCaption">Signature required at issue</span></div><span class="signature-seal">CIA<br>AUTHORITY</span></div>
                 <div class="paper-code"><img id="verificationQr" class="code-grid" alt="QR code for document verification" hidden><span class="code-placeholder" id="verificationQrPlaceholder" aria-hidden="true">QR</span><span><small>VERIFY DOCUMENT</small><b id="previewVerificationCode">GENERATED ON ISSUE</b><a id="previewVerificationLink" href="#" target="_blank" rel="noopener" hidden>Open verification record</a></span></div>
                 <div class="paper-share-link" data-print-share hidden>
