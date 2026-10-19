@@ -17,3 +17,14 @@ test('chat profanity reaches authoritative server moderation', () => {
   assert.match(sendChat, /ciaSocket\.emit\(\s*['"]chat:send['"]/);
   assert.doesNotMatch(sendChat, /hasBlockedChatTerm|CHAT_SECURITY_BLOCKED_TERMS|تحتوي الرسالة على ألفاظ غير مسموح بها/);
 });
+
+test('chat profanity strikes use the in-app warning dialog in the send callback', () => {
+  const start = indexHtml.indexOf('function sendChatMessage() {');
+  const end = indexHtml.indexOf('function deleteGlobalChatMessage(', start);
+  const sendChat = indexHtml.slice(start, end);
+
+  assert.match(sendChat, /isProfanityStrikeWarning/);
+  assert.match(sendChat, /showProfanityStrikeWarning/);
+  assert.match(sendChat, /finalStrike/);
+  assert.match(sendChat, /if \(finalStrike\) return/);
+});
