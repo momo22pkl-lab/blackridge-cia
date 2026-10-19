@@ -32,9 +32,9 @@
         var header=document.createElement('header');header.className='pr-strike-header';var identity=document.createElement('div');
         var brand=document.createElement('div');brand.className='pr-strike-brand';brand.textContent='BLACK RIDGE CITY CIA';
         var classification=document.createElement('div');classification.className='pr-strike-classification';classification.textContent='SECURITY NOTICE // القيادة';identity.append(brand,classification);
-        var match=String(item.message||'').match(/(?:المخالفة\s*)?([123])\s*\/\s*3/);var count=document.createElement('span');count.className='pr-strike-count';count.textContent=match?'المخالفة '+match[1]+' / 3':'تنبيه رسمي';header.append(identity,count);
+        var demo=String(item.message||'').startsWith('SAFE PREVIEW');var match=String(item.message||'').match(/(?:المخالفة\s*)?([123])\s*\/\s*3/);var count=document.createElement('span');count.className='pr-strike-count';count.textContent=demo?'معاينة آمنة':match?'المخالفة '+match[1]+' / 3':'تنبيه رسمي';header.append(identity,count);
         var heading=document.createElement('div');heading.className='pr-strike-heading';var icon=document.createElement('span');icon.className='pr-strike-icon';icon.setAttribute('aria-hidden','true');icon.textContent='!';
-        var title=document.createElement('h2');title.id='pr-strike-title';title.className='pr-strike-title';title.textContent=match&&match[1]==='3'?'تحذير نهائي':'تحذير رسمي من القيادة';heading.append(icon,title);
+        var title=document.createElement('h2');title.id='pr-strike-title';title.className='pr-strike-title';title.textContent=demo?'معاينة للتحذير':match&&match[1]==='3'?'تحذير نهائي':'تحذير رسمي من القيادة';heading.append(icon,title);
         var body=document.createElement('p');body.id='pr-strike-message';body.className='pr-strike-message';body.textContent=String(item.message||'تم رصد مخالفة لفظية.');
         var actions=document.createElement('div');actions.className='pr-strike-actions';var acknowledge=document.createElement('button');acknowledge.type='button';acknowledge.className='pr-strike-ack';acknowledge.textContent='تأكيد الاطلاع';actions.appendChild(acknowledge);
         dialog.append(header,heading,body,actions);overlay.appendChild(dialog);var closed=false;
@@ -43,6 +43,10 @@
         acknowledge.addEventListener('click',finish);document.addEventListener('keydown',onKey,true);document.body.appendChild(overlay);acknowledge.focus();
       }
       window.showProfanityStrikeWarning=function(message){return new Promise(function(resolve){queue.push({message:String(message||''),resolve:resolve});showNext();});};
+          if(new URLSearchParams(window.location.search).get('previewProfanityWarning')==='1'){
+            var openSafePreview=function(){window.showProfanityStrikeWarning('SAFE PREVIEW — معاينة آمنة فقط. لم تُرسل رسالة ولم تُحتسب مخالفة.\n\nتحذير أولي رسمي من القيادة بسبب استخدام ألفاظ مسيئة. تم حظر رسالتك. المخالفة 1/3.');};
+            if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',openSafePreview,{once:true});else openSafePreview();
+          }
     })();
   </script>
 
