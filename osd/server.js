@@ -1395,7 +1395,7 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
                 u.totp_secret_enc,u.recovery_code_hashes,u.mfa_enabled_at
          FROM osd_login_challenges c JOIN osd_users u ON u.id=c.user_id
          WHERE c.challenge_hash=$1 AND c.expires_at>NOW()
-         FOR UPDATE OF c`,
+         FOR UPDATE OF c,u`,
         [sha256(challengeToken)]
       );
       const account = result.rows[0];
