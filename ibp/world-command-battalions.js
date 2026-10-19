@@ -21,11 +21,16 @@
     COMMAND: 'Command Crest', SPECIAL: 'Special Unit Crest'
   };
   const MAP_VIEW_WIDTH = 1000;
-  const MAP_VIEW_HEIGHT = MAP_VIEW_WIDTH * 524 / 483;
+  const MAP_VIEW_HEIGHT = MAP_VIEW_WIDTH;
   const MAP_COORD_HEIGHT = 700;
   const MAP_Y_SCALE = MAP_VIEW_HEIGHT / MAP_COORD_HEIGHT;
   const MAP_VIEW_RATIO = MAP_VIEW_HEIGHT / MAP_VIEW_WIDTH;
   const MAP_MIN_VIEW_WIDTH = 280;
+  const MAP_IMAGE_SOURCES = [
+    'https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg',
+    'https://www.gta5.info/p/files/gta5-satellite-map.jpg',
+    '/ibp/los-santos-map-reference.jpg'
+  ];
   const state = {
     page: '',
     battalions: [],
@@ -237,7 +242,7 @@
   function mapBase() {
     return [
       '<svg id="br2-map-svg" class="br2-map-svg" viewBox="0 0 ' + MAP_VIEW_WIDTH + ' ' + MAP_VIEW_HEIGHT.toFixed(3) + '" role="application" aria-label="Interactive Los Santos battalion map" preserveAspectRatio="xMidYMid meet">',
-      '<image id="br2-map-image" href="/ibp/los-santos-map-reference.jpg" x="0" y="0" width="' + MAP_VIEW_WIDTH + '" height="' + MAP_VIEW_HEIGHT.toFixed(3) + '" preserveAspectRatio="none" aria-hidden="true" pointer-events="none"><title>Los Santos reference map</title></image>',
+      '<image id="br2-map-image" href="' + MAP_IMAGE_SOURCES[0] + '" x="0" y="0" width="' + MAP_VIEW_WIDTH + '" height="' + MAP_VIEW_HEIGHT.toFixed(3) + '" preserveAspectRatio="none" aria-hidden="true" pointer-events="none"><title>Los Santos reference map</title></image>',
       '<rect id="br2-map-hit" x="0" y="0" width="' + MAP_VIEW_WIDTH + '" height="' + MAP_VIEW_HEIGHT.toFixed(3) + '" fill="transparent" pointer-events="all"/>',
       '<g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>'
     ].join('');
@@ -370,6 +375,14 @@
   function attachMap(svg) {
     let drag = null;
     let moved = false;
+    const mapImage = document.getElementById('br2-map-image');
+    if (mapImage) {
+      let sourceIndex = 0;
+      mapImage.addEventListener('error', () => {
+        sourceIndex += 1;
+        if (sourceIndex < MAP_IMAGE_SOURCES.length) mapImage.setAttribute('href', MAP_IMAGE_SOURCES[sourceIndex]);
+      });
+    }
     svg.addEventListener('wheel', (event) => {
       event.preventDefault();
       const point = svgPoint(svg, event);

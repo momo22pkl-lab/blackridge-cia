@@ -9,8 +9,7 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const clientPath = path.join(root, 'ibp', 'world-command-battalions.js');
 const mapPath = path.join(root, 'ibp', 'los-santos-map-reference.jpg');
-const viewHeight = 1000 * 524 / 483;
-const yScale = viewHeight / 700;
+const viewHeight = 1000;
 
 class FakeElement {
   constructor(document, id = '') {
@@ -152,7 +151,14 @@ class FakeDocument {
     this.contentNodes.clear();
     for (const match of markup.matchAll(/\bid="([^"]+)"/g)) {
       const id = match[1];
-      this.contentNodes.set(id, id === 'br2-map-svg' ? new FakeSvg(this) : new FakeElement(this, id));
+      const element = id === 'br2-map-svg' ? new FakeSvg(this) : new FakeElement(this, id);
+      const openingTag = markup.match(new RegExp('<[^>]*\\bid="' + id + '"[^>]*>'));
+      if (openingTag) {
+        for (const attribute of openingTag[0].matchAll(/([a-zA-Z_:][\w:.-]*)="([^"]*)"/g)) {
+          element.attributes[attribute[1]] = attribute[2];
+        }
+      }
+      this.contentNodes.set(id, element);
     }
   }
 }
@@ -237,16 +243,42 @@ function viewport(svg) {
   return svg.getAttribute('viewBox').split(/\s+/).map(Number);
 }
 
-test('the map uses the supplied Los Santos image and exposes the server-backed battalion record', async () => {
+function jpegDimensions(buffer) {
+  let offset = 2;
+  while (offset < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    offset += 2;
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) continue;
+    if (offset + 7 > buffer.length) break;
+    const segmentLength = buffer.readUInt16BE(offset);
+    if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+      return { width: buffer.readUInt16BE(offset + 5), height: buffer.readUInt16BE(offset + 3) };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+test('the map uses the existing high-resolution Los Santos map and exposes the server-backed battalion record', async () => {
   const { document, calls } = makeHarness();
   document.fire('click', clickEvent(target(document, { 'data-br-page': 'map' })));
   await new Promise((resolve) => setImmediate(resolve));
 
   let svg = document.getElementById('br2-map-svg');
   assert.ok(svg);
-  assert.match(document.getElementById('brw-page-content').innerHTML, /href="\/ibp\/los-santos-map-reference\.jpg"/);
+  assert.match(document.getElementById('brw-page-content').innerHTML, /href="https:\/\/www\.bragitoff\.com\/wp-content\/uploads\/2015\/11\/GTAV-HD-MAP-roadmap\.jpg"/);
   assert.doesNotMatch(document.getElementById('brw-page-content').innerHTML, /br2-map-land|br2-map-ocean/);
   assert.ok(calls.some((call) => call.eventName === 'ibp:phase2:list'));
+  const image = document.getElementById('br2-map-image');
+  assert.equal(image.getAttribute('href'), 'https://www.bragitoff.com/wp-content/uploads/2015/11/GTAV-HD-MAP-roadmap.jpg');
+  image.listeners.get('error')();
+  assert.equal(image.getAttribute('href'), 'https://www.gta5.info/p/files/gta5-satellite-map.jpg');
+  image.listeners.get('error')();
+  assert.equal(image.getAttribute('href'), '/ibp/los-santos-map-reference.jpg');
 
   const markerLayer = document.getElementById('br2-markers');
   assert.match(markerLayer.innerHTML, /data-br2-unit="unit-live-01"/);
@@ -282,7 +314,7 @@ test('map zoom, wheel navigation, pointer drag, marker selection and saved locat
   svg = document.getElementById('br2-map-svg');
   let [x, y, width, height] = viewport(svg);
   assert.ok(width < 1000);
-  assert.ok(Math.abs(height / width - 524 / 483) < 0.00001);
+  assert.equal(height, width);
 
   await svg.dispatch('wheel', {
     target: target(document),
@@ -293,7 +325,7 @@ test('map zoom, wheel navigation, pointer drag, marker selection and saved locat
   });
   const afterWheel = viewport(svg);
   assert.ok(afterWheel[2] < width);
-  assert.ok(Math.abs(afterWheel[3] / afterWheel[2] - 524 / 483) < 0.00001);
+  assert.equal(afterWheel[3], afterWheel[2]);
 
   const beforePan = viewport(svg);
   svg.dispatch('pointerdown', { target: target(document), clientX: 500, clientY: viewHeight / 2, pointerId: 7 });
@@ -312,9 +344,13 @@ test('map zoom, wheel navigation, pointer drag, marker selection and saved locat
   assert.ok(bounded[1] + bounded[3] <= viewHeight + 0.0001);
 });
 
-test('the map asset is the actual supplied JPEG and the existing server serves it inside IBP', () => {
+test('the interactive map uses its existing high-resolution sources and a local JPEG fallback served inside IBP', () => {
   const asset = fs.readFileSync(mapPath);
   assert.deepEqual([...asset.subarray(0, 2)], [0xff, 0xd8]);
+  assert.deepEqual(jpegDimensions(asset), { width: 483, height: 524 });
+  const legacyMap = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  assert.match(legacyMap, /GTAV-HD-MAP-roadmap\.jpg/);
+  assert.match(legacyMap, /gta5-satellite-map\.jpg/);
   assert.match(fs.readFileSync(path.join(root, 'server.js'), 'utf8'), /'\/ibp\/los-santos-map-reference\.jpg': path\.join\('ibp', 'los-santos-map-reference\.jpg'\)/);
   assert.match(fs.readFileSync(clientPath, 'utf8'), /ibp:phase2:list/);
 });
