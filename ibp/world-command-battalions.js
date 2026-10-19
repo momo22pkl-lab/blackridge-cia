@@ -20,6 +20,12 @@
     FALCON: 'Falcon', STAR: 'Star', SWORD: 'Sword',
     COMMAND: 'Command Crest', SPECIAL: 'Special Unit Crest'
   };
+  const MAP_VIEW_WIDTH = 1000;
+  const MAP_VIEW_HEIGHT = MAP_VIEW_WIDTH * 524 / 483;
+  const MAP_COORD_HEIGHT = 700;
+  const MAP_Y_SCALE = MAP_VIEW_HEIGHT / MAP_COORD_HEIGHT;
+  const MAP_VIEW_RATIO = MAP_VIEW_HEIGHT / MAP_VIEW_WIDTH;
+  const MAP_MIN_VIEW_WIDTH = 280;
   const state = {
     page: '',
     battalions: [],
@@ -27,7 +33,7 @@
     selectedId: '',
     mode: '',
     polygon: [],
-    viewport: { x: 0, y: 0, w: 1000, h: 700 },
+    viewport: { x: 0, y: 0, w: MAP_VIEW_WIDTH, h: MAP_VIEW_HEIGHT },
     loading: false,
     refreshing: false,
     timer: null,
@@ -61,7 +67,8 @@
     '.br2-empty{padding:26px 16px;color:var(--br2-muted);font-size:12px;text-align:center;border:1px dashed var(--br2-line);border-radius:8px;line-height:1.7}.br2-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.br2-info{padding:10px;border:1px solid var(--br2-line);border-radius:7px;background:rgba(255,255,255,.015);min-width:0}.br2-info span{display:block;color:var(--br2-muted);font:9px "DM Mono",monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}.br2-info b{display:block;font-size:11px;line-height:1.5;overflow-wrap:anywhere}.br2-section{margin-top:14px}.br2-section-title{font:500 9px "DM Mono",monospace;color:#abb6a8;letter-spacing:.16em;border-bottom:1px solid var(--br2-line);padding-bottom:7px;margin:0 0 8px}.br2-member{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(206,216,200,.07);font-size:11px}.br2-member small{color:var(--br2-muted);font:9px "DM Mono",monospace}.br2-online{color:#80d7a5}.br2-report{padding:7px 0;border-bottom:1px solid rgba(206,216,200,.07);font-size:10px;line-height:1.5}.br2-report small{display:block;color:var(--br2-muted);font:9px "DM Mono",monospace;margin-top:3px}',
     '.br2-map-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:11px}.br2-map-layout{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(235px,.75fr);gap:12px;align-items:start}.br2-map-frame{position:relative;overflow:hidden;border:1px solid rgba(199,213,184,.18);border-radius:10px;background:#17211d;min-height:420px;box-shadow:0 18px 45px rgba(0,0,0,.2)}.br2-map-svg{display:block;width:100%;height:auto;min-height:420px;touch-action:none;cursor:grab}.br2-map-svg.dragging{cursor:grabbing}.br2-map-grid{stroke:#d1d9c9;stroke-opacity:.09}.br2-map-water{fill:#1d3335}.br2-map-land{fill:#28342b;stroke:#88927f;stroke-opacity:.38;stroke-width:2}.br2-map-park{fill:#354638;stroke:#8a9d7e;stroke-opacity:.25}.br2-map-road-major{fill:none;stroke:#d2c59c;stroke-opacity:.6;stroke-width:5}.br2-map-road-minor{fill:none;stroke:#b7c0ad;stroke-opacity:.34;stroke-width:2}.br2-map-road-line{fill:none;stroke:#243029;stroke-width:1}.br2-map-label{fill:#b2bdad;font:11px \"DM Mono\",monospace;letter-spacing:2px;opacity:.8}.br2-map-water-label{fill:#8eafae;font:10px \"DM Mono\",monospace;letter-spacing:3px;opacity:.75}.br2-map-coord{fill:#b5c1b4;font:9px \"DM Mono\",monospace;opacity:.8}.br2-marker{cursor:pointer}.br2-marker:hover{filter:brightness(1.25)}.br2-marker-label{font:700 11px Inter,Arial,sans-serif;paint-order:stroke;stroke:#101613;stroke-width:3px;stroke-linejoin:round}.br2-trail{fill:none;stroke-width:4;stroke-linecap:round;stroke-dasharray:7 6;opacity:.6}.br2-area{stroke-width:2;stroke-dasharray:5 4}.br2-map-hint{min-height:25px;color:#d0c49f;font:10px \"DM Mono\",monospace;padding:7px 2px}.br2-map-panel{max-height:680px;overflow:auto}.br2-zoom{margin-left:auto;display:flex;gap:5px}',
     '.br2-modal{position:fixed;z-index:99999;inset:0;background:rgba(3,6,4,.78);display:flex;align-items:center;justify-content:center;padding:18px}.br2-modal[hidden]{display:none}.br2-modal-card{width:min(720px,100%);max-height:92vh;overflow:auto;background:#111914;border:1px solid rgba(209,218,200,.22);border-radius:12px;box-shadow:0 20px 80px #000;padding:18px}.br2-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.br2-field{display:flex;flex-direction:column;gap:6px;color:#b4beb3;font:9px \"DM Mono\",monospace;letter-spacing:.08em}.br2-field.full{grid-column:1/-1}.br2-input,.br2-select,.br2-textarea{width:100%;border:1px solid var(--br2-line);border-radius:6px;background:#0c120e;color:#f0f1e9;padding:9px;font:12px Inter,Arial,sans-serif;min-height:37px}.br2-textarea{min-height:82px;resize:vertical}.br2-input[type=color]{padding:3px;height:38px}.br2-form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}.br2-form-error{color:#ff9e91;font-size:11px;min-height:18px;margin-top:7px}.br2-toast{position:fixed;z-index:100000;bottom:20px;left:50%;transform:translateX(-50%);background:#16211a;color:#e7ede2;border:1px solid rgba(209,218,200,.2);border-radius:8px;padding:11px 15px;font-size:12px;box-shadow:0 9px 30px #000;max-width:min(90vw,520px)}.br2-toast[hidden]{display:none}.br2-loading{color:#bdc7b8;font:10px \"DM Mono\",monospace;padding:16px;text-align:center}',
-    '@media(max-width:950px){.br2-layout,.br2-map-layout{grid-template-columns:1fr}.br2-map-frame,.br2-map-svg{min-height:330px}.br2-map-panel{max-height:none}}@media(max-width:580px){.br2-info-grid,.br2-form-grid{grid-template-columns:1fr}.br2-field.full{grid-column:auto}.br2-map-frame,.br2-map-svg{min-height:270px}.br2-toolbar{align-items:flex-start}}'
+    '@media(max-width:950px){.br2-layout,.br2-map-layout{grid-template-columns:1fr}.br2-map-frame,.br2-map-svg{min-height:330px}.br2-map-panel{max-height:none}}@media(max-width:580px){.br2-info-grid,.br2-form-grid{grid-template-columns:1fr}.br2-field.full{grid-column:auto}.br2-map-frame,.br2-map-svg{min-height:270px}.br2-toolbar{align-items:flex-start}}',
+    '.br2-map-frame{width:100%;min-width:0}.br2-map-layout>div,.br2-map-panel{min-width:0;max-width:100%}.br2-map-svg{max-width:100%;height:auto;touch-action:none}.br2-map-panel{width:100%}'
   ].join('');
 
   function injectStyles() {
@@ -228,55 +235,31 @@
     renderSideSummary();
   }
   function mapBase() {
-    const island = 'M 502 18 C 484 24 470 39 462 57 C 451 75 431 76 418 92 C 402 105 403 125 386 139 C 370 151 374 173 357 190 C 341 207 345 229 329 247 C 313 266 325 288 308 307 C 293 327 304 348 288 368 C 274 389 290 408 278 430 C 269 451 285 468 287 488 C 293 507 310 520 316 537 C 326 555 346 564 354 581 C 368 599 386 607 395 624 C 408 643 427 650 439 635 C 454 625 467 611 484 606 C 499 593 511 576 525 561 C 542 545 548 525 564 507 C 580 489 575 468 594 450 C 610 432 604 411 621 392 C 637 372 628 351 644 332 C 660 312 648 291 663 273 C 679 252 663 232 676 214 C 688 194 672 174 677 155 C 678 137 660 122 664 103 C 660 85 641 74 638 56 C 624 43 609 38 590 43 C 573 37 560 24 545 34 C 529 25 516 17 502 18 Z';
     return [
-      '<svg id="br2-map-svg" class="br2-map-svg" viewBox="0 0 1000 700" role="img" aria-label="Interactive Los Santos battalion map">',
-      '<defs>',
-      '<linearGradient id="br2-map-ocean" x2="0" y2="1"><stop stop-color="#2879b6"/><stop offset="1" stop-color="#13558f"/></linearGradient>',
-      '<linearGradient id="br2-map-land" x1="0" y1="0" x2=".85" y2="1"><stop stop-color="#d1d2b9"/><stop offset=".55" stop-color="#bac4b1"/><stop offset="1" stop-color="#aebaa8"/></linearGradient>',
-      '<pattern id="br2-map-grid" width="46" height="46" patternUnits="userSpaceOnUse"><path d="M46 0H0V46" fill="none" stroke="#d5edf5" stroke-opacity=".07" stroke-width="1"/></pattern>',
-      '<pattern id="br2-city-grid" width="18" height="17" patternUnits="userSpaceOnUse"><path d="M18 0H0V17" fill="none" stroke="#586775" stroke-opacity=".64" stroke-width="1.3"/></pattern>',
-      '<pattern id="br2-terrain-dots" width="22" height="20" patternUnits="userSpaceOnUse"><circle cx="4" cy="5" r="1" fill="#697764" fill-opacity=".25"/><circle cx="16" cy="14" r="1.2" fill="#697764" fill-opacity=".2"/></pattern>',
-      '<clipPath id="br2-land-clip"><path d="' + island + '"/></clipPath>',
-      '</defs>',
-      '<rect width="1000" height="700" fill="url(#br2-map-ocean)"/>',
-      '<rect width="1000" height="700" fill="url(#br2-map-grid)" opacity=".6"/>',
-      '<path d="' + island + '" fill="none" stroke="#e6eee3" stroke-opacity=".48" stroke-width="36"/>',
-      '<path d="' + island + '" fill="none" stroke="#d9d4ae" stroke-opacity=".92" stroke-width="14"/>',
-      '<path class="br2-map-land" style="fill:url(#br2-map-land);stroke:#728575;stroke-width:2.5" d="' + island + '"/>',
-      '<g clip-path="url(#br2-land-clip)">',
-      '<rect x="250" y="10" width="470" height="660" fill="url(#br2-terrain-dots)" opacity=".72"/>',
-      '<path d="M390 78 423 48 463 58 487 83 472 111 441 120 411 105ZM516 57 553 43 584 57 603 82 587 103 552 101 528 82ZM337 181 366 156 399 161 418 186 404 213 371 222 345 204Z" fill="#8c9b7d" fill-opacity=".28" stroke="#778873" stroke-opacity=".35" stroke-width="2"/>',
-      '<path d="M381 124C413 94 443 95 471 115S528 139 564 119 605 111 629 134M354 158C389 132 420 136 445 153S500 175 534 154 594 145 642 171M327 218C359 193 391 195 418 212M359 248C393 225 423 228 449 245S506 265 542 246 604 239 650 267M300 288C339 266 374 270 405 286M309 324C345 302 382 303 413 321S476 342 512 322 582 314 635 342M284 375C326 350 361 356 389 375M291 412C330 388 362 392 394 411S455 430 487 411 559 402 610 428M296 461C337 437 373 441 402 458M317 500C351 477 382 480 412 497S469 516 501 497 552 487 584 501" fill="none" stroke="#798874" stroke-opacity=".4" stroke-width="2"/>',
-      '<path d="M456 177C481 164 515 166 539 179 552 187 551 201 538 210 518 224 486 222 466 214 450 208 445 190 456 177Z" fill="#347eaa" stroke="#e3ddbd" stroke-width="5"/><path d="M465 187C486 177 513 179 533 189" fill="none" stroke="#9bc8d4" stroke-opacity=".65" stroke-width="2"/>',
-      '<text class="br2-map-label" x="479" y="202">ALAMO SEA</text>',
-      '<path d="M450 50C420 101 431 143 408 185S385 247 400 290 394 353 374 395 371 462 389 503 404 558 424 602M600 63C621 117 603 159 622 199S620 260 600 302 599 361 614 399 582 463 560 495 543 548 503 588" fill="none" stroke="#e9e1bd" stroke-opacity=".9" stroke-width="5"/>',
-      '<path d="M450 50C420 101 431 143 408 185S385 247 400 290 394 353 374 395 371 462 389 503 404 558 424 602M600 63C621 117 603 159 622 199S620 260 600 302 599 361 614 399 582 463 560 495 543 548 503 588" fill="none" stroke="#7e7562" stroke-opacity=".8" stroke-width="1.5"/>',
-      '<path d="M279 472C332 457 369 453 410 465S478 475 520 455 584 434 622 445M271 486C328 469 370 467 409 480S478 489 526 469 586 450 616 461M299 515C339 500 375 497 408 511S470 522 508 501 557 483 588 493M332 548C356 534 385 533 410 544S456 552 478 536 524 520 550 527" fill="none" stroke="#625f59" stroke-opacity=".72" stroke-width="2"/>',
-      '<path d="M328 503 400 484 455 498 491 527 484 572 449 608 408 627 379 605 353 576 327 546Z" fill="#9ea8a7" fill-opacity=".66" stroke="#707d7c" stroke-opacity=".8" stroke-width="2"/>',
-      '<path d="M328 503 400 484 455 498 491 527 484 572 449 608 408 627 379 605 353 576 327 546Z" fill="url(#br2-city-grid)" opacity=".96"/>',
-      '<path d="M334 534C365 523 389 516 420 525S456 543 482 549M347 557C378 544 408 541 441 551S465 565 480 573M370 586C393 570 416 566 448 578M368 511 390 604M392 497 415 620M417 493 438 615M442 500 462 593M346 528 469 564M356 547 459 586" fill="none" stroke="#485966" stroke-opacity=".88" stroke-width="2"/>',
-      '<path d="M349 590 320 619 303 640 325 651 355 631 379 607Z" fill="#a9b1ab" stroke="#687773" stroke-width="2"/><path d="M320 619 354 631M331 607 364 619M314 632 345 643M344 604 330 645" stroke="#52616a" stroke-width="1.5"/>',
-      '<path d="M293 462C316 452 341 443 369 440M299 481C323 468 345 462 372 459M306 501C329 489 353 482 380 479M311 522C331 510 351 504 380 501M319 544C337 530 356 525 385 522M330 565C346 550 365 546 394 543M347 585C362 570 381 567 411 562M376 606C392 587 409 582 438 579" fill="none" stroke="#e8e2c8" stroke-opacity=".92" stroke-width="3"/>',
-      '<text class="br2-map-label" x="396" y="557">LOS SANTOS</text><text class="br2-map-label" x="349" y="582">DOWNTOWN</text><text class="br2-map-label" x="450" y="467">VINEWOOD</text><text class="br2-map-label" x="385" y="330">GRAND SENORA</text><text class="br2-map-label" x="472" y="93">BLAINE COUNTY</text>',
-      '<text class="br2-map-label" x="288" y="402">VESPUCCI</text><text class="br2-map-label" x="566" y="367">SANDY SHORES</text>',
-      '</g>',
-      '<path d="' + island + '" fill="none" stroke="#718773" stroke-opacity=".8" stroke-width="2.5"/>',
-      '<text class="br2-map-water-label" x="213" y="398" transform="rotate(-78 213 398)">PACIFIC OCEAN</text><text class="br2-map-water-label" x="719" y="380" transform="rotate(78 719 380)">SAN ANDREAS</text>',
-      '<rect x="375" y="12" width="250" height="30" rx="8" fill="#071b2b" fill-opacity=".88" stroke="#d8e2d1" stroke-opacity=".6"/><text x="500" y="32" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" fill="#f4f1d9" font-family="Arial,sans-serif" font-size="17" font-weight="700">كتائب لوس سانتوس</text>',
-      '<text class="br2-map-coord" x="22" y="680">LOS SANTOS Â· BATTALION GRID</text><text class="br2-map-coord" x="878" y="680">NORTH â</text>',
-      '<rect id="br2-map-hit" x="0" y="0" width="1000" height="700" fill="transparent" pointer-events="all"/><g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>'
+      '<svg id="br2-map-svg" class="br2-map-svg" viewBox="0 0 ' + MAP_VIEW_WIDTH + ' ' + MAP_VIEW_HEIGHT.toFixed(3) + '" role="application" aria-label="Interactive Los Santos battalion map" preserveAspectRatio="xMidYMid meet">',
+      '<image id="br2-map-image" href="/ibp/los-santos-map-reference.jpg" x="0" y="0" width="' + MAP_VIEW_WIDTH + '" height="' + MAP_VIEW_HEIGHT.toFixed(3) + '" preserveAspectRatio="none" aria-hidden="true" pointer-events="none"><title>Los Santos reference map</title></image>',
+      '<rect id="br2-map-hit" x="0" y="0" width="' + MAP_VIEW_WIDTH + '" height="' + MAP_VIEW_HEIGHT.toFixed(3) + '" fill="transparent" pointer-events="all"/>',
+      '<g id="br2-areas" pointer-events="none"></g><g id="br2-trails" pointer-events="none"></g><g id="br2-operations" pointer-events="none"></g><g id="br2-markers"></g><g id="br2-draft" pointer-events="none"></g></svg>'
     ].join('');
+  }
+  function viewPoint(point) {
+    if (!point) return null;
+    return { x: Number(point.x), y: Number(point.y) * MAP_Y_SCALE };
   }
   function areaMarkup(unit) {
     if (!unit.operationArea) return '';
     const color = safeColor(unit.color);
     const area = unit.operationArea;
     if (area.type === 'CIRCLE' && area.center) {
-      return '<circle class="br2-area" cx="' + Number(area.center.x) + '" cy="' + Number(area.center.y) + '" r="' + Number(area.radius) + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
+      const center = viewPoint(area.center);
+      const radius = Number(area.radius);
+      return '<ellipse class="br2-area" cx="' + center.x + '" cy="' + center.y + '" rx="' + radius + '" ry="' + (radius * MAP_Y_SCALE) + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
     }
     if (area.type === 'POLYGON' && Array.isArray(area.points) && area.points.length > 2) {
-      return '<polygon class="br2-area" points="' + area.points.map((point) => Number(point.x) + ',' + Number(point.y)).join(' ') + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
+      return '<polygon class="br2-area" points="' + area.points.map((point) => {
+        const mapped = viewPoint(point);
+        return mapped.x + ',' + mapped.y;
+      }).join(' ') + '" fill="' + color + '" fill-opacity=".16" stroke="' + color + '"/>';
     }
     return '';
   }
@@ -291,40 +274,72 @@
     trails.innerHTML = state.battalions.map((unit) => {
       const color = safeColor(unit.color);
       return (unit.movementHistory || []).slice(-4).map((move) => move.from && move.to
-        ? '<path class="br2-trail" stroke="' + color + '" d="M' + move.from.x + ' ' + move.from.y + ' L' + move.to.x + ' ' + move.to.y + '"/>' : '').join('');
+        ? '<path class="br2-trail" stroke="' + color + '" d="M' + move.from.x + ' ' + Number(move.from.y) * MAP_Y_SCALE + ' L' + move.to.x + ' ' + Number(move.to.y) * MAP_Y_SCALE + '"/>' : '').join('');
     }).join('');
     ops.innerHTML = state.battalions.map((unit) => {
       const op = unit.currentOperation;
       const pos = op && op.position;
       if (!pos) return '';
-      return '<g transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) + ')"><circle r="10" fill="#111914" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><path d="M-4 0h8M0-4v8" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><title>' + escapeHtml(op.name) + '</title></g>';
+      return '<g transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) * MAP_Y_SCALE + ')"><circle r="10" fill="#111914" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><path d="M-4 0h8M0-4v8" stroke="' + safeColor(unit.color) + '" stroke-width="2"/><title>' + escapeHtml(op.name) + '</title></g>';
     }).join('');
     markers.innerHTML = state.battalions.map((unit) => {
       if (!unit.mapPosition) return '';
       const pos = unit.mapPosition;
       const color = safeColor(unit.color);
       const selectedClass = String(unit.id) === String(state.selectedId) ? ' selected' : '';
-      return '<g class="br2-marker' + selectedClass + '" data-br2-unit="' + escapeHtml(unit.id) + '" transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) + ')">' +
+      return '<g class="br2-marker' + selectedClass + '" data-br2-unit="' + escapeHtml(unit.id) + '" transform="translate(' + Number(pos.x) + ' ' + Number(pos.y) * MAP_Y_SCALE + ')" role="button" tabindex="0" aria-label="' + escapeHtml((unit.name || unit.code) + ' · ' + (unit.status || 'ACTIVE')) + '">' +
         '<circle r="22" fill="' + color + '" fill-opacity=".13" stroke="' + color + '" stroke-opacity=".72" stroke-width="1.5"/>' +
         '<circle r="15" fill="#101713" stroke="' + color + '" stroke-width="2"/>' +
         '<g transform="translate(-10 -10) scale(.42)">' + (EMBLEMS[String(unit.emblem || '').toUpperCase()] || EMBLEMS.SHIELD) + '</g>' +
         '<circle cx="13" cy="-13" r="4" fill="' + (unit.status === 'ALERT' ? '#fa8d6b' : unit.status === 'STANDBY' ? '#929d94' : '#84d6a6') + '" stroke="#101713" stroke-width="2"/>' +
         '<rect x="-58" y="27" width="116" height="36" rx="7" fill="#091d2b" fill-opacity=".92" stroke="' + color + '" stroke-opacity=".78"/><text class="br2-marker-label" x="0" y="42" text-anchor="middle" direction="rtl" unicode-bidi="plaintext" fill="#f4f1d9">كتيبة</text><text class="br2-marker-label" x="0" y="57" text-anchor="middle" fill="' + color + '">' + escapeHtml(unit.name || unit.code) + '</text><title>' + escapeHtml(unit.code) + ' · ' + escapeHtml(unit.status) + '</title></g>';
     }).join('');
-    const pts = state.polygon.map((point) => Number(point.x) + ',' + Number(point.y)).join(' ');
+    const pts = state.polygon.map((point) => Number(point.x) + ',' + Number(point.y) * MAP_Y_SCALE).join(' ');
     draft.innerHTML = state.mode === 'polygon' && state.polygon.length
       ? '<polyline points="' + pts + '" fill="none" stroke="#f3e6bd" stroke-width="3" stroke-dasharray="6 5"/>' +
-        state.polygon.map((point) => '<circle cx="' + point.x + '" cy="' + point.y + '" r="5" fill="#f3e6bd"/>').join('')
+        state.polygon.map((point) => '<circle cx="' + point.x + '" cy="' + Number(point.y) * MAP_Y_SCALE + '" r="5" fill="#f3e6bd"/>').join('')
       : '';
   }
-  function mapPoint(svg, event) {
+  function svgPoint(svg, event) {
     const point = svg.createSVGPoint();
     point.x = event.clientX;
     point.y = event.clientY;
     const matrix = svg.getScreenCTM();
     if (!matrix) return null;
-    const position = point.matrixTransform(matrix.inverse());
-    return { x: Math.max(0, Math.min(1000, Math.round(position.x))), y: Math.max(0, Math.min(700, Math.round(position.y))) };
+    return point.matrixTransform(matrix.inverse());
+  }
+  function mapPoint(svg, event) {
+    const position = svgPoint(svg, event);
+    if (!position) return null;
+    return {
+      x: Math.max(0, Math.min(1000, Math.round(position.x))),
+      y: Math.max(0, Math.min(MAP_COORD_HEIGHT, Math.round(position.y / MAP_Y_SCALE)))
+    };
+  }
+  function clampViewport(viewport) {
+    const w = Math.max(MAP_MIN_VIEW_WIDTH, Math.min(MAP_VIEW_WIDTH, Number(viewport.w) || MAP_VIEW_WIDTH));
+    const h = w * MAP_VIEW_RATIO;
+    return {
+      x: Math.max(0, Math.min(MAP_VIEW_WIDTH - w, Number(viewport.x) || 0)),
+      y: Math.max(0, Math.min(MAP_VIEW_HEIGHT - h, Number(viewport.y) || 0)),
+      w,
+      h
+    };
+  }
+  function setViewport(svg, viewport) {
+    state.viewport = clampViewport(viewport);
+    svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, state.viewport.w, state.viewport.h].join(' '));
+  }
+  function zoomAt(svg, anchor, factor) {
+    const old = state.viewport;
+    const w = Math.max(MAP_MIN_VIEW_WIDTH, Math.min(MAP_VIEW_WIDTH, old.w * factor));
+    const h = w * MAP_VIEW_RATIO;
+    setViewport(svg, {
+      x: anchor.x - (anchor.x - old.x) * (w / old.w),
+      y: anchor.y - (anchor.y - old.y) * (h / old.h),
+      w,
+      h
+    });
   }
   function modeHint() {
     if (state.mode === 'location') return 'SET BATTALION LOCATION · Select a point on the map.';
@@ -357,36 +372,36 @@
     let moved = false;
     svg.addEventListener('wheel', (event) => {
       event.preventDefault();
-      const point = mapPoint(svg, event);
+      const point = svgPoint(svg, event);
       if (!point) return;
       const factor = event.deltaY < 0 ? .84 : 1.19;
-      const old = state.viewport;
-      const w = Math.max(280, Math.min(1000, old.w * factor));
-      const h = w * .7;
-      state.viewport = { x: point.x - (point.x - old.x) * (w / old.w), y: point.y - (point.y - old.y) * (h / old.h), w, h };
-      svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, w, h].join(' '));
+      zoomAt(svg, point, factor);
     }, { passive: false });
     svg.addEventListener('pointerdown', (event) => {
       if (event.target.closest('[data-br2-unit]')) return;
-      drag = { x: event.clientX, y: event.clientY, start: Object.assign({}, state.viewport) };
+      drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, start: Object.assign({}, state.viewport) };
       moved = false;
+      if (svg.setPointerCapture && Number.isFinite(event.pointerId)) svg.setPointerCapture(event.pointerId);
     });
     svg.addEventListener('pointermove', (event) => {
-      if (!drag || !(event.buttons & 1)) return;
+      if (!drag || (Number.isFinite(drag.pointerId) && event.pointerId !== drag.pointerId)) return;
       const rect = svg.getBoundingClientRect();
       const dx = event.clientX - drag.x;
       const dy = event.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      state.viewport.x = drag.start.x - dx / rect.width * drag.start.w;
-      state.viewport.y = drag.start.y - dy / rect.height * drag.start.h;
-      svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, state.viewport.w, state.viewport.h].join(' '));
+      setViewport(svg, {
+        x: drag.start.x - dx / rect.width * drag.start.w,
+        y: drag.start.y - dy / rect.height * drag.start.h,
+        w: drag.start.w,
+        h: drag.start.h
+      });
       svg.classList.toggle('dragging', moved);
     });
     svg.addEventListener('pointerup', () => {
       drag = null;
       setTimeout(() => { moved = false; svg.classList.remove('dragging'); }, 0);
     });
-    svg.addEventListener('pointercancel', () => { drag = null; moved = false; });
+    svg.addEventListener('pointercancel', () => { drag = null; moved = false; svg.classList.remove('dragging'); });
     svg.addEventListener('click', async (event) => {
       const marker = event.target.closest('[data-br2-unit]');
       if (marker) {
@@ -411,6 +426,14 @@
         const count = document.querySelector('.br2-map-panel .br2-chip');
         if (count && count.parentElement) count.parentElement.innerHTML = '<span class="br2-chip">' + state.polygon.length + ' POINTS</span><button class="br2-button primary" type="button" data-br2-action="finish-polygon"' + (state.polygon.length < 3 ? ' disabled' : '') + '>SAVE POLYGON</button><button class="br2-button" type="button" data-br2-action="cancel-draw">CANCEL</button>';
       }
+    });
+    svg.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const marker = event.target.closest('[data-br2-unit]');
+      if (!marker) return;
+      event.preventDefault();
+      state.selectedId = marker.getAttribute('data-br2-unit');
+      renderMap();
     });
   }
   function renderMapSide() {
@@ -536,16 +559,13 @@
       if (!svg) return;
       const factor = name === 'zoom-in' ? .8 : 1.25;
       const old = state.viewport;
-      const w = Math.max(280, Math.min(1000, old.w * factor));
-      const h = w * .7;
-      state.viewport = { x: old.x + (old.w - w) / 2, y: old.y + (old.h - h) / 2, w, h };
-      svg.setAttribute('viewBox', [state.viewport.x, state.viewport.y, w, h].join(' '));
+      zoomAt(svg, { x: old.x + old.w / 2, y: old.y + old.h / 2 }, factor);
       return;
     }
     if (name === 'reset-map') {
-      state.viewport = { x: 0, y: 0, w: 1000, h: 700 };
+      state.viewport = { x: 0, y: 0, w: MAP_VIEW_WIDTH, h: MAP_VIEW_HEIGHT };
       const svg = document.getElementById('br2-map-svg');
-      if (svg) svg.setAttribute('viewBox', '0 0 1000 700');
+      if (svg) svg.setAttribute('viewBox', [0, 0, MAP_VIEW_WIDTH, MAP_VIEW_HEIGHT].join(' '));
       return;
     }
   }
