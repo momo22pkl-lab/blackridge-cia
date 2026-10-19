@@ -456,6 +456,9 @@
 
     .radio-talk-row { display: flex; justify-content: center; align-items: center; gap: 15px; padding: 3px 0; }
     .ptt-btn {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
       width: 92px !important;
       height: 92px !important;
       border-radius: 50%;
@@ -2376,7 +2379,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
           <div class="radio-section-title"><i class="fa-solid fa-bullhorn"></i> التحدث</div>
           <div class="radio-talk-row">
-            <button type="button" class="ptt-btn" onmousedown="startPTT()" onmouseup="stopPTT()" onmouseleave="stopPTT()" ontouchstart="startPTT()" ontouchend="stopPTT()"><i class="fa-solid fa-microphone"></i><span>PTT</span></button>
+            <button type="button" class="ptt-btn" onpointerdown="startPTT(event)" onpointerup="stopPTT()" onpointercancel="stopPTT()" onlostpointercapture="stopPTT()" oncontextmenu="return false" onkeydown="if(event.code==='Space')startPTT(event)" onkeyup="if(event.code==='Space')stopPTT()"><i class="fa-solid fa-microphone"></i><span>PTT</span></button>
             <div class="radio-talk-hint"><strong>اضغط باستمرار</strong><br>للبث الصوتي التكتيكي<br><span id="radio-volume-label">الصوت: 70%</span></div>
           </div>
 
@@ -2988,6 +2991,16 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioChannel = 'CH-1';
     let radioVolume = 70;
     let radioLiveLog = [];
+    let radioPTTHeld = false;
+    let radioPTTRequestPending = false;
+    let radioPTTServerRequestPending = false;
+    let radioPTTActive = false;
+    let radioPTTChannel = '';
+    let radioPTTAttempt = 0;
+    let radioLocalStream = null;
+    const radioVoicePeers = new Map();
+    const radioActiveTalkers = new Set();
+    const RADIO_VOICE_ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
     let bootstrapMode = false;
     let identityPendingUser = null;
     let serverHasChief = null;
@@ -3256,6 +3269,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
       });
       ciaSocket.on('disconnect', function() {
+        resetRadioVoice();
         ciaSocketReady = false;
         ciaSessionAuthenticated = false;
         if (currentUser) {
@@ -3524,11 +3538,26 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (!data || !radioPoweredOn || data.channel !== radioChannel) return;
         const status = document.getElementById('radio-status-text');
         if (status && data.statusHtml) status.innerHTML = data.statusHtml;
+        if (data.socketId) {
+          if (data.ptt) radioActiveTalkers.add(data.socketId);
+          else {
+            radioActiveTalkers.delete(data.socketId);
+            if (data.socketId !== ciaSocket.id) closeRadioVoicePeer(data.socketId);
+          }
+        }
         if (data.ptt && data.userCode !== (currentUser && currentUser.publicCode)) {
           playRadioBeep(1200);
-          addRadioLog({channel:radioChannel,text:`'#'+data.userCode يتحدث على ${radioChannel}`,sender:data.userCode});
-          setRadioActivity(`'#'+data.userCode يبث الآن`, 5000);
+          addRadioLog({channel:radioChannel,text:`#${data.userCode} يتحدث على ${radioChannel}`,sender:data.userCode});
+          setRadioActivity(`#${data.userCode} يبث الآن`, 5000);
         }
+      });
+      ciaSocket.on('radio:voice:signal', handleRadioVoiceSignal);
+      ciaSocket.on('radio:voice:peer', function(data) {
+        if (!data || data.channel !== radioChannel || !radioPTTActive || !radioPTTChannel) return;
+        if (data.peerId && data.peerId !== ciaSocket.id) createRadioVoiceOffer(data.peerId);
+      });
+      ciaSocket.on('radio:voice:peer-left', function(data) {
+        if (data && data.socketId) { radioActiveTalkers.delete(data.socketId); closeRadioVoicePeer(data.socketId); }
       });
       ciaSocket.on('radio:channel', function(data) {
         if (!data || data.channel !== radioChannel || data.userCode === (currentUser && currentUser.publicCode)) return;
@@ -3897,6 +3926,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     }
 
     function logoutFromSystem() {
+      if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
       if (!currentUser) {
         location.reload();
         return;
@@ -5859,7 +5889,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function toggleRadioPower() {
       if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
       if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if (radioPoweredOn) stopPTT();
       radioPoweredOn = !radioPoweredOn;
+      if (!radioPoweredOn) { closeAllRadioVoicePeers(); radioActiveTalkers.clear(); }
       updateRadioPowerUI();
       if (radioPoweredOn && ciaSocket) {
         ciaSocket.emit('radio:join', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
@@ -5892,6 +5924,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioVolume = Math.min(100, Math.max(0, radioVolume + (delta * 10)));
       const lbl = document.getElementById('radio-volume-label');
       if (lbl) lbl.innerText = `الصوت: ${radioVolume}%`;
+      radioVoicePeers.forEach((peer) => { if (peer.audio) peer.audio.volume = radioVolume / 100; });
     }
 
     function radioClearActivity() {
@@ -5900,6 +5933,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     function changeRadioChannel(ch, freq, label) {
+      if (radioPoweredOn && radioChannel !== ch) stopPTT();
       radioChannel = ch;
       const freqDisplay = document.getElementById('radio-freq-display');
       const chShort = document.getElementById('radio-channel-short');
@@ -5924,18 +5958,250 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       changeRadioChannel(radioChannel, freq, label);
     }
 
-    function startPTT() {
-      if (!radioPoweredOn || !currentUser) return;
-      playRadioBeep(1200);
-      setRadioActivity('جاري البث الصوتي...', 0);
-      if (ciaSocket) ciaSocket.emit('radio:ptt:start', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
+    function stopRadioLocalStream() {
+      const stream = radioLocalStream;
+      radioLocalStream = null;
+      if (!stream) return;
+      stream.getTracks().forEach(track => { track.onended = null; track.stop(); });
+    }
+
+    function closeRadioVoicePeer(peerId) {
+      const key = String(peerId || '');
+      const peer = radioVoicePeers.get(key);
+      if (!peer) return;
+      radioVoicePeers.delete(key);
+      try { peer.pc.close(); } catch (e) {}
+      if (peer.audio) { peer.audio.pause(); peer.audio.srcObject = null; peer.audio.remove(); }
+    }
+
+    function closeAllRadioVoicePeers() {
+      [...radioVoicePeers.keys()].forEach(closeRadioVoicePeer);
+    }
+
+    function resetRadioVoice() {
+      radioPTTAttempt += 1;
+      radioPTTHeld = false;
+      radioPTTRequestPending = false;
+      radioPTTServerRequestPending = false;
+      radioPTTActive = false;
+      radioPTTChannel = '';
+      stopRadioLocalStream();
+      closeAllRadioVoicePeers();
+      radioActiveTalkers.clear();
+    }
+
+    function getRadioVoicePeer(peerId) {
+      const key = String(peerId || '');
+      if (!key || !window.RTCPeerConnection) return null;
+      if (radioVoicePeers.has(key)) return radioVoicePeers.get(key);
+      const pc = new window.RTCPeerConnection(RADIO_VOICE_ICE_CONFIG);
+      const peer = { pc, audio: null, pendingCandidates: [], hasLocalAudio: false };
+      radioVoicePeers.set(key, peer);
+      pc.onicecandidate = function(event) {
+        if (event.candidate && event.candidate.candidate) {
+          const candidate = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
+          ciaSocket.emit('radio:voice:signal', { channel: radioPTTChannel || radioChannel, to: key, type: 'ice', candidate });
+        }
+      };
+      pc.ontrack = function(event) {
+        if (!peer.audio) {
+          const audio = document.createElement('audio');
+          audio.autoplay = true;
+          audio.playsInline = true;
+          audio.volume = radioVolume / 100;
+          audio.setAttribute('aria-hidden', 'true');
+          audio.style.display = 'none';
+          document.body.appendChild(audio);
+          peer.audio = audio;
+        }
+        const stream = event.streams && event.streams[0];
+        if (stream) peer.audio.srcObject = stream;
+        else if (event.track) peer.audio.srcObject = new MediaStream([event.track]);
+        const playAttempt = peer.audio.play();
+        if (playAttempt && typeof playAttempt.catch === 'function') {
+          playAttempt.catch(() => setRadioActivity('اضغط داخل الصفحة للسماح بتشغيل صوت الراديو.', 5000));
+        }
+      };
+      pc.onconnectionstatechange = function() {
+        if (pc.connectionState === 'failed') {
+          closeRadioVoicePeer(key);
+          setRadioActivity('تعذر إنشاء اتصال صوتي؛ تحقق من الشبكة وأعد المحاولة.', 5000);
+        }
+      };
+      return peer;
+    }
+
+    async function createRadioVoiceOffer(peerId, attempt = radioPTTAttempt) {
+      if (!radioPTTActive || !radioLocalStream || attempt !== radioPTTAttempt || !radioPTTChannel) return;
+      const peer = getRadioVoicePeer(peerId);
+      if (!peer) return;
+      try {
+        if (!peer.hasLocalAudio) {
+          const tracks = radioLocalStream.getAudioTracks();
+          if (!tracks.length) throw new Error('No microphone audio track is available.');
+          tracks.forEach(track => peer.pc.addTrack(track, radioLocalStream));
+          peer.hasLocalAudio = true;
+        }
+        const offer = await peer.pc.createOffer();
+        if (attempt !== radioPTTAttempt || !radioPTTActive) return;
+        await peer.pc.setLocalDescription(offer);
+        if (attempt !== radioPTTAttempt || !radioPTTActive) return;
+        ciaSocket.emit('radio:voice:signal', {
+          channel: radioPTTChannel, to: String(peerId), type: 'offer',
+          sdp: { type: peer.pc.localDescription.type, sdp: peer.pc.localDescription.sdp }
+        });
+      } catch (error) {
+        closeRadioVoicePeer(peerId);
+        console.warn('[BLACK RIDGE] Radio audio offer failed:', error);
+        setRadioActivity('تعذر بدء الاتصال الصوتي؛ أعد الضغط على PTT.', 5000);
+      }
+    }
+
+    async function flushRadioVoiceCandidates(peer) {
+      if (!peer.pc.remoteDescription) return;
+      while (peer.pendingCandidates.length) {
+        const candidate = peer.pendingCandidates.shift();
+        await peer.pc.addIceCandidate(candidate);
+      }
+    }
+
+    async function handleRadioVoiceSignal(data) {
+      if (!data || !radioPoweredOn || data.channel !== radioChannel || !data.from || data.from === ciaSocket.id) return;
+      const isTalker = radioActiveTalkers.has(data.from);
+      const isOurTransmissionPeer = radioPTTActive && radioVoicePeers.has(String(data.from));
+      if (!['offer', 'answer', 'ice'].includes(data.type) || (!isTalker && !isOurTransmissionPeer)) return;
+      let peer = radioVoicePeers.get(String(data.from));
+      if (!peer && data.type !== 'offer' && data.type !== 'ice') return;
+      if (!peer) peer = getRadioVoicePeer(data.from);
+      if (!peer) return;
+      try {
+        if (data.type === 'ice') {
+          if (!data.candidate) return;
+          if (peer.pc.remoteDescription) await peer.pc.addIceCandidate(data.candidate);
+          else peer.pendingCandidates.push(data.candidate);
+          return;
+        }
+        if (!data.sdp || typeof data.sdp.sdp !== 'string') return;
+        if (data.type === 'offer') {
+          if (peer.pc.signalingState !== 'stable') closeRadioVoicePeer(data.from);
+          peer = getRadioVoicePeer(data.from);
+          await peer.pc.setRemoteDescription(data.sdp);
+          await flushRadioVoiceCandidates(peer);
+          const answer = await peer.pc.createAnswer();
+          await peer.pc.setLocalDescription(answer);
+          ciaSocket.emit('radio:voice:signal', {
+            channel: radioChannel, to: data.from, type: 'answer',
+            sdp: { type: peer.pc.localDescription.type, sdp: peer.pc.localDescription.sdp }
+          });
+        } else {
+          if (peer.pc.signalingState !== 'have-local-offer') return;
+          await peer.pc.setRemoteDescription(data.sdp);
+          await flushRadioVoiceCandidates(peer);
+        }
+      } catch (error) {
+        closeRadioVoicePeer(data.from);
+        console.warn('[BLACK RIDGE] Radio audio signaling failed:', error);
+      }
+    }
+
+    async function startPTT(event) {
+      if (event && typeof event.button === 'number' && event.button !== 0) return;
+      if (event && event.pointerId !== undefined && event.currentTarget && typeof event.currentTarget.setPointerCapture === 'function') {
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch (e) {}
+      }
+      if (!radioPoweredOn || !currentUser || !ciaSocket || !ciaSocket.connected || radioPTTHeld || radioPTTRequestPending || radioPTTActive) return;
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || !window.RTCPeerConnection) {
+        setRadioActivity('الاتصال الصوتي المباشر يحتاج متصفحاً حديثاً واتصال HTTPS.', 5000);
+        return;
+      }
+      const attempt = ++radioPTTAttempt;
+      const channel = radioChannel;
+      radioPTTHeld = true;
+      radioPTTRequestPending = true;
+      radioPTTServerRequestPending = false;
+      radioPTTChannel = channel;
+      setRadioActivity('اسمح باستخدام الميكروفون لبدء الإرسال...', 0);
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false
+        });
+      } catch (error) {
+        if (attempt === radioPTTAttempt) {
+          radioPTTHeld = false;
+          radioPTTRequestPending = false;
+          radioPTTServerRequestPending = false;
+          radioPTTChannel = '';
+          setRadioActivity(error && error.name === 'NotAllowedError' ? 'اسمح للمتصفح باستخدام الميكروفون ثم حاول مجدداً.' : 'تعذر الوصول إلى الميكروفون.', 6000);
+        }
+        return;
+      }
+      if (attempt !== radioPTTAttempt || !radioPTTHeld || !radioPoweredOn || channel !== radioChannel || !ciaSocket.connected) {
+        stream.getTracks().forEach(track => track.stop());
+        if (attempt === radioPTTAttempt) { radioPTTRequestPending = false; radioPTTChannel = ''; }
+        return;
+      }
+      radioLocalStream = stream;
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+        track.onended = () => { if (radioPTTActive) stopPTT(); };
+      });
+      radioPTTServerRequestPending = true;
+      ciaSocket.emit('radio:ptt:start', { channel }, function(result) {
+        radioPTTServerRequestPending = false;
+        if (!result || result.ok !== true) {
+          if (attempt === radioPTTAttempt) {
+            radioPTTHeld = false;
+            radioPTTRequestPending = false;
+            radioPTTActive = false;
+            radioPTTChannel = '';
+            stopRadioLocalStream();
+            setRadioActivity(result && result.message || 'تعذر بدء الإرسال على هذه القناة.', 5000);
+          }
+          return;
+        }
+        if (attempt !== radioPTTAttempt || !radioPTTHeld || !radioPoweredOn || channel !== radioChannel || !ciaSocket.connected) {
+          ciaSocket.emit('radio:ptt:stop', { channel }, function() {});
+          if (attempt === radioPTTAttempt) {
+            radioPTTHeld = false; radioPTTRequestPending = false; radioPTTActive = false; radioPTTChannel = '';
+          }
+          if (radioLocalStream === stream) radioLocalStream = null;
+          stream.getTracks().forEach(track => { track.onended = null; track.stop(); });
+          return;
+        }
+        radioPTTRequestPending = false;
+        radioPTTActive = true;
+        stream.getAudioTracks().forEach(track => { track.enabled = true; });
+        playRadioBeep(1200);
+        setRadioActivity('جاري البث الصوتي المباشر...', 0);
+        (Array.isArray(result.peers) ? result.peers : []).forEach(peerId => createRadioVoiceOffer(peerId, attempt));
+      });
     }
 
     function stopPTT() {
-      if (!radioPoweredOn || !currentUser) return;
-      playRadioBeep(600);
-      setRadioActivity('انتهى البث.', 3000);
-      if (ciaSocket) ciaSocket.emit('radio:ptt:stop', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
+      if (!radioPTTHeld && !radioPTTRequestPending && !radioPTTActive) return;
+      radioPTTHeld = false;
+      const channel = radioPTTChannel || radioChannel;
+      if (radioPTTServerRequestPending) {
+        stopRadioLocalStream();
+        closeAllRadioVoicePeers();
+        return;
+      }
+      if (radioPTTActive && ciaSocket && ciaSocket.connected) {
+        ciaSocket.emit('radio:ptt:stop', { channel }, function() {});
+      }
+      radioPTTAttempt += 1;
+      radioPTTRequestPending = false;
+      radioPTTServerRequestPending = false;
+      radioPTTActive = false;
+      radioPTTChannel = '';
+      stopRadioLocalStream();
+      closeAllRadioVoicePeers();
+      if (radioPoweredOn) {
+        playRadioBeep(600);
+        setRadioActivity('انتهى البث.', 3000);
+      }
     }
 
     function sendRadioText() {
