@@ -229,6 +229,31 @@
         <button class="button button-primary auth-submit" type="submit" data-i18n="createLeader">حفظ كلمة السر وتأسيس القائد</button>
         <button class="button button-quiet auth-submit" type="button" id="setupCancel" data-i18n="setupCancel">العودة إلى دخول القائد</button>
       </form>
+      <form id="mfaLoginForm" class="auth-form" hidden>
+        <div class="setup-warning"><b data-i18n="mfaPromptTitle">تحقق إضافي مطلوب</b><span data-i18n="mfaPrompt">أدخل الرمز الحالي من تطبيق المصادقة أو رمز استرداد غير مستخدم.</span></div>
+        <label><span data-i18n="mfaCode">رمز المصادقة أو الاسترداد</span><input id="mfaLoginCode" autocomplete="one-time-code" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="30" required></label>
+        <button class="button button-primary auth-submit" type="submit" data-i18n="mfaVerify">تحقق وسجّل الدخول</button>
+        <button class="button button-quiet auth-submit" type="button" id="mfaLoginCancel" data-i18n="setupCancel">العودة إلى دخول القائد</button>
+      </form>
+      <form id="mfaEnrollStartForm" class="auth-form" hidden>
+        <div class="setup-warning"><b data-i18n="mfaEnrollmentTitle">إعداد تطبيق المصادقة للقائد</b><span data-i18n="mfaEnrollmentAccess">يتطلب كلمة مرور القائد ورمز إعداد مستقلًا يهيئه مسؤول الخادم.</span></div>
+        <label><span data-i18n="militaryCode">الكود العسكري للقائد</span><input id="mfaEnrollMilitaryCode" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="100" required></label>
+        <label><span data-i18n="masterPassword">كلمة السر الرئيسية</span><input id="mfaEnrollPassword" type="password" autocomplete="current-password" minlength="12" maxlength="200" required></label>
+        <label><span data-i18n="mfaEnrollmentCode">رمز إعداد المصادقة من الخادم</span><input id="mfaEnrollServerCode" type="password" autocomplete="off" required></label>
+        <button class="button button-primary auth-submit" type="submit" data-i18n="mfaStartSetup">ابدأ إعداد المصادقة</button>
+        <button class="button button-quiet auth-submit" type="button" id="mfaEnrollCancel" data-i18n="setupCancel">العودة إلى دخول القائد</button>
+      </form>
+      <section id="mfaProvisioning" class="auth-form" hidden>
+        <div class="setup-warning"><b data-i18n="mfaProvisioningTitle">اربط تطبيق المصادقة</b><span data-i18n="mfaProvisioningHint">أضف المفتاح إلى Google Authenticator أو Microsoft Authenticator، ثم أدخل الرمز المكوّن من 6 أرقام. خزّن رموز الاسترداد الآن؛ لن تُعرض مجددًا.</span></div>
+        <label><span data-i18n="mfaSecretLabel">مفتاح الإعداد اليدوي</span><code id="mfaSecret" class="mfa-secret" dir="ltr"></code></label>
+        <label><span data-i18n="mfaUriLabel">رابط تطبيق المصادقة</span><textarea id="mfaOtpauthUrl" class="mfa-otpauth" rows="3" readonly dir="ltr"></textarea></label>
+        <div class="mfa-recovery-box"><b data-i18n="mfaRecoveryLabel">رموز استرداد تستخدم مرة واحدة</b><p data-i18n="mfaRecoveryHint">احتفظ بها في مكان آمن ومنفصل عن كلمة المرور.</p><pre id="mfaRecoveryCodes" dir="ltr"></pre></div>
+        <form id="mfaEnrollConfirmForm" class="auth-form">
+          <label><span data-i18n="mfaCode">رمز المصادقة أو الاسترداد</span><input id="mfaEnrollCode" autocomplete="one-time-code" inputmode="numeric" maxlength="6" required></label>
+          <button class="button button-primary auth-submit" type="submit" data-i18n="mfaConfirmSetup">تأكيد الإعداد</button>
+          <button class="button button-quiet auth-submit" type="button" id="mfaProvisioningCancel" data-i18n="setupCancel">العودة إلى دخول القائد</button>
+        </form>
+      </section>
       <div class="auth-message" id="authMessage" aria-live="polite"></div>
       <div class="auth-security"><span>◇</span><small data-i18n="authSecure">جلسات آمنة · صلاحيات على الخادم · لا توجد بيانات دخول تجريبية</small></div>
     </div>
