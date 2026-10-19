@@ -6094,7 +6094,17 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         image: chatImageBase64 || ''
       }, function(result) {
         if (!result || !result.ok) {
-          alert((result && result.message) || 'تعذر إرسال الرسالة.');
+          const message = String((result && result.message) || 'تعذر إرسال الرسالة.');
+          if (window.isProfanityStrikeWarning && window.isProfanityStrikeWarning(message)) {
+            const finalStrike = /تحذير\s+نهائي|المخالفات اللفظية للمرة الثالثة|3\s*\/\s*3/i.test(message);
+            if (!finalStrike && typeof window.showProfanityStrikeWarning === 'function') {
+              window.showProfanityStrikeWarning(message);
+              return;
+            }
+            // The third strike is shown by security:restricted, which also ends the restricted session.
+            if (finalStrike) return;
+          }
+          alert(message);
           return;
         }
         input.value = '';
