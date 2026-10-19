@@ -379,6 +379,7 @@ const sessions = new Map();
 const accountCharacterLoginFailures = new Map();
 const socketToUser = new Map();
 const radioChannels = new Map();
+const radioTalkers = new Map();
 const pendingRequestSockets = new Map();
 const supportThreadSockets = new Map();
 
@@ -1998,6 +1999,8 @@ function markLogin(socket, user, options = {}) {
 }
 
 function markLogout(socket) {
+  releaseRadioTransmission(socket.id);
+  removeRadioMember(socket.id);
   const userId =
     socket.userId;
 
@@ -2296,11 +2299,10 @@ function addRadioMember(
 function removeRadioMember(
   socketId
 ) {
-  for (
-    const members
-    of radioChannels.values()
-  ) {
-    members.delete(socketId);
+  for (const [channel, members] of radioChannels.entries()) {
+    if (!members.delete(socketId)) continue;
+    emitRadioToChannel(channel, 'radio:voice:peer-left', { channel, socketId });
+    if (members.size === 0) radioChannels.delete(channel);
   }
 }
 
@@ -2317,6 +2319,24 @@ function emitRadioToChannel(channel, event, payload) {
   for (const socketId of radioTargets(channel)) {
     const targetSocket = io.sockets.sockets.get(socketId);
     if (targetSocket) targetSocket.emit(event, payload);
+  }
+}
+
+function radioSocketIsEligible(socketId, channel) {
+  if (!radioChannels.get(channel)?.has(socketId)) return false;
+  const targetSocket = io.sockets.sockets.get(socketId);
+  const user = targetSocket ? requireSocketUser(targetSocket) : null;
+  return !!user && user.radioOnline === true && user.radioChannel === channel &&
+    user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
+}
+
+function releaseRadioTransmission(socketId) {
+  for (const [channel, speaker] of radioTalkers.entries()) {
+    if (!speaker || speaker.socketId !== socketId) continue;
+    radioTalkers.delete(channel);
+    emitRadioToChannel(channel, 'radio:state', {
+      channel, userCode: speaker.userCode || '', socketId, ptt: false, statusHtml: 'انتهى البث.'
+    });
   }
 }
 
@@ -7353,6 +7373,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             50
           );
 
+        releaseRadioTransmission(socket.id);
         removeRadioMember(
           socket.id
         );
@@ -7368,6 +7389,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
         actor.radioOnline =
           true;
 
+        const activeSpeaker = radioTalkers.get(channel);
+        if (activeSpeaker && activeSpeaker.socketId !== socket.id) {
+          const activeSpeakerSocket = io.sockets.sockets.get(activeSpeaker.socketId);
+          if (activeSpeakerSocket) activeSpeakerSocket.emit('radio:voice:peer', { channel, peerId: socket.id });
+          socket.emit('radio:state', {
+            channel, userCode: activeSpeaker.userCode, socketId: activeSpeaker.socketId, ptt: true,
+            statusHtml: 'جاري البث الصوتي...'
+          });
+        }
         saveState();
         emitState();
 
@@ -7393,6 +7423,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
+        releaseRadioTransmission(socket.id);
         removeRadioMember(
           socket.id
         );
@@ -7436,6 +7467,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
+        releaseRadioTransmission(socket.id);
         removeRadioMember(
           socket.id
         );
@@ -7451,6 +7483,15 @@ socket.on('member:saveIdentity', (payload, cb) => {
         actor.radioOnline =
           true;
 
+        const activeSpeaker = radioTalkers.get(channel);
+        if (activeSpeaker && activeSpeaker.socketId !== socket.id) {
+          const activeSpeakerSocket = io.sockets.sockets.get(activeSpeaker.socketId);
+          if (activeSpeakerSocket) activeSpeakerSocket.emit('radio:voice:peer', { channel, peerId: socket.id });
+          socket.emit('radio:state', {
+            channel, userCode: activeSpeaker.userCode, socketId: activeSpeaker.socketId, ptt: true,
+            statusHtml: 'جاري البث الصوتي...'
+          });
+        }
         saveState();
         emitState();
 
@@ -10005,21 +10046,73 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      if (!radioSocketIsEligible(socket.id, channel) || actor.activeService !== true) {
+        return no(cb, 'شغّل الراديو وأدخل القناة أولاً قبل استخدام زر PTT.');
+      }
+      const currentSpeaker = radioTalkers.get(channel);
+      if (currentSpeaker && currentSpeaker.socketId !== socket.id) {
+        return no(cb, 'القناة مشغولة؛ انتظر حتى ينتهي المتحدث الحالي.');
+      }
+      radioTalkers.set(channel, { socketId: socket.id, userCode: actor.publicCode });
       emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, ptt: true,
+        channel, userCode: actor.publicCode, socketId: socket.id, ptt: true,
         statusHtml: 'جاري البث الصوتي...'
       });
-      return ok(cb);
+      const peers = radioTargets(channel).filter((peerId) => peerId !== socket.id && radioSocketIsEligible(peerId, channel));
+      return ok(cb, { peers });
     });
 
     socket.on('radio:ptt:stop', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const speaker = radioTalkers.get(channel);
+      if (!speaker || speaker.socketId !== socket.id) return ok(cb);
+      radioTalkers.delete(channel);
       emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, ptt: false,
+        channel, userCode: actor.publicCode, socketId: socket.id, ptt: false,
         statusHtml: 'انتهى البث.'
       });
+      return ok(cb);
+    });
+
+    socket.on('radio:voice:signal', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const targetId = clean(payload?.to, 120);
+      const type = clean(payload?.type, 16).toLowerCase();
+      if (!['offer', 'answer', 'ice'].includes(type)) return no(cb, 'إشارة الصوت غير صالحة.');
+      if (!targetId || targetId === socket.id || !radioSocketIsEligible(socket.id, channel) || !radioSocketIsEligible(targetId, channel)) {
+        return no(cb, 'المستمع غير موجود على القناة نفسها.');
+      }
+      const speaker = radioTalkers.get(channel);
+      if (!speaker || (speaker.socketId !== socket.id && speaker.socketId !== targetId)) {
+        return no(cb, 'إشارة الصوت لا تتبع إرسالاً نشطاً على هذه القناة.');
+      }
+      if (type === 'offer' && speaker.socketId !== socket.id) return no(cb, 'مصدر العرض الصوتي غير مخوّل.');
+      if (type === 'answer' && speaker.socketId === socket.id) return no(cb, 'مصدر الرد الصوتي غير مخوّل.');
+      const targetSocket = io.sockets.sockets.get(targetId);
+      if (!targetSocket) return no(cb, 'انقطع اتصال المستمع.');
+      const packet = { channel, from: socket.id, type };
+      if (type === 'ice') {
+        const candidate = payload?.candidate;
+        if (!candidate || typeof candidate !== 'object') return no(cb, 'مرشح اتصال الصوت غير صالح.');
+        const candidateText = typeof candidate.candidate === 'string' ? candidate.candidate : '';
+        if (candidateText.length > 4096) return no(cb, 'مرشح اتصال الصوت كبير جداً.');
+        if (!candidateText) return ok(cb);
+        packet.candidate = {
+          candidate: candidateText,
+          sdpMid: clean(candidate.sdpMid, 64) || null,
+          sdpMLineIndex: Number.isInteger(candidate.sdpMLineIndex) ? candidate.sdpMLineIndex : null,
+          usernameFragment: clean(candidate.usernameFragment, 128) || undefined
+        };
+      } else {
+        const sdp = payload?.sdp;
+        if (!sdp || typeof sdp.sdp !== 'string' || sdp.sdp.length > 64000) return no(cb, 'وصف اتصال الصوت غير صالح.');
+        packet.sdp = { type, sdp: sdp.sdp };
+      }
+      targetSocket.emit('radio:voice:signal', packet);
       return ok(cb);
     });
 
@@ -10331,6 +10424,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on(
       'disconnect',
       () => {
+        releaseRadioTransmission(socket.id);
         removeRadioMember(
           socket.id
         );
