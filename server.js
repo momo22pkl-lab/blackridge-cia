@@ -33,6 +33,7 @@ const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
+const { createRadioIceConfig } = require('./radio-ice-config');
 
 const ARABIC_PROFANITY_TERMS = Object.freeze([
   "كسمك",
@@ -380,8 +381,24 @@ const accountCharacterLoginFailures = new Map();
 const socketToUser = new Map();
 const radioChannels = new Map();
 const radioTalkers = new Map();
+const radioIceConfigCache = new Map();
+const radioIceConfigPending = new Map();
 const pendingRequestSockets = new Map();
 const supportThreadSockets = new Map();
+
+async function getRadioIceConfigForSocket(socketId) {
+  const cached = radioIceConfigCache.get(socketId);
+  if (cached && cached.expiresAt > Date.now()) return cached.config;
+  const pending = radioIceConfigPending.get(socketId);
+  if (pending) return pending;
+  const request = createRadioIceConfig(socketId).then((config) => {
+    const cacheMs = config.turnStatus === 'configured' ? 50 * 60 * 1000 : 30000;
+    radioIceConfigCache.set(socketId, { config, expiresAt: Date.now() + cacheMs });
+    return config;
+  }).finally(() => radioIceConfigPending.delete(socketId));
+  radioIceConfigPending.set(socketId, request);
+  return request;
+}
 
 function notificationCanReach(user, details) {
   if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false || user.serviceApproved === false) return false;
@@ -2332,22 +2349,6 @@ function radioSocketIsEligible(socketId, channel) {
   const user = targetSocket ? requireSocketUser(targetSocket) : null;
   return !!user && user.radioOnline === true && user.radioChannel === channel &&
     user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
-}
-
-function createRadioIceServers(socketId) {
-  const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
-  const turnUrls = String(process.env.RADIO_TURN_URLS || '')
-    .split(',')
-    .map((url) => url.trim())
-    .filter((url) => /^turns?:/i.test(url));
-  const sharedSecret = String(process.env.RADIO_TURN_SHARED_SECRET || '');
-  if (!turnUrls.length || !sharedSecret) return iceServers;
-
-  // coturn REST credentials expire after six hours; keep the shared secret server-side.
-  const username = `${Math.floor(Date.now() / 1000) + 6 * 60 * 60}:${String(socketId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}`;
-  const credential = crypto.createHmac('sha1', sharedSecret).update(username).digest('base64');
-  iceServers.push({ urls: turnUrls, username, credential });
-  return iceServers;
 }
 
 function releaseRadioTransmission(socketId) {
@@ -10136,12 +10137,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb);
     });
 
-    socket.on('radio:ice-config', (payload, cb) => {
+    socket.on('radio:ice-config', async (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
       if (!radioSocketIsEligible(socket.id, channel)) return no(cb, 'يجب الانضمام إلى قناة الراديو أولاً.');
-      return ok(cb, { iceServers: createRadioIceServers(socket.id) });
+      try {
+        const iceConfig = await getRadioIceConfigForSocket(socket.id);
+        return ok(cb, iceConfig);
+      } catch (error) {
+        // Never log provider responses or credentials; the stage is enough to diagnose setup failures.
+        console.warn('[BLACK RIDGE] Radio ICE configuration failed:', error?.name || 'Error');
+        return ok(cb, {
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          turnStatus: 'provider-error'
+        });
+      }
     });
 
     socket.on('radio:voice:restart-request', (payload, cb) => {
@@ -10486,6 +10497,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
     socket.on(
       'disconnect',
       () => {
+        radioIceConfigCache.delete(socket.id);
         releaseRadioTransmission(socket.id);
         removeRadioMember(
           socket.id
