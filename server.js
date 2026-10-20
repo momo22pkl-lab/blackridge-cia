@@ -1949,6 +1949,10 @@ function markLogin(socket, user, options = {}) {
   const set =
     sessionSet(user.id);
 
+  const hasOtherLiveSession =
+    [...set].some(
+      (sessionId) => sessionId !== socket.id && io.sockets.sockets.has(sessionId)
+    );
   const first =
     set.size === 0;
 
@@ -1966,14 +1970,14 @@ function markLogin(socket, user, options = {}) {
   // Account login is deliberately separate from starting duty. During a
   // short Socket.IO reconnect, preserve an already active duty session.
   const resumeService =
-    options.resumeService === true &&
+    (options.resumeService === true || hasOtherLiveSession) &&
     user.serviceApproved !== false &&
     user.activeService === true;
   if (!resumeService) {
     user.activeService = false;
     user.status = 'خارج الخدمة';
   }
-  user.radioOnline = false;
+  if (!hasOtherLiveSession) user.radioOnline = false;
 
   if (first) {
     const sessionStartedAt = now();
