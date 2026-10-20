@@ -3000,7 +3000,10 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioLocalStream = null;
     const radioVoicePeers = new Map();
     const radioActiveTalkers = new Set();
-    const RADIO_VOICE_ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    const RADIO_VOICE_DEFAULT_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+    let radioVoiceIceServers = RADIO_VOICE_DEFAULT_ICE_SERVERS;
+    const radioPeersReceiving = new Set();
+    let radioAudioUnlockInstalled = false;
     let bootstrapMode = false;
     let identityPendingUser = null;
     let serverHasChief = null;
@@ -3261,6 +3264,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
               setSessionRecoveryVisible(false);
               currentUser = result.user || currentUser;
               completeLogin();
+              if (radioPoweredOn) {
+                const channel = radioChannel;
+                ciaSocket.emit('radio:join', { channel, userCode: currentUser ? currentUser.publicCode : '00' }, function(joinResult) {
+                  if (joinResult && joinResult.ok) requestRadioVoiceIceServers();
+                });
+              }
               if (result.needsIdentity) openIdentityModal();
             });
           } else {
@@ -3270,6 +3279,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
       ciaSocket.on('disconnect', function() {
         resetRadioVoice();
+        if (radioPoweredOn) setRadioActivity('انقطع الاتصال؛ سيتم إعادة ربط الراديو بعد استعادة الجلسة.', 0);
         ciaSocketReady = false;
         ciaSessionAuthenticated = false;
         if (currentUser) {
@@ -3536,28 +3546,38 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
       ciaSocket.on('radio:state', function(data) {
         if (!data || !radioPoweredOn || data.channel !== radioChannel) return;
-        const status = document.getElementById('radio-status-text');
-        if (status && data.statusHtml) status.innerHTML = data.statusHtml;
         if (data.socketId) {
           if (data.ptt) radioActiveTalkers.add(data.socketId);
           else {
             radioActiveTalkers.delete(data.socketId);
+            radioPeersReceiving.delete(String(data.socketId));
             if (data.socketId !== ciaSocket.id) closeRadioVoicePeer(data.socketId);
           }
         }
         if (data.ptt && data.userCode !== (currentUser && currentUser.publicCode)) {
           playRadioBeep(1200);
           addRadioLog({channel:radioChannel,text:`#${data.userCode} يتحدث على ${radioChannel}`,sender:data.userCode});
-          setRadioActivity(`#${data.userCode} يبث الآن`, 5000);
+          setRadioActivity('المتحدث #' + data.userCode + ' جارٍ توصيل الصوت...', 0);
         }
+        updateRadioVoiceStatus();
       });
       ciaSocket.on('radio:voice:signal', handleRadioVoiceSignal);
       ciaSocket.on('radio:voice:peer', function(data) {
         if (!data || data.channel !== radioChannel || !radioPTTActive || !radioPTTChannel) return;
-        if (data.peerId && data.peerId !== ciaSocket.id) createRadioVoiceOffer(data.peerId);
+        if (data.peerId && data.peerId !== ciaSocket.id) createRadioVoiceOffer(data.peerId, radioPTTAttempt, data.restart === true);
       });
       ciaSocket.on('radio:voice:peer-left', function(data) {
-        if (data && data.socketId) { radioActiveTalkers.delete(data.socketId); closeRadioVoicePeer(data.socketId); }
+        if (!data || data.channel !== radioChannel || !data.socketId) return;
+        radioActiveTalkers.delete(data.socketId);
+        radioPeersReceiving.delete(String(data.socketId));
+        closeRadioVoicePeer(data.socketId);
+        updateRadioVoiceStatus();
+      });
+      ciaSocket.on('radio:voice:media-status', function(data) {
+        if (!data || data.channel !== radioPTTChannel || !data.from || !radioVoicePeers.has(String(data.from))) return;
+        if (data.receiving === true) radioPeersReceiving.add(String(data.from));
+        else radioPeersReceiving.delete(String(data.from));
+        updateRadioVoiceStatus();
       });
       ciaSocket.on('radio:channel', function(data) {
         if (!data || data.channel !== radioChannel || data.userCode === (currentUser && currentUser.publicCode)) return;
@@ -5895,6 +5915,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       updateRadioPowerUI();
       if (radioPoweredOn && ciaSocket) {
         ciaSocket.emit('radio:join', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
+        requestRadioVoiceIceServers();
       } else if (!radioPoweredOn && ciaSocket) {
         ciaSocket.emit('radio:leave', {});
       }
@@ -5933,7 +5954,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     function changeRadioChannel(ch, freq, label) {
-      if (radioPoweredOn && radioChannel !== ch) stopPTT();
+      if (radioChannel !== ch) {
+        if (radioPoweredOn) stopPTT();
+        closeAllRadioVoicePeers();
+        radioActiveTalkers.clear();
+        radioPeersReceiving.clear();
+      }
       radioChannel = ch;
       const freqDisplay = document.getElementById('radio-freq-display');
       const chShort = document.getElementById('radio-channel-short');
@@ -5946,6 +5972,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 
       if (radioPoweredOn && ciaSocket) {
         ciaSocket.emit('radio:join', { channel: ch, userCode: currentUser ? currentUser.publicCode : '00' });
+        requestRadioVoiceIceServers();
       }
       setRadioActivity(`تم التبديل إلى ${label} (${freq} MHz)`, 5000);
     }
@@ -5971,11 +5998,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!peer) return;
       radioVoicePeers.delete(key);
       try { peer.pc.close(); } catch (e) {}
+      if (peer.statsTimer) clearTimeout(peer.statsTimer);
+      if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer);
+      publishRadioMediaStatus(key, peer, false);
       if (peer.audio) { peer.audio.pause(); peer.audio.srcObject = null; peer.audio.remove(); }
     }
 
     function closeAllRadioVoicePeers() {
       [...radioVoicePeers.keys()].forEach(closeRadioVoicePeer);
+      radioPeersReceiving.clear();
     }
 
     function resetRadioVoice() {
@@ -5985,17 +6016,96 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioPTTServerRequestPending = false;
       radioPTTActive = false;
       radioPTTChannel = '';
+      radioPeersReceiving.clear();
       stopRadioLocalStream();
       closeAllRadioVoicePeers();
       radioActiveTalkers.clear();
     }
 
+    function requestRadioVoiceIceServers() {
+      if (!radioPoweredOn || !ciaSocket || !ciaSocket.connected) return;
+      const requestedChannel = radioChannel;
+      ciaSocket.emit('radio:ice-config', { channel: requestedChannel }, function(result) {
+        if (!result || result.ok !== true || !Array.isArray(result.iceServers) || !radioPoweredOn || radioChannel !== requestedChannel) return;
+        const servers = result.iceServers.filter(server => server && (typeof server.urls === 'string' || (Array.isArray(server.urls) && server.urls.length)));
+        radioVoiceIceServers = servers.length ? servers : RADIO_VOICE_DEFAULT_ICE_SERVERS;
+      });
+    }
+
+    function publishRadioMediaStatus(peerId, peer, receiving) {
+      const confirmed = receiving === true && peer && peer.incomingAudioConfirmed && peer.audioPlaying && radioPoweredOn && radioChannel === peer.channel;
+      if (!peer || peer.lastReportedReceiving === confirmed) return;
+      peer.lastReportedReceiving = confirmed;
+      if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:voice:media-status', { channel: peer.channel, to: String(peerId), receiving: confirmed }, function() {});
+    }
+
+    function updateRadioVoiceStatus() {
+      if (!radioPoweredOn) return;
+      if (radioPTTActive) {
+        if (radioPeersReceiving.size) setRadioActivity('يصل صوتك إلى ' + radioPeersReceiving.size + ' مستمع على القناة.', 0);
+        else if (radioVoicePeers.size) setRadioActivity('جارٍ توصيل الصوت؛ لم يصل تأكيد الاستماع بعد.', 0);
+        else setRadioActivity('القناة جاهزة، ولا يوجد مستمع متصل حالياً.', 0);
+        return;
+      }
+      const incoming = [...radioVoicePeers.values()].some(peer => peer.incomingAudioConfirmed && peer.audioPlaying);
+      if (incoming) setRadioActivity('يصل الصوت من المتحدث على القناة.', 0);
+      else if (radioActiveTalkers.size) setRadioActivity('يوجد متحدث؛ جارٍ إنشاء اتصال الصوت...', 0);
+      else radioClearActivity();
+    }
+
+    function unlockRadioAudioPlayback() {
+      radioVoicePeers.forEach((peer, peerId) => {
+        if (!peer.audio || !peer.audio.srcObject) return;
+        const attempt = peer.audio.play();
+        if (attempt && typeof attempt.then === 'function') attempt.then(() => {
+          peer.audioPlaying = true;
+          publishRadioMediaStatus(peerId, peer, peer.incomingAudioConfirmed);
+          updateRadioVoiceStatus();
+        }).catch(() => {});
+        else { peer.audioPlaying = true; publishRadioMediaStatus(peerId, peer, peer.incomingAudioConfirmed); updateRadioVoiceStatus(); }
+      });
+    }
+
+    function monitorRadioVoicePeer(peerId, peer) {
+      if (peer.statsTimer || !peer.pc || typeof peer.pc.getStats !== 'function') return;
+      const poll = async function() {
+        if (!radioVoicePeers.has(String(peerId)) || !radioPoweredOn || peer.channel !== radioChannel) return;
+        try {
+          const reports = await peer.pc.getStats();
+          reports.forEach(report => {
+            if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio') && Number(report.bytesReceived) > 0) peer.incomingAudioConfirmed = true;
+          });
+          publishRadioMediaStatus(peerId, peer, peer.incomingAudioConfirmed && peer.audioPlaying);
+          updateRadioVoiceStatus();
+        } catch (error) {}
+        if (radioVoicePeers.has(String(peerId)) && radioPoweredOn && peer.channel === radioChannel) peer.statsTimer = setTimeout(poll, 1000);
+      };
+      poll();
+    }
+
+    function requestRadioVoiceRecovery(peerId, peer) {
+      if (peer.recoveryTimer || peer.recoveryAttempts >= 5) return;
+      const wait = peer.pc.connectionState === 'disconnected' ? 2500 : 500;
+      peer.recoveryTimer = setTimeout(() => {
+        peer.recoveryTimer = null;
+        if (!radioPoweredOn || peer.channel !== radioChannel || !radioActiveTalkers.has(String(peerId))) return;
+        peer.recoveryAttempts += 1;
+        setRadioActivity('انقطع اتصال صوتي؛ جارٍ إعادة الاتصال...', 0);
+        if (radioPTTActive && radioPTTChannel === peer.channel) {
+          if (peer.pc.signalingState === 'stable') createRadioVoiceOffer(peerId, radioPTTAttempt, true);
+          return;
+        }
+        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:voice:restart-request', { channel: peer.channel, peerId: String(peerId) }, function(result) {
+          if (!result || result.ok !== true) setRadioActivity('تعذر إعادة اتصال الصوت؛ تحقق من الشبكة وأعد الانضمام إلى القناة.', 6000);
+        });
+      }, wait);
+    }
     function getRadioVoicePeer(peerId) {
       const key = String(peerId || '');
       if (!key || !window.RTCPeerConnection) return null;
       if (radioVoicePeers.has(key)) return radioVoicePeers.get(key);
-      const pc = new window.RTCPeerConnection(RADIO_VOICE_ICE_CONFIG);
-      const peer = { pc, audio: null, pendingCandidates: [], hasLocalAudio: false };
+      const pc = new window.RTCPeerConnection({ iceServers: radioVoiceIceServers.length ? radioVoiceIceServers : RADIO_VOICE_DEFAULT_ICE_SERVERS });
+      const peer = { pc, channel: radioChannel, audio: null, pendingCandidates: [], hasLocalAudio: false, incomingAudioConfirmed: false, audioPlaying: false, lastReportedReceiving: false, statsTimer: null, recoveryTimer: null, recoveryAttempts: 0 };
       radioVoicePeers.set(key, peer);
       pc.onicecandidate = function(event) {
         if (event.candidate && event.candidate.candidate) {
@@ -6004,10 +6114,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         }
       };
       pc.ontrack = function(event) {
+        if (!radioAudioUnlockInstalled) {
+          document.addEventListener('pointerdown', unlockRadioAudioPlayback, true);
+          document.addEventListener('keydown', unlockRadioAudioPlayback, true);
+          radioAudioUnlockInstalled = true;
+        }
         if (!peer.audio) {
           const audio = document.createElement('audio');
           audio.autoplay = true;
           audio.playsInline = true;
+          audio.muted = false;
           audio.volume = radioVolume / 100;
           audio.setAttribute('aria-hidden', 'true');
           audio.style.display = 'none';
@@ -6017,21 +6133,40 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const stream = event.streams && event.streams[0];
         if (stream) peer.audio.srcObject = stream;
         else if (event.track) peer.audio.srcObject = new MediaStream([event.track]);
+        peer.audio.onplaying = function() {
+          peer.audioPlaying = true;
+          publishRadioMediaStatus(key, peer, peer.incomingAudioConfirmed);
+          updateRadioVoiceStatus();
+        };
+        if (event.track) {
+          event.track.onmute = function() { peer.audioPlaying = false; publishRadioMediaStatus(key, peer, false); updateRadioVoiceStatus(); };
+          event.track.onunmute = function() {
+            const retry = peer.audio.play();
+            if (retry && typeof retry.then === 'function') retry.then(() => { peer.audioPlaying = true; publishRadioMediaStatus(key, peer, peer.incomingAudioConfirmed); updateRadioVoiceStatus(); }).catch(() => {});
+          };
+          event.track.onended = function() { peer.audioPlaying = false; peer.incomingAudioConfirmed = false; publishRadioMediaStatus(key, peer, false); updateRadioVoiceStatus(); };
+        }
+        monitorRadioVoicePeer(key, peer);
         const playAttempt = peer.audio.play();
-        if (playAttempt && typeof playAttempt.catch === 'function') {
-          playAttempt.catch(() => setRadioActivity('اضغط داخل الصفحة للسماح بتشغيل صوت الراديو.', 5000));
+        if (playAttempt && typeof playAttempt.then === 'function') {
+          playAttempt.then(() => { peer.audioPlaying = true; publishRadioMediaStatus(key, peer, peer.incomingAudioConfirmed); updateRadioVoiceStatus(); }).catch(() => setRadioActivity('اضغط أو المس الصفحة لتفعيل صوت الراديو.', 0));
         }
       };
       pc.onconnectionstatechange = function() {
-        if (pc.connectionState === 'failed') {
-          closeRadioVoicePeer(key);
-          setRadioActivity('تعذر إنشاء اتصال صوتي؛ تحقق من الشبكة وأعد المحاولة.', 5000);
+        if (pc.connectionState === 'connected') {
+          if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer);
+          peer.recoveryTimer = null;
+          peer.recoveryAttempts = 0;
+          monitorRadioVoicePeer(key, peer);
+          updateRadioVoiceStatus();
+        } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+          requestRadioVoiceRecovery(key, peer);
         }
       };
       return peer;
     }
 
-    async function createRadioVoiceOffer(peerId, attempt = radioPTTAttempt) {
+    async function createRadioVoiceOffer(peerId, attempt = radioPTTAttempt, iceRestart = false) {
       if (!radioPTTActive || !radioLocalStream || attempt !== radioPTTAttempt || !radioPTTChannel) return;
       const peer = getRadioVoicePeer(peerId);
       if (!peer) return;
@@ -6042,7 +6177,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           tracks.forEach(track => peer.pc.addTrack(track, radioLocalStream));
           peer.hasLocalAudio = true;
         }
-        const offer = await peer.pc.createOffer();
+        if (iceRestart && peer.pc.signalingState === 'stable' && typeof peer.pc.restartIce === 'function') peer.pc.restartIce();
+        const offer = await peer.pc.createOffer(iceRestart ? { iceRestart: true } : undefined);
         if (attempt !== radioPTTAttempt || !radioPTTActive) return;
         await peer.pc.setLocalDescription(offer);
         if (attempt !== radioPTTAttempt || !radioPTTActive) return;
@@ -6187,9 +6323,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         }
         radioPTTRequestPending = false;
         radioPTTActive = true;
+        radioPeersReceiving.clear();
         stream.getAudioTracks().forEach(track => { track.enabled = true; });
         playRadioBeep(1200);
-        setRadioActivity('جاري البث الصوتي المباشر...', 0);
+        setRadioActivity('تم حجز القناة؛ جارٍ اختبار اتصال الصوت بالمستمعين...', 0);
         (Array.isArray(result.peers) ? result.peers : []).forEach(peerId => createRadioVoiceOffer(peerId, attempt));
       });
     }

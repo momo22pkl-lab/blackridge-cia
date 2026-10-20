@@ -2334,6 +2334,22 @@ function radioSocketIsEligible(socketId, channel) {
     user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
 }
 
+function createRadioIceServers(socketId) {
+  const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const turnUrls = String(process.env.RADIO_TURN_URLS || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter((url) => /^turns?:/i.test(url));
+  const sharedSecret = String(process.env.RADIO_TURN_SHARED_SECRET || '');
+  if (!turnUrls.length || !sharedSecret) return iceServers;
+
+  // coturn REST credentials expire after six hours; keep the shared secret server-side.
+  const username = `${Math.floor(Date.now() / 1000) + 6 * 60 * 60}:${String(socketId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}`;
+  const credential = crypto.createHmac('sha1', sharedSecret).update(username).digest('base64');
+  iceServers.push({ urls: turnUrls, username, credential });
+  return iceServers;
+}
+
 function releaseRadioTransmission(socketId) {
   for (const [channel, speaker] of radioTalkers.entries()) {
     if (!speaker || speaker.socketId !== socketId) continue;
@@ -10117,6 +10133,48 @@ socket.on('member:saveIdentity', (payload, cb) => {
         packet.sdp = { type, sdp: sdp.sdp };
       }
       targetSocket.emit('radio:voice:signal', packet);
+      return ok(cb);
+    });
+
+    socket.on('radio:ice-config', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      if (!radioSocketIsEligible(socket.id, channel)) return no(cb, 'يجب الانضمام إلى قناة الراديو أولاً.');
+      return ok(cb, { iceServers: createRadioIceServers(socket.id) });
+    });
+
+    socket.on('radio:voice:restart-request', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const speakerId = clean(payload?.peerId, 120);
+      const speaker = radioTalkers.get(channel);
+      if (!radioSocketIsEligible(socket.id, channel) || !speaker || speaker.socketId !== speakerId || speakerId === socket.id) {
+        return no(cb, 'لا يوجد متحدث نشط على القناة نفسها.');
+      }
+      const speakerSocket = io.sockets.sockets.get(speakerId);
+      if (!speakerSocket) return no(cb, 'انقطع اتصال المتحدث.');
+      speakerSocket.emit('radio:voice:peer', { channel, peerId: socket.id, restart: true });
+      return ok(cb);
+    });
+
+    socket.on('radio:voice:media-status', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      const speakerId = clean(payload?.to, 120);
+      const speaker = radioTalkers.get(channel);
+      if (!radioSocketIsEligible(socket.id, channel) || !speaker || speaker.socketId !== speakerId || speakerId === socket.id) {
+        return no(cb, 'لا يمكن تأكيد صوت خارج القناة النشطة.');
+      }
+      const speakerSocket = io.sockets.sockets.get(speakerId);
+      if (!speakerSocket) return no(cb, 'انقطع اتصال المتحدث.');
+      speakerSocket.emit('radio:voice:media-status', {
+        channel,
+        from: socket.id,
+        receiving: payload?.receiving === true
+      });
       return ok(cb);
     });
 
