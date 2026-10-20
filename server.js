@@ -10067,8 +10067,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
-      if (!radioSocketIsEligible(socket.id, channel) || actor.activeService !== true) {
-        return no(cb, 'شغّل الراديو وأدخل القناة أولاً قبل استخدام زر PTT.');
+      if (actor.activeService !== true) {
+        return no(cb, 'يجب بدء المناوبة قبل إرسال الصوت عبر زر PTT.');
+      }
+      if (!radioSocketIsEligible(socket.id, channel)) {
+        return no(cb, 'الراديو غير منضم إلى القناة المحددة. أعد تشغيل الراديو ثم حاول مجدداً.');
       }
       const currentSpeaker = radioTalkers.get(channel);
       if (currentSpeaker && currentSpeaker.socketId !== socket.id) {
