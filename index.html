@@ -2988,6 +2988,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let hqPlacementMode = null;
 
     let radioPoweredOn = false;
+    let radioJoinConfirmed = false;
+    let radioJoinPending = false;
+    let radioJoinRequestId = 0;
     let radioChannel = 'CH-1';
     let radioVolume = 70;
     let radioLiveLog = [];
@@ -3265,12 +3268,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
               setSessionRecoveryVisible(false);
               currentUser = result.user || currentUser;
               completeLogin();
-              if (radioPoweredOn) {
-                const channel = radioChannel;
-                ciaSocket.emit('radio:join', { channel, userCode: currentUser ? currentUser.publicCode : '00' }, function(joinResult) {
-                  if (joinResult && joinResult.ok) requestRadioVoiceIceServers(channel, true);
-                });
-              }
+              if (radioPoweredOn) requestRadioJoin(radioChannel);
               if (result.needsIdentity) openIdentityModal();
             });
           } else {
@@ -3279,8 +3277,14 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
       });
       ciaSocket.on('disconnect', function() {
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinConfirmed = false;
         resetRadioVoice();
-        if (radioPoweredOn) setRadioActivity('انقطع الاتصال؛ سيتم إعادة ربط الراديو بعد استعادة الجلسة.', 0);
+        if (radioPoweredOn) {
+          updateRadioPowerUI();
+          setRadioActivity('انقطع الاتصال؛ سيتم إعادة ربط الراديو بعد استعادة الجلسة.', 0);
+        }
         ciaSocketReady = false;
         ciaSessionAuthenticated = false;
         if (currentUser) {
@@ -5907,19 +5911,79 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     /* Radio Controls Logic */
+    function requestRadioJoin(channel = radioChannel, options = {}) {
+      const requestedChannel = String(channel || radioChannel);
+      if (!radioPoweredOn) return;
+      if (!ciaSocket || !ciaSocket.connected) {
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinConfirmed = false;
+        radioPoweredOn = false;
+        updateRadioPowerUI();
+        setRadioActivity('تعذر الاتصال بالخادم؛ تحقق من اتصال الموقع ثم أعد تشغيل الراديو.', 7000);
+        return;
+      }
+
+      const requestId = ++radioJoinRequestId;
+      radioJoinPending = true;
+      radioJoinConfirmed = false;
+      updateRadioPowerUI();
+      setRadioActivity('جارٍ تأكيد الانضمام إلى القناة ' + requestedChannel + '...', 0);
+
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (requestId !== radioJoinRequestId || !radioPoweredOn || requestedChannel !== radioChannel) return;
+        radioJoinPending = false;
+        if (!result || result.ok !== true) {
+          radioJoinConfirmed = false;
+          radioPoweredOn = false;
+          closeAllRadioVoicePeers();
+          radioActiveTalkers.clear();
+          radioPeersReceiving.clear();
+          updateRadioPowerUI();
+          setRadioActivity((result && result.message) || 'لم يؤكد الخادم الانضمام إلى القناة؛ أعد تشغيل الراديو وحاول مجدداً.', 7000);
+          return;
+        }
+        radioJoinConfirmed = true;
+        updateRadioPowerUI();
+        if (options.playBeep === true) playRadioBeep(900);
+        requestRadioVoiceIceServers(requestedChannel, true);
+        setRadioActivity('تم تأكيد الاتصال بالقناة ' + requestedChannel + '.', 5000);
+      };
+
+      timer = setTimeout(() => finish({
+        ok: false,
+        message: 'لم يؤكد الخادم الانضمام إلى القناة خلال المهلة؛ تحقق من الاتصال ثم أعد تشغيل الراديو.'
+      }), 8000);
+      ciaSocket.emit('radio:join', {
+        channel: requestedChannel,
+        userCode: currentUser ? currentUser.publicCode : '00'
+      }, finish);
+    }
+
     function toggleRadioPower() {
       if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
-      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
-      if (radioPoweredOn) stopPTT();
-      radioPoweredOn = !radioPoweredOn;
-      if (!radioPoweredOn) { closeAllRadioVoicePeers(); radioActiveTalkers.clear(); }
-      updateRadioPowerUI();
-      if (radioPoweredOn && ciaSocket) {
-        ciaSocket.emit('radio:join', { channel: radioChannel, userCode: currentUser ? currentUser.publicCode : '00' });
-        requestRadioVoiceIceServers(radioChannel, true);
-      } else if (!radioPoweredOn && ciaSocket) {
-        ciaSocket.emit('radio:leave', {});
+      if (radioPoweredOn) {
+        if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinConfirmed = false;
+        radioPoweredOn = false;
+        closeAllRadioVoicePeers();
+        radioActiveTalkers.clear();
+        updateRadioPowerUI();
+        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:leave', {});
+        return;
       }
+      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      radioPoweredOn = true;
+      radioJoinConfirmed = false;
+      radioJoinPending = false;
+      requestRadioJoin(radioChannel, { playBeep: true });
     }
 
     function updateRadioPowerUI() {
@@ -5931,9 +5995,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (radioPoweredOn) {
         if (ind) { ind.classList.remove('off'); ind.classList.add('on'); ind.innerText = 'ONLINE'; }
         if (btn) { btn.classList.remove('off-state'); btn.innerHTML = '<i class="fa-solid fa-power-off"></i><span>إيقاف الراديو</span>'; }
-        if (status) { status.classList.remove('off'); status.innerHTML = `<i class="fa-solid fa-signal"></i> متصل - ${radioChannel}`; }
+        const connectionLabel = radioJoinPending ? 'جارٍ الاتصال' : (radioJoinConfirmed ? 'متصل' : 'غير متصل');
+        if (status) {
+          status.classList.toggle('off', !radioJoinConfirmed);
+          status.innerHTML = '<i class="fa-solid fa-signal"></i> ' + connectionLabel + ' - ' + radioChannel;
+        }
         if (inter) inter.style.display = 'block';
-        playRadioBeep(900);
       } else {
         if (ind) { ind.classList.remove('on'); ind.classList.add('off'); ind.innerText = 'OFFLINE'; }
         if (btn) { btn.classList.add('off-state'); btn.innerHTML = '<i class="fa-solid fa-power-off"></i><span>تشغيل الراديو</span>'; }
@@ -5955,7 +6022,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     function changeRadioChannel(ch, freq, label) {
-      if (radioChannel !== ch) {
+      const channelChanged = radioChannel !== ch;
+      if (channelChanged) {
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinConfirmed = false;
         if (radioPoweredOn) stopPTT();
         closeAllRadioVoicePeers();
         radioActiveTalkers.clear();
@@ -5970,12 +6041,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       document.querySelectorAll('.radio-channel-btn').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-channel') === ch);
       });
+      updateRadioPowerUI();
 
-      if (radioPoweredOn && ciaSocket) {
-        ciaSocket.emit('radio:join', { channel: ch, userCode: currentUser ? currentUser.publicCode : '00' });
-        requestRadioVoiceIceServers(ch, true);
+      if (radioPoweredOn && (channelChanged || !radioJoinConfirmed)) {
+        requestRadioJoin(ch);
+      } else {
+        setRadioActivity('تم التبديل إلى ' + label + ' (' + freq + ' MHz)', 5000);
       }
-      setRadioActivity(`تم التبديل إلى ${label} (${freq} MHz)`, 5000);
     }
 
     function syncRadioChannelUI() {
@@ -6372,6 +6444,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         try { event.currentTarget.setPointerCapture(event.pointerId); } catch (e) {}
       }
       if (!radioPoweredOn || !currentUser || !ciaSocket || !ciaSocket.connected || radioPTTHeld || radioPTTRequestPending || radioPTTActive) return;
+      if (radioJoinPending || !radioJoinConfirmed) {
+        setRadioActivity('لم يؤكد الخادم انضمام الراديو إلى القناة بعد؛ انتظر الاتصال أو أعد تشغيل الراديو.', 7000);
+        return;
+      }
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || !window.RTCPeerConnection) {
         setRadioActivity('الاتصال الصوتي المباشر يحتاج متصفحاً حديثاً واتصال HTTPS.', 5000);
         return;
