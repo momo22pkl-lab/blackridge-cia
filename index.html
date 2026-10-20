@@ -6133,7 +6133,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           radioPTTRequestPending = false;
           radioPTTServerRequestPending = false;
           radioPTTChannel = '';
-          setRadioActivity(error && error.name === 'NotAllowedError' ? 'اسمح للمتصفح باستخدام الميكروفون ثم حاول مجدداً.' : 'تعذر الوصول إلى الميكروفون.', 6000);
+          setRadioActivity(error && error.name === 'NotAllowedError' ? 'لم يسمح المتصفح بالميكروفون. افتح إعدادات هذا الموقع واجعل الميكروفون «سماح»، ثم أعد تحميل الصفحة.' : 'تعذر الوصول إلى الميكروفون. تحقق من توصيله وأنه غير مستخدم من تطبيق آخر.', 7000);
         }
         return;
       }
@@ -6143,12 +6143,27 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         return;
       }
       radioLocalStream = stream;
+      setRadioActivity('تم السماح بالميكروفون؛ جارٍ الاتصال بالقناة...', 0);
       stream.getAudioTracks().forEach(track => {
         track.enabled = false;
         track.onended = () => { if (radioPTTActive) stopPTT(); };
       });
       radioPTTServerRequestPending = true;
+      const serverAckTimer = setTimeout(() => {
+        if (attempt !== radioPTTAttempt || !radioPTTServerRequestPending) return;
+        radioPTTAttempt += 1;
+        radioPTTHeld = false;
+        radioPTTRequestPending = false;
+        radioPTTServerRequestPending = false;
+        radioPTTActive = false;
+        radioPTTChannel = '';
+        stopRadioLocalStream();
+        closeAllRadioVoicePeers();
+        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:ptt:stop', { channel }, function() {});
+        setRadioActivity('تم السماح بالميكروفون، لكن الخادم لم يؤكد بدء الإرسال. حدّث الصفحة وحاول مجدداً.', 7000);
+      }, 8000);
       ciaSocket.emit('radio:ptt:start', { channel }, function(result) {
+        clearTimeout(serverAckTimer);
         radioPTTServerRequestPending = false;
         if (!result || result.ok !== true) {
           if (attempt === radioPTTAttempt) {
@@ -6184,8 +6199,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioPTTHeld = false;
       const channel = radioPTTChannel || radioChannel;
       if (radioPTTServerRequestPending) {
+        radioPTTAttempt += 1;
+        radioPTTRequestPending = false;
+        radioPTTServerRequestPending = false;
+        radioPTTActive = false;
+        radioPTTChannel = '';
         stopRadioLocalStream();
         closeAllRadioVoicePeers();
+        if (radioPoweredOn) setRadioActivity('تم إلغاء محاولة الإرسال.', 3000);
         return;
       }
       if (radioPTTActive && ciaSocket && ciaSocket.connected) {
