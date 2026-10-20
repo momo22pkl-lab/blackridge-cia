@@ -5993,7 +5993,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const inter = document.getElementById('radio-interactive');
 
       if (radioPoweredOn) {
-        if (ind) { ind.classList.remove('off'); ind.classList.add('on'); ind.innerText = 'ONLINE'; }
+        if (ind) {
+          ind.classList.toggle('off', !radioJoinConfirmed);
+          ind.classList.toggle('on', radioJoinConfirmed);
+          ind.innerText = radioJoinPending ? 'CONNECTING' : (radioJoinConfirmed ? 'ONLINE' : 'OFFLINE');
+        }
         if (btn) { btn.classList.remove('off-state'); btn.innerHTML = '<i class="fa-solid fa-power-off"></i><span>إيقاف الراديو</span>'; }
         const connectionLabel = radioJoinPending ? 'جارٍ الاتصال' : (radioJoinConfirmed ? 'متصل' : 'غير متصل');
         if (status) {
