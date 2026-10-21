@@ -35,6 +35,11 @@ const ROLE_DEFAULTS = Object.freeze({
   }
 });
 const SESSION_HOURS = 8;
+const MFA_CHALLENGE_MINUTES = 5;
+const MFA_ENROLLMENT_MINUTES = 15;
+const TOTP_PERIOD_SECONDS = 30;
+const TOTP_DIGITS = 6;
+const RECOVERY_CODE_COUNT = 10;
 const MAX_BODY_LENGTH = 30000;
 const DEFAULT_REPORT_COLOR = '#34332e';
 const REPORT_FONT_FAMILIES = new Set(['IBM Plex Sans Arabic', 'IBM Plex Mono', 'Inter', 'Arial', 'Georgia', 'Tahoma']);
@@ -60,6 +65,9 @@ CREATE TABLE IF NOT EXISTS osd_users (
 ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS military_code TEXT;
 ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS personnel_id TEXT;
 ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS is_primary_chief BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS totp_secret_enc TEXT;
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS recovery_code_hashes JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE osd_users ADD COLUMN IF NOT EXISTS mfa_enabled_at TIMESTAMPTZ;
 ALTER TABLE osd_users ALTER COLUMN password_salt DROP NOT NULL;
 ALTER TABLE osd_users ALTER COLUMN password_hash DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS osd_users_military_code_idx
@@ -75,6 +83,28 @@ CREATE TABLE IF NOT EXISTS osd_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS osd_sessions_expiry_idx ON osd_sessions(expires_at);
+-- Do not let sessions created before MFA enforcement survive a server restart.
+DELETE FROM osd_sessions s USING osd_users u
+  WHERE s.user_id = u.id AND u.is_primary_chief = TRUE;
+CREATE TABLE IF NOT EXISTS osd_login_challenges (
+  challenge_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES osd_users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS osd_login_challenges_expiry_idx ON osd_login_challenges(expires_at);
+CREATE TABLE IF NOT EXISTS osd_mfa_enrollments (
+  enrollment_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES osd_users(id) ON DELETE CASCADE,
+  secret_enc TEXT NOT NULL,
+  recovery_code_hashes JSONB NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+CREATE INDEX IF NOT EXISTS osd_mfa_enrollments_expiry_idx ON osd_mfa_enrollments(expires_at);
 CREATE TABLE IF NOT EXISTS osd_counters (
   sector_code TEXT NOT NULL,
   issue_year INTEGER NOT NULL,
@@ -286,6 +316,152 @@ function passwordHash(password, salt) {
       resolve(key.toString('hex'));
     });
   });
+}
+
+function hasTotpEncryptionKey(value) {
+  return typeof value === 'string' && Buffer.byteLength(value, 'utf8') >= 32;
+}
+
+function totpEncryptionKey(value) {
+  if (!hasTotpEncryptionKey(value)) {
+    throw Object.assign(new Error('OSD_TOTP_ENCRYPTION_KEY is not configured.'), { status: 503 });
+  }
+  return crypto.createHash('sha256').update(value, 'utf8').digest();
+}
+
+function encryptTotpSecret(secret, encryptionKey) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', totpEncryptionKey(encryptionKey), iv);
+  const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+  return `v1.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptTotpSecret(encryptedSecret, encryptionKey) {
+  const [version, iv, tag, ciphertext] = String(encryptedSecret || '').split('.');
+  if (version !== 'v1' || !iv || !tag || !ciphertext) {
+    throw Object.assign(new Error('The stored authenticator secret is invalid.'), { status: 503 });
+  }
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', totpEncryptionKey(encryptionKey), Buffer.from(iv, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(ciphertext, 'base64url')),
+      decipher.final()
+    ]).toString('utf8');
+  } catch {
+    throw Object.assign(new Error('The stored authenticator secret cannot be decrypted.'), { status: 503 });
+  }
+}
+
+function encodeBase32(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let buffer = 0;
+  let bits = 0;
+  let output = '';
+  for (const byte of value) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += alphabet[(buffer >> bits) & 31];
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  if (bits) output += alphabet[(buffer << (5 - bits)) & 31];
+  return output;
+}
+
+function decodeBase32(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const normalized = String(value || '').replace(/=+$/g, '').toUpperCase();
+  if (!normalized || !/^[A-Z2-7]+$/.test(normalized)) {
+    throw new Error('The authenticator secret is invalid.');
+  }
+  let buffer = 0;
+  let bits = 0;
+  const output = [];
+  for (const char of normalized) {
+    buffer = (buffer << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      output.push((buffer >> bits) & 255);
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  return Buffer.from(output);
+}
+
+function generateTotpSecret() {
+  return encodeBase32(crypto.randomBytes(20));
+}
+
+function totpCode(secret, time = Date.now()) {
+  const counter = BigInt(Math.floor(time / 1000 / TOTP_PERIOD_SECONDS));
+  const message = Buffer.alloc(8);
+  message.writeBigUInt64BE(counter);
+  const digest = crypto.createHmac('sha1', decodeBase32(secret)).update(message).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = digest.readUInt32BE(offset) & 0x7fffffff;
+  return String(binary % (10 ** TOTP_DIGITS)).padStart(TOTP_DIGITS, '0');
+}
+
+function verifyTotp(secret, code, time = Date.now()) {
+  const supplied = String(code || '').trim();
+  if (!/^\d{6}$/.test(supplied)) return false;
+  for (const offset of [-1, 0, 1]) {
+    if (safeEqual(totpCode(secret, time + offset * TOTP_PERIOD_SECONDS * 1000), supplied)) return true;
+  }
+  return false;
+}
+
+function normalizeRecoveryCode(value) {
+  const normalized = String(value || '').replace(/[^A-Fa-f0-9]/g, '').toUpperCase();
+  return /^[A-F0-9]{20}$/.test(normalized) ? normalized : '';
+}
+
+function recoveryCodeHash(value) {
+  const normalized = normalizeRecoveryCode(value);
+  return normalized ? sha256(normalized) : '';
+}
+
+function generateRecoveryCodes() {
+  return Array.from({ length: RECOVERY_CODE_COUNT }, () => {
+    const value = crypto.randomBytes(10).toString('hex').toUpperCase();
+    return value.match(/.{1,5}/g).join('-');
+  });
+}
+
+function recoveryCodeIndex(hashes, code) {
+  const digest = recoveryCodeHash(code);
+  if (!digest || !Array.isArray(hashes)) return -1;
+  return hashes.findIndex((hash) => safeEqual(hash, digest));
+}
+
+function authenticatorUri(secret, accountLabel = 'Primary Chief') {
+  const issuer = 'BLACK RIDGE CIA';
+  const label = `${issuer}:${accountLabel}`;
+  const parameters = new URLSearchParams({
+    secret,
+    issuer,
+    algorithm: 'SHA1',
+    digits: String(TOTP_DIGITS),
+    period: String(TOTP_PERIOD_SECONDS)
+  });
+  return `otpauth://totp/${encodeURIComponent(label)}?${parameters.toString()}`;
+}
+
+function makeMfaEnrollment(secretKey, accountLabel = 'Primary Chief') {
+  const secret = generateTotpSecret();
+  const recoveryCodes = generateRecoveryCodes();
+  return {
+    secret,
+    secretEncrypted: encryptTotpSecret(secret, secretKey),
+    recoveryCodes,
+    recoveryCodeHashes: recoveryCodes.map(recoveryCodeHash),
+    otpauthUrl: authenticatorUri(secret, accountLabel),
+    enrollmentToken: crypto.randomBytes(32).toString('base64url')
+  };
 }
 
 function validPassword(value) {
@@ -733,6 +909,20 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
           metadata: { militaryCode }
         });
       }
+      if (options.mfaEnrollment) {
+        await client.query('DELETE FROM osd_mfa_enrollments WHERE user_id=$1', [saved.id]);
+        await client.query(
+          `INSERT INTO osd_mfa_enrollments
+           (enrollment_hash,user_id,secret_enc,recovery_code_hashes,expires_at)
+           VALUES ($1,$2,$3,$4::jsonb,NOW() + INTERVAL '${MFA_ENROLLMENT_MINUTES} minutes')`,
+          [
+            sha256(options.mfaEnrollment.enrollmentToken),
+            saved.id,
+            options.mfaEnrollment.secretEncrypted,
+            JSON.stringify(options.mfaEnrollment.recoveryCodeHashes)
+          ]
+        );
+      }
       await client.query('COMMIT');
       return saved;
     } catch (error) {
@@ -801,6 +991,26 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
   function clearSessionCookie(req) {
     const secure = req?.secure || String(req?.get?.('x-forwarded-proto') || '').split(',')[0].trim() === 'https' || env.NODE_ENV === 'production';
     return `osd_session=; Path=/api/osd; HttpOnly; SameSite=Strict; Max-Age=0${secure ? '; Secure' : ''}`;
+  }
+
+  function mfaChallengeCookie(token, req) {
+    const secure = req.secure || String(req.get('x-forwarded-proto') || '').split(',')[0].trim() === 'https' || env.NODE_ENV === 'production';
+    return `osd_mfa_challenge=${encodeURIComponent(token)}; Path=/api/osd/auth; HttpOnly; SameSite=Strict; Max-Age=${MFA_CHALLENGE_MINUTES * 60}${secure ? '; Secure' : ''}`;
+  }
+
+  function clearMfaChallengeCookie(req) {
+    const secure = req?.secure || String(req?.get?.('x-forwarded-proto') || '').split(',')[0].trim() === 'https' || env.NODE_ENV === 'production';
+    return `osd_mfa_challenge=; Path=/api/osd/auth; HttpOnly; SameSite=Strict; Max-Age=0${secure ? '; Secure' : ''}`;
+  }
+
+  function requestCookie(req, name) {
+    const cookie = String(req.headers.cookie || '').split(';')
+      .map((item) => item.trim()).find((item) => item.startsWith(`${name}=`));
+    try {
+      return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : '';
+    } catch {
+      return '';
+    }
   }
 
   function loginRateLimited(req) {
@@ -874,7 +1084,14 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
     if (!pool) return;
     const result = await pool.query('SELECT EXISTS(SELECT 1 FROM osd_users WHERE is_primary_chief = TRUE) AS initialized');
     const bootstrapCode = cleanText(env.OSD_BOOTSTRAP_CODE, 300);
-    res.json({ needed: !result.rows[0].initialized, configured: bootstrapCode.length >= 24 });
+    const enrollmentCode = cleanText(env.OSD_CHIEF_TOTP_ENROLLMENT_CODE, 300);
+    res.json({
+      needed: !result.rows[0].initialized,
+      configured: bootstrapCode.length >= 24 &&
+        enrollmentCode.length >= 24 &&
+        !safeEqual(bootstrapCode, enrollmentCode) &&
+        hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)
+    });
   }));
 
   router.post('/bootstrap', asyncRoute(async (req, res) => {
@@ -883,6 +1100,13 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
     if (loginRateLimited(req)) return res.status(429).json({ error: 'تجاوزت عدد المحاولات. انتظر 15 دقيقة ثم أعد المحاولة.' });
     const configuredCode = cleanText(env.OSD_BOOTSTRAP_CODE, 300);
     if (configuredCode.length < 24) return res.status(503).json({ error: 'إعداد القائد الأول غير متاح؛ يجب تهيئة OSD_BOOTSTRAP_CODE على الخادم.' });
+    const enrollmentCode = cleanText(env.OSD_CHIEF_TOTP_ENROLLMENT_CODE, 300);
+    if (enrollmentCode.length < 24 || safeEqual(configuredCode, enrollmentCode)) {
+      return res.status(503).json({ error: 'إعداد رمز مستقل لإعادة بدء تهيئة مصادقة القائد مطلوب على الخادم.' });
+    }
+    if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+      return res.status(503).json({ error: 'إعداد المصادقة غير متاح؛ يجب تهيئة OSD_TOTP_ENCRYPTION_KEY على الخادم.' });
+    }
     if (!safeEqual(cleanText(req.body?.bootstrapCode, 300), configuredCode)) return res.status(403).json({ error: 'رمز التأسيس غير صحيح.' });
     const militaryCode = normalizeMilitaryCode(req.body?.militaryCode);
     const person = findPersonnelByCode(personnelRoster(), militaryCode);
@@ -895,16 +1119,182 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
     if (password !== confirmPassword) return res.status(400).json({ error: 'تأكيد كلمة السر غير مطابق.' });
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = await passwordHash(password, salt);
+    const mfaEnrollment = makeMfaEnrollment(env.OSD_TOTP_ENCRYPTION_KEY);
     try {
       const account = await linkPersonnelAccount(pool, person, {
         initializeChief: true,
         passwordSalt: salt,
-        passwordHash: hash
+        passwordHash: hash,
+        mfaEnrollment
       });
-      res.status(201).json({ created: true, militaryCode: account.military_code });
+      res.status(201).json({
+        created: true,
+        militaryCode: account.military_code,
+        mfaEnrollment: {
+          enrollmentToken: mfaEnrollment.enrollmentToken,
+          secret: mfaEnrollment.secret,
+          otpauthUrl: mfaEnrollment.otpauthUrl,
+          recoveryCodes: mfaEnrollment.recoveryCodes
+        }
+      });
     } catch (error) {
       if (error.status === 409) return res.status(409).json({ error: error.message });
       throw error;
+    }
+  }));
+
+  router.post('/auth/mfa/enroll/start', asyncRoute(async (req, res) => {
+    const pool = await poolOr503(res);
+    if (!pool) return;
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
+    if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+      return res.status(503).json({ error: 'Authenticator enrollment is unavailable. Check server configuration.' });
+    }
+    const enrollmentCode = cleanText(env.OSD_CHIEF_TOTP_ENROLLMENT_CODE, 300);
+    if (enrollmentCode.length < 24 || safeEqual(enrollmentCode, cleanText(env.OSD_BOOTSTRAP_CODE, 300))) {
+      return res.status(503).json({ error: 'Existing-chief authenticator enrollment is not configured on the server.' });
+    }
+    if (!safeEqual(cleanText(req.body?.enrollmentCode, 300), enrollmentCode)) {
+      return res.status(403).json({ error: 'The separate enrollment code is incorrect.' });
+    }
+    const militaryCode = normalizeMilitaryCode(req.body?.militaryCode);
+    const person = findPersonnelByCode(personnelRoster(), militaryCode);
+    const password = typeof req.body?.password === 'string' ? req.body.password.slice(0, 201) : '';
+    if (!person || cleanText(person.rank, 100).toUpperCase() !== 'CIA CHIEF' || !validPassword(password)) {
+      return res.status(401).json({ error: 'The primary leader credentials are not valid.' });
+    }
+    const result = await pool.query(
+      `SELECT * FROM osd_users
+       WHERE personnel_id = $1 OR military_code = $2
+       ORDER BY CASE WHEN personnel_id = $1 THEN 0 ELSE 1 END LIMIT 2`,
+      [String(person.id), militaryCode]
+    );
+    const account = result.rows.length === 1 && result.rows[0].is_primary_chief === true &&
+      String(result.rows[0].personnel_id || '') === String(person.id || '') &&
+      normalizeMilitaryCode(result.rows[0].military_code) === militaryCode &&
+      result.rows[0].enabled === true
+      ? result.rows[0]
+      : null;
+    const supplied = await passwordHash(password, account?.password_salt || 'osd-static-chief-not-found');
+    if (!account || !safeEqual(supplied, account.password_hash)) {
+      return res.status(401).json({ error: 'The primary leader credentials are not valid.' });
+    }
+    if (account.mfa_enabled_at || account.totp_secret_enc) {
+      return res.status(409).json({ error: 'Authenticator protection is already enabled and cannot be reset here.' });
+    }
+
+    const enrollment = makeMfaEnrollment(env.OSD_TOTP_ENCRYPTION_KEY);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query(
+        'SELECT id,totp_secret_enc,mfa_enabled_at FROM osd_users WHERE id=$1 AND is_primary_chief=TRUE AND enabled=TRUE FOR UPDATE',
+        [account.id]
+      );
+      if (!locked.rows.length || locked.rows[0].mfa_enabled_at || locked.rows[0].totp_secret_enc) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Authenticator protection is already enabled and cannot be reset here.' });
+      }
+      await client.query('DELETE FROM osd_mfa_enrollments WHERE user_id=$1', [account.id]);
+      await client.query(
+        `INSERT INTO osd_mfa_enrollments
+         (enrollment_hash,user_id,secret_enc,recovery_code_hashes,expires_at)
+         VALUES ($1,$2,$3,$4::jsonb,NOW() + INTERVAL '${MFA_ENROLLMENT_MINUTES} minutes')`,
+        [
+          sha256(enrollment.enrollmentToken),
+          account.id,
+          enrollment.secretEncrypted,
+          JSON.stringify(enrollment.recoveryCodeHashes)
+        ]
+      );
+      await client.query('COMMIT');
+      res.status(201).json({
+        mfaEnrollment: {
+          enrollmentToken: enrollment.enrollmentToken,
+          secret: enrollment.secret,
+          otpauthUrl: enrollment.otpauthUrl,
+          recoveryCodes: enrollment.recoveryCodes
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
+  router.post('/auth/mfa/enroll/confirm', asyncRoute(async (req, res) => {
+    const pool = await poolOr503(res);
+    if (!pool) return;
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
+    if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+      return res.status(503).json({ error: 'Authenticator verification is unavailable. Check server configuration.' });
+    }
+    const enrollmentToken = typeof req.body?.enrollmentToken === 'string' ? req.body.enrollmentToken.slice(0, 200) : '';
+    const code = typeof req.body?.code === 'string' ? req.body.code.slice(0, 100) : '';
+    if (!enrollmentToken) return res.status(401).json({ error: 'Authenticator setup expired. Start setup again.' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `SELECT e.enrollment_hash,e.user_id,e.secret_enc,e.recovery_code_hashes,e.failed_attempts,
+                u.is_primary_chief,u.enabled,u.military_code,u.personnel_id
+         FROM osd_mfa_enrollments e JOIN osd_users u ON u.id=e.user_id
+         WHERE e.enrollment_hash=$1 AND e.expires_at>NOW()
+         FOR UPDATE OF e`,
+        [sha256(enrollmentToken)]
+      );
+      const enrollment = result.rows[0];
+      const account = enrollment && {
+        id: enrollment.user_id,
+        is_primary_chief: enrollment.is_primary_chief,
+        enabled: enrollment.enabled,
+        military_code: enrollment.military_code,
+        personnel_id: enrollment.personnel_id
+      };
+      const person = account && personnelForAccount(account);
+      if (!enrollment || !account.is_primary_chief || !account.enabled || !person ||
+          cleanText(person.rank, 100).toUpperCase() !== 'CIA CHIEF') {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'Authenticator setup expired or is not authorized.' });
+      }
+      const secret = decryptTotpSecret(enrollment.secret_enc, env.OSD_TOTP_ENCRYPTION_KEY);
+      if (!verifyTotp(secret, code)) {
+        if (Number(enrollment.failed_attempts || 0) + 1 >= 5) {
+          await client.query('DELETE FROM osd_mfa_enrollments WHERE enrollment_hash=$1', [enrollment.enrollment_hash]);
+        } else {
+          await client.query(
+            'UPDATE osd_mfa_enrollments SET failed_attempts=failed_attempts+1 WHERE enrollment_hash=$1',
+            [enrollment.enrollment_hash]
+          );
+        }
+        await client.query('COMMIT');
+        return res.status(401).json({ error: 'The authenticator code is incorrect or expired.' });
+      }
+      const updated = await client.query(
+        `UPDATE osd_users
+         SET totp_secret_enc=$2,recovery_code_hashes=$3::jsonb,mfa_enabled_at=NOW(),updated_at=NOW()
+         WHERE id=$1 AND is_primary_chief=TRUE AND enabled=TRUE
+           AND totp_secret_enc IS NULL AND mfa_enabled_at IS NULL
+         RETURNING id`,
+        [account.id, enrollment.secret_enc, JSON.stringify(enrollment.recovery_code_hashes)]
+      );
+      if (!updated.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Authenticator protection is already enabled and cannot be reset here.' });
+      }
+      await client.query('DELETE FROM osd_sessions WHERE user_id=$1', [account.id]);
+      await client.query('DELETE FROM osd_mfa_enrollments WHERE enrollment_hash=$1', [enrollment.enrollment_hash]);
+      await client.query('COMMIT');
+      loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
+      res.json({ enabled: true });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
   }));
 
@@ -937,6 +1327,27 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
           !validPassword(password) || !safeEqual(supplied, account.password_hash)) {
         return res.status(401).json({ error: 'بيانات القائد غير صحيحة أو لا تطابق الحساب المعتمد.' });
       }
+      if (!account.mfa_enabled_at || !account.totp_secret_enc) {
+        return res.status(428).json({
+          code: 'MFA_SETUP_REQUIRED',
+          error: 'يجب إعداد تطبيق المصادقة للقائد قبل تسجيل الدخول.'
+        });
+      }
+      if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+        return res.status(503).json({ error: 'Authenticator sign-in is unavailable. Check server configuration.' });
+      }
+      const challengeToken = crypto.randomBytes(32).toString('base64url');
+      await pool.query('DELETE FROM osd_login_challenges WHERE expires_at<=NOW()');
+      await pool.query(
+        `INSERT INTO osd_login_challenges (challenge_hash,user_id,expires_at)
+         VALUES ($1,$2,NOW() + INTERVAL '${MFA_CHALLENGE_MINUTES} minutes')`,
+        [sha256(challengeToken), account.id]
+      );
+      res.setHeader('Set-Cookie', [
+        clearSessionCookie(req),
+        mfaChallengeCookie(challengeToken, req)
+      ]);
+      return res.status(202).json({ mfaRequired: true });
     } else {
       const isChiefCode = person && cleanText(person.rank, 100).toUpperCase() === 'CIA CHIEF';
       if (!person || isChiefCode) {
@@ -956,8 +1367,100 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
       [tokenHash, account.id]
     );
     loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
-    res.setHeader('Set-Cookie', sessionCookie(token, req));
+    res.setHeader('Set-Cookie', [sessionCookie(token, req), clearMfaChallengeCookie(req)]);
     res.json({ user: publicUser(account, person) });
+  }));
+
+  router.post('/auth/mfa/verify', asyncRoute(async (req, res) => {
+    const pool = await poolOr503(res);
+    if (!pool) return;
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
+    if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+      return res.status(503).json({ error: 'Authenticator sign-in is unavailable. Check server configuration.' });
+    }
+    const challengeToken = requestCookie(req, 'osd_mfa_challenge');
+    const code = typeof req.body?.code === 'string' ? req.body.code.slice(0, 100) : '';
+    if (!challengeToken || challengeToken.length > 200) {
+      res.setHeader('Set-Cookie', clearMfaChallengeCookie(req));
+      return res.status(401).json({ error: 'The sign-in challenge expired. Enter your password again.' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `SELECT c.challenge_hash,c.user_id,c.failed_attempts,
+                u.id,u.username,u.display_name,u.role,u.clearance,u.permissions,
+                u.military_code,u.personnel_id,u.is_primary_chief,u.enabled,
+                u.totp_secret_enc,u.recovery_code_hashes,u.mfa_enabled_at
+         FROM osd_login_challenges c JOIN osd_users u ON u.id=c.user_id
+         WHERE c.challenge_hash=$1 AND c.expires_at>NOW()
+         FOR UPDATE OF c,u`,
+        [sha256(challengeToken)]
+      );
+      const account = result.rows[0];
+      const person = account && personnelForAccount(account);
+      if (!account || !account.is_primary_chief || !account.enabled ||
+          !account.mfa_enabled_at || !account.totp_secret_enc || !person ||
+          cleanText(person.rank, 100).toUpperCase() !== 'CIA CHIEF') {
+        await client.query('ROLLBACK');
+        res.setHeader('Set-Cookie', clearMfaChallengeCookie(req));
+        return res.status(401).json({ error: 'The sign-in challenge expired. Enter your password again.' });
+      }
+
+      const secret = decryptTotpSecret(account.totp_secret_enc, env.OSD_TOTP_ENCRYPTION_KEY);
+      const validTotp = verifyTotp(secret, code);
+      const hashes = Array.isArray(account.recovery_code_hashes) ? account.recovery_code_hashes : [];
+      const recoveryIndex = validTotp ? -1 : recoveryCodeIndex(hashes, code);
+      if (!validTotp && recoveryIndex < 0) {
+        if (Number(account.failed_attempts || 0) + 1 >= 5) {
+          await client.query('DELETE FROM osd_login_challenges WHERE challenge_hash=$1', [account.challenge_hash]);
+        } else {
+          await client.query(
+            'UPDATE osd_login_challenges SET failed_attempts=failed_attempts+1 WHERE challenge_hash=$1',
+            [account.challenge_hash]
+          );
+        }
+        await client.query('COMMIT');
+        return res.status(401).json({ error: 'The authenticator or recovery code is incorrect or expired.' });
+      }
+      if (recoveryIndex >= 0) {
+        const remainingCodes = hashes.filter((_, index) => index !== recoveryIndex);
+        await client.query(
+          'UPDATE osd_users SET recovery_code_hashes=$2::jsonb,updated_at=NOW() WHERE id=$1',
+          [account.id, JSON.stringify(remainingCodes)]
+        );
+      }
+
+      const token = crypto.randomBytes(32).toString('base64url');
+      await client.query('DELETE FROM osd_sessions WHERE expires_at<NOW()');
+      await client.query(
+        `INSERT INTO osd_sessions (token_hash,user_id,expires_at)
+         VALUES ($1,$2,NOW() + INTERVAL '${SESSION_HOURS} hours')`,
+        [sha256(token), account.id]
+      );
+      await client.query('DELETE FROM osd_login_challenges WHERE challenge_hash=$1', [account.challenge_hash]);
+      await client.query('COMMIT');
+      loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
+      res.setHeader('Set-Cookie', [sessionCookie(token, req), clearMfaChallengeCookie(req)]);
+      res.json({ user: publicUser(account, person) });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
+  router.post('/auth/mfa/cancel', asyncRoute(async (req, res) => {
+    const pool = await poolOr503(res);
+    if (!pool) return;
+    const challengeToken = requestCookie(req, 'osd_mfa_challenge');
+    if (challengeToken && challengeToken.length <= 200) {
+      await pool.query('DELETE FROM osd_login_challenges WHERE challenge_hash=$1', [sha256(challengeToken)]);
+    }
+    res.setHeader('Set-Cookie', clearMfaChallengeCookie(req));
+    res.json({ cancelled: true });
   }));
 
   router.get('/auth/me', currentUser, (req, res) => {
@@ -1657,5 +2160,6 @@ module.exports = {
   signPayload,
   signingSecretReady,
   verificationResult,
+  verifyTotp,
   verifyIssuedDocument
 };

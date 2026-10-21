@@ -2,13 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const express = require('express');
 const {
   createOsdRouter,
   findPersonnelByCode,
   isEligiblePersonnel,
   normalizeMilitaryCode,
-  roleProfileForPersonnel
+  roleProfileForPersonnel,
+  verifyTotp
 } = require('../server');
 
 const personnel = [
@@ -18,10 +20,60 @@ const personnel = [
   { id: 'person-suspended', militaryCode: 'SUS-400', displayName: 'Suspended Agent', rank: 'AGENT', active: false }
 ];
 
+function totpForTest(secret, time = Date.now()) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let buffer = 0;
+  let bits = 0;
+  const secretBytes = [];
+  for (const character of secret) {
+    buffer = (buffer << 5) | alphabet.indexOf(character);
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      secretBytes.push((buffer >> bits) & 255);
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(time / 1000 / 30)));
+  const digest = crypto.createHmac('sha1', Buffer.from(secretBytes)).update(counter).digest();
+  const offset = digest[digest.length - 1] & 15;
+  const number = digest.readUInt32BE(offset) & 0x7fffffff;
+  return String(number % 1_000_000).padStart(6, '0');
+}
+
+function invalidTotpForTest(secret, time = Date.now()) {
+  for (const candidate of ['000000', '000001', '999999', '123456', '654321']) {
+    if (![-1, 0, 1].some((offset) => totpForTest(secret, time + offset * 30_000) === candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error('Could not select a non-current test TOTP.');
+}
+
+function staleTotpForTest(secret, time = Date.now()) {
+  for (let minutes = 10; minutes < 100; minutes += 1) {
+    const candidate = totpForTest(secret, time - minutes * 60_000);
+    if (![-1, 0, 1].some((offset) => totpForTest(secret, time + offset * 30_000) === candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error('Could not select an expired test TOTP.');
+}
+
+test('TOTP verifier matches the RFC 6238 SHA-1 vector and rejects stale codes', () => {
+  const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+  assert.equal(verifyTotp(secret, '287082', 59_000), true);
+  assert.equal(verifyTotp(secret, '94287082', 59_000), false);
+  assert.equal(verifyTotp(secret, '287082', 59_000 + 90_000), false);
+});
+
 class MemoryPool {
   constructor() {
     this.users = [];
     this.sessions = [];
+    this.challenges = [];
+    this.enrollments = [];
   }
 
   async query(sql, values = []) {
@@ -56,6 +108,7 @@ class MemoryPool {
         id, username, display_name: displayName, password_salt: salt, password_hash: hash,
         role, clearance, permissions: JSON.parse(permissions), military_code: militaryCode,
         personnel_id: personnelId, is_primary_chief: primary, enabled: true,
+        totp_secret_enc: null, recovery_code_hashes: [], mfa_enabled_at: null,
         created_at: new Date().toISOString()
       };
       this.users.push(user);
@@ -78,6 +131,112 @@ class MemoryPool {
         enabled: enable ? true : user.enabled
       });
       return { rows: [user] };
+    }
+    if (query.startsWith('select id,totp_secret_enc,mfa_enabled_at from osd_users')) {
+      const user = this.users.find((item) => item.id === values[0] && item.is_primary_chief && item.enabled);
+      return { rows: user ? [{ id: user.id, totp_secret_enc: user.totp_secret_enc, mfa_enabled_at: user.mfa_enabled_at }] : [] };
+    }
+    if (query.startsWith('update osd_users set totp_secret_enc=')) {
+      const [id, encrypted, recoveryHashes] = values;
+      const user = this.users.find((item) => item.id === id && item.is_primary_chief && item.enabled &&
+        !item.totp_secret_enc && !item.mfa_enabled_at);
+      if (!user) return { rows: [] };
+      Object.assign(user, {
+        totp_secret_enc: encrypted,
+        recovery_code_hashes: JSON.parse(recoveryHashes),
+        mfa_enabled_at: new Date().toISOString()
+      });
+      return { rows: [{ id: user.id }] };
+    }
+    if (query.startsWith('update osd_users set recovery_code_hashes=')) {
+      const [id, recoveryHashes] = values;
+      const user = this.users.find((item) => item.id === id);
+      if (!user) return { rows: [] };
+      user.recovery_code_hashes = JSON.parse(recoveryHashes);
+      return { rows: [{ id: user.id }] };
+    }
+    if (query.startsWith('delete from osd_mfa_enrollments where user_id=')) {
+      this.enrollments = this.enrollments.filter((item) => item.user_id !== values[0]);
+      return { rows: [] };
+    }
+    if (query.startsWith('insert into osd_mfa_enrollments')) {
+      const [enrollment_hash, user_id, secret_enc, recovery_code_hashes] = values;
+      const enrollment = {
+        enrollment_hash, user_id, secret_enc,
+        recovery_code_hashes: JSON.parse(recovery_code_hashes),
+        expires_at: Date.now() + 15 * 60 * 1000,
+        failed_attempts: 0
+      };
+      this.enrollments.push(enrollment);
+      return { rows: [] };
+    }
+    if (query.startsWith('select e.enrollment_hash')) {
+      const enrollment = this.enrollments.find((item) =>
+        item.enrollment_hash === values[0] && item.expires_at > Date.now());
+      const user = enrollment && this.users.find((item) => item.id === enrollment.user_id);
+      return { rows: enrollment && user ? [{
+        ...enrollment,
+        is_primary_chief: user.is_primary_chief,
+        enabled: user.enabled,
+        military_code: user.military_code,
+        personnel_id: user.personnel_id
+      }] : [] };
+    }
+    if (query.startsWith('update osd_mfa_enrollments set failed_attempts=')) {
+      const enrollment = this.enrollments.find((item) => item.enrollment_hash === values[0]);
+      if (enrollment) enrollment.failed_attempts += 1;
+      return { rows: [] };
+    }
+    if (query.startsWith('delete from osd_mfa_enrollments where enrollment_hash=')) {
+      this.enrollments = this.enrollments.filter((item) => item.enrollment_hash !== values[0]);
+      return { rows: [] };
+    }
+    if (query.startsWith('delete from osd_login_challenges where expires_at')) {
+      this.challenges = this.challenges.filter((item) => item.expires_at > Date.now());
+      return { rows: [] };
+    }
+    if (query.startsWith('insert into osd_login_challenges')) {
+      const [challenge_hash, user_id] = values;
+      this.challenges.push({
+        challenge_hash, user_id,
+        expires_at: Date.now() + 5 * 60 * 1000,
+        failed_attempts: 0
+      });
+      return { rows: [] };
+    }
+    if (query.startsWith('select c.challenge_hash')) {
+      const challenge = this.challenges.find((item) =>
+        item.challenge_hash === values[0] && item.expires_at > Date.now());
+      const user = challenge && this.users.find((item) => item.id === challenge.user_id);
+      return { rows: challenge && user ? [{
+        ...challenge,
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        role: user.role,
+        clearance: user.clearance,
+        permissions: user.permissions,
+        military_code: user.military_code,
+        personnel_id: user.personnel_id,
+        is_primary_chief: user.is_primary_chief,
+        enabled: user.enabled,
+        totp_secret_enc: user.totp_secret_enc,
+        recovery_code_hashes: user.recovery_code_hashes,
+        mfa_enabled_at: user.mfa_enabled_at
+      }] : [] };
+    }
+    if (query.startsWith('update osd_login_challenges set failed_attempts=')) {
+      const challenge = this.challenges.find((item) => item.challenge_hash === values[0]);
+      if (challenge) challenge.failed_attempts += 1;
+      return { rows: [] };
+    }
+    if (query.startsWith('delete from osd_login_challenges where challenge_hash=')) {
+      this.challenges = this.challenges.filter((item) => item.challenge_hash !== values[0]);
+      return { rows: [] };
+    }
+    if (query.startsWith('delete from osd_sessions where user_id=')) {
+      this.sessions = this.sessions.filter((item) => item.user_id !== values[0]);
+      return { rows: [] };
     }
     if (query.startsWith('select u.id, u.username, u.display_name')) {
       const session = this.sessions.find((item) => item.token_hash === values[0] && item.expires_at > Date.now());
@@ -145,7 +304,12 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
   app.use('/api/osd', createOsdRouter({
     getPool: () => pool,
     getPersonnel: () => personnel,
-    env: { NODE_ENV: 'test', OSD_BOOTSTRAP_CODE: 'secure-test-bootstrap-code-0123456789' }
+    env: {
+      NODE_ENV: 'test',
+      OSD_BOOTSTRAP_CODE: 'secure-test-bootstrap-code-0123456789',
+      OSD_CHIEF_TOTP_ENROLLMENT_CODE: 'separate-chief-enrollment-code-0123456789',
+      OSD_TOTP_ENCRYPTION_KEY: 'test-only-key-with-at-least-32-characters'
+    }
   }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
@@ -169,7 +333,12 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
     });
     const data = await response.json();
     const setCookie = response.headers.get('set-cookie') || '';
-    return { response, data, cookie: setCookie.match(/osd_session=[^;]+/)?.[0] || '' };
+    return {
+      response,
+      data,
+      cookie: setCookie.match(/osd_session=[^;]+/)?.[0] || '',
+      challengeCookie: setCookie.match(/osd_mfa_challenge=[^;]+/)?.[0] || ''
+    };
   }
 
   const statusBefore = await call('/bootstrap/status');
@@ -209,12 +378,18 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
     }
   });
   assert.equal(setup.response.status, 201);
-  assert.deepEqual(setup.data, { created: true, militaryCode: 'CH-100' });
+  assert.equal(setup.data.created, true);
+  assert.equal(setup.data.militaryCode, 'CH-100');
+  assert.ok(setup.data.mfaEnrollment.secret);
+  assert.equal(setup.data.mfaEnrollment.recoveryCodes.length, 10);
+  assert.match(setup.data.mfaEnrollment.otpauthUrl, /^otpauth:\/\/totp\//);
+  assert.equal(setup.cookie, '');
   const primaryChief = pool.users.find((user) => user.is_primary_chief);
   assert.ok(primaryChief);
   assert.notEqual(primaryChief.password_hash, 'a-long-test-password');
   assert.match(primaryChief.password_hash, /^[a-f0-9]{128}$/);
   assert.equal(Object.hasOwn(primaryChief, 'password'), false);
+  assert.equal(primaryChief.totp_secret_enc, null);
   const initialMasterHash = primaryChief.password_hash;
 
   const repeatedSetup = await call('/bootstrap', {
@@ -241,13 +416,159 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
   });
   assert.equal(passwordWithoutLeaderIdentity.response.status, 401);
 
-  const leaderLogin = await call('/auth/login', {
+  const passwordOnlyLeaderLogin = await call('/auth/login', {
     method: 'POST',
     body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
   });
+  assert.equal(passwordOnlyLeaderLogin.response.status, 428);
+  assert.equal(passwordOnlyLeaderLogin.data.code, 'MFA_SETUP_REQUIRED');
+  assert.equal(passwordOnlyLeaderLogin.cookie, '');
+  assert.equal(pool.sessions.length, 0);
+  const noSessionBeforeMfa = await call('/auth/me');
+  assert.equal(noSessionBeforeMfa.response.status, 401);
+
+  const wrongEnrollmentCode = await call('/auth/mfa/enroll/start', {
+    method: 'POST',
+    body: {
+      militaryCode: 'CH-100',
+      password: 'a-long-test-password',
+      enrollmentCode: 'wrong-enrollment-code'
+    }
+  });
+  assert.equal(wrongEnrollmentCode.response.status, 403);
+  assert.equal(primaryChief.totp_secret_enc, null);
+
+  const enrollmentStart = await call('/auth/mfa/enroll/start', {
+    method: 'POST',
+    body: {
+      militaryCode: 'CH-100',
+      password: 'a-long-test-password',
+      enrollmentCode: 'separate-chief-enrollment-code-0123456789'
+    }
+  });
+  assert.equal(enrollmentStart.response.status, 201);
+  const mfaEnrollment = enrollmentStart.data.mfaEnrollment;
+  assert.equal(mfaEnrollment.recoveryCodes.length, 10);
+  const pendingEnrollment = pool.enrollments[0];
+  assert.ok(pendingEnrollment.secret_enc.startsWith('v1.'));
+  assert.equal(pendingEnrollment.secret_enc.includes(mfaEnrollment.secret), false);
+  const wrongEnrollmentTotp = await call('/auth/mfa/enroll/confirm', {
+    method: 'POST',
+    body: { enrollmentToken: mfaEnrollment.enrollmentToken, code: invalidTotpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(wrongEnrollmentTotp.response.status, 401);
+  assert.equal(primaryChief.mfa_enabled_at, null);
+
+  pool.sessions.push({
+    token_hash: 'pretend-pre-mfa-session',
+    user_id: primaryChief.id,
+    expires_at: Date.now() + 60 * 60 * 1000
+  });
+  const enrollmentConfirmation = await call('/auth/mfa/enroll/confirm', {
+    method: 'POST',
+    body: { enrollmentToken: mfaEnrollment.enrollmentToken, code: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(enrollmentConfirmation.response.status, 200);
+  assert.equal(primaryChief.mfa_enabled_at !== null, true);
+  assert.notEqual(primaryChief.totp_secret_enc, mfaEnrollment.secret);
+  assert.equal(primaryChief.recovery_code_hashes.length, 10);
+  assert.equal(pool.sessions.length, 0);
+
+  const leaderPasswordStep = await call('/auth/login', {
+    method: 'POST',
+    body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
+  });
+  assert.equal(leaderPasswordStep.response.status, 202);
+  assert.deepEqual(leaderPasswordStep.data, { mfaRequired: true });
+  assert.equal(leaderPasswordStep.cookie, '');
+  assert.ok(leaderPasswordStep.challengeCookie);
+  const noLeaderSessionBeforeCode = await call('/auth/me', { cookie: leaderPasswordStep.challengeCookie });
+  assert.equal(noLeaderSessionBeforeCode.response.status, 401);
+  assert.equal(pool.sessions.length, 0);
+
+  const invalidTotp = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: leaderPasswordStep.challengeCookie,
+    body: { code: invalidTotpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(invalidTotp.response.status, 401);
+  assert.equal(invalidTotp.cookie, '');
+  const expiredTotp = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: leaderPasswordStep.challengeCookie,
+    body: { code: staleTotpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(expiredTotp.response.status, 401);
+  assert.equal(pool.sessions.length, 0);
+
+  const leaderLogin = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: leaderPasswordStep.challengeCookie,
+    body: { code: totpForTest(mfaEnrollment.secret) }
+  });
   assert.equal(leaderLogin.response.status, 200);
+  assert.ok(leaderLogin.cookie);
   assert.equal(leaderLogin.data.user.role, 'ADMIN');
   assert.ok(leaderLogin.data.user.permissions.includes('MANAGE_USERS'));
+  const replayedChallenge = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: leaderPasswordStep.challengeCookie,
+    body: { code: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(replayedChallenge.response.status, 401);
+  const leaderSession = await call('/auth/me', { cookie: leaderLogin.cookie });
+  assert.equal(leaderSession.response.status, 200);
+  assert.equal(leaderSession.data.user.role, 'ADMIN');
+
+  const resetAttempt = await call('/auth/mfa/enroll/start', {
+    method: 'POST',
+    body: {
+      militaryCode: 'CH-100',
+      password: 'a-long-test-password',
+      enrollmentCode: 'separate-chief-enrollment-code-0123456789'
+    }
+  });
+  assert.equal(resetAttempt.response.status, 409);
+  assert.equal(primaryChief.recovery_code_hashes.length, 10);
+
+  const recoveryLoginChallenge = await call('/auth/login', {
+    method: 'POST',
+    body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
+  });
+  assert.equal(recoveryLoginChallenge.response.status, 202);
+  const recoveryCode = mfaEnrollment.recoveryCodes[0];
+  const recoveryLogin = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: recoveryLoginChallenge.challengeCookie,
+    body: { code: recoveryCode }
+  });
+  assert.equal(recoveryLogin.response.status, 200);
+  assert.equal(primaryChief.recovery_code_hashes.length, 9);
+
+  const reuseChallenge = await call('/auth/login', {
+    method: 'POST',
+    body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
+  });
+  const reusedRecoveryCode = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: reuseChallenge.challengeCookie,
+    body: { code: recoveryCode }
+  });
+  assert.equal(reusedRecoveryCode.response.status, 401);
+
+  const expiredChallenge = await call('/auth/login', {
+    method: 'POST',
+    body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
+  });
+  assert.equal(expiredChallenge.response.status, 202);
+  const challengeRecord = pool.challenges.at(-1);
+  challengeRecord.expires_at = Date.now() - 1;
+  const rejectedExpiredChallenge = await call('/auth/mfa/verify', {
+    method: 'POST',
+    cookie: expiredChallenge.challengeCookie,
+    body: { code: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(rejectedExpiredChallenge.response.status, 401);
 
   const memberLogin = await call('/auth/login', {
     method: 'POST',

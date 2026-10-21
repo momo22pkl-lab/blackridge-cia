@@ -103,6 +103,15 @@ const COPY = {
     bootstrapCode: 'رمز تأسيس الخادم', confirmPassword: 'تأكيد كلمة السر',
     createLeader: 'حفظ كلمة السر وتأسيس القائد', setupLeaderAction: 'تأسيس حساب القائد لأول مرة',
     setupCancel: 'العودة إلى دخول القائد', passwordMismatch: 'تأكيد كلمة السر غير مطابق.',
+    mfaPromptTitle: 'تحقق إضافي مطلوب', mfaPrompt: 'أدخل الرمز الحالي من تطبيق المصادقة أو رمز استرداد غير مستخدم.',
+    mfaCode: 'رمز المصادقة أو الاسترداد', mfaVerify: 'تحقق وسجّل الدخول',
+    mfaEnrollmentTitle: 'إعداد تطبيق المصادقة للقائد', mfaEnrollmentAccess: 'يتطلب كلمة مرور القائد ورمز إعداد مستقلًا يهيئه مسؤول الخادم.',
+    mfaEnrollmentCode: 'رمز إعداد المصادقة من الخادم', mfaStartSetup: 'ابدأ إعداد المصادقة',
+    mfaProvisioningTitle: 'اربط تطبيق المصادقة', mfaProvisioningHint: 'أضف المفتاح إلى Google Authenticator أو Microsoft Authenticator، ثم أدخل الرمز المكوّن من 6 أرقام. خزّن رموز الاسترداد الآن؛ لن تُعرض مجددًا.',
+    mfaSecretLabel: 'مفتاح الإعداد اليدوي', mfaUriLabel: 'رابط تطبيق المصادقة',
+    mfaRecoveryLabel: 'رموز استرداد تستخدم مرة واحدة', mfaRecoveryHint: 'احتفظ بها في مكان آمن ومنفصل عن كلمة المرور.',
+    mfaConfirmSetup: 'تأكيد الإعداد', mfaSetupSuccess: 'تم تفعيل المصادقة. سجّل الدخول بكلمة المرور ثم رمز التطبيق.',
+    mfaChallengeMessage: 'أدخل رمز المصادقة لإكمال تسجيل الدخول.',
     authSecure: 'جلسات آمنة · صلاحيات مستمدة من سجل الأفراد · لا توجد صلاحيات تجريبية',
     required: 'يرجى استكمال الحقول المطلوبة.', saved: 'حُفظت المسودة.', submitted: 'أُرسلت الوثيقة للمراجعة.',
     approved: 'تم اعتماد الوثيقة.', issuedMessage: 'تم توقيع الوثيقة وإصدارها.', revokedMessage: 'أُلغيت الوثيقة.',
@@ -120,7 +129,7 @@ const COPY = {
     verifyRevoked: 'DOCUMENT REVOKED', verifyExpired: 'DOCUMENT EXPIRED', verifyNotFound: 'DOCUMENT NOT FOUND',
     verifyFailed: 'DOCUMENT INTEGRITY CHECK FAILED', verifyUnknown: 'DOCUMENT NOT VERIFIED',
     verificationNumber: 'رقم الوثيقة', printNote: 'استخدم خيار Save as PDF في نافذة الطباعة.',
-    titleRequired: 'العنوان مطلوب.', bodyRequired: 'المحتوى مطلوب.', bootstrapCreated: 'تم تأسيس حساب القائد. سجّل الدخول؛ كلمة السر لا تُعرض مرة أخرى.', created: 'تم إنشاء المستخدم.',
+    titleRequired: 'العنوان مطلوب.', bodyRequired: 'المحتوى مطلوب.', bootstrapCreated: 'تم تأسيس الحساب. أكمل ربط تطبيق المصادقة ورموز الاسترداد.', created: 'تم إنشاء المستخدم.',
     loginFailed: 'تعذر تسجيل الدخول.', setupUnavailable: 'الإعداد الأولي غير متاح. تحقّق من إعداد الخادم.',
     expiryInvalid: 'تاريخ الانتهاء غير صالح.', showIdentity: 'اسم الموقّع ظاهر وفق صلاحيتك.',
     publicSigner: 'AUTHORIZED COMMAND', fileNo: 'رقم الوثيقة', more: 'المزيد',
@@ -193,6 +202,15 @@ const COPY = {
     bootstrapCode: 'Server Setup Code', confirmPassword: 'Confirm Master Password',
     createLeader: 'Save Password & Set Up Leader', setupLeaderAction: 'First-time Leader Setup',
     setupCancel: 'Back to Leader Login', passwordMismatch: 'The password confirmation does not match.',
+    mfaPromptTitle: 'Additional verification required', mfaPrompt: 'Enter the current code from your authenticator app or an unused recovery code.',
+    mfaCode: 'Authenticator or recovery code', mfaVerify: 'Verify & Sign In',
+    mfaEnrollmentTitle: 'Set up the leader authenticator', mfaEnrollmentAccess: 'Requires the leader password and a separate enrollment code configured by the server operator.',
+    mfaEnrollmentCode: 'Server authenticator enrollment code', mfaStartSetup: 'Start authenticator setup',
+    mfaProvisioningTitle: 'Connect your authenticator app', mfaProvisioningHint: 'Add this key to Google Authenticator or Microsoft Authenticator, then enter its 6-digit code. Save the recovery codes now; they will not be shown again.',
+    mfaSecretLabel: 'Manual setup key', mfaUriLabel: 'Authenticator setup URI',
+    mfaRecoveryLabel: 'One-time recovery codes', mfaRecoveryHint: 'Keep these somewhere safe and separate from your password.',
+    mfaConfirmSetup: 'Confirm setup', mfaSetupSuccess: 'Authenticator protection is enabled. Sign in with your password and app code.',
+    mfaChallengeMessage: 'Enter an authenticator code to finish signing in.',
     authSecure: 'Secure sessions · permissions derived from personnel records · no demo roles',
     required: 'Complete the required fields.', saved: 'Draft saved.', submitted: 'Document submitted for review.',
     approved: 'Document approved.', issuedMessage: 'Document signed and issued.', revokedMessage: 'Document revoked.',
@@ -211,7 +229,7 @@ const COPY = {
     verifyFailed: 'DOCUMENT INTEGRITY CHECK FAILED', verifyUnknown: 'DOCUMENT NOT VERIFIED',
     verificationNumber: 'Document Number', printNote: 'Choose Save as PDF in the print dialog.',
     titleRequired: 'A title is required.', bodyRequired: 'Document content is required.', created: 'User created.',
-    bootstrapCreated: 'Leader account set up. Sign in; the password will not be shown again.', loginFailed: 'Sign-in failed.',
+    bootstrapCreated: 'Leader account set up. Connect an authenticator and save the recovery codes.', loginFailed: 'Sign-in failed.',
     setupUnavailable: 'Initial setup is unavailable. Check server configuration.', expiryInvalid: 'Invalid expiry date.',
     showIdentity: 'Signer identity is visible at your permission level.', publicSigner: 'AUTHORIZED COMMAND',
     fileNo: 'DOCUMENT NO.', more: 'More', centerEyebrow: 'OFFICIAL DOCUMENTS CENTER',
@@ -263,6 +281,7 @@ const SHARE_COPY = {
 };
 
 const documentShareLinks = new Map();
+let pendingMfaEnrollmentToken = '';
 
 const state = {
   user: null,
@@ -295,6 +314,7 @@ async function request(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status})`);
     error.status = response.status;
+    error.code = data.code;
     throw error;
   }
   return data;
@@ -1297,6 +1317,13 @@ function showAuthTab(tab) {
   $('#memberLoginForm').hidden = tab !== 'member';
   $('#leaderLoginForm').hidden = tab !== 'leader';
   $('#bootstrapForm').hidden = tab !== 'setup';
+  $('#mfaLoginForm').hidden = true;
+  $('#mfaEnrollStartForm').hidden = true;
+  $('#mfaProvisioning').hidden = true;
+  clearMfaProvisioningData();
+  $('#mfaLoginCode').value = '';
+  $('#mfaEnrollPassword').value = '';
+  $('#mfaEnrollServerCode').value = '';
   $('#authMessage').textContent = '';
   if (tab !== 'leader') $('#leaderPassword').value = '';
   if (tab !== 'setup') {
@@ -1307,6 +1334,59 @@ function showAuthTab(tab) {
   if (tab === 'member') $('#memberMilitaryCode').focus();
   else if (tab === 'setup') $('#bootstrapMilitaryCode').focus();
   else $('#leaderMilitaryCode').focus();
+}
+
+function showMfaLogin() {
+  clearMfaProvisioningData();
+  $('#memberLoginForm').hidden = true;
+  $('#leaderLoginForm').hidden = true;
+  $('#bootstrapForm').hidden = true;
+  $('#mfaEnrollStartForm').hidden = true;
+  $('#mfaProvisioning').hidden = true;
+  $('#mfaLoginForm').hidden = false;
+  $('#mfaLoginCode').value = '';
+  $('#mfaLoginCode').focus();
+}
+
+function showMfaEnrollmentStart(militaryCode = '') {
+  clearMfaProvisioningData();
+  $('#memberLoginForm').hidden = true;
+  $('#leaderLoginForm').hidden = true;
+  $('#bootstrapForm').hidden = true;
+  $('#mfaLoginForm').hidden = true;
+  $('#mfaProvisioning').hidden = true;
+  $('#mfaEnrollStartForm').hidden = false;
+  $('#mfaEnrollMilitaryCode').value = militaryCode;
+  $('#mfaEnrollPassword').value = '';
+  $('#mfaEnrollServerCode').value = '';
+  $('#mfaEnrollMilitaryCode').focus();
+}
+
+function showMfaProvisioning(enrollment) {
+  if (!enrollment?.enrollmentToken || !enrollment.secret || !enrollment.otpauthUrl ||
+      !Array.isArray(enrollment.recoveryCodes)) {
+    throw new Error(t('setupUnavailable'));
+  }
+  pendingMfaEnrollmentToken = enrollment.enrollmentToken;
+  $('#memberLoginForm').hidden = true;
+  $('#leaderLoginForm').hidden = true;
+  $('#bootstrapForm').hidden = true;
+  $('#mfaLoginForm').hidden = true;
+  $('#mfaEnrollStartForm').hidden = true;
+  $('#mfaProvisioning').hidden = false;
+  $('#mfaSecret').textContent = enrollment.secret;
+  $('#mfaOtpauthUrl').value = enrollment.otpauthUrl;
+  $('#mfaRecoveryCodes').textContent = enrollment.recoveryCodes.join('\n');
+  $('#mfaEnrollCode').value = '';
+  $('#mfaEnrollCode').focus();
+}
+
+function clearMfaProvisioningData() {
+  pendingMfaEnrollmentToken = '';
+  $('#mfaSecret').textContent = '';
+  $('#mfaOtpauthUrl').value = '';
+  $('#mfaRecoveryCodes').textContent = '';
+  $('#mfaEnrollCode').value = '';
 }
 
 async function showShareDocument(token) {
@@ -1396,15 +1476,92 @@ $('#leaderLoginForm').addEventListener('submit', async (event) => {
   $('#authMessage').textContent = '';
   const password = $('#leaderPassword').value;
   try {
-    await request('/auth/login', { method: 'POST', body: JSON.stringify({
+    const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({
       mode: 'leader',
       militaryCode: $('#leaderMilitaryCode').value,
       password
     }) });
     $('#leaderPassword').value = '';
+    if (result.mfaRequired) {
+      showMfaLogin();
+      $('#authMessage').textContent = t('mfaChallengeMessage');
+      return;
+    }
     await authenticate();
   } catch (error) {
     $('#leaderPassword').value = '';
+    if (error.code === 'MFA_SETUP_REQUIRED') {
+      showMfaEnrollmentStart($('#leaderMilitaryCode').value);
+      $('#authMessage').textContent = t('mfaEnrollmentAccess');
+      return;
+    }
+    $('#authMessage').textContent = error.message || t('loginFailed');
+  }
+});
+
+$('#mfaLoginForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  $('#authMessage').textContent = '';
+  try {
+    await request('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code: $('#mfaLoginCode').value }) });
+    $('#mfaLoginCode').value = '';
+    await authenticate();
+  } catch (error) {
+    $('#mfaLoginCode').value = '';
+    $('#authMessage').textContent = error.message || t('loginFailed');
+  }
+});
+
+$('#mfaLoginCancel').addEventListener('click', async () => {
+  try { await request('/auth/mfa/cancel', { method: 'POST', body: '{}' }); } catch {}
+  showAuthTab('leader');
+});
+
+$('#mfaEnrollCancel').addEventListener('click', () => {
+  $('#mfaEnrollPassword').value = '';
+  $('#mfaEnrollServerCode').value = '';
+  showAuthTab('leader');
+});
+
+$('#mfaProvisioningCancel').addEventListener('click', () => {
+  clearMfaProvisioningData();
+  showAuthTab('leader');
+});
+
+$('#mfaEnrollStartForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  $('#authMessage').textContent = '';
+  try {
+    const result = await request('/auth/mfa/enroll/start', { method: 'POST', body: JSON.stringify({
+      militaryCode: $('#mfaEnrollMilitaryCode').value,
+      password: $('#mfaEnrollPassword').value,
+      enrollmentCode: $('#mfaEnrollServerCode').value
+    }) });
+    $('#mfaEnrollPassword').value = '';
+    $('#mfaEnrollServerCode').value = '';
+    showMfaProvisioning(result.mfaEnrollment);
+  } catch (error) {
+    $('#mfaEnrollPassword').value = '';
+    $('#mfaEnrollServerCode').value = '';
+    $('#authMessage').textContent = error.message || t('loginFailed');
+  }
+});
+
+$('#mfaEnrollConfirmForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  $('#authMessage').textContent = '';
+  try {
+    await request('/auth/mfa/enroll/confirm', { method: 'POST', body: JSON.stringify({
+      enrollmentToken: pendingMfaEnrollmentToken,
+      code: $('#mfaEnrollCode').value
+    }) });
+    $('#mfaEnrollCode').value = '';
+    clearMfaProvisioningData();
+    $('#leaderMilitaryCode').value = $('#mfaEnrollMilitaryCode').value || $('#bootstrapMilitaryCode').value || $('#leaderMilitaryCode').value;
+    showAuthTab('leader');
+    $('#authMessage').textContent = t('mfaSetupSuccess');
+  } catch (error) {
+    $('#mfaEnrollCode').value = '';
     $('#authMessage').textContent = error.message || t('loginFailed');
   }
 });
@@ -1419,7 +1576,7 @@ $('#bootstrapForm').addEventListener('submit', async (event) => {
     return;
   }
   try {
-    await request('/bootstrap', { method: 'POST', body: JSON.stringify({
+    const result = await request('/bootstrap', { method: 'POST', body: JSON.stringify({
       bootstrapCode: $('#bootstrapCode').value,
       militaryCode: $('#bootstrapMilitaryCode').value,
       masterPassword: password,
@@ -1431,7 +1588,7 @@ $('#bootstrapForm').addEventListener('submit', async (event) => {
     $('#bootstrapPasswordConfirm').value = '';
     state.bootstrapNeeded = false;
     $('#bootstrapAction').hidden = true;
-    showAuthTab('leader');
+    showMfaProvisioning(result.mfaEnrollment);
     $('#authMessage').textContent = t('bootstrapCreated');
   } catch (error) {
     $('#bootstrapCode').value = '';
