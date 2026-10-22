@@ -183,6 +183,7 @@ const publicAssets = Object.freeze({
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
+  '/radio-signal-policy.js': 'radio-signal-policy.js',
   '/sos-alert.mp3': 'sos-alert.mp3',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js'),

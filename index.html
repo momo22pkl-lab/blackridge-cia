@@ -1948,6 +1948,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     </div>
   </div>
   <script src="/sos-alert-sound.js"></script>
+  <script src="/radio-signal-policy.js"></script>
 
   <!-- SOS Input Modal -->
   <div id="sos-input-modal" class="modal-overlay" style="display: none;">
@@ -3002,6 +3003,10 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioPTTAttempt = 0;
     let radioLocalStream = null;
     const radioVoicePeers = new Map();
+    const radioEarlyVoiceCandidates = window.RadioVoiceSignalPolicy &&
+      typeof window.RadioVoiceSignalPolicy.createEarlyCandidateBuffer === 'function'
+      ? window.RadioVoiceSignalPolicy.createEarlyCandidateBuffer()
+      : new Map();
     const radioActiveTalkers = new Set();
     const RADIO_VOICE_DEFAULT_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
     const radioVoiceIceConfigCache = new Map();
@@ -6084,6 +6089,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function closeAllRadioVoicePeers() {
       [...radioVoicePeers.keys()].forEach(closeRadioVoicePeer);
       radioPeersReceiving.clear();
+      radioEarlyVoiceCandidates.clear();
     }
 
     function resetRadioVoice() {
@@ -6402,10 +6408,30 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!data || !radioPoweredOn || data.channel !== radioChannel || !data.from || data.from === ciaSocket.id) return;
       const isTalker = radioActiveTalkers.has(data.from);
       const isOurTransmissionPeer = radioPTTActive && radioVoicePeers.has(String(data.from));
-      const isServerValidatedOffer = data.type === 'offer';
-      if (!['offer', 'answer', 'ice'].includes(data.type) || (!isTalker && !isOurTransmissionPeer && !isServerValidatedOffer)) return;
-      let peer = radioVoicePeers.get(String(data.from));
-      if (!peer && data.type !== 'offer' && data.type !== 'ice') return;
+      const policy = window.RadioVoiceSignalPolicy;
+      const canHandleWithoutPeer = policy && typeof policy.canHandleSignalWithoutPeer === 'function'
+        ? policy.canHandleSignalWithoutPeer(data.type)
+        : data.type === 'offer' || data.type === 'ice';
+      // Socket.IO's server already validated that these offers/candidates belong
+      // to this channel's active speaker/listener pair. ICE can arrive before
+      // radio:state or the SDP offer. Buffer it without creating a peer while
+      // ICE-server lookup is pending; the offer creates one peer and drains the queue.
+      if (!['offer', 'answer', 'ice'].includes(data.type) || (!isTalker && !isOurTransmissionPeer && !canHandleWithoutPeer)) return;
+      const peerId = String(data.from);
+      let peer = radioVoicePeers.get(peerId);
+      if (data.type === 'ice' && !peer) {
+        if (!data.candidate) return;
+        if (radioEarlyVoiceCandidates instanceof Map) {
+          const candidates = radioEarlyVoiceCandidates.get(peerId) || [];
+          if (candidates.length >= 64) candidates.shift();
+          candidates.push(data.candidate);
+          radioEarlyVoiceCandidates.set(peerId, candidates);
+        } else {
+          radioEarlyVoiceCandidates.enqueue(peerId, data.candidate);
+        }
+        return;
+      }
+      if (!peer && data.type !== 'offer') return;
       const iceConfig = peer ? null : await requestRadioVoiceIceServers(data.channel);
       if (!radioPoweredOn || data.channel !== radioChannel) return;
       if (!peer) peer = getRadioVoicePeer(data.from, data.channel, iceConfig);
@@ -6422,6 +6448,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           const currentIceConfig = iceConfig || peer.iceConfig || { iceServers: RADIO_VOICE_DEFAULT_ICE_SERVERS };
           if (peer.pc.signalingState !== 'stable') closeRadioVoicePeer(data.from);
           peer = getRadioVoicePeer(data.from, data.channel, currentIceConfig);
+          const earlyCandidates = radioEarlyVoiceCandidates instanceof Map
+            ? (radioEarlyVoiceCandidates.get(peerId) || [])
+            : radioEarlyVoiceCandidates.drain(peerId);
+          radioEarlyVoiceCandidates.delete?.(peerId);
+          peer.pendingCandidates.push(...earlyCandidates);
           await peer.pc.setRemoteDescription(data.sdp);
           await flushRadioVoiceCandidates(peer);
           const answer = await peer.pc.createAnswer();
