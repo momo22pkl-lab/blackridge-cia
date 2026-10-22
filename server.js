@@ -184,6 +184,7 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
   '/radio-signal-policy.js': 'radio-signal-policy.js',
+  '/radio-audio-health.js': 'radio-audio-health.js',
   '/sos-alert.mp3': 'sos-alert.mp3',
   '/ibp/ibp.css': path.join('ibp', 'ibp.css'),
   '/ibp/ibp.js': path.join('ibp', 'ibp.js'),
@@ -2327,6 +2328,50 @@ function removeRadioMember(
     emitRadioToChannel(channel, 'radio:voice:peer-left', { channel, socketId });
     if (members.size === 0) radioChannels.delete(channel);
   }
+  const targetSocket = io.sockets.sockets.get(socketId);
+  if (targetSocket) {
+    targetSocket.radioOnline = false;
+    targetSocket.radioChannel = '';
+  }
+  const userId = socketToUser.get(socketId);
+  const user = userId ? getUserById(userId) : null;
+  if (user) user.radioOnline = hasOtherRadioMemberForUser(userId, socketId);
+}
+
+function hasOtherRadioMemberForUser(userId, excludingSocketId = '') {
+  const wantedUserId = String(userId || '');
+  if (!wantedUserId) return false;
+  for (const socketId of sessions.get(userId) || []) {
+    if (String(socketId) === String(excludingSocketId)) continue;
+    if (String(socketToUser.get(socketId) || '') !== wantedUserId) continue;
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (!targetSocket || targetSocket.radioOnline !== true || !targetSocket.radioChannel) continue;
+    if (radioChannels.get(targetSocket.radioChannel)?.has(socketId)) return true;
+  }
+  return false;
+}
+
+function removeUserRadioMembers(userId) {
+  const wantedUserId = String(userId || '');
+  if (!wantedUserId) return;
+  const socketIds = new Set(sessions.get(userId) || []);
+  for (const members of radioChannels.values()) {
+    for (const socketId of members) {
+      if (String(socketToUser.get(socketId) || '') === wantedUserId) socketIds.add(socketId);
+    }
+  }
+  for (const socketId of socketIds) {
+    releaseRadioTransmission(socketId);
+    removeRadioMember(socketId);
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (targetSocket) {
+      targetSocket.radioOnline = false;
+      targetSocket.radioChannel = '';
+      targetSocket.emit('radio:service-ended', { stopped: true });
+    }
+  }
+  const user = getUserById(userId);
+  if (user) user.radioOnline = false;
 }
 
 function radioTargets(channel) {
@@ -2349,7 +2394,7 @@ function radioSocketIsEligible(socketId, channel) {
   if (!radioChannels.get(channel)?.has(socketId)) return false;
   const targetSocket = io.sockets.sockets.get(socketId);
   const user = targetSocket ? requireSocketUser(targetSocket) : null;
-  return !!user && user.radioOnline === true && user.radioChannel === channel &&
+  return !!user && targetSocket.radioOnline === true && targetSocket.radioChannel === channel &&
     user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
 }
 
@@ -7387,6 +7432,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             'يجب تسجيل الدخول.'
           );
         }
+        if (actor.activeService !== true) return no(cb, 'يجب بدء المناوبة قبل تشغيل الراديو.');
 
         const channel =
           clean(
@@ -7406,6 +7452,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
           socket.id
         );
 
+        socket.radioChannel = channel;
+        socket.radioOnline = true;
         actor.radioChannel =
           channel;
 
@@ -7451,8 +7499,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           socket.id
         );
 
-        actor.radioOnline =
-          false;
+        actor.radioOnline = hasOtherRadioMemberForUser(actor.id, socket.id);
 
         saveState();
         emitState();
@@ -7476,6 +7523,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             'يجب تسجيل الدخول.'
           );
         }
+        if (actor.activeService !== true) return no(cb, 'يجب بدء المناوبة قبل تغيير قناة الراديو.');
 
         const channel =
           clean(
@@ -7500,6 +7548,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
           socket.id
         );
 
+        socket.radioChannel = channel;
+        socket.radioOnline = true;
         actor.radioChannel =
           channel;
 
@@ -10026,6 +10076,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      if (!radioSocketIsEligible(socket.id, channel)) return no(cb, 'يجب الانضمام إلى القناة المحددة قبل الإرسال.');
       const text = clean(payload?.text || payload?.message, 2000);
       if (!text) return no(cb, 'الرسالة فارغة.');
       const moderation = await moderateOutgoingText(actor, text, 'RADIO');
@@ -10049,6 +10100,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const actor = requireSocketUser(socket);
       if (!actor) return no(cb, 'يجب تسجيل الدخول.');
       const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      if (!radioSocketIsEligible(socket.id, channel)) return no(cb, 'يجب الانضمام إلى القناة المحددة قبل الإرسال.');
       const packet = {
         channel,
         userCode: actor.publicCode,
@@ -10251,7 +10303,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         (item) => item.userId === actor.id && !item.endedAt
       );
       if (current) current.endedAt = now();
-      removeRadioMember(socket.id);
+      removeUserRadioMembers(actor.id);
       actor.radioOnline = false;
       actor.activeService = false;
       actor.status = 'خارج الخدمة';

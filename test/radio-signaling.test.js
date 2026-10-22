@@ -90,6 +90,16 @@ async function connectSocket(baseUrl) {
   const namespacePacket = await pollUntil({ sessionUrl }, (packet) => packet.startsWith('40') ? packet : null);
   const socketId = JSON.parse(namespacePacket.slice(2)).sid;
   let nextAckId = 0;
+  const eventQueue = [];
+
+  function rememberEvent(packet) {
+    if (!packet.startsWith('42')) return false;
+    try {
+      eventQueue.push(JSON.parse(packet.slice(2)));
+      if (eventQueue.length > 100) eventQueue.shift();
+    } catch (_error) {}
+    return true;
+  }
 
   return {
     id: socketId,
@@ -98,15 +108,23 @@ async function connectSocket(baseUrl) {
       const ackId = nextAckId++;
       const sent = await post('42' + ackId + JSON.stringify([event, payload]));
       assert.equal(sent.ok, true, 'Socket.IO event POST failed');
-      const packet = await pollUntil(this, (frame) => frame.startsWith('43' + ackId) ? frame : null);
+      const packet = await pollUntil(this, (frame) => {
+        if (frame.startsWith('42')) { rememberEvent(frame); return null; }
+        return frame.startsWith('43' + ackId) ? frame : null;
+      });
       const parsed = JSON.parse(packet.slice(('43' + ackId).length));
       return Array.isArray(parsed) ? parsed[0] : parsed;
     },
     async waitFor(event, predicate = () => true, timeoutMs = 6000) {
+      const queuedIndex = eventQueue.findIndex((message) => message[0] === event && predicate(message[1]));
+      if (queuedIndex >= 0) return eventQueue.splice(queuedIndex, 1)[0][1];
       const packet = await pollUntil(this, (frame) => {
         if (!frame.startsWith('42')) return null;
         const message = JSON.parse(frame.slice(2));
-        return message[0] === event && predicate(message[1]) ? message[1] : null;
+        if (message[0] === event && predicate(message[1])) return message[1];
+        eventQueue.push(message);
+        if (eventQueue.length > 100) eventQueue.shift();
+        return null;
       }, timeoutMs);
       return packet;
     },
@@ -169,6 +187,9 @@ test('radio signaling relays to every same-channel listener and survives channel
   const policyResponse = await fetch(baseUrl + '/radio-signal-policy.js');
   assert.equal(policyResponse.ok, true, 'the browser signal policy must be served by the explicit public-asset route');
   assert.match(await policyResponse.text(), /canHandleSignalWithoutPeer/);
+  const audioHealthResponse = await fetch(baseUrl + '/radio-audio-health.js');
+  assert.equal(audioHealthResponse.ok, true, 'the browser audio-health helper must be served by the explicit public-asset route');
+  assert.match(await audioHealthResponse.text(), /NO_MEDIA_SAMPLE_LIMIT/);
 
   async function login(name, code, resumeService = false) {
     const client = await connectSocket(baseUrl);
@@ -245,5 +266,40 @@ test('radio signaling relays to every same-channel listener and survives channel
   const afterReconnect = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
   assert.equal(afterReconnect.ok, true, 'radio did not recover after a listener reconnected');
   assert.ok(afterReconnect.peers.includes(reconnected.id), 'reconnected user was not included as a same-channel listener: ' + JSON.stringify({ expected: reconnected.id, peers: afterReconnect.peers }));
+  assert.equal(afterReconnect.peers.includes(listenerA.id), false, 'the disconnected phone remained in the listener list');
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
+
+  const secondDevice = await login('Listener Alpha', '8102', true);
+  assert.equal((await secondDevice.emit('radio:join', { channel: 'TAC-1' })).ok, true);
+  assert.equal((await secondDevice.emit('radio:text', { channel: 'CH-1', text: 'cross-channel test' })).ok, false);
+  assert.equal((await secondDevice.emit('radio:code', { channel: 'CH-1', code: '10-4', meaning: 'cross-channel test' })).ok, false);
+  const separateChannelTransmission = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  assert.equal(separateChannelTransmission.ok, true);
+  assert.ok(separateChannelTransmission.peers.includes(reconnected.id), 'first phone lost its independent channel membership');
+  assert.equal(separateChannelTransmission.peers.includes(secondDevice.id), false, 'same account on another channel received cross-channel radio');
+  assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
+
+  assert.equal((await reconnected.emit('radio:leave', { channel: 'CH-1' })).ok, true);
+  const afterSingleDeviceLeave = JSON.parse(fs.readFileSync(stateFile, 'utf8')).cia_users.find((user) => user.id === 'radio-listener-a');
+  assert.equal(afterSingleDeviceLeave.activeService, true, 'turning off one radio changed the account service state');
+  assert.equal(afterSingleDeviceLeave.radioOnline, true, 'turning off one radio marked the other phone offline');
+  assert.equal(afterSingleDeviceLeave.radioChannel, 'TAC-1');
+
+  assert.equal((await switcher.emit('radio:setChannel', { channel: 'TAC-1' })).ok, true);
+  const secondPhoneTransmission = await switcher.emit('radio:ptt:start', { channel: 'TAC-1' });
+  assert.equal(secondPhoneTransmission.ok, true);
+  assert.ok(secondPhoneTransmission.peers.includes(secondDevice.id), 'the second phone could not receive after the first phone turned its radio off');
+  assert.equal(secondPhoneTransmission.peers.includes(reconnected.id), false);
+  assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
+
+  assert.equal((await reconnected.emit('duty:end', {})).ok, true);
+  await secondDevice.waitFor('radio:service-ended');
+  const afterServiceEnd = JSON.parse(fs.readFileSync(stateFile, 'utf8')).cia_users.find((user) => user.id === 'radio-listener-a');
+  assert.equal(afterServiceEnd.activeService, false);
+  assert.equal(afterServiceEnd.radioOnline, false);
+  assert.equal((await secondDevice.emit('radio:leave', { channel: 'TAC-1' })).ok, true, 'ending service disconnected the other phone instead of stopping its radio');
+  const unaffectedUserTransmission = await switcher.emit('radio:ptt:start', { channel: 'TAC-1' });
+  assert.equal(unaffectedUserTransmission.ok, true, 'ending one account service disconnected a different user on that channel');
+  assert.equal(unaffectedUserTransmission.peers.includes(secondDevice.id), false, 'service-ended phone remained in the channel');
+  assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
 });

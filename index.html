@@ -1949,6 +1949,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   </div>
   <script src="/sos-alert-sound.js"></script>
   <script src="/radio-signal-policy.js"></script>
+  <script src="/radio-audio-health.js"></script>
 
   <!-- SOS Input Modal -->
   <div id="sos-input-modal" class="modal-overlay" style="display: none;">
@@ -2380,8 +2381,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
           <div class="radio-section-title"><i class="fa-solid fa-bullhorn"></i> التحدث</div>
           <div class="radio-talk-row">
-            <button type="button" class="ptt-btn" onpointerdown="startPTT(event)" onpointerup="stopPTT()" onpointercancel="stopPTT()" onlostpointercapture="stopPTT()" oncontextmenu="return false" onkeydown="if(event.code==='Space')startPTT(event)" onkeyup="if(event.code==='Space')stopPTT()"><i class="fa-solid fa-microphone"></i><span>PTT</span></button>
-            <div class="radio-talk-hint"><strong>اضغط باستمرار</strong><br>للبث الصوتي التكتيكي<br><span id="radio-volume-label">الصوت: 70%</span></div>
+            <button type="button" class="ptt-btn" onpointerdown="startPTT(event)" onpointerup="stopPTT(event)" onpointercancel="stopPTT(event)" onlostpointercapture="stopPTT(event)" oncontextmenu="return false" onkeydown="if(event.code==='Space'&&!event.repeat){event.preventDefault();startPTT(event)}" onkeyup="if(event.code==='Space'){event.preventDefault();stopPTT(event)}"><i class="fa-solid fa-microphone"></i><span>PTT</span></button>
+            <div class="radio-talk-hint"><strong>اضغط باستمرار</strong><br>للبث الصوتي التكتيكي<br><span id="radio-volume-label">الصوت: 100%</span></div>
           </div>
 
           <div class="radio-section-title"><i class="fa-solid fa-keyboard"></i> رسالة نصية عبر الراديو</div>
@@ -2992,8 +2993,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioJoinConfirmed = false;
     let radioJoinPending = false;
     let radioJoinRequestId = 0;
+    let radioJoinPendingChannel = '';
     let radioChannel = 'CH-1';
-    let radioVolume = 70;
+    let radioVolume = 100;
     let radioLiveLog = [];
     let radioPTTHeld = false;
     let radioPTTRequestPending = false;
@@ -3001,7 +3003,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioPTTActive = false;
     let radioPTTChannel = '';
     let radioPTTAttempt = 0;
+    let radioPTTPointerId = null;
     let radioLocalStream = null;
+    let radioConnectionGeneration = 0;
+    let radioLifecycleConnectPending = false;
+    const RADIO_ALLOWED_CHANNELS = new Set(['CH-1', 'TAC-1', 'CH-3']);
+    const RADIO_PREFERENCE_PREFIX = 'blackridge:radio-preference:';
     const radioVoicePeers = new Map();
     const radioEarlyVoiceCandidates = window.RadioVoiceSignalPolicy &&
       typeof window.RadioVoiceSignalPolicy.createEarlyCandidateBuffer === 'function'
@@ -3238,6 +3245,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
 
       ciaSocket.on('connect', function() {
+        radioLifecycleConnectPending = false;
         ciaSocketReady = true;
         const seed = {};
         SHARED_STORAGE_KEYS.forEach(key => {
@@ -3273,7 +3281,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
               setSessionRecoveryVisible(false);
               currentUser = result.user || currentUser;
               completeLogin();
-              if (radioPoweredOn) requestRadioJoin(radioChannel);
               if (result.needsIdentity) openIdentityModal();
             });
           } else {
@@ -3281,10 +3288,34 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           }
         }
       });
-      ciaSocket.on('disconnect', function() {
+      ciaSocket.on('radio:service-ended', function() {
         radioJoinRequestId += 1;
         radioJoinPending = false;
+        radioJoinPendingChannel = '';
         radioJoinConfirmed = false;
+        stopPTT();
+        radioPoweredOn = false;
+        if (currentUser) {
+          currentUser.activeService = false;
+          currentUser.radioOnline = false;
+          currentUser.status = 'خارج الخدمة';
+        }
+        saveRadioPreference(false, radioChannel);
+        resetRadioVoice();
+        updateRadioPowerUI();
+        updateServiceUI();
+        updateViews();
+        setRadioActivity('انتهت الخدمة؛ أُطفئ الراديو على هذا الحساب دون قطع اتصال الهاتف.', 7000);
+      });
+      ciaSocket.on('disconnect', function() {
+        radioLifecycleConnectPending = false;
+        radioConnectionGeneration += 1;
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinPendingChannel = '';
+        radioJoinConfirmed = false;
+        radioVoiceIceConfigCache.clear();
+        radioVoiceIceConfigRequests.clear();
         resetRadioVoice();
         if (radioPoweredOn) {
           updateRadioPowerUI();
@@ -3957,6 +3988,14 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
     function logoutFromSystem() {
       if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+      if (currentUser) saveRadioPreference(false, radioChannel);
+      radioPoweredOn = false;
+      radioJoinRequestId += 1;
+      radioJoinPending = false;
+      radioJoinPendingChannel = '';
+      radioJoinConfirmed = false;
+      resetRadioVoice();
+      updateRadioPowerUI();
       if (!currentUser) {
         location.reload();
         return;
@@ -3999,7 +4038,17 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const handoverButton = document.getElementById('chief-handover-button');
       if (handoverButton) handoverButton.style.display = normalizeRank(currentUser.rank) === 'CIA CHIEF' ? 'inline-block' : 'none';
       
-      if (currentUser.radioChannel) radioChannel = currentUser.radioChannel;
+      const savedRadioPreference = loadRadioPreference(currentUser.id);
+      if (savedRadioPreference) {
+        radioChannel = savedRadioPreference.channel;
+        radioPoweredOn = savedRadioPreference.enabled === true && currentUser.activeService === true;
+        if (savedRadioPreference.enabled && currentUser.activeService !== true) {
+          saveRadioPreference(false, savedRadioPreference.channel);
+        }
+      } else if (currentUser.radioChannel) {
+        radioChannel = currentUser.radioChannel;
+      }
+      if (currentUser.activeService !== true) radioPoweredOn = false;
       renderBank();
       loadBankDirectory();
       loadTacticalOperations();
@@ -5916,21 +5965,111 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     }
 
     /* Radio Controls Logic */
+    function loadRadioPreference(userId) {
+      const identity = userId || (currentUser && (currentUser.id || currentUser.publicCode));
+      if (!identity) return null;
+      try {
+        const saved = JSON.parse(localStorage.getItem(RADIO_PREFERENCE_PREFIX + String(identity)) || 'null');
+        if (!saved || typeof saved !== 'object') return null;
+        return {
+          enabled: saved.enabled === true,
+          channel: RADIO_ALLOWED_CHANNELS.has(saved.channel) ? saved.channel : 'CH-1'
+        };
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function saveRadioPreference(enabled, channel = radioChannel) {
+      const identity = currentUser && (currentUser.id || currentUser.publicCode);
+      if (!identity) return;
+      const selectedChannel = RADIO_ALLOWED_CHANNELS.has(channel) ? channel : 'CH-1';
+      try {
+        localStorage.setItem(RADIO_PREFERENCE_PREFIX + String(identity), JSON.stringify({
+          enabled: enabled === true,
+          channel: selectedChannel
+        }));
+      } catch (error) {}
+    }
+
+    function handleRadioPageHide() {
+      if (currentUser) saveRadioPreference(radioPoweredOn, radioChannel);
+      if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+      radioJoinRequestId += 1;
+      radioJoinPending = false;
+      radioJoinPendingChannel = '';
+      radioJoinConfirmed = false;
+      resetRadioVoice();
+      updateRadioPowerUI();
+      if (ciaSocket && ciaSocket.connected) ciaSocket.disconnect();
+    }
+
+    function handleRadioPageShow() {
+      if (!currentUser || !ciaSocket || ciaSocket.connected || ciaSocket.active || radioLifecycleConnectPending) return;
+      radioLifecycleConnectPending = true;
+      ciaSocket.connect();
+    }
+
+    function handleRadioOffline() {
+      if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+      radioConnectionGeneration += 1;
+      radioVoiceIceConfigCache.clear();
+      radioVoiceIceConfigRequests.clear();
+      radioJoinRequestId += 1;
+      radioJoinPending = false;
+      radioJoinPendingChannel = '';
+      radioJoinConfirmed = false;
+      resetRadioVoice();
+      updateRadioPowerUI();
+      if (radioPoweredOn) setRadioActivity('الشبكة غير متاحة؛ سيعاد الانضمام إلى القناة عند عودتها.', 0);
+    }
+
+    function handleRadioOnline() {
+      if (!currentUser || !ciaSocket) return;
+      if (!ciaSocket.connected && !ciaSocket.active && !radioLifecycleConnectPending) {
+        radioLifecycleConnectPending = true;
+        ciaSocket.connect();
+        return;
+      }
+      if (ciaSocket.connected && ciaSessionAuthenticated && radioPoweredOn && !radioJoinConfirmed && !radioJoinPending) {
+        requestRadioJoin(radioChannel);
+      }
+    }
+
+    function handleRadioVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+        return;
+      }
+      if (!currentUser || !radioPoweredOn || !ciaSocket) return;
+      if (!ciaSocket.connected && !ciaSocket.active) handleRadioPageShow();
+      else if (ciaSocket.connected && ciaSessionAuthenticated && !radioJoinConfirmed && !radioJoinPending) {
+        requestRadioJoin(radioChannel);
+      }
+    }
+
+    function handleRadioGlobalPointerUp(event) {
+      if (radioPTTPointerId !== null && event && event.pointerId === radioPTTPointerId) stopPTT(event);
+    }
+
     function requestRadioJoin(channel = radioChannel, options = {}) {
       const requestedChannel = String(channel || radioChannel);
       if (!radioPoweredOn) return;
+      if (radioJoinPending && radioJoinPendingChannel === requestedChannel) return;
+      if (radioJoinConfirmed && radioChannel === requestedChannel) return;
       if (!ciaSocket || !ciaSocket.connected) {
         radioJoinRequestId += 1;
         radioJoinPending = false;
+        radioJoinPendingChannel = '';
         radioJoinConfirmed = false;
-        radioPoweredOn = false;
         updateRadioPowerUI();
-        setRadioActivity('تعذر الاتصال بالخادم؛ تحقق من اتصال الموقع ثم أعد تشغيل الراديو.', 7000);
+        setRadioActivity('الراديو ينتظر عودة اتصال الخادم؛ سيعيد الانضمام تلقائيًا.', 0);
         return;
       }
 
       const requestId = ++radioJoinRequestId;
       radioJoinPending = true;
+      radioJoinPendingChannel = requestedChannel;
       radioJoinConfirmed = false;
       updateRadioPowerUI();
       setRadioActivity('جارٍ تأكيد الانضمام إلى القناة ' + requestedChannel + '...', 0);
@@ -5943,14 +6082,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         clearTimeout(timer);
         if (requestId !== radioJoinRequestId || !radioPoweredOn || requestedChannel !== radioChannel) return;
         radioJoinPending = false;
+        radioJoinPendingChannel = '';
         if (!result || result.ok !== true) {
           radioJoinConfirmed = false;
-          radioPoweredOn = false;
           closeAllRadioVoicePeers();
           radioActiveTalkers.clear();
           radioPeersReceiving.clear();
           updateRadioPowerUI();
-          setRadioActivity((result && result.message) || 'لم يؤكد الخادم الانضمام إلى القناة؛ أعد تشغيل الراديو وحاول مجدداً.', 7000);
+          setRadioActivity((result && result.message) || 'لم يؤكد الخادم الانضمام؛ سيعيد الراديو المحاولة عند عودة الاتصال.', 0);
           return;
         }
         radioJoinConfirmed = true;
@@ -5976,20 +6115,31 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
         radioJoinRequestId += 1;
         radioJoinPending = false;
+        radioJoinPendingChannel = '';
         radioJoinConfirmed = false;
         radioPoweredOn = false;
-        closeAllRadioVoicePeers();
-        radioActiveTalkers.clear();
+        saveRadioPreference(false, radioChannel);
+        resetRadioVoice();
         updateRadioPowerUI();
-        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:leave', {});
+        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:leave', { channel: radioChannel }, function() {});
         return;
       }
       if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
       radioPoweredOn = true;
+      saveRadioPreference(true, radioChannel);
       radioJoinConfirmed = false;
       radioJoinPending = false;
+      radioJoinPendingChannel = '';
       requestRadioJoin(radioChannel, { playBeep: true });
     }
+
+    window.addEventListener('pagehide', handleRadioPageHide);
+    window.addEventListener('pageshow', handleRadioPageShow);
+    window.addEventListener('online', handleRadioOnline);
+    window.addEventListener('offline', handleRadioOffline);
+    window.addEventListener('blur', stopPTT);
+    window.addEventListener('pointerup', handleRadioGlobalPointerUp, true);
+    document.addEventListener('visibilitychange', handleRadioVisibilityChange);
 
     function updateRadioPowerUI() {
       const ind = document.getElementById('radio-power-indicator');
@@ -6042,6 +6192,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         radioPeersReceiving.clear();
       }
       radioChannel = ch;
+      saveRadioPreference(radioPoweredOn, radioChannel);
       const freqDisplay = document.getElementById('radio-freq-display');
       const chShort = document.getElementById('radio-channel-short');
       if (freqDisplay) freqDisplay.innerText = freq;
@@ -6099,6 +6250,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioPTTServerRequestPending = false;
       radioPTTActive = false;
       radioPTTChannel = '';
+      radioPTTPointerId = null;
       radioPeersReceiving.clear();
       stopRadioLocalStream();
       closeAllRadioVoicePeers();
@@ -6119,45 +6271,51 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       };
       if (!radioPoweredOn || !ciaSocket || !ciaSocket.connected) return Promise.resolve(fallback);
 
-      const request = new Promise(resolve => {
-        let settled = false;
-        let timer;
-        const finish = (result) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
+      const connectionGeneration = radioConnectionGeneration;
+      let resolveRequest;
+      let settled = false;
+      let timer;
+      const request = new Promise(resolve => { resolveRequest = resolve; });
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (radioVoiceIceConfigRequests.get(channel) === request) {
           radioVoiceIceConfigRequests.delete(channel);
-          const servers = Array.isArray(result && result.iceServers)
-            ? result.iceServers.filter(server => server && (typeof server.urls === 'string' || (Array.isArray(server.urls) && server.urls.length)))
-            : [];
-          const acceptedStatus = ['configured', 'not-configured', 'misconfigured', 'provider-error'].includes(result && result.turnStatus)
-            ? result.turnStatus
-            : 'provider-error';
-          const config = {
-            iceServers: servers.length ? servers : RADIO_VOICE_DEFAULT_ICE_SERVERS,
-            turnStatus: acceptedStatus,
-            expiresAt: Date.now() + (acceptedStatus === 'configured' ? 50 * 60 * 1000 : 30000)
-          };
-          radioVoiceIceConfigCache.set(channel, config);
-          if (radioPoweredOn && radioChannel === channel) {
-            if (acceptedStatus === 'configured') setRadioActivity('إعداد ICE وTURN جاهز؛ جارٍ اختبار مسار الصوت.', 0);
-            else if (acceptedStatus === 'not-configured') setRadioActivity('لا يوجد TURN مضبوط؛ قد يفشل الصوت على شبكة تمنع الاتصال المباشر.', 0);
-            else if (acceptedStatus === 'misconfigured') setRadioActivity('إعداد TURN غير مكتمل؛ تحقق من متغيرات الخدمة في Render.', 0);
-            else setRadioActivity('تعذر جلب إعداد TURN؛ سيحاول الراديو اتصالًا مباشرًا فقط.', 0);
-          }
-          resolve(config);
+        }
+        if (connectionGeneration !== radioConnectionGeneration) {
+          resolveRequest(fallback);
+          return;
+        }
+        const servers = Array.isArray(result && result.iceServers)
+          ? result.iceServers.filter(server => server && (typeof server.urls === 'string' || (Array.isArray(server.urls) && server.urls.length)))
+          : [];
+        const acceptedStatus = ['configured', 'not-configured', 'misconfigured', 'provider-error'].includes(result && result.turnStatus)
+          ? result.turnStatus
+          : 'provider-error';
+        const config = {
+          iceServers: servers.length ? servers : RADIO_VOICE_DEFAULT_ICE_SERVERS,
+          turnStatus: acceptedStatus,
+          expiresAt: Date.now() + (acceptedStatus === 'configured' ? 50 * 60 * 1000 : 30000)
         };
-
-        timer = setTimeout(() => finish(fallback), 10000);
-        ciaSocket.emit('radio:ice-config', { channel }, result => {
-          if (!result || result.ok !== true) {
-            finish({ ...fallback, turnStatus: 'provider-error' });
-            return;
-          }
-          finish(result);
-        });
-      });
+        radioVoiceIceConfigCache.set(channel, config);
+        if (radioPoweredOn && radioChannel === channel) {
+          if (acceptedStatus === 'configured') setRadioActivity('إعداد ICE وTURN جاهز؛ جارٍ اختبار مسار الصوت.', 0);
+          else if (acceptedStatus === 'not-configured') setRadioActivity('لا يوجد TURN مضبوط؛ قد يفشل الصوت على شبكة تمنع الاتصال المباشر.', 0);
+          else if (acceptedStatus === 'misconfigured') setRadioActivity('إعداد TURN غير مكتمل؛ تحقق من متغيرات الخدمة في Render.', 0);
+          else setRadioActivity('تعذر جلب إعداد TURN؛ سيحاول الراديو اتصالًا مباشرًا فقط.', 0);
+        }
+        resolveRequest(config);
+      };
       radioVoiceIceConfigRequests.set(channel, request);
+      timer = setTimeout(() => finish(fallback), 10000);
+      ciaSocket.emit('radio:ice-config', { channel }, result => {
+        if (!result || result.ok !== true) {
+          finish({ ...fallback, turnStatus: 'provider-error' });
+          return;
+        }
+        finish(result);
+      });
       return request;
     }
 
@@ -6223,17 +6381,52 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (!radioVoicePeers.has(String(peerId)) || !radioPoweredOn || peer.channel !== radioChannel) return;
         try {
           const reports = await peer.pc.getStats();
-          let audioBytesReceived = false;
-          reports.forEach(report => {
-            if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio') && Number(report.bytesReceived) > 0) {
-              peer.incomingAudioConfirmed = true;
-              audioBytesReceived = true;
-            }
-          });
-          if (audioBytesReceived && !peer.audioPlaying) setRadioActivity('وصلت بيانات الصوت، لكن المتصفح لم يؤكد تشغيلها؛ المس الصفحة لتفعيل الصوت.', 0);
+          if (!radioVoicePeers.has(String(peerId)) || !radioPoweredOn || peer.channel !== radioChannel) return;
+          const inbound = window.RadioAudioHealth
+            ? window.RadioAudioHealth.summarize(reports, 'inbound', peer.inboundAudioHealth)
+            : { status: 'unavailable', deltaBytes: 0, audioLevel: null };
+          const outbound = window.RadioAudioHealth
+            ? window.RadioAudioHealth.summarize(reports, 'outbound', peer.outboundAudioHealth)
+            : { status: 'unavailable', deltaBytes: 0, audioLevel: null };
+          if (inbound.status === 'active' || inbound.status === 'low-level') peer.incomingAudioConfirmed = true;
+          else if (inbound.status === 'no-media') peer.incomingAudioConfirmed = false;
+
+          const diagnosticState = [
+            'in:' + inbound.status,
+            'out:' + outbound.status
+          ].join('|');
+          if (peer.lastAudioDiagnosticState !== diagnosticState) {
+            peer.lastAudioDiagnosticState = diagnosticState;
+            console.info('[BLACK RIDGE] Radio audio health:', {
+              inbound: inbound.status,
+              inboundBytesDelta: inbound.deltaBytes,
+              inboundAudioLevel: inbound.audioLevel,
+              outbound: outbound.status,
+              outboundBytesDelta: outbound.deltaBytes,
+              outboundAudioLevel: outbound.audioLevel
+            });
+          }
+
+          const activeTalker = radioActiveTalkers.has(String(peerId));
+          const transmitting = radioPTTActive && radioPTTChannel === peer.channel;
+          let diagnosticMessage = '';
+          if (transmitting && outbound.status === 'no-media') {
+            diagnosticMessage = 'PTT مفعّل، لكن لا تُرسل حزم صوت من مسار الميكروفون.';
+          } else if (transmitting && outbound.status === 'low-level') {
+            diagnosticMessage = 'تُرسل حزم الصوت، لكن مستوى الميكروفون المبلّغ عنه منخفض.';
+          } else if (activeTalker && inbound.status === 'no-media') {
+            diagnosticMessage = 'اتصال الصوت قائم، لكن لا تصل حزم صوت من المتحدث.';
+          } else if (activeTalker && inbound.status === 'low-level') {
+            diagnosticMessage = 'تصل حزم الصوت من المتحدث، لكن مستوى الإشارة المبلّغ عنه منخفض.';
+          }
+          if (diagnosticMessage) setRadioActivity(diagnosticMessage, 0);
+          else if (inbound.status === 'active' && !peer.audioPlaying) {
+            setRadioActivity('وصلت حزم الصوت، لكن المتصفح لم يؤكد تشغيلها؛ المس الصفحة لتفعيل الصوت.', 0);
+          } else updateRadioVoiceStatus();
           publishRadioMediaStatus(peerId, peer, peer.incomingAudioConfirmed && peer.audioPlaying);
-          updateRadioVoiceStatus();
-        } catch (error) {}
+        } catch (error) {
+          console.debug('[BLACK RIDGE] Radio getStats unavailable:', error && error.name || 'Error');
+        }
         if (radioVoicePeers.has(String(peerId)) && radioPoweredOn && peer.channel === radioChannel) peer.statsTimer = setTimeout(poll, 1000);
       };
       poll();
@@ -6279,7 +6472,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         turnStatus: iceConfig.turnStatus || 'unknown'
       };
       const pc = new window.RTCPeerConnection({ iceServers: peerIceConfig.iceServers });
-      const peer = { pc, channel, iceConfig: peerIceConfig, turnStatus: peerIceConfig.turnStatus, audio: null, pendingCandidates: [], hasLocalAudio: false, incomingAudioConfirmed: false, audioPlaying: false, lastReportedReceiving: false, statsTimer: null, recoveryTimer: null, recoveryAttempts: 0 };
+      const peer = {
+        pc, channel, iceConfig: peerIceConfig, turnStatus: peerIceConfig.turnStatus,
+        audio: null, pendingCandidates: [], hasLocalAudio: false,
+        incomingAudioConfirmed: false, audioPlaying: false, lastReportedReceiving: false,
+        inboundAudioHealth: window.RadioAudioHealth ? window.RadioAudioHealth.createState() : {},
+        outboundAudioHealth: window.RadioAudioHealth ? window.RadioAudioHealth.createState() : {},
+        lastAudioDiagnosticState: '', statsTimer: null, recoveryTimer: null, recoveryAttempts: 0
+      };
       radioVoicePeers.set(key, peer);
       pc.onicecandidate = function(event) {
         if (event.candidate && event.candidate.candidate) {
@@ -6475,9 +6675,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 
     async function startPTT(event) {
       if (event && typeof event.button === 'number' && event.button !== 0) return;
-      if (event && event.pointerId !== undefined && event.currentTarget && typeof event.currentTarget.setPointerCapture === 'function') {
-        try { event.currentTarget.setPointerCapture(event.pointerId); } catch (e) {}
-      }
+      if (event && event.pointerId !== undefined && radioPTTPointerId !== null && event.pointerId !== radioPTTPointerId) return;
       if (!radioPoweredOn || !currentUser || !ciaSocket || !ciaSocket.connected || radioPTTHeld || radioPTTRequestPending || radioPTTActive) return;
       if (radioJoinPending || !radioJoinConfirmed) {
         setRadioActivity('لم يؤكد الخادم انضمام الراديو إلى القناة بعد؛ انتظر الاتصال أو أعد تشغيل الراديو.', 7000);
@@ -6486,6 +6684,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || !window.RTCPeerConnection) {
         setRadioActivity('الاتصال الصوتي المباشر يحتاج متصفحاً حديثاً واتصال HTTPS.', 5000);
         return;
+      }
+      if (event && event.pointerId !== undefined) {
+        radioPTTPointerId = event.pointerId;
+        if (event.currentTarget && typeof event.currentTarget.setPointerCapture === 'function') {
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch (e) {}
+        }
       }
       const attempt = ++radioPTTAttempt;
       const channel = radioChannel;
@@ -6498,7 +6702,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: {
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 }
+          },
           video: false
         });
       } catch (error) {
@@ -6507,6 +6717,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           radioPTTRequestPending = false;
           radioPTTServerRequestPending = false;
           radioPTTChannel = '';
+          radioPTTPointerId = null;
           setRadioActivity(error && error.name === 'NotAllowedError' ? 'لم يسمح المتصفح بالميكروفون. افتح إعدادات هذا الموقع واجعل الميكروفون «سماح»، ثم أعد تحميل الصفحة.' : 'تعذر الوصول إلى الميكروفون. تحقق من توصيله وأنه غير مستخدم من تطبيق آخر.', 7000);
         }
         return;
@@ -6517,11 +6728,41 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         return;
       }
       radioLocalStream = stream;
-      console.info('[BLACK RIDGE] Radio stage: microphone permission granted.');
+      const supportedAudioConstraints = navigator.mediaDevices.getSupportedConstraints
+        ? navigator.mediaDevices.getSupportedConstraints()
+        : {};
+      console.info('[BLACK RIDGE] Radio microphone diagnostics:', {
+        supported: {
+          echoCancellation: supportedAudioConstraints.echoCancellation === true,
+          noiseSuppression: supportedAudioConstraints.noiseSuppression === true,
+          autoGainControl: supportedAudioConstraints.autoGainControl === true
+        },
+        tracks: stream.getAudioTracks().map(track => {
+          const settings = typeof track.getSettings === 'function' ? track.getSettings() : {};
+          return {
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            echoCancellation: typeof settings.echoCancellation === 'boolean' ? settings.echoCancellation : null,
+            noiseSuppression: typeof settings.noiseSuppression === 'boolean' ? settings.noiseSuppression : null,
+            autoGainControl: typeof settings.autoGainControl === 'boolean' ? settings.autoGainControl : null,
+            sampleRate: Number.isFinite(settings.sampleRate) ? settings.sampleRate : null,
+            channelCount: Number.isFinite(settings.channelCount) ? settings.channelCount : null
+          };
+        })
+      });
       setRadioActivity('تم السماح بالميكروفون؛ جارٍ الاتصال بالقناة...', 0);
       stream.getAudioTracks().forEach(track => {
         track.enabled = false;
         track.onended = () => { if (radioPTTActive) stopPTT(); };
+        track.onmute = () => {
+          if (!radioPTTActive) return;
+          console.warn('[BLACK RIDGE] Radio microphone track became muted during PTT.');
+          setRadioActivity('مسار الميكروفون مكتوم أثناء الضغط؛ تحقق من إعدادات الجهاز أو إذنه.', 0);
+        };
+        track.onunmute = () => {
+          if (radioPTTActive) console.info('[BLACK RIDGE] Radio microphone track is live.');
+        };
       });
       radioPTTServerRequestPending = true;
       const serverAckTimer = setTimeout(() => {
@@ -6571,7 +6812,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       });
     }
 
-    function stopPTT() {
+    function stopPTT(event) {
+      if (event && event.pointerId !== undefined && radioPTTPointerId !== null && event.pointerId !== radioPTTPointerId) return;
+      radioPTTPointerId = null;
       if (!radioPTTHeld && !radioPTTRequestPending && !radioPTTActive) return;
       radioPTTHeld = false;
       const channel = radioPTTChannel || radioChannel;
