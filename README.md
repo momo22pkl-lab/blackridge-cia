@@ -13,6 +13,14 @@ Never put DATABASE_URL in source control or paste it into chat. Configure it as 
 
 Before claiming the first CIA CHIEF, set `CIA_CHIEF_REGISTRATION_CODE` and `CIA_CHIEF_SAVE_CODE` as server-side environment variables in Render. Use different random values of at least 24 characters. Do not commit them to the repository or store them in browser storage. The server removes these fields from legacy persisted state when loading it, and new snapshots do not contain them. Existing chief accounts can continue to log in without these bootstrap variables.
 
+## Social account linking
+
+Social accounts are stored as an optional `socialAccounts` field on the existing CIA member record in the current JSONB state. Existing records normalize to an empty list; no member account, military code, rank, permission, or login credential is recreated or changed. OAuth access tokens are used only for the Discord profile lookup and are never saved.
+
+To enable official Discord linking, create an OAuth2 application in the Discord Developer Portal and register the exact callback URL `https://<your-site-host>/auth/discord/callback`. Configure `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_URI` as server-side environment variables; keep the client secret out of source control and browser storage. The OAuth grant requests only the `identify` scope and uses state validation plus PKCE. Local development may use an `http://localhost:<port>/auth/discord/callback` or `http://127.0.0.1:<port>/auth/discord/callback` redirect.
+
+Other platforms can be entered manually with a platform name, username, and HTTP(S) profile URL. Manual entries are explicitly marked unverified because the system cannot establish ownership. Discord identities and manual profile URLs are checked for duplicates across member records. Self-service linking and unlinking are tied to the currently authenticated member; leadership visibility follows the existing server-side member-management scope.
+
 ## Local development
 
 Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
