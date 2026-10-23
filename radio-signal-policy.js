@@ -31,8 +31,8 @@
 
   const policy = Object.freeze({
     canHandleSignalWithoutPeer(type) {
-      // The server validates channel membership and active-speaker authority
-      // before relaying offers and trickled ICE candidates.
+      // The server validates same-channel membership and active PTT authority
+      // on the participant pair before relaying offers and trickled ICE.
       return type === 'offer' || type === 'ice';
     },
     createEarlyCandidateBuffer

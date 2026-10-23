@@ -134,7 +134,7 @@ async function connectSocket(baseUrl) {
   };
 }
 
-test('radio signaling relays to every same-channel listener and survives channel switch/rejoin', async (t) => {
+test('radio signaling supports concurrent talkers, isolated PTT release, and reconnects', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackridge-radio-signaling-'));
   const stateFile = path.join(tempDir, 'state.json');
   const port = await freePort();
@@ -247,8 +247,52 @@ test('radio signaling relays to every same-channel listener and survives channel
   })).ok, true);
   await switcher.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.type === 'offer');
 
+  const secondTalker = await listenerA.emit('radio:ptt:start', { channel: 'CH-1' });
+  assert.equal(secondTalker.ok, true, 'a second same-channel participant was denied simultaneous PTT');
+  assert.deepEqual(new Set(secondTalker.peers), new Set([speaker.id, listenerB.id, switcher.id]));
+  await speaker.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerA.id);
+  await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerA.id);
+
+  const secondTalkerOffer = await listenerA.emit('radio:voice:signal', {
+    channel: 'CH-1', to: speaker.id, type: 'offer', sdp: offer
+  });
+  assert.equal(secondTalkerOffer.ok, true, 'the second talker could not send audio signaling to the first talker');
+  await speaker.waitFor('radio:voice:signal', (event) => event.from === listenerA.id && event.type === 'offer');
+
+  const simultaneousOffer = await speaker.emit('radio:voice:signal', {
+    channel: 'CH-1', to: listenerA.id, type: 'offer', sdp: offer
+  });
+  assert.equal(simultaneousOffer.ok, true, 'the first talker could not signal back while the second was transmitting');
+  await listenerA.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.type === 'offer');
+  const simultaneousAnswer = await speaker.emit('radio:voice:signal', {
+    channel: 'CH-1', to: listenerA.id, type: 'answer', sdp: { ...offer, type: 'answer' }
+  });
+  assert.equal(simultaneousAnswer.ok, true, 'a peer could not send the WebRTC answer while both participants were active');
+  await listenerA.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.type === 'answer');
+
+  const thirdTalker = await listenerB.emit('radio:ptt:start', { channel: 'CH-1' });
+  assert.equal(thirdTalker.ok, true, 'a third same-channel participant was denied PTT');
+  assert.deepEqual(new Set(thirdTalker.peers), new Set([speaker.id, listenerA.id, switcher.id]));
+  await speaker.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerB.id);
+  await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerB.id);
+
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
+  await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
+  const remainingTalkersSignal = await listenerA.emit('radio:voice:signal', {
+    channel: 'CH-1', to: listenerB.id, type: 'offer', sdp: offer
+  });
+  assert.equal(remainingTalkersSignal.ok, true, 'one participant stopping PTT interrupted signaling between the other talkers');
+  await listenerB.waitFor('radio:voice:signal', (event) => event.from === listenerA.id && event.type === 'offer');
+
+  assert.equal((await listenerA.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
+  await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === listenerA.id);
+  const thirdTalkerContinues = await listenerB.emit('radio:voice:signal', {
+    channel: 'CH-1', to: speaker.id, type: 'offer', sdp: offer
+  });
+  assert.equal(thirdTalkerContinues.ok, true, 'stopping the second talker interrupted the third talker');
+  await speaker.waitFor('radio:voice:signal', (event) => event.from === listenerB.id && event.type === 'offer');
+  assert.equal((await listenerB.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
 
   const restarted = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
   assert.equal(restarted.ok, true, 'speaker could not start a second transmission');
