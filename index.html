@@ -3592,7 +3592,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           else {
             radioActiveTalkers.delete(data.socketId);
             radioPeersReceiving.delete(String(data.socketId));
-            if (data.socketId !== ciaSocket.id) closeRadioVoicePeer(data.socketId);
           }
         }
         if (data.ptt && data.userCode !== (currentUser && currentUser.publicCode)) {
@@ -6225,6 +6224,28 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       stream.getTracks().forEach(track => { track.onended = null; track.stop(); });
     }
 
+    function detachRadioLocalAudio() {
+      const stream = radioLocalStream;
+      radioLocalStream = null;
+      if (!stream) return;
+      const tracks = stream.getAudioTracks();
+      tracks.forEach(track => {
+        track.enabled = false;
+        track.onended = null;
+      });
+      const detachments = [...radioVoicePeers.values()].map(async peer => {
+        const sender = peer.localAudioSender || peer.pc.getSenders().find(candidate =>
+          candidate.track && tracks.includes(candidate.track)
+        );
+        if (sender && sender.track) await sender.replaceTrack(null);
+        peer.localAudioSender = sender || null;
+        peer.hasLocalAudio = false;
+      });
+      Promise.allSettled(detachments).finally(() => {
+        stream.getTracks().forEach(track => track.stop());
+      });
+    }
+
     function closeRadioVoicePeer(peerId) {
       const key = String(peerId || '');
       const peer = radioVoicePeers.get(key);
@@ -6472,9 +6493,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         turnStatus: iceConfig.turnStatus || 'unknown'
       };
       const pc = new window.RTCPeerConnection({ iceServers: peerIceConfig.iceServers });
+      const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
       const peer = {
         pc, channel, iceConfig: peerIceConfig, turnStatus: peerIceConfig.turnStatus,
         audio: null, pendingCandidates: [], hasLocalAudio: false,
+        localAudioSender: audioTransceiver.sender,
+        polite: String(ciaSocket.id).localeCompare(key) > 0,
+        makingOffer: false, ignoreOffer: false, isSettingRemoteAnswerPending: false,
         incomingAudioConfirmed: false, audioPlaying: false, lastReportedReceiving: false,
         inboundAudioHealth: window.RadioAudioHealth ? window.RadioAudioHealth.createState() : {},
         outboundAudioHealth: window.RadioAudioHealth ? window.RadioAudioHealth.createState() : {},
@@ -6573,26 +6598,31 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (attempt !== radioPTTAttempt || !radioPTTActive || channel !== radioPTTChannel) return;
       const peer = getRadioVoicePeer(peerId, channel, iceConfig);
       if (!peer) return;
+      if (peer.makingOffer) return;
       try {
-        if (!peer.hasLocalAudio) {
-          const tracks = radioLocalStream.getAudioTracks();
-          if (!tracks.length) throw new Error('No microphone audio track is available.');
-          tracks.forEach(track => peer.pc.addTrack(track, radioLocalStream));
-          peer.hasLocalAudio = true;
-        }
+        const track = radioLocalStream.getAudioTracks()[0];
+        if (!track) throw new Error('No microphone audio track is available.');
+        await peer.localAudioSender.replaceTrack(track);
+        peer.hasLocalAudio = true;
+        // Replacing the track on the negotiated send/receive transceiver needs
+        // no new offer. Only a new peer or an ICE recovery renegotiates.
+        if (peer.pc.remoteDescription && !iceRestart) return;
+        if (peer.pc.signalingState !== 'stable') return;
         if (iceRestart && peer.pc.signalingState === 'stable' && typeof peer.pc.restartIce === 'function') peer.pc.restartIce();
+        peer.makingOffer = true;
         const offer = await peer.pc.createOffer(iceRestart ? { iceRestart: true } : undefined);
-        if (attempt !== radioPTTAttempt || !radioPTTActive) return;
+        if (attempt !== radioPTTAttempt || !radioPTTActive || channel !== radioPTTChannel) return;
         await peer.pc.setLocalDescription(offer);
-        if (attempt !== radioPTTAttempt || !radioPTTActive) return;
+        if (attempt !== radioPTTAttempt || !radioPTTActive || channel !== radioPTTChannel) return;
         sendRadioVoiceSignal({
-          channel: radioPTTChannel, to: String(peerId), type: 'offer',
+          channel, to: String(peerId), type: 'offer',
           sdp: { type: peer.pc.localDescription.type, sdp: peer.pc.localDescription.sdp }
         }, 'offer');
       } catch (error) {
-        closeRadioVoicePeer(peerId);
         console.warn('[BLACK RIDGE] Radio stage: offer creation failed:', error?.name || 'Error');
         setRadioActivity('فشلت مرحلة إنشاء عرض WebRTC؛ تحقق من الميكروفون واتصال Socket.IO.', 6000);
+      } finally {
+        peer.makingOffer = false;
       }
     }
 
@@ -6639,15 +6669,25 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       try {
         if (data.type === 'ice') {
           if (!data.candidate) return;
-          if (peer.pc.remoteDescription) await peer.pc.addIceCandidate(data.candidate);
+          if (peer.pc.remoteDescription) {
+            try {
+              await peer.pc.addIceCandidate(data.candidate);
+            } catch (error) {
+              if (!peer.ignoreOffer) throw error;
+            }
+          }
           else peer.pendingCandidates.push(data.candidate);
           return;
         }
         if (!data.sdp || typeof data.sdp.sdp !== 'string') return;
         if (data.type === 'offer') {
-          const currentIceConfig = iceConfig || peer.iceConfig || { iceServers: RADIO_VOICE_DEFAULT_ICE_SERVERS };
-          if (peer.pc.signalingState !== 'stable') closeRadioVoicePeer(data.from);
-          peer = getRadioVoicePeer(data.from, data.channel, currentIceConfig);
+          const readyForOffer = !peer.makingOffer &&
+            (peer.pc.signalingState === 'stable' || peer.isSettingRemoteAnswerPending);
+          const offerCollision = !readyForOffer;
+          peer.ignoreOffer = !peer.polite && offerCollision;
+          if (peer.ignoreOffer) return;
+          if (offerCollision) await peer.pc.setLocalDescription({ type: 'rollback' });
+          peer.ignoreOffer = false;
           const earlyCandidates = radioEarlyVoiceCandidates instanceof Map
             ? (radioEarlyVoiceCandidates.get(peerId) || [])
             : radioEarlyVoiceCandidates.drain(peerId);
@@ -6663,13 +6703,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           }, 'answer');
         } else {
           if (peer.pc.signalingState !== 'have-local-offer') return;
+          peer.isSettingRemoteAnswerPending = true;
           await peer.pc.setRemoteDescription(data.sdp);
+          peer.isSettingRemoteAnswerPending = false;
           await flushRadioVoiceCandidates(peer);
         }
       } catch (error) {
-        closeRadioVoicePeer(data.from);
         console.warn('[BLACK RIDGE] Radio signaling stage failed:', data.type, error?.name || 'Error');
         setRadioActivity('فشلت مرحلة ' + data.type + ' في تبادل إشارات WebRTC؛ تحقق من اتصال Socket.IO والقناة.', 7000);
+        const failedPeer = radioVoicePeers.get(peerId);
+        if (failedPeer) failedPeer.isSettingRemoteAnswerPending = false;
       }
     }
 
@@ -6773,8 +6816,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         radioPTTServerRequestPending = false;
         radioPTTActive = false;
         radioPTTChannel = '';
-        stopRadioLocalStream();
-        closeAllRadioVoicePeers();
+        detachRadioLocalAudio();
         if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:ptt:stop', { channel }, function() {});
         setRadioActivity('تم السماح بالميكروفون، لكن الخادم لم يؤكد بدء الإرسال. حدّث الصفحة وحاول مجدداً.', 7000);
       }, 8000);
@@ -6807,7 +6849,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         stream.getAudioTracks().forEach(track => { track.enabled = true; });
         console.info('[BLACK RIDGE] Radio stage: server accepted PTT and microphone track enabled.');
         playRadioBeep(1200);
-        setRadioActivity('تم حجز القناة؛ جارٍ اختبار اتصال الصوت بالمستمعين...', 0);
+        setRadioActivity('بدأ الإرسال؛ جارٍ اختبار اتصال الصوت بالمستمعين...', 0);
         (Array.isArray(result.peers) ? result.peers : []).forEach(peerId => createRadioVoiceOffer(peerId, attempt));
       });
     }
@@ -6824,8 +6866,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         radioPTTServerRequestPending = false;
         radioPTTActive = false;
         radioPTTChannel = '';
-        stopRadioLocalStream();
-        closeAllRadioVoicePeers();
+        detachRadioLocalAudio();
         if (radioPoweredOn) setRadioActivity('تم إلغاء محاولة الإرسال.', 3000);
         return;
       }
@@ -6837,8 +6878,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioPTTServerRequestPending = false;
       radioPTTActive = false;
       radioPTTChannel = '';
-      stopRadioLocalStream();
-      closeAllRadioVoicePeers();
+      detachRadioLocalAudio();
       if (radioPoweredOn) {
         playRadioBeep(600);
         setRadioActivity('انتهى البث.', 3000);

@@ -33,6 +33,24 @@ test('radio lifecycle restores a saved device preference and cleans/rejoins a so
   assert.match(server, /targetSocket\.emit\('radio:service-ended'/);
 });
 
+test('full-duplex PTT keeps the peer connection and receive path when one microphone releases', () => {
+  assert.match(html, /pc\.addTransceiver\('audio', \{ direction: 'sendrecv' \}\)/);
+  assert.match(html, /peer\.localAudioSender\.replaceTrack\(track\)/);
+  assert.match(html, /sender\.replaceTrack\(null\)/);
+  assert.match(html, /polite: String\(ciaSocket\.id\)\.localeCompare\(key\) > 0/);
+  assert.match(html, /setLocalDescription\(\{ type: 'rollback' \}\)/);
+
+  const stopStart = html.indexOf('function stopPTT(event)');
+  const stopEnd = html.indexOf('function sendRadioText()', stopStart);
+  assert.ok(stopStart >= 0 && stopEnd > stopStart, 'PTT release handler exists');
+  const stopHandler = html.slice(stopStart, stopEnd);
+  assert.match(stopHandler, /detachRadioLocalAudio\(\)/);
+  assert.doesNotMatch(stopHandler, /closeAllRadioVoicePeers\(\)/);
+
+  const stateHandler = html.slice(html.indexOf("ciaSocket.on('radio:state'"), html.indexOf("ciaSocket.on('radio:voice:signal'"));
+  assert.doesNotMatch(stateHandler, /closeRadioVoicePeer\(data\.socketId\)/);
+});
+
 test('remote audio starts at unity volume without changing system volume or applying a gain boost', () => {
   assert.match(html, /let radioVolume = 100/);
   assert.match(html, /audio\.volume = radioVolume \/ 100/);
