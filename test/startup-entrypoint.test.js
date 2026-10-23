@@ -28,6 +28,8 @@ test('the server does not expose the whole repository as static files', () => {
     '/official-warnings.css',
     '/official-warnings-client.js',
     '/sos-alert-sound.js',
+    '/radio-signal-policy.js',
+    '/radio-audio-health.js',
     '/sos-alert.mp3'
   ]) {
     assert.ok(serverSource.includes(publicPath), `expected explicit public route for ${publicPath}`);
