@@ -33,6 +33,10 @@ test('radio lifecycle restores a saved device preference and cleans/rejoins a so
   assert.match(server, /targetSocket\.emit\('radio:service-ended'/);
 });
 
+test('radio power explains the active-duty gate without bypassing it', () => {
+  assert.match(html, /if \(currentUser\.activeService !== true\) return alert\('يجب بدء المناوبة قبل تشغيل الراديو\.'\);/);
+});
+
 test('full-duplex PTT keeps the peer connection and receive path when one microphone releases', () => {
   assert.match(html, /pc\.addTransceiver\('audio', \{ direction: 'sendrecv' \}\)/);
   assert.match(html, /async function getRadioVoiceAudioTransceiver\(peer\)/);
