@@ -2247,6 +2247,26 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         </div>
       </div>
 
+      <section id="social-accounts-card" class="card" style="display:none;border-color:var(--primary-gold);" aria-labelledby="social-accounts-heading">
+        <h4 id="social-accounts-heading" style="color:var(--primary-gold);font-size:.85rem;margin-bottom:6px;"><i class="fa-solid fa-share-nodes"></i> حسابات التواصل الاجتماعي</h4>
+        <p style="font-size:.68rem;color:var(--text-dim);line-height:1.6;margin:0 0 10px;">تُحفظ الحسابات على ملف عضويتك الحالي. ربط Discord يتم عبر OAuth2 الرسمي؛ أما المنصات الأخرى فتُضاف يدويًا وتظهر على أنها غير موثّقة.</p>
+        <div id="social-accounts-list" aria-live="polite"></div>
+        <div id="social-accounts-status" role="status" style="margin-top:8px;font-size:.7rem;color:var(--text-dim);"></div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;">
+          <button type="button" onclick="startDiscordSocialLink()" style="padding:7px 10px;background:#5865f2;color:#fff;border:1px solid #7280ff;border-radius:4px;font-weight:bold;cursor:pointer;"><i class="fa-brands fa-discord"></i> ربط Discord رسميًا</button>
+        </div>
+        <details style="margin-top:10px;">
+          <summary style="color:var(--cyan-glow);font-size:.72rem;cursor:pointer;">ربط منصة أخرى يدويًا</summary>
+          <p style="font-size:.65rem;color:var(--text-dim);line-height:1.6;margin:7px 0;">الحسابات اليدوية غير موثّقة؛ لا يتحقق النظام من ملكية الحساب.</p>
+          <form id="social-account-manual-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:7px;margin-top:7px;">
+            <label style="display:grid;gap:4px;font-size:.65rem;color:var(--text-dim);">اسم المنصة<input id="social-platform-input" name="platform" maxlength="50" required autocomplete="off" style="padding:7px;border:1px solid var(--border);border-radius:4px;background:#0b1119;color:var(--text-bright);"></label>
+            <label style="display:grid;gap:4px;font-size:.65rem;color:var(--text-dim);">اسم المستخدم<input id="social-username-input" name="username" maxlength="100" required autocomplete="off" style="padding:7px;border:1px solid var(--border);border-radius:4px;background:#0b1119;color:var(--text-bright);"></label>
+            <label style="display:grid;gap:4px;font-size:.65rem;color:var(--text-dim);">رابط الحساب<input id="social-profile-url-input" name="profileUrl" type="url" maxlength="500" required placeholder="https://..." autocomplete="url" style="padding:7px;border:1px solid var(--border);border-radius:4px;background:#0b1119;color:var(--text-bright);"></label>
+            <div style="display:flex;align-items:end;"><button type="submit" style="padding:7px 10px;background:#111827;color:var(--primary-gold);border:1px solid var(--primary-gold);border-radius:4px;font-weight:bold;cursor:pointer;">حفظ الحساب اليدوي</button></div>
+          </form>
+        </details>
+      </section>
+
       <div class="classified-shell" style="margin-bottom:15px;">
         <div class="classified-title"><i class="fa-solid fa-eye-slash"></i> سجل القطاع السري — LIVE PRESENCE</div>
         <div class="classified-grid">
@@ -2973,6 +2993,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
   <script>
     let currentUser = null;
+    let discordOAuthPopup = null;
     let ibpReturnToCenter = false;
     let ibpClockTimer = null;
     let morseAuditLogs = [];
@@ -3067,6 +3088,21 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if (accountSubmit) accountSubmit.addEventListener('click', function(e) { e.preventDefault(); createAccountFromForm(); });
       const accountClose = document.getElementById('account-create-close');
       if (accountClose) accountClose.addEventListener('click', function(e) { e.preventDefault(); closeAccountCreateModal(); });
+      const socialManualForm = document.getElementById('social-account-manual-form');
+      if (socialManualForm) socialManualForm.addEventListener('submit', function(e) { e.preventDefault(); saveManualSocialAccount(); });
+      const socialAccountsList = document.getElementById('social-accounts-list');
+      if (socialAccountsList) socialAccountsList.addEventListener('click', function(e) {
+        const button = e.target.closest('[data-social-remove]');
+        if (button) removeSocialAccount(button.dataset.socialRemove);
+      });
+      window.addEventListener('message', function(event) {
+        if (event.origin !== window.location.origin || event.source !== discordOAuthPopup) return;
+        const result = event.data;
+        if (!result || result.type !== 'blackridge:discord-oauth') return;
+        discordOAuthPopup = null;
+        setSocialAccountsStatus(result.message || (result.ok ? 'اكتمل ربط Discord.' : 'تعذر ربط Discord.'), result.ok ? 'success' : 'error');
+        if (result.ok) refreshSocialAccounts();
+      });
       
       const passcodeEl = document.getElementById('entry-passcode');
       if (passcodeEl) {
@@ -3132,10 +3168,22 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
     }
 
+    function cacheRegisteredUsersWithoutSocialAccounts(users) {
+      try {
+        const safeUsers = (Array.isArray(users) ? users : []).map(function(user) {
+          const safeUser = { ...user };
+          delete safeUser.socialAccounts;
+          return safeUser;
+        });
+        localStorage.setItem('cia_users', JSON.stringify(safeUsers));
+      } catch (_error) {}
+    }
+
     function applySharedData(key, value) {
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
       if (key === 'cia_users') {
         registeredUsers = value || [];
+        cacheRegisteredUsersWithoutSocialAccounts(registeredUsers);
         serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
         if (serverHasChief && bootstrapMode && !document.getElementById('entry-official-code').value) {
           hideChiefBootstrap();
@@ -3160,7 +3208,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (!state) return;
         if (Array.isArray(state.cia_users)) {
           registeredUsers = state.cia_users;
-          try { localStorage.setItem('cia_users', JSON.stringify(registeredUsers)); } catch(e) {}
+          cacheRegisteredUsersWithoutSocialAccounts(registeredUsers);
           serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
           if (currentUser) {
             const self = registeredUsers.find(u => u.id === currentUser.id);
@@ -3198,6 +3246,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
       });
 
+      ciaSocket.on('social:discord:complete', function(result) {
+        if (!result || result.ok !== true) return;
+        setSocialAccountsStatus('تم ربط حساب Discord والتحقق منه بنجاح.', 'success');
+        refreshSocialAccounts();
+      });
       ciaSocket.on('security:logs:result', applySecurityCenterResult);
       ciaSocket.on('security:incident', function(incident) {
         if (!incident || !currentUser || !['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) return;
@@ -4937,6 +4990,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     /* Views Update Logic */
     function updateViews() {
       updateServiceUI();
+      renderMySocialAccounts();
       renderPresenceStats();
       renderAgentsDirectory();
       renderPublicIdentityDirectory();
@@ -5478,6 +5532,146 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         updateRadioPowerUI();
         updateServiceUI();
         updateViews();
+      });
+    }
+
+    function setSocialAccountsStatus(message, statusType) {
+      const status = document.getElementById('social-accounts-status');
+      if (!status) return;
+      status.textContent = String(message || '');
+      status.style.color = statusType === 'success'
+        ? 'var(--green-status)'
+        : statusType === 'error'
+          ? 'var(--red-alert)'
+          : 'var(--text-dim)';
+    }
+
+    function renderSocialAccountCards(accounts, options) {
+      const settings = options || {};
+      if (!Array.isArray(accounts)) return '';
+      if (!accounts.length) {
+        return '<div style="padding:8px;border:1px dashed var(--border);border-radius:4px;color:var(--text-dim);font-size:.68rem;">لم يتم ربط حساب تواصل</div>';
+      }
+
+      const cards = accounts.map(function(account) {
+        if (!account || typeof account !== 'object') return '';
+        let profileUrl = '';
+        try {
+          const parsed = new URL(String(account.profileUrl || ''));
+          if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return '';
+          profileUrl = parsed.toString();
+        } catch (_error) {
+          return '';
+        }
+        const isVerifiedDiscord = account.provider === 'discord' && account.verified === true;
+        const avatarUrl = account.provider === 'discord' && /^https:\/\/cdn\.discordapp\.com\//i.test(String(account.avatarUrl || ''))
+          ? String(account.avatarUrl)
+          : '';
+        const avatar = avatarUrl
+          ? '<img src="' + esc(avatarUrl) + '" alt="" referrerpolicy="no-referrer" style="width:34px;height:34px;flex:none;border-radius:50%;object-fit:cover;background:#111827;">'
+          : '<span aria-hidden="true" style="width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:50%;background:#111827;color:var(--cyan-glow);"><i class="fa-solid fa-user"></i></span>';
+        const badge = isVerifiedDiscord
+          ? '<small style="color:var(--green-status);">موثّق عبر Discord OAuth2</small>'
+          : '<small style="color:var(--primary-gold);">يدوي — غير موثّق</small>';
+        const removeButton = settings.canManage === true
+          ? '<button type="button" data-social-remove="' + esc(account.id || '') + '" aria-label="فصل حساب ' + esc(account.platform || '') + '" style="margin-right:auto;padding:4px 7px;border:1px solid var(--red-alert);border-radius:4px;background:transparent;color:var(--red-alert);font-size:.62rem;cursor:pointer;">فصل</button>'
+          : '';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px;margin-top:6px;border:1px solid var(--border);border-radius:5px;background:rgba(4,8,14,.4);">' + avatar +
+          '<div style="min-width:0;display:grid;gap:2px;"><a href="' + esc(profileUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--cyan-glow);font-size:.72rem;font-weight:bold;overflow-wrap:anywhere;">' +
+          esc(account.platform || 'منصة أخرى') + ' · ' + esc(account.username || '') + '</a>' + badge + '</div>' + removeButton + '</div>';
+      }).filter(Boolean).join('');
+      return cards || '<div style="padding:8px;border:1px dashed var(--border);border-radius:4px;color:var(--text-dim);font-size:.68rem;">لم يتم ربط حساب تواصل</div>';
+    }
+
+    function renderMySocialAccounts() {
+      const card = document.getElementById('social-accounts-card');
+      if (!card) return;
+      if (!currentUser || !ciaSessionAuthenticated) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+      const list = document.getElementById('social-accounts-list');
+      if (list) list.innerHTML = renderSocialAccountCards(currentUser.socialAccounts || [], { canManage: true });
+    }
+
+    function refreshSocialAccounts() {
+      if (!currentUser || !ciaSocket || !ciaSocket.connected) return;
+      ciaSocket.emit('auth:me', {}, function(result) {
+        if (!result || !result.ok || !result.user) return;
+        currentUser = { ...currentUser, ...result.user };
+        renderMySocialAccounts();
+      });
+    }
+
+    function startDiscordSocialLink() {
+      if (!currentUser || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected) {
+        setSocialAccountsStatus('سجّل الدخول إلى حسابك أولاً.', 'error');
+        return;
+      }
+      const popup = window.open('about:blank', 'blackridge-discord-oauth', 'popup,width=520,height=700');
+      if (!popup) {
+        setSocialAccountsStatus('اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى.', 'error');
+        return;
+      }
+      discordOAuthPopup = popup;
+      setSocialAccountsStatus('جارٍ تجهيز تسجيل الدخول الرسمي إلى Discord…');
+      ciaSocket.emit('social:discord:start', {}, function(result) {
+        if (!result || !result.ok || !result.authorizationUrl) {
+          popup.close();
+          if (discordOAuthPopup === popup) discordOAuthPopup = null;
+          setSocialAccountsStatus((result && result.message) || 'تعذر بدء ربط Discord.', 'error');
+          return;
+        }
+        try {
+          const authorizationUrl = new URL(result.authorizationUrl);
+          if (authorizationUrl.origin !== 'https://discord.com' || authorizationUrl.pathname !== '/oauth2/authorize') {
+            throw new Error('Invalid authorization URL');
+          }
+          popup.location.replace(authorizationUrl.toString());
+          popup.focus();
+        } catch (_error) {
+          popup.close();
+          if (discordOAuthPopup === popup) discordOAuthPopup = null;
+          setSocialAccountsStatus('تعذر فتح صفحة Discord الآمنة.', 'error');
+        }
+      });
+    }
+
+    function saveManualSocialAccount() {
+      if (!currentUser || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected) {
+        setSocialAccountsStatus('سجّل الدخول إلى حسابك أولاً.', 'error');
+        return;
+      }
+      const payload = {
+        platform: document.getElementById('social-platform-input')?.value.trim() || '',
+        username: document.getElementById('social-username-input')?.value.trim() || '',
+        profileUrl: document.getElementById('social-profile-url-input')?.value.trim() || ''
+      };
+      setSocialAccountsStatus('جارٍ حفظ الحساب اليدوي…');
+      ciaSocket.emit('social:accounts:manual', payload, function(result) {
+        if (!result || !result.ok) {
+          setSocialAccountsStatus((result && result.message) || 'تعذر حفظ الحساب اليدوي.', 'error');
+          return;
+        }
+        currentUser = { ...currentUser, socialAccounts: Array.isArray(result.socialAccounts) ? result.socialAccounts : [] };
+        document.getElementById('social-account-manual-form')?.reset();
+        updateViews();
+        setSocialAccountsStatus('تم حفظ الحساب. سيظهر للقيادة المخوّلة بوصفه غير موثّق.', 'success');
+      });
+    }
+
+    function removeSocialAccount(accountId) {
+      if (!currentUser || !ciaSocket || !ciaSocket.connected || !accountId) return;
+      if (!confirm('هل تريد فصل هذا الحساب من ملف عضويتك؟')) return;
+      ciaSocket.emit('social:accounts:remove', { accountId: String(accountId) }, function(result) {
+        if (!result || !result.ok) {
+          setSocialAccountsStatus((result && result.message) || 'تعذر فصل الحساب.', 'error');
+          return;
+        }
+        currentUser = { ...currentUser, socialAccounts: Array.isArray(result.socialAccounts) ? result.socialAccounts : [] };
+        updateViews();
+        setSocialAccountsStatus('تم فصل الحساب من ملف عضويتك.', 'success');
       });
     }
 
@@ -7629,6 +7823,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (chiefPublicList) {
         chiefPublicList.innerHTML = registeredUsers.map(u => {
           const id = u.identity || {};
+          const socialSection = Array.isArray(u.socialAccounts)
+            ? '<section style="margin-top:9px;padding-top:8px;border-top:1px solid var(--border);"><strong style="color:var(--primary-gold);font-size:.68rem;">حسابات التواصل الاجتماعي</strong>' +
+              renderSocialAccountCards(u.socialAccounts) + '</section>'
+            : '';
           return `
             <div class="identity-card" style="margin-top:8px;">
               <div class="identity-code">#${esc(u.publicCode)} - ${esc(u.name)} (${esc(u.rank)})</div>
@@ -7636,7 +7834,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
                 الاسم الكامل: ${esc(id.fullName || 'غير مسجل')}<br>
                 تاريخ الميلاد: ${esc(id.birthDate || 'غير مسجل')}<br>
                 الجنسية: ${esc(id.nationality || 'غير مسجل')}
-              </div>
+              </div>${socialSection}
             </div>
           `;
         }).join('');

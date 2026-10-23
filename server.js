@@ -34,6 +34,15 @@ const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
 const { createRadioIceConfig } = require('./radio-ice-config');
+const {
+  accountIdentity,
+  normalizeSocialAccounts,
+  normalizePlatformName,
+  createManualSocialAccount,
+  createDiscordSocialAccount,
+  upsertSocialAccount,
+  findDuplicateSocialAccountOwner
+} = require('./social-accounts');
 
 const ARABIC_PROFANITY_TERMS = Object.freeze([
   "كسمك",
@@ -380,6 +389,7 @@ function saveState() {
 let state = clone(EMPTY_STATE);
 
 const sessions = new Map();
+const discordOAuthStates = new Map();
 const accountCharacterLoginFailures = new Map();
 const socketToUser = new Map();
 const radioChannels = new Map();
@@ -768,6 +778,7 @@ function normalizeUser(user) {
   user.radioOnline = user.radioOnline === true;
 
   user.hobbies = clean(user.hobbies || '', 1000);
+  user.socialAccounts = normalizeSocialAccounts(user.socialAccounts);
 
   user.accountId = user.accountId || null;
   user.characterOwnerId =
@@ -1047,6 +1058,10 @@ function publicUser(user, viewer = null) {
     radioOnline:
       !!user.radioOnline
   };
+
+  if (self || canManageMember(viewer, user)) {
+    result.socialAccounts = normalizeSocialAccounts(user.socialAccounts);
+  }
 
   if (self) {
     result.secretCode =
@@ -4422,6 +4437,104 @@ socket.on('member:saveIdentity', (payload, cb) => {
         });
       }
     );
+
+    socket.on('social:discord:start', (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+      const config = getDiscordOAuthConfig();
+      if (!config) {
+        return no(cb, 'ربط Discord غير مهيأ بعد. يجب إعداد DISCORD_CLIENT_ID وDISCORD_CLIENT_SECRET وDISCORD_REDIRECT_URI على الخادم.');
+      }
+
+      pruneDiscordOAuthStates();
+      if (discordOAuthStates.size >= 1000) return no(cb, 'تعذر بدء الربط الآن. حاول مرة أخرى بعد قليل.');
+
+      const stateToken = crypto.randomBytes(32).toString('base64url');
+      const codeVerifier = crypto.randomBytes(32).toString('base64url');
+      const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+      discordOAuthStates.set(stateToken, {
+        userId: actor.id,
+        codeVerifier,
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        expiresAt: Date.now() + 10 * 60 * 1000
+      });
+
+      const authorizationUrl = new URL('https://discord.com/oauth2/authorize');
+      authorizationUrl.search = new URLSearchParams({
+        client_id: config.clientId,
+        redirect_uri: config.redirectUri,
+        response_type: 'code',
+        scope: 'identify',
+        state: stateToken,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        prompt: 'consent'
+      }).toString();
+      return ok(cb, { authorizationUrl: authorizationUrl.toString() });
+    });
+
+    socket.on('social:accounts:manual', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+
+      try {
+        const candidate = createManualSocialAccount(payload);
+        const duplicateOwner = findDuplicateSocialAccountOwner(state.cia_users, candidate, actor.id);
+        if (duplicateOwner) return no(cb, 'هذا الحساب الخارجي مرتبط بعضوية أخرى بالفعل.');
+
+        const accounts = normalizeSocialAccounts(actor.socialAccounts);
+        const sameIdentity = accounts.find((account) => accountIdentity(account) === accountIdentity(candidate));
+        const samePlatform = accounts.find((account) =>
+          account.provider === 'manual' &&
+          normalizePlatformName(account.platform) === normalizePlatformName(candidate.platform)
+        );
+        if (sameIdentity && sameIdentity !== samePlatform) {
+          return no(cb, 'هذا الحساب مرتبط بالفعل بمنصة أخرى في ملفك.');
+        }
+
+        const nextAccounts = upsertSocialAccount(accounts, candidate);
+        const previousAccounts = actor.socialAccounts;
+        const previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
+        actor.socialAccounts = nextAccounts;
+        addAuditLog('ربط حساب تواصل يدوي', actor, actor, `المنصة: ${candidate.platform} // غير موثّق`);
+        try {
+          await saveState();
+        } catch (_error) {
+          actor.socialAccounts = previousAccounts;
+          state.cia_audit_logs = previousAuditLogs;
+          return no(cb, 'تعذر حفظ حساب التواصل في قاعدة البيانات. لم يتم اعتماد التغيير.');
+        }
+        emitState();
+        return ok(cb, { socialAccounts: normalizeSocialAccounts(actor.socialAccounts) });
+      } catch (error) {
+        return no(cb, error.message || 'تعذر ربط حساب التواصل.');
+      }
+    });
+
+    socket.on('social:accounts:remove', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+      const accountId = clean(payload?.accountId, 160);
+      const accounts = normalizeSocialAccounts(actor.socialAccounts);
+      if (!accountId || !accounts.some((account) => account.id === accountId)) {
+        return no(cb, 'حساب التواصل المطلوب غير موجود في ملفك.');
+      }
+
+      const previousAccounts = actor.socialAccounts;
+      const previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
+      actor.socialAccounts = accounts.filter((account) => account.id !== accountId);
+      addAuditLog('فصل حساب تواصل', actor, actor, 'تم فصل حساب تواصل من ملف العضو.');
+      try {
+        await saveState();
+      } catch (_error) {
+        actor.socialAccounts = previousAccounts;
+        state.cia_audit_logs = previousAuditLogs;
+        return no(cb, 'تعذر حفظ فصل الحساب في قاعدة البيانات. لم يتم اعتماد التغيير.');
+      }
+      emitState();
+      return ok(cb, { socialAccounts: normalizeSocialAccounts(actor.socialAccounts) });
+    });
 
     socket.on(
       'presence:ping',
@@ -10732,6 +10845,154 @@ async function initializePersistence() {
   await notificationsStore.initialize();
   console.log((IS_RENDER_RUNTIME ? '[BLACK RIDGE] Render temporary JSON state store ready: ' : '[BLACK RIDGE] Local JSON state store ready: ') + DATA_FILE);
 }
+
+function getDiscordOAuthConfig() {
+  const clientId = clean(process.env.DISCORD_CLIENT_ID, 200);
+  const clientSecret = clean(process.env.DISCORD_CLIENT_SECRET, 500);
+  const redirectUri = clean(process.env.DISCORD_REDIRECT_URI, 1000);
+  if (!clientId || !clientSecret || !redirectUri) return null;
+
+  let parsed;
+  try {
+    parsed = new URL(redirectUri);
+  } catch (_error) {
+    return null;
+  }
+  const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname.toLowerCase());
+  if (
+    (!localHost && parsed.protocol !== 'https:') ||
+    (localHost && !['http:', 'https:'].includes(parsed.protocol)) ||
+    parsed.pathname !== '/auth/discord/callback' ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    return null;
+  }
+  return { clientId, clientSecret, redirectUri: parsed.toString() };
+}
+
+function pruneDiscordOAuthStates() {
+  const currentTime = Date.now();
+  for (const [stateToken, pending] of discordOAuthStates) {
+    if (!pending || pending.expiresAt <= currentTime) discordOAuthStates.delete(stateToken);
+  }
+}
+
+function sendDiscordOAuthCallbackPage(res, success, message, status = 200) {
+  const nonce = crypto.randomBytes(18).toString('base64');
+  const payload = JSON.stringify({
+    type: 'blackridge:discord-oauth',
+    ok: success === true,
+    message: clean(message, 180)
+  }).replace(/</g, '\\u003c');
+  res.status(status).set({
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'`,
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff'
+  }).type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربط Discord</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#090d13;color:#e8edf1;font:16px system-ui,sans-serif"><main style="max-width:420px;padding:24px;text-align:center"><h1 style="color:#d6b168;font-size:20px">ربط Discord</h1><p>${success ? 'تم ربط الحساب. يمكنك إغلاق هذه النافذة.' : 'تعذر إكمال ربط الحساب. ارجع إلى الموقع وحاول مرة أخرى.'}</p><button id="close-window" type="button" style="padding:10px 16px;border:1px solid #d6b168;border-radius:4px;background:#111827;color:#e8edf1;cursor:pointer">إغلاق النافذة</button></main><script nonce="${nonce}">try{if(window.opener)window.opener.postMessage(${payload},window.location.origin)}catch(_error){}document.getElementById('close-window').addEventListener('click',function(){window.close()});try{window.close()}catch(_error){}</script></body></html>`);
+}
+
+app.get('/auth/discord/callback', async (req, res) => {
+  const stateToken = clean(req.query?.state, 128);
+  const pending = stateToken ? discordOAuthStates.get(stateToken) : null;
+  if (stateToken) discordOAuthStates.delete(stateToken);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    return sendDiscordOAuthCallbackPage(res, false, 'انتهت صلاحية جلسة الربط أو لم تعد صالحة.', 400);
+  }
+  if (req.query?.error) {
+    return sendDiscordOAuthCallbackPage(res, false, 'تم إلغاء ربط Discord أو رفضه.');
+  }
+
+  const authorizationCode = clean(req.query?.code, 2048);
+  if (!authorizationCode) {
+    return sendDiscordOAuthCallbackPage(res, false, 'لم يصل رمز التفويض من Discord.', 400);
+  }
+
+  const user = getUserById(pending.userId);
+  const liveSessions = user ? sessions.get(user.id) : null;
+  const hasLiveSession = !!liveSessions && [...liveSessions].some((socketId) => io.sockets.sockets.has(socketId));
+  if (!user || !hasLiveSession || user.approved === false || user.suspended === true || user.securityStatus !== 'ACTIVE') {
+    return sendDiscordOAuthCallbackPage(res, false, 'انتهت جلسة الموقع. سجّل الدخول مجدداً ثم ابدأ الربط مرة أخرى.', 403);
+  }
+
+  const config = getDiscordOAuthConfig();
+  if (!config || config.clientId !== pending.clientId || config.redirectUri !== pending.redirectUri) {
+    return sendDiscordOAuthCallbackPage(res, false, 'إعدادات ربط Discord غير مكتملة أو تغيرت أثناء العملية.', 503);
+  }
+
+  let previousAccounts = null;
+  let previousAuditLogs = null;
+  try {
+    const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      redirect: 'error',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: 'authorization_code',
+        code: authorizationCode,
+        redirect_uri: config.redirectUri,
+        code_verifier: pending.codeVerifier
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const tokenResult = await tokenResponse.json().catch(() => null);
+    if (!tokenResponse.ok || !tokenResult || typeof tokenResult.access_token !== 'string' || !tokenResult.access_token) {
+      return sendDiscordOAuthCallbackPage(res, false, 'رفض Discord إتمام التفويض. أعد المحاولة.');
+    }
+
+    const profileResponse = await fetch('https://discord.com/api/users/@me', {
+      method: 'GET',
+      redirect: 'error',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${tokenResult.access_token}`
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    const profile = await profileResponse.json().catch(() => null);
+    if (!profileResponse.ok || !profile || !profile.id) {
+      return sendDiscordOAuthCallbackPage(res, false, 'تعذر التحقق من حساب Discord. أعد المحاولة.');
+    }
+
+    const account = createDiscordSocialAccount(profile, now());
+    const duplicateOwner = findDuplicateSocialAccountOwner(state.cia_users, account, user.id);
+    if (duplicateOwner) {
+      return sendDiscordOAuthCallbackPage(res, false, 'حساب Discord هذا مرتبط بعضوية أخرى بالفعل.');
+    }
+
+    const nextAccounts = upsertSocialAccount(user.socialAccounts, account);
+    previousAccounts = user.socialAccounts;
+    previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
+    user.socialAccounts = nextAccounts;
+    addAuditLog('ربط Discord', user, user, 'تم التحقق من الحساب عبر OAuth2.');
+    try {
+      await saveState();
+    } catch (_error) {
+      user.socialAccounts = previousAccounts;
+      state.cia_audit_logs = previousAuditLogs;
+      return sendDiscordOAuthCallbackPage(res, false, 'تعذر حفظ حساب Discord في قاعدة البيانات. لم يتم اعتماد التغيير.', 500);
+    }
+
+    emitState();
+    for (const socketId of sessions.get(user.id) || []) {
+      const targetSocket = io.sockets.sockets.get(socketId);
+      if (targetSocket) targetSocket.emit('social:discord:complete', { ok: true });
+    }
+    return sendDiscordOAuthCallbackPage(res, true, 'تم ربط حساب Discord بنجاح.');
+  } catch (_error) {
+    if (previousAccounts !== null) user.socialAccounts = previousAccounts;
+    if (previousAuditLogs !== null) state.cia_audit_logs = previousAuditLogs;
+    return sendDiscordOAuthCallbackPage(res, false, 'حدث خطأ أثناء ربط Discord. لم يتم حفظ بيانات التفويض.', 502);
+  }
+});
 
 let shutdownPromise = null;
 function installGracefulShutdown() {
