@@ -5586,12 +5586,31 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const badge = isVerifiedDiscord
           ? '<small style="color:var(--green-status);">موثّق عبر Discord OAuth2</small>'
           : '<small style="color:var(--primary-gold);">يدوي — غير موثّق</small>';
+        const discordUsername = String(account.username || '').trim();
+        const discordGlobalName = String(account.globalName || '').trim();
+        const linkedAtTime = isVerifiedDiscord ? Date.parse(String(account.linkedAt || '')) : NaN;
+        const linkedAtLabel = Number.isFinite(linkedAtTime)
+          ? new Date(linkedAtTime).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' })
+          : '';
+        const accountLabel = isVerifiedDiscord
+          ? 'Discord · @' + esc(discordUsername)
+          : esc(account.platform || 'منصة أخرى') + ' · ' + esc(account.username || '');
+        const discordDetails = isVerifiedDiscord
+          ? '<small style="color:var(--text-dim);">Discord User ID: ' + esc(account.externalId || '') + '</small>' +
+            '<small style="color:var(--text-dim);">اسم المستخدم: @' + esc(discordUsername) + '</small>' +
+            (discordGlobalName && discordGlobalName !== discordUsername
+              ? '<small style="color:var(--text-dim);">اسم العرض: ' + esc(discordGlobalName) + '</small>'
+              : '') +
+            (linkedAtLabel
+              ? '<small style="color:var(--text-dim);">تاريخ الربط: ' + esc(linkedAtLabel) + '</small>'
+              : '')
+          : '';
         const removeButton = settings.canManage === true
           ? '<button type="button" data-social-remove="' + esc(account.id || '') + '" aria-label="فصل حساب ' + esc(account.platform || '') + '" style="margin-right:auto;padding:4px 7px;border:1px solid var(--red-alert);border-radius:4px;background:transparent;color:var(--red-alert);font-size:.62rem;cursor:pointer;">فصل</button>'
           : '';
         return '<div style="display:flex;align-items:center;gap:8px;padding:7px;margin-top:6px;border:1px solid var(--border);border-radius:5px;background:rgba(4,8,14,.4);">' + avatar +
           '<div style="min-width:0;display:grid;gap:2px;"><a href="' + esc(profileUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--cyan-glow);font-size:.72rem;font-weight:bold;overflow-wrap:anywhere;">' +
-          esc(account.platform || 'منصة أخرى') + ' · ' + esc(account.username || '') + '</a>' + badge + '</div>' + removeButton + '</div>';
+          accountLabel + '</a>' + badge + discordDetails + '</div>' + removeButton + '</div>';
       }).filter(Boolean).join('');
       return cards || '<div style="padding:8px;border:1px dashed var(--border);border-radius:4px;color:var(--text-dim);font-size:.68rem;">لم يتم ربط حساب تواصل</div>';
     }

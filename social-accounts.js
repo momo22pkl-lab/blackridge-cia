@@ -63,6 +63,7 @@ function normalizeDiscordAccount(account) {
     ? `https://cdn.discordapp.com/avatars/${externalId}/${encodeURIComponent(avatarHash)}.png?size=96`
     : `https://cdn.discordapp.com/embed/avatars/${Number((BigInt(externalId) >> 22n) % 6n)}.png`;
   const username = clean(account.username, 100);
+  const globalName = clean(account.globalName, 100);
   if (!username) return null;
 
   return {
@@ -71,6 +72,7 @@ function normalizeDiscordAccount(account) {
     platform: 'Discord',
     externalId,
     username,
+    globalName,
     profileUrl: `https://discord.com/users/${externalId}`,
     avatarHash: avatarHash && /^[A-Za-z0-9_-]{1,128}$/.test(avatarHash) ? avatarHash : '',
     avatarUrl,
@@ -173,7 +175,8 @@ function createManualSocialAccount(input, linkedAt = new Date().toISOString()) {
 
 function createDiscordSocialAccount(profile, linkedAt = new Date().toISOString()) {
   const externalId = clean(profile?.id, 22);
-  const username = clean(profile?.global_name || profile?.username, 100);
+  const username = clean(profile?.username, 100);
+  const globalName = clean(profile?.global_name, 100);
   if (!DISCORD_ID_PATTERN.test(externalId) || !username) {
     throw new Error('لم يرسل Discord هوية صالحة للحساب.');
   }
@@ -181,6 +184,7 @@ function createDiscordSocialAccount(profile, linkedAt = new Date().toISOString()
     provider: 'discord',
     externalId,
     username,
+    globalName,
     avatarHash: profile.avatar,
     verificationMethod: 'oauth2',
     linkedAt
