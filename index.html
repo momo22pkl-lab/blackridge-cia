@@ -2265,6 +2265,16 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
             <div style="display:flex;align-items:end;"><button type="submit" style="padding:7px 10px;background:#111827;color:var(--primary-gold);border:1px solid var(--primary-gold);border-radius:4px;font-weight:bold;cursor:pointer;">حفظ الحساب اليدوي</button></div>
           </form>
         </details>
+        <section id="social-no-accounts-section" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);" aria-labelledby="social-no-accounts-heading">
+          <h5 id="social-no-accounts-heading" style="color:var(--cyan-glow);font-size:.76rem;margin:0 0 6px;">المستخدمون بدون حسابات اجتماعية</h5>
+          <p style="font-size:.65rem;color:var(--text-dim);line-height:1.6;margin:0 0 8px;">إذا لم ترغب بربط حساب اجتماعي، اكتب الاسم الذي يعرفك به الآخرون للتواصل. سيظهر بجانب اسمك في النظام للعضو نفسه والقادة المخوّلين فقط.</p>
+          <form id="social-contact-name-form" style="display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:7px;align-items:end;">
+            <label style="display:grid;gap:4px;font-size:.65rem;color:var(--text-dim);">اسم التواصل<input id="social-contact-name-input" name="socialContactName" maxlength="100" required autocomplete="nickname" placeholder="الاسم الذي تستخدمه للتواصل" style="padding:7px;border:1px solid var(--border);border-radius:4px;background:#0b1119;color:var(--text-bright);"></label>
+            <button type="submit" style="padding:7px 10px;background:#111827;color:var(--primary-gold);border:1px solid var(--primary-gold);border-radius:4px;font-weight:bold;cursor:pointer;">حفظ الاسم</button>
+          </form>
+          <div id="social-contact-name-preview" style="margin-top:7px;font-size:.67rem;color:var(--text-dim);" aria-live="polite"></div>
+          <div id="social-contact-name-status" role="status" style="margin-top:7px;font-size:.68rem;color:var(--text-dim);"></div>
+        </section>
       </section>
 
       <div class="classified-shell" style="margin-bottom:15px;">
@@ -3090,6 +3100,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if (accountClose) accountClose.addEventListener('click', function(e) { e.preventDefault(); closeAccountCreateModal(); });
       const socialManualForm = document.getElementById('social-account-manual-form');
       if (socialManualForm) socialManualForm.addEventListener('submit', function(e) { e.preventDefault(); saveManualSocialAccount(); });
+      const socialContactNameForm = document.getElementById('social-contact-name-form');
+      if (socialContactNameForm) socialContactNameForm.addEventListener('submit', function(e) { e.preventDefault(); saveSocialContactName(); });
       const socialAccountsList = document.getElementById('social-accounts-list');
       if (socialAccountsList) socialAccountsList.addEventListener('click', function(e) {
         const button = e.target.closest('[data-social-remove]');
@@ -3168,11 +3180,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
     }
 
-    function cacheRegisteredUsersWithoutSocialAccounts(users) {
+    function cacheRegisteredUsersWithoutPrivateSocialData(users) {
       try {
         const safeUsers = (Array.isArray(users) ? users : []).map(function(user) {
           const safeUser = { ...user };
           delete safeUser.socialAccounts;
+          delete safeUser.socialContactName;
           return safeUser;
         });
         localStorage.setItem('cia_users', JSON.stringify(safeUsers));
@@ -3183,7 +3196,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
       if (key === 'cia_users') {
         registeredUsers = value || [];
-        cacheRegisteredUsersWithoutSocialAccounts(registeredUsers);
+        cacheRegisteredUsersWithoutPrivateSocialData(registeredUsers);
         serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
         if (serverHasChief && bootstrapMode && !document.getElementById('entry-official-code').value) {
           hideChiefBootstrap();
@@ -3208,7 +3221,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (!state) return;
         if (Array.isArray(state.cia_users)) {
           registeredUsers = state.cia_users;
-          cacheRegisteredUsersWithoutSocialAccounts(registeredUsers);
+          cacheRegisteredUsersWithoutPrivateSocialData(registeredUsers);
           serverHasChief = registeredUsers.some(u => u.rank === 'CIA CHIEF');
           if (currentUser) {
             const self = registeredUsers.find(u => u.id === currentUser.id);
@@ -5592,7 +5605,22 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
       card.style.display = 'block';
       const list = document.getElementById('social-accounts-list');
-      if (list) list.innerHTML = renderSocialAccountCards(currentUser.socialAccounts || [], { canManage: true });
+      const accounts = Array.isArray(currentUser.socialAccounts) ? currentUser.socialAccounts : [];
+      if (list) list.innerHTML = renderSocialAccountCards(accounts, { canManage: true });
+      const noAccountsSection = document.getElementById('social-no-accounts-section');
+      if (noAccountsSection) noAccountsSection.hidden = accounts.length > 0;
+      const contactNameInput = document.getElementById('social-contact-name-input');
+      if (contactNameInput && document.activeElement !== contactNameInput) {
+        contactNameInput.value = String(currentUser.socialContactName || '');
+      }
+      const contactNamePreview = document.getElementById('social-contact-name-preview');
+      if (contactNamePreview) {
+        const systemName = String(currentUser.name || currentUser.identity?.fullName || currentUser.publicCode || 'عضويتك');
+        const contactName = String(currentUser.socialContactName || '');
+        contactNamePreview.textContent = contactName
+          ? 'الاسم في النظام: ' + systemName + ' — اسم التواصل المحفوظ: ' + contactName
+          : 'الاسم في النظام: ' + systemName + ' — لم يتم حفظ اسم تواصل بديل.';
+      }
     }
 
     function refreshSocialAccounts() {
@@ -5635,6 +5663,41 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           if (discordOAuthPopup === popup) discordOAuthPopup = null;
           setSocialAccountsStatus('تعذر فتح صفحة Discord الآمنة.', 'error');
         }
+      });
+    }
+
+    function setSocialContactNameStatus(message, statusType) {
+      const status = document.getElementById('social-contact-name-status');
+      if (!status) return;
+      status.textContent = String(message || '');
+      status.style.color = statusType === 'success'
+        ? 'var(--green-status)'
+        : statusType === 'error'
+          ? 'var(--red-alert)'
+          : 'var(--text-dim)';
+    }
+
+    function saveSocialContactName() {
+      if (!currentUser || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected) {
+        setSocialContactNameStatus('سجّل الدخول إلى حسابك أولاً.', 'error');
+        return;
+      }
+      const socialContactName = document.getElementById('social-contact-name-input')?.value.trim() || '';
+      if (!socialContactName) {
+        setSocialContactNameStatus('اكتب اسم التواصل قبل الحفظ.', 'error');
+        return;
+      }
+      setSocialContactNameStatus('جارٍ حفظ الاسم…');
+      ciaSocket.emit('social:contact-name:save', { socialContactName }, function(result) {
+        if (!result || !result.ok) {
+          setSocialContactNameStatus((result && result.message) || 'تعذر حفظ اسم التواصل.', 'error');
+          return;
+        }
+        currentUser = { ...currentUser, socialContactName: String(result.socialContactName || '') };
+        const input = document.getElementById('social-contact-name-input');
+        if (input) input.value = currentUser.socialContactName;
+        updateViews();
+        setSocialContactNameStatus('تم حفظ اسم التواصل في ملف عضويتك.', 'success');
       });
     }
 
@@ -7823,9 +7886,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (chiefPublicList) {
         chiefPublicList.innerHTML = registeredUsers.map(u => {
           const id = u.identity || {};
+          const contactName = String(u.socialContactName || '').trim();
+          const socialFallback = Array.isArray(u.socialAccounts) && u.socialAccounts.length === 0
+            ? '<div style="margin-top:7px;padding:7px;border:1px dashed var(--border);border-radius:4px;font-size:.67rem;color:var(--text-dim);"><strong style="color:var(--cyan-glow);">المستخدمون بدون حسابات اجتماعية</strong><br>اسم التواصل: ' + (contactName ? '<span style="color:var(--text-bright);">' + esc(contactName) + '</span>' : 'لم يحدد اسم تواصل بديل') + '</div>'
+            : '';
+          const contactNameLine = contactName && Array.isArray(u.socialAccounts) && u.socialAccounts.length > 0
+            ? '<div style="margin-top:7px;font-size:.67rem;color:var(--text-dim);">اسم التواصل: <strong style="color:var(--text-bright);">' + esc(contactName) + '</strong></div>'
+            : '';
           const socialSection = Array.isArray(u.socialAccounts)
             ? '<section style="margin-top:9px;padding-top:8px;border-top:1px solid var(--border);"><strong style="color:var(--primary-gold);font-size:.68rem;">حسابات التواصل الاجتماعي</strong>' +
-              renderSocialAccountCards(u.socialAccounts) + '</section>'
+              renderSocialAccountCards(u.socialAccounts) + socialFallback + contactNameLine + '</section>'
             : '';
           return `
             <div class="identity-card" style="margin-top:8px;">

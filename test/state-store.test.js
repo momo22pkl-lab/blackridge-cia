@@ -39,7 +39,7 @@ test('initializes an empty database and restores the saved state on restart', as
   const loaded = await store.load({ initialState, getLegacyState: () => null, normalizeState: normalize });
   assert.deepEqual(loaded, initialState);
 
-  await store.save({ cia_users: [{ id: 'u-1', name: 'Agent' }], settings: { salary: 620 } });
+  await store.save({ cia_users: [{ id: 'u-1', name: 'Agent', socialContactName: 'Raven Member' }], settings: { salary: 620 } });
   await store.flush();
 
   const reopened = await new PostgresStateStore(pool).load({
@@ -48,6 +48,7 @@ test('initializes an empty database and restores the saved state on restart', as
     normalizeState: normalize
   });
   assert.equal(reopened.cia_users[0].id, 'u-1');
+  assert.equal(reopened.cia_users[0].socialContactName, 'Raven Member', 'the JSONB state store preserves the optional member contact name');
   assert.equal(reopened.settings.salary, 620);
 });
 

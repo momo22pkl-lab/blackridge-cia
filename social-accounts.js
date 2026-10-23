@@ -9,6 +9,10 @@ function clean(value, max = 1000) {
   return String(value ?? '').trim().slice(0, max);
 }
 
+function normalizeSocialContactName(value) {
+  return clean(value, 100).normalize('NFKC').replace(/\s+/g, ' ');
+}
+
 function normalizePlatformName(value) {
   return clean(value, 50)
     .normalize('NFKC')
@@ -217,6 +221,7 @@ function findDuplicateSocialAccountOwner(users, account, excludingUserId) {
 module.exports = {
   SOCIAL_ACCOUNT_LIMIT,
   accountIdentity,
+  normalizeSocialContactName,
   normalizePlatformName,
   normalizeProfileUrl,
   normalizeSocialAccounts,
