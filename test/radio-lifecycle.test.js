@@ -33,6 +33,16 @@ test('radio lifecycle restores a saved device preference and cleans/rejoins a so
   assert.match(server, /targetSocket\.emit\('radio:service-ended'/);
 });
 
+test('radio re-joins its saved channel only after a successful authenticated active-duty session', () => {
+  const start = html.indexOf('function completeLogin()');
+  const end = html.indexOf('\n    function setUserStatus', start);
+  assert.ok(start >= 0 && end > start, 'the login completion handler exists');
+  const completeLogin = html.slice(start, end);
+  assert.match(completeLogin, /radioPoweredOn && currentUser\.activeService === true && ciaSessionAuthenticated && ciaSocket && ciaSocket\.connected/);
+  assert.match(completeLogin, /requestRadioJoin\(radioChannel\)/);
+  assert.match(completeLogin, /if \(currentUser\.activeService !== true\) radioPoweredOn = false/);
+});
+
 test('full-duplex PTT keeps the peer connection and receive path when one microphone releases', () => {
   assert.match(html, /pc\.addTransceiver\('audio', \{ direction: 'sendrecv' \}\)/);
   assert.match(html, /peer\.localAudioSender\.replaceTrack\(track\)/);

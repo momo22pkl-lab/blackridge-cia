@@ -4124,6 +4124,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       updateServiceUI();
       renderMorsePanels();
       if (['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) loadSecurityCenter();
+      if (radioPoweredOn && currentUser.activeService === true && ciaSessionAuthenticated && ciaSocket && ciaSocket.connected) {
+        requestRadioJoin(radioChannel);
+      }
     }
 
     function setUserStatus(newStatus) {
@@ -6399,7 +6402,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:leave', { channel: radioChannel }, function() {});
         return;
       }
-      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if (currentUser.activeService !== true) return alert('يجب بدء المناوبة قبل تشغيل الراديو.');
       radioPoweredOn = true;
       saveRadioPreference(true, radioChannel);
       radioJoinConfirmed = false;

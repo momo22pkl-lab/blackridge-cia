@@ -142,7 +142,8 @@ test('radio signaling supports concurrent talkers, isolated PTT release, and rec
     makeUser('radio-speaker', 'Radio Speaker', 'RAD-101', '8101'),
     makeUser('radio-listener-a', 'Listener Alpha', 'RAD-102', '8102'),
     makeUser('radio-listener-b', 'Listener Bravo', 'RAD-103', '8103'),
-    makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201')
+    makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201'),
+    makeUser('radio-off-duty', 'Off Duty', 'RAD-301', '8301')
   ];
   fs.writeFileSync(stateFile, JSON.stringify({ cia_users: testUsers }), 'utf8');
 
@@ -200,6 +201,35 @@ test('radio signaling supports concurrent talkers, isolated PTT release, and rec
     assert.equal(duty.ok, true, 'local radio test could not start service: ' + JSON.stringify(duty));
     return client;
   }
+
+  const anonymous = await connectSocket(baseUrl);
+  clients.push(anonymous);
+  const anonymousJoin = await anonymous.emit('radio:join', { channel: 'CH-1' });
+  assert.equal(anonymousJoin.ok, false, 'an unauthenticated socket must not join a radio channel');
+  assert.match(anonymousJoin.message, /تسجيل الدخول/);
+  const anonymousPTT = await anonymous.emit('radio:ptt:start', { channel: 'CH-1' });
+  assert.equal(anonymousPTT.ok, false, 'an unauthenticated socket must not start PTT');
+  assert.match(anonymousPTT.message, /تسجيل الدخول/);
+  const anonymousDuty = await anonymous.emit('duty:start', {});
+  assert.equal(anonymousDuty.ok, false, 'an unauthenticated socket must not start duty');
+
+  const offDuty = await connectSocket(baseUrl);
+  clients.push(offDuty);
+  const offDutyLogin = await offDuty.emit('auth:login', { name: 'Off Duty', code: '8301' });
+  assert.equal(offDutyLogin.ok, true, 'approved off-duty user could not authenticate');
+  const offDutyJoin = await offDuty.emit('radio:join', { channel: 'TAC-1' });
+  assert.equal(offDutyJoin.ok, false, 'an authenticated user who has not started duty must not join');
+  assert.match(offDutyJoin.message, /يجب بدء المناوبة/);
+  const offDutyPTT = await offDuty.emit('radio:ptt:start', { channel: 'TAC-1' });
+  assert.equal(offDutyPTT.ok, false, 'an authenticated user who has not started duty must not start PTT');
+  assert.match(offDutyPTT.message, /يجب بدء المناوبة/);
+  const startedDuty = await offDuty.emit('duty:start', {});
+  assert.equal(startedDuty.ok, true, 'approved off-duty user could not start duty');
+  assert.equal((await offDuty.emit('radio:join', { channel: 'TAC-1' })).ok, true, 'an authenticated on-duty user could not join');
+  const authorizedPTT = await offDuty.emit('radio:ptt:start', { channel: 'TAC-1' });
+  assert.equal(authorizedPTT.ok, true, 'an authenticated on-duty user could not start PTT');
+  assert.deepEqual(authorizedPTT.peers, []);
+  assert.equal((await offDuty.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
 
   const speaker = await login('Radio Speaker', '8101');
   const listenerA = await login('Listener Alpha', '8102');
