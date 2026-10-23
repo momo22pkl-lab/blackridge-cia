@@ -35,6 +35,11 @@ test('radio lifecycle restores a saved device preference and cleans/rejoins a so
 
 test('full-duplex PTT keeps the peer connection and receive path when one microphone releases', () => {
   assert.match(html, /pc\.addTransceiver\('audio', \{ direction: 'sendrecv' \}\)/);
+  assert.match(html, /async function getRadioVoiceAudioTransceiver\(peer\)/);
+  assert.match(html, /candidate\.mid !== null/);
+  assert.match(html, /transceiver\.direction = 'sendrecv'/);
+  assert.match(html, /transceiver\.currentDirection !== 'sendrecv'/);
+  assert.match(html, /await attachRadioVoiceLocalAudio\(peer\)/);
   assert.match(html, /peer\.localAudioSender\.replaceTrack\(track\)/);
   assert.match(html, /sender\.replaceTrack\(null\)/);
   assert.match(html, /polite: String\(ciaSocket\.id\)\.localeCompare\(key\) > 0/);
