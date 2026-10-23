@@ -36,6 +36,7 @@ const { registerOfficialWarnings } = require('./official-warnings');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const {
   accountIdentity,
+  normalizeSocialContactName,
   normalizeSocialAccounts,
   normalizePlatformName,
   createManualSocialAccount,
@@ -778,6 +779,7 @@ function normalizeUser(user) {
   user.radioOnline = user.radioOnline === true;
 
   user.hobbies = clean(user.hobbies || '', 1000);
+  user.socialContactName = normalizeSocialContactName(user.socialContactName);
   user.socialAccounts = normalizeSocialAccounts(user.socialAccounts);
 
   user.accountId = user.accountId || null;
@@ -1061,6 +1063,7 @@ function publicUser(user, viewer = null) {
 
   if (self || canManageMember(viewer, user)) {
     result.socialAccounts = normalizeSocialAccounts(user.socialAccounts);
+    result.socialContactName = normalizeSocialContactName(user.socialContactName);
   }
 
   if (self) {
@@ -4472,6 +4475,29 @@ socket.on('member:saveIdentity', (payload, cb) => {
         prompt: 'consent'
       }).toString();
       return ok(cb, { authorizationUrl: authorizationUrl.toString() });
+    });
+
+    socket.on('social:contact-name:save', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول أولاً.');
+
+      const contactName = normalizeSocialContactName(payload?.socialContactName);
+      if (!contactName) return no(cb, 'اكتب اسم التواصل قبل الحفظ.');
+
+      const previousContactName = actor.socialContactName;
+      const previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
+      actor.socialContactName = contactName;
+      addAuditLog('تحديث اسم التواصل', actor, actor, 'تم تحديث الاسم البديل للتواصل من ملف العضو.');
+      try {
+        await saveState();
+      } catch (_error) {
+        actor.socialContactName = previousContactName;
+        state.cia_audit_logs = previousAuditLogs;
+        return no(cb, 'تعذر حفظ اسم التواصل في قاعدة البيانات. لم يتم اعتماد التغيير.');
+      }
+
+      emitState();
+      return ok(cb, { socialContactName: actor.socialContactName });
     });
 
     socket.on('social:accounts:manual', async (payload, cb) => {

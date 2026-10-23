@@ -9,6 +9,7 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const {
   normalizeSocialAccounts,
+  normalizeSocialContactName,
   createManualSocialAccount,
   createDiscordSocialAccount,
   upsertSocialAccount,
@@ -282,6 +283,12 @@ test('social account normalization preserves only safe, unverified manual metada
   }), /رابط/);
 });
 
+test('social contact names are trimmed, normalized, and length-limited', () => {
+  assert.equal(normalizeSocialContactName('  Raven   North  '), 'Raven North');
+  assert.equal(normalizeSocialContactName('  '), '');
+  assert.equal(normalizeSocialContactName('x'.repeat(120)).length, 100);
+});
+
 test('Discord and manual external account identities are unique across member records', () => {
   const discord = createDiscordSocialAccount({
     id: '123456789012345678',
@@ -289,6 +296,8 @@ test('Discord and manual external account identities are unique across member re
     global_name: 'Raven',
     avatar: 'avatar_hash'
   }, '2026-10-22T12:00:00.000Z');
+  assert.equal(discord.username, 'raven', 'the provider username remains distinct from its display name');
+  assert.equal(discord.globalName, 'Raven');
   const discordOwner = { id: 'member-1', socialAccounts: [discord] };
   assert.equal(findDuplicateSocialAccountOwner([discordOwner], discord, 'member-2')?.id, 'member-1');
   assert.equal(findDuplicateSocialAccountOwner([discordOwner], discord, 'member-1'), null);
@@ -312,6 +321,7 @@ test('existing members link and unlink manual accounts without changing membersh
   const member = await connectPollingSocket(baseUrl);
   const loginUser = await login(member, 'Member One', '1104');
   assert.deepEqual(loginUser.socialAccounts, []);
+  assert.equal(loginUser.socialContactName, '', 'legacy member records default to an empty optional contact name');
   const original = JSON.parse(fs.readFileSync(stateFile, 'utf8')).cia_users.find((user) => user.id === 'member-1');
 
   const manual = await member.emit('social:accounts:manual', {
@@ -323,6 +333,14 @@ test('existing members link and unlink manual accounts without changing membersh
   assert.equal(manual.socialAccounts[0].verified, false);
   assert.equal(manual.socialAccounts[0].verificationMethod, 'manual');
 
+  const savedContactName = await member.emit('social:contact-name:save', {
+    socialContactName: '  Raven   Member  '
+  });
+  assert.equal(savedContactName.ok, true);
+  assert.equal(savedContactName.socialContactName, 'Raven Member');
+  const memberProfileAfterSave = await member.emit('auth:me', {});
+  assert.equal(memberProfileAfterSave.user.socialContactName, 'Raven Member', 'the member profile returns the saved value to its owner');
+
   let saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   const updated = saved.cia_users.find((user) => user.id === 'member-1');
   assert.equal(saved.cia_users.length, 5, 'linking must not create another member account');
@@ -331,12 +349,23 @@ test('existing members link and unlink manual accounts without changing membersh
   assert.equal(updated.rank, original.rank);
   assert.equal(updated.secretCode, original.secretCode);
   assert.equal(updated.socialAccounts.length, 1);
+  assert.equal(updated.socialContactName, 'Raven Member', 'contact name is persisted on the existing member record');
 
   const peer = await connectPollingSocket(baseUrl);
   await login(peer, 'Member Two', '1105');
   const peerSnapshot = await peer.waitForEvent('state:update');
   const peerViewOfMember = peerSnapshot.cia_users.find((user) => user.id === 'member-1');
   assert.equal(Object.hasOwn(peerViewOfMember, 'socialAccounts'), false, 'unauthorized member snapshots must omit contact details');
+  assert.equal(Object.hasOwn(peerViewOfMember, 'socialContactName'), false, 'unauthorized member snapshots must omit the fallback contact name');
+
+  const attemptedTargetWrite = await peer.emit('social:contact-name:save', {
+    memberId: 'member-1',
+    socialContactName: 'Impersonated'
+  });
+  assert.equal(attemptedTargetWrite.ok, true, 'the save endpoint accepts only the authenticated member and ignores target IDs');
+  saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(saved.cia_users.find((user) => user.id === 'member-1').socialContactName, 'Raven Member');
+  assert.equal(saved.cia_users.find((user) => user.id === 'member-2').socialContactName, 'Impersonated');
 
   const duplicate = await peer.emit('social:accounts:manual', {
     platform: 'Instagram',
@@ -352,19 +381,23 @@ test('existing members link and unlink manual accounts without changing membersh
   const highSnapshot = await highCommander.waitForEvent('state:update');
   const scopedAgent = highSnapshot.cia_users.find((user) => user.id === 'member-1');
   assert.equal(scopedAgent.socialAccounts[0].username, 'member_one', 'authorized high commander sees an Agent account');
+  assert.equal(scopedAgent.socialContactName, 'Raven Member', 'authorized high commander sees the fallback contact name');
   const protectedSenior = highSnapshot.cia_users.find((user) => user.id === 'senior-1');
   assert.equal(Object.hasOwn(protectedSenior, 'socialAccounts'), false, 'high commander must not see accounts outside management scope');
+  assert.equal(Object.hasOwn(protectedSenior, 'socialContactName'), false, 'high commander must not see names outside management scope');
 
   const chief = await connectPollingSocket(baseUrl);
   await login(chief, 'Chief Test', '1101');
   const chiefSnapshot = await chief.waitForEvent('state:update');
   assert.equal(chiefSnapshot.cia_users.find((user) => user.id === 'member-1').socialAccounts[0].platform, 'Instagram');
+  assert.equal(chiefSnapshot.cia_users.find((user) => user.id === 'member-1').socialContactName, 'Raven Member');
 
   const removed = await member.emit('social:accounts:remove', { accountId: manual.socialAccounts[0].id });
   assert.equal(removed.ok, true);
   assert.deepEqual(removed.socialAccounts, []);
   saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.deepEqual(saved.cia_users.find((user) => user.id === 'member-1').socialAccounts, []);
+  assert.equal(saved.cia_users.find((user) => user.id === 'member-1').socialContactName, 'Raven Member', 'contact name remains independent from optional social account links');
 
   await Promise.all([member.close(), peer.close(), highCommander.close(), chief.close()]);
 });
@@ -395,15 +428,38 @@ test('Discord OAuth2 links only the verified provider identity and never persist
   assert.equal(linked.ok, true);
   assert.equal(linked.user.socialAccounts.length, 1);
   assert.equal(linked.user.socialAccounts[0].provider, 'discord');
-  assert.equal(linked.user.socialAccounts[0].username, 'Raven Test');
+  assert.equal(linked.user.socialAccounts[0].username, 'raven_test');
+  assert.equal(linked.user.socialAccounts[0].globalName, 'Raven Test');
+  assert.equal(linked.user.socialAccounts[0].externalId, '123456789012345678');
+  assert.match(linked.user.socialAccounts[0].linkedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(linked.user.socialAccounts[0].verified, true);
   assert.equal(linked.user.socialAccounts[0].profileUrl, 'https://discord.com/users/123456789012345678');
   assert.match(linked.user.socialAccounts[0].avatarUrl, /^https:\/\/cdn\.discordapp\.com\/avatars\//);
   assert.doesNotMatch(fs.readFileSync(stateFile, 'utf8'), /test-only-access-token/);
   assert.doesNotMatch(fs.readFileSync(stateFile, 'utf8'), /test-only-oauth-client-secret/);
 
+  const pageSource = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
+  assert.match(pageSource, /Discord User ID:/, 'the member and authorized-leader card renders the Discord ID');
+  assert.match(pageSource, /اسم المستخدم: @/, 'the account card labels the actual Discord username');
+  assert.match(pageSource, /تاريخ الربط:/, 'the account card renders the link date when available');
+
   const secondMember = await connectPollingSocket(baseUrl);
   await login(secondMember, 'Member Two', '1105');
+  const secondSnapshot = await secondMember.waitForEvent('state:update');
+  const hiddenLinkedMember = secondSnapshot.cia_users.find((user) => user.id === 'member-1');
+  assert.equal(Object.hasOwn(hiddenLinkedMember, 'socialAccounts'), false, 'an ordinary member cannot read another member’s Discord details from the state API');
+  const attemptedOtherProfile = await secondMember.emit('auth:me', { memberId: 'member-1', userId: 'member-1' });
+  assert.equal(attemptedOtherProfile.user.id, 'member-2', 'the self-profile API ignores a caller-supplied member ID');
+  assert.deepEqual(attemptedOtherProfile.user.socialAccounts, []);
+
+  const chief = await connectPollingSocket(baseUrl);
+  await login(chief, 'Chief Test', '1101');
+  const chiefSnapshot = await chief.waitForEvent('state:update');
+  const chiefView = chiefSnapshot.cia_users.find((user) => user.id === 'member-1');
+  assert.equal(chiefView.socialAccounts[0].externalId, '123456789012345678');
+  assert.equal(chiefView.socialAccounts[0].username, 'raven_test');
+  assert.ok(chiefView.socialAccounts[0].linkedAt);
+
   const secondStart = await secondMember.emit('social:discord:start', {});
   assert.equal(secondStart.ok, true);
   const secondState = new URL(secondStart.authorizationUrl).searchParams.get('state');
@@ -418,7 +474,7 @@ test('Discord OAuth2 links only the verified provider identity and never persist
   assert.deepEqual(secondProfile.user.socialAccounts, []);
   const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.equal(saved.cia_users.filter((user) => user.socialAccounts?.some((account) => account.provider === 'discord')).length, 1);
-  await Promise.all([member.close(), secondMember.close()]);
+  await Promise.all([member.close(), secondMember.close(), chief.close()]);
 });
 
 test('Discord linking returns a clear setup message when server OAuth settings are absent', async (t) => {
