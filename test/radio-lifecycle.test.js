@@ -62,3 +62,13 @@ test('remote audio starts at unity volume without changing system volume or appl
   assert.match(html, /RadioAudioHealth\.summarize/);
   assert.doesNotMatch(html, /audio\.volume\s*=\s*(?:[1-9]\d{2,}|\d+\.\d{2,})/);
 });
+
+test('radio re-joins its saved channel only after a successful authenticated active-duty session', () => {
+  const start = html.indexOf('function completeLogin()');
+  const end = html.indexOf('\n    function setUserStatus', start);
+  assert.ok(start >= 0 && end > start, 'the login completion handler exists');
+  const completeLogin = html.slice(start, end);
+  assert.match(completeLogin, /radioPoweredOn && currentUser\.activeService === true && ciaSessionAuthenticated && ciaSocket && ciaSocket\.connected/);
+  assert.match(completeLogin, /requestRadioJoin\(radioChannel\)/);
+  assert.match(completeLogin, /if \(currentUser\.activeService !== true\) radioPoweredOn = false/);
+});
