@@ -134,7 +134,7 @@ async function connectSocket(baseUrl) {
   };
 }
 
-test('radio signaling supports concurrent talkers, isolated PTT release, and reconnects', async (t) => {
+test('radio signaling supports concurrent talkers, resumes an open duty record, and reconnects', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackridge-radio-signaling-'));
   const stateFile = path.join(tempDir, 'state.json');
   const port = await freePort();
@@ -144,7 +144,20 @@ test('radio signaling supports concurrent talkers, isolated PTT release, and rec
     makeUser('radio-listener-b', 'Listener Bravo', 'RAD-103', '8103'),
     makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201')
   ];
-  fs.writeFileSync(stateFile, JSON.stringify({ cia_users: testUsers }), 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(stateFile, JSON.stringify({
+    cia_users: testUsers,
+    cia_attendance: [{
+      id: 'DUTY-EXISTING-SPEAKER',
+      userId: 'radio-speaker',
+      userCode: 'RAD-101',
+      userName: 'Radio Speaker',
+      dayKey: today,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      salaryPaid: false
+    }]
+  }), 'utf8');
 
   let serverOutput = '';
   const child = spawn(process.execPath, [serverPath], {
@@ -198,6 +211,7 @@ test('radio signaling supports concurrent talkers, isolated PTT release, and rec
     assert.equal(result.ok, true, 'local radio test login failed: ' + JSON.stringify(result));
     const duty = await client.emit('duty:start', {});
     assert.equal(duty.ok, true, 'local radio test could not start service: ' + JSON.stringify(duty));
+    assert.equal(duty.user?.activeService, true, 'duty start did not return authoritative active-service state');
     return client;
   }
 

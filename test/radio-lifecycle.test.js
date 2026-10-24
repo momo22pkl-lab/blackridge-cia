@@ -51,6 +51,15 @@ test('full-duplex PTT keeps the peer connection and receive path when one microp
   assert.doesNotMatch(stateHandler, /closeRadioVoicePeer\(data\.socketId\)/);
 });
 
+test('duty UI only enables radio service after the server confirms active duty', () => {
+  const startStart = html.indexOf('function startDuty()');
+  const startEnd = html.indexOf('function endDuty()', startStart);
+  assert.ok(startStart >= 0 && startEnd > startStart, 'duty-start handler exists');
+  const startHandler = html.slice(startStart, startEnd);
+  assert.match(startHandler, /r\.user\.activeService !== true/);
+  assert.doesNotMatch(startHandler, /r\.user \|\| \{\.\.\.currentUser,\s*activeService:\s*true/);
+});
+
 test('remote audio starts at unity volume without changing system volume or applying a gain boost', () => {
   assert.match(html, /let radioVolume = 100/);
   assert.match(html, /audio\.volume = radioVolume \/ 100/);
