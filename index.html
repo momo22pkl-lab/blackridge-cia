@@ -6403,7 +6403,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:leave', { channel: radioChannel }, function() {});
         return;
       }
-      if (currentUser.activeService !== true) return alert('يلزم تسجيل الدخول للخدمة أولاً.');
+      if (currentUser.activeService !== true) return alert('يجب بدء المناوبة قبل تشغيل الراديو.');
       radioPoweredOn = true;
       saveRadioPreference(true, radioChannel);
       radioJoinConfirmed = false;
@@ -6773,11 +6773,10 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         turnStatus: iceConfig.turnStatus || 'unknown'
       };
       const pc = new window.RTCPeerConnection({ iceServers: peerIceConfig.iceServers });
-      const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
       const peer = {
         pc, channel, iceConfig: peerIceConfig, turnStatus: peerIceConfig.turnStatus,
         audio: null, pendingCandidates: [], hasLocalAudio: false,
-        localAudioSender: audioTransceiver.sender,
+        localAudioTransceiver: null, localAudioSender: null,
         polite: String(ciaSocket.id).localeCompare(key) > 0,
         makingOffer: false, ignoreOffer: false, isSettingRemoteAnswerPending: false,
         incomingAudioConfirmed: false, audioPlaying: false, lastReportedReceiving: false,
@@ -6871,6 +6870,39 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       return peer;
     }
 
+    async function getRadioVoiceAudioTransceiver(peer) {
+      let transceiver = peer.pc.getTransceivers().find(candidate =>
+        candidate.receiver && candidate.receiver.track && candidate.receiver.track.kind === 'audio' &&
+        candidate.mid !== null
+      );
+      if (!transceiver) {
+        transceiver = peer.pc.getTransceivers().find(candidate =>
+          candidate.receiver && candidate.receiver.track && candidate.receiver.track.kind === 'audio'
+        );
+      }
+      if (!transceiver) transceiver = peer.pc.addTransceiver('audio', { direction: 'sendrecv' });
+
+      const previousSender = peer.localAudioSender;
+      if (previousSender && previousSender !== transceiver.sender && previousSender.track) {
+        try { await previousSender.replaceTrack(null); } catch (error) {
+          console.warn('[BLACK RIDGE] Radio sender rebind failed:', error?.name || 'Error');
+        }
+      }
+      peer.localAudioTransceiver = transceiver;
+      peer.localAudioSender = transceiver.sender;
+      return transceiver;
+    }
+
+    async function attachRadioVoiceLocalAudio(peer) {
+      const track = radioLocalStream && radioLocalStream.getAudioTracks()[0];
+      if (!track) return null;
+      const transceiver = await getRadioVoiceAudioTransceiver(peer);
+      transceiver.direction = 'sendrecv';
+      await peer.localAudioSender.replaceTrack(track);
+      peer.hasLocalAudio = true;
+      return transceiver;
+    }
+
     async function createRadioVoiceOffer(peerId, attempt = radioPTTAttempt, iceRestart = false) {
       if (!radioPTTActive || !radioLocalStream || attempt !== radioPTTAttempt || !radioPTTChannel) return;
       const channel = radioPTTChannel;
@@ -6880,13 +6912,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!peer) return;
       if (peer.makingOffer) return;
       try {
-        const track = radioLocalStream.getAudioTracks()[0];
-        if (!track) throw new Error('No microphone audio track is available.');
-        await peer.localAudioSender.replaceTrack(track);
-        peer.hasLocalAudio = true;
-        // Replacing the track on the negotiated send/receive transceiver needs
-        // no new offer. Only a new peer or an ICE recovery renegotiates.
-        if (peer.pc.remoteDescription && !iceRestart) return;
+        const transceiver = await attachRadioVoiceLocalAudio(peer);
+        if (!transceiver) throw new Error('No microphone audio track is available.');
+        // A receiver may have negotiated recvonly before its own PTT starts.
+        // Changing its sender track alone does not change the negotiated
+        // direction; renegotiate that existing audio m-line as sendrecv.
+        const needsOffer = !peer.pc.remoteDescription || iceRestart ||
+          transceiver.currentDirection !== 'sendrecv';
+        if (!needsOffer) return;
         if (peer.pc.signalingState !== 'stable') return;
         if (iceRestart && peer.pc.signalingState === 'stable' && typeof peer.pc.restartIce === 'function') peer.pc.restartIce();
         peer.makingOffer = true;
@@ -6974,6 +7007,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           radioEarlyVoiceCandidates.delete?.(peerId);
           peer.pendingCandidates.push(...earlyCandidates);
           await peer.pc.setRemoteDescription(data.sdp);
+          if (radioPTTActive && radioPTTChannel === peer.channel && radioLocalStream) {
+            await attachRadioVoiceLocalAudio(peer);
+          } else {
+            await getRadioVoiceAudioTransceiver(peer);
+          }
           await flushRadioVoiceCandidates(peer);
           const answer = await peer.pc.createAnswer();
           await peer.pc.setLocalDescription(answer);
@@ -6986,6 +7024,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           peer.isSettingRemoteAnswerPending = true;
           await peer.pc.setRemoteDescription(data.sdp);
           peer.isSettingRemoteAnswerPending = false;
+          if (radioPTTActive && radioPTTChannel === peer.channel && radioLocalStream) {
+            await attachRadioVoiceLocalAudio(peer);
+          } else {
+            await getRadioVoiceAudioTransceiver(peer);
+          }
           await flushRadioVoiceCandidates(peer);
         }
       } catch (error) {
