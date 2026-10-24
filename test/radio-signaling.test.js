@@ -11,11 +11,11 @@ const net = require('node:net');
 const projectRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(projectRoot, 'server.js');
 
-function makeUser(id, name, publicCode, secretCode) {
+function makeUser(id, name, publicCode, secretCode, rank = 'AGENT') {
   return {
     id,
     name,
-    rank: 'AGENT',
+    rank,
     publicCode,
     secretCode,
     approved: true,
@@ -142,7 +142,8 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     makeUser('radio-speaker', 'Radio Speaker', 'RAD-101', '8101'),
     makeUser('radio-listener-a', 'Listener Alpha', 'RAD-102', '8102'),
     makeUser('radio-listener-b', 'Listener Bravo', 'RAD-103', '8103'),
-    makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201')
+    makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201'),
+    makeUser('radio-chief', 'Radio Chief', 'CHIEF-001', '8401', 'CIA CHIEF')
   ];
   const today = new Date().toISOString().slice(0, 10);
   fs.writeFileSync(stateFile, JSON.stringify({
@@ -360,4 +361,95 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(unaffectedUserTransmission.ok, true, 'ending one account service disconnected a different user on that channel');
   assert.equal(unaffectedUserTransmission.peers.includes(secondDevice.id), false, 'service-ended phone remained in the channel');
   assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
+
+  const chief = await login('Radio Chief', '8401');
+  const initialAdminList = await chief.emit('radio:admin:subscribe', {});
+  assert.equal(initialAdminList.ok, true, 'CIA CHIEF must be able to subscribe to the radio monitor');
+  assert.deepEqual(
+    initialAdminList.channels.filter((channel) => channel.type === 'main').map((channel) => channel.id).sort(),
+    ['CH-1', 'CH-3', 'TAC-1']
+  );
+  const deniedAdminList = await speaker.emit('radio:admin:subscribe', {});
+  assert.equal(deniedAdminList.ok, false, 'ordinary members must not access the server-authorized monitor');
+  assert.equal(deniedAdminList.channels, undefined, 'denied monitor requests must not return channel data');
+
+  const privateJoinA = await speaker.emit('radio:join', { channel: '103.6' });
+  assert.equal(privateJoinA.ok, true);
+  assert.equal(privateJoinA.channel, 'CUSTOM:103.6');
+  assert.equal(privateJoinA.channelLabel, '103.6');
+  await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 1)
+  );
+
+  const privateJoinB = await listenerB.emit('radio:join', { channel: '103.6' });
+  assert.equal(privateJoinB.ok, true);
+  assert.equal(privateJoinB.channel, privateJoinA.channel, 'the same private value must resolve to the same channel');
+  const privateAdminState = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 2)
+  );
+  const privateAdminWave = privateAdminState.channels.find((channel) => channel.name === '103.6');
+  assert.equal(privateAdminWave.type, 'custom');
+  assert.deepEqual(new Set(privateAdminWave.members.map((member) => member.publicCode)), new Set(['RAD-101', 'RAD-103']));
+  assert.ok(privateAdminWave.members.every((member) => member.name && member.connectionStatus === 'متصل'));
+  const persistedCustomChannels = JSON.parse(fs.readFileSync(stateFile, 'utf8')).cia_custom_radio_channels;
+  assert.ok(persistedCustomChannels.some((channel) => channel.id === privateJoinA.channel && channel.label === '103.6'));
+
+  const ordinarySnapshot = await listenerB.waitFor('state:update', (snapshot) =>
+    Array.isArray(snapshot.cia_users) && snapshot.cia_users.some((user) =>
+      user.id === 'radio-speaker' && user.radioChannel === null && user.radioOnline === false
+    )
+  );
+  const hiddenPeer = ordinarySnapshot.cia_users.find((user) => user.id === 'radio-speaker');
+  assert.equal(hiddenPeer.radioChannel, null, 'ordinary state snapshots must not reveal a custom channel name');
+  assert.equal(hiddenPeer.radioOnline, false, 'ordinary state snapshots must not reveal custom-wave presence');
+  assert.equal(Object.hasOwn(ordinarySnapshot, 'cia_custom_radio_channels'), false, 'ordinary snapshots must not include the custom channel registry');
+
+  const separatePrivateJoin = await switcher.emit('radio:join', { channel: '111' });
+  assert.equal(separatePrivateJoin.ok, true);
+  assert.equal(separatePrivateJoin.channel, 'CUSTOM:111');
+  const sameWaveTransmission = await speaker.emit('radio:ptt:start', { channel: privateJoinA.channel });
+  assert.equal(sameWaveTransmission.ok, true);
+  assert.deepEqual(sameWaveTransmission.peers, [listenerB.id]);
+  const customOffer = { type: 'offer', sdp: 'v=0\r\no=- 2 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' };
+  assert.equal((await speaker.emit('radio:voice:signal', {
+    channel: privateJoinA.channel, to: listenerB.id, type: 'offer', sdp: customOffer
+  })).ok, true);
+  await listenerB.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.channel === privateJoinA.channel);
+  assert.equal((await switcher.emit('radio:voice:signal', {
+    channel: privateJoinA.channel, to: listenerB.id, type: 'offer', sdp: customOffer
+  })).ok, false, 'a member on a different wave must not signal into the private wave');
+  assert.equal((await speaker.emit('radio:text', {
+    channel: privateJoinA.channel, text: 'Private wave test'
+  })).ok, true);
+  await listenerB.waitFor('radio:text', (event) => event.channel === privateJoinA.channel && event.text === 'Private wave test');
+  await assert.rejects(
+    switcher.waitFor('radio:text', (event) => event.channel === privateJoinA.channel, 200),
+    /Timed out waiting/
+  );
+  assert.equal((await speaker.emit('radio:ptt:stop', { channel: privateJoinA.channel })).ok, true);
+
+  assert.equal((await speaker.emit('radio:join', { channel: '' })).ok, false, 'empty channel values must be rejected');
+  assert.equal((await speaker.emit('radio:join', { channel: 'x'.repeat(44) })).ok, false, 'overlong channel values must be rejected');
+  assert.equal((await speaker.emit('radio:join', { channel: 'bad\u0000name' })).ok, false, 'control characters must be rejected');
+  assert.equal((await speaker.emit('radio:join', { channel: 'bad\nname' })).ok, false, 'line breaks must not be normalized into a wave name');
+
+  assert.equal((await listenerB.emit('radio:leave', { channel: privateJoinA.channel })).ok, true);
+  const oneMemberState = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 1)
+  );
+  assert.equal(oneMemberState.channels.find((channel) => channel.name === '103.6').members[0].publicCode, 'RAD-101');
+
+  await listenerB.close();
+  const reconnectedPrivateMember = await login('Listener Bravo', '8103', true);
+  const privateReconnect = await reconnectedPrivateMember.emit('radio:join', {});
+  assert.equal(privateReconnect.ok, true, 'a disconnected member must be able to rejoin the saved private wave');
+  assert.equal(privateReconnect.channel, privateJoinA.channel);
+  await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 2)
+  );
+  await reconnectedPrivateMember.close();
+  const disconnectedAdminState = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 1)
+  );
+  assert.equal(disconnectedAdminState.channels.find((channel) => channel.name === '103.6').members[0].publicCode, 'RAD-101');
 });
