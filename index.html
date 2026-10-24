@@ -7,6 +7,7 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/notifications.css" rel="stylesheet">
   <link href="/official-warnings.css" rel="stylesheet">
+  <link href="/blackridge-cipher.css" rel="stylesheet">
   <style id="profanity-strike-dialog-css">
 #pr-strike-overlay{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:14px;background:rgba(0,0,0,.86);backdrop-filter:blur(5px)}
 .pr-strike-dialog{position:relative;width:min(480px,100%);max-height:min(88vh,760px);overflow:auto;padding:clamp(18px,5vw,26px);color:#f8eded;background:linear-gradient(145deg,#2a0b0e,#170709 62%,#090607);border:1px solid #7d2229;border-top:4px solid #c52732;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 38px rgba(139,0,0,.24);font-family:inherit;animation:pr-strike-enter .18s ease-out}
@@ -2155,6 +2156,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li id="ibp-nav" class="nav-btn" onclick="openIBPHome(this)"><i class="fa-solid fa-satellite-dish"></i> IBP // مركز قيادة القطاع</li>
       <li id="map-nav" class="nav-btn" onclick="showPane('tactical-map-view', this)"><i class="fa-solid fa-map-location-dot"></i> خريطة لوس سانتوس (GTA V)</li>
       <li id="morse-nav" class="nav-btn" onclick="openMorseTranslator()"><i class="fa-solid fa-tower-broadcast"></i> أدوات شفرة مورس</li>
+      <li id="blackridge-cipher-nav" class="nav-btn" onclick="showPane('blackridge-cipher-view', this)"><i class="fa-solid fa-key"></i> شفرة الاستخبارات</li>
       <li class="nav-btn" onclick="showPane('cases-vault', this)"><i class="fa-solid fa-box-archive"></i> أرشيف القضايا والأدلة</li>
       <li class="nav-btn" onclick="showPane('radio', this)"><i class="fa-solid fa-walkie-talkie"></i> الراديو وأكواد النداء</li>
       <li class="nav-btn" onclick="showPane('chat', this)"><i class="fa-solid fa-comments"></i> الاتصالات المشفرة</li>
@@ -2183,6 +2185,75 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   <!-- Content Area -->
   <div class="content-area">
     <div id="official-warnings-view" class="view-pane" aria-label="نظام التحذيرات الرسمي" style="padding:0;overflow:hidden;"><iframe title="نظام التحذيرات الرسمي" src="/blackridge-warning-prototype?embed=1" style="display:block;width:100%;height:calc(100vh - 125px);min-height:600px;border:0;background:#07111d;"></iframe></div>
+    <div id="blackridge-cipher-view" class="view-pane br-cipher-page" aria-label="شفرة الاستخبارات">
+      <section class="br-cipher-shell">
+        <header class="br-cipher-header">
+          <svg class="br-cipher-seal" viewBox="0 0 96 96" role="img" aria-label="شارة BLACKRIDGE CIPHER">
+            <path d="M48 5 82 18v25c0 23-13 38-34 48C27 81 14 66 14 43V18L48 5Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M48 13 74 23v20c0 17-9 29-26 38-17-9-26-21-26-38V23l26-10Z" fill="none" stroke="currentColor" stroke-width=".8" stroke-dasharray="2 3"/>
+            <path d="M31 48h34M48 31v34M36 36l24 24m0-24L36 60" fill="none" stroke="currentColor" stroke-width="1"/>
+            <circle cx="48" cy="48" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="48" cy="48" r="2" fill="currentColor"/>
+            <path d="M23 71c8-3 12-8 15-15m35 15c-8-3-12-8-15-15M23 25c8 3 12 8 15 15m35-15c-8 3-12 8-15 15" fill="none" stroke="currentColor" stroke-width=".7"/>
+          </svg>
+          <div class="br-cipher-brand">
+            <div class="br-cipher-overline">BLACKRIDGE // PRIVATE MESSAGE TOOL</div>
+            <h1>شفرة الاستخبارات</h1>
+            <p>تشفير وفك تشفير محليان على هذا الجهاز</p>
+          </div>
+          <svg class="br-cipher-scribble" viewBox="0 0 180 60" aria-hidden="true">
+            <path d="M2 42c18-28 26 24 45-8S75 54 93 25s24 23 39-5 29 11 46-12M9 53c17-16 23 7 39-13s24 15 43-5 25 11 39-8 24 8 41-7" fill="none" stroke="currentColor" stroke-width="1"/>
+            <path d="M20 10 29 5m78 48 11-8m14-36 8 2M55 55l6-6" fill="none" stroke="currentColor" stroke-width=".8"/>
+          </svg>
+        </header>
+
+        <div class="br-cipher-privacy" role="note">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          الرسالة والمفتاح لا يُرسلان إلى الخادم. استخدم مفتاحًا مشتركًا قويًا وأرسله عبر قناة منفصلة.
+        </div>
+
+        <div class="br-cipher-tabs" role="tablist" aria-label="اختيار العملية">
+          <button id="br-cipher-encrypt-tab" class="br-cipher-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="br-cipher-encrypt-panel" data-cipher-tab="encrypt">تشفير رسالة</button>
+          <button id="br-cipher-decrypt-tab" class="br-cipher-tab" type="button" role="tab" aria-selected="false" aria-controls="br-cipher-decrypt-panel" data-cipher-tab="decrypt">فك تشفير رسالة</button>
+        </div>
+
+        <section id="br-cipher-encrypt-panel" class="br-cipher-panel is-active" role="tabpanel" aria-labelledby="br-cipher-encrypt-tab" data-cipher-panel="encrypt">
+          <label class="br-cipher-label" for="br-cipher-plain">الرسالة الإنجليزية</label>
+          <textarea id="br-cipher-plain" class="br-cipher-input" rows="6" maxlength="20000" autocomplete="off" spellcheck="false" placeholder="اكتب الرسالة هنا باللغة الإنجليزية"></textarea>
+          <label class="br-cipher-label" for="br-cipher-encrypt-key">المفتاح المشترك</label>
+          <input id="br-cipher-encrypt-key" class="br-cipher-input" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" placeholder="أدخل عبارة سرية من 8 أحرف على الأقل">
+          <div class="br-cipher-actions">
+            <button class="br-cipher-button br-cipher-button-primary" type="button" data-cipher-action="encrypt"><i class="fa-solid fa-lock" aria-hidden="true"></i> تشفير</button>
+            <button class="br-cipher-button" type="button" data-cipher-action="clear-encrypt">مسح</button>
+          </div>
+          <p class="br-cipher-status" data-cipher-status="encrypt" role="status" aria-live="polite"></p>
+          <div class="br-cipher-result" data-cipher-result="encrypted" hidden>
+            <div class="br-cipher-result-head"><span>الشفرة الرمزية</span><button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="copy-encrypted">نسخ الشفرة</button></div>
+            <textarea id="br-cipher-output" class="br-cipher-output" rows="8" readonly spellcheck="false" aria-label="الشفرة الرمزية الناتجة"></textarea>
+          </div>
+        </section>
+
+        <section id="br-cipher-decrypt-panel" class="br-cipher-panel" role="tabpanel" aria-labelledby="br-cipher-decrypt-tab" data-cipher-panel="decrypt" hidden>
+          <label class="br-cipher-label" for="br-cipher-code">الشفرة الرمزية</label>
+          <textarea id="br-cipher-code" class="br-cipher-input br-cipher-code-input" rows="8" autocomplete="off" spellcheck="false" placeholder="الصق شفرة BLACKRIDGE هنا"></textarea>
+          <div class="br-cipher-actions br-cipher-actions-compact">
+            <button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="paste-code">لصق</button>
+          </div>
+          <label class="br-cipher-label" for="br-cipher-decrypt-key">المفتاح المشترك</label>
+          <input id="br-cipher-decrypt-key" class="br-cipher-input" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" placeholder="أدخل المفتاح نفسه المستخدم في التشفير">
+          <div class="br-cipher-actions">
+            <button class="br-cipher-button br-cipher-button-primary" type="button" data-cipher-action="decrypt"><i class="fa-solid fa-lock-open" aria-hidden="true"></i> فك التشفير</button>
+            <button class="br-cipher-button" type="button" data-cipher-action="clear-decrypt">مسح</button>
+          </div>
+          <p class="br-cipher-status" data-cipher-status="decrypt" role="status" aria-live="polite"></p>
+          <div class="br-cipher-result" data-cipher-result="decrypted" hidden>
+            <div class="br-cipher-result-head"><span>الرسالة الأصلية</span><button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="copy-decrypted">نسخ الرسالة</button></div>
+            <textarea id="br-cipher-plaintext-output" class="br-cipher-output br-cipher-plaintext-output" rows="6" readonly aria-label="الرسالة الأصلية بعد فك التشفير"></textarea>
+          </div>
+        </section>
+        <footer class="br-cipher-footer"><span>BR-CIPHER/1</span><span>AES-256-GCM · PBKDF2 / SHA-256</span><span>LOCAL ONLY</span></footer>
+      </section>
+    </div>
     <div id="ibp-return-bar" style="display:none"><button type="button" onclick="openIBPHome()">← رجوع إلى مركز IBP</button><span>IBP // LOS SANTOS SECTOR COMMAND</span><button type="button" onclick="exitIBPWorkspace()">الخروج إلى BLACK RIDGE</button></div>
     <div id="ibp-command-center" class="view-pane"><div class="ibp-shell" dir="ltr">
       <header class="ibp-topbar"><div class="ibp-brand"><div class="ibp-mark">IBP</div><div><div class="ibp-brand-title">INTELLIGENCE BATTALION PROGRAM</div><div class="ibp-brand-sub">LOS SANTOS SECTOR // SECURE COMMAND NETWORK</div></div></div><div class="ibp-header-right"><span class="ibp-live"><i class="ibp-dot"></i><span id="ibp-live-state">SECURE LINK</span></span><span id="ibp-clock" class="ibp-clock">--:--:--</span><button class="ibp-exit" type="button" onclick="exitIBPWorkspace()">BLACK RIDGE ↗</button></div></header>
@@ -11590,5 +11661,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     setPage('command');
   })();
   </script>
+  <script src="/blackridge-cipher.js" defer></script>
 </body>
 </html>

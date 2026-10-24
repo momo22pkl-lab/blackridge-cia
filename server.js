@@ -192,6 +192,8 @@ const publicAssets = Object.freeze({
   '/notifications-client.js': 'notifications-client.js',
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
+  '/blackridge-cipher.css': 'blackridge-cipher.css',
+  '/blackridge-cipher.js': 'blackridge-cipher.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
   '/radio-signal-policy.js': 'radio-signal-policy.js',
   '/radio-audio-health.js': 'radio-audio-health.js',
