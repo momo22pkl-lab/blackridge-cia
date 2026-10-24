@@ -1,0 +1,45 @@
+.br-cipher-page{padding:clamp(8px,2vw,24px)!important}
+.br-cipher-shell{position:relative;isolation:isolate;width:min(100%,900px);margin:0 auto;padding:clamp(18px,4vw,34px);overflow:hidden;color:#e9edf0;background:linear-gradient(145deg,#10151b 0%,#090d12 56%,#0d1218 100%);border:1px solid rgba(197,159,84,.34);border-top:3px solid #b99a57;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.38)}
+.br-cipher-shell:before{position:absolute;z-index:-1;inset:0;content:"";pointer-events:none;opacity:.17;background:repeating-linear-gradient(164deg,transparent 0 29px,rgba(184,151,83,.12) 30px,transparent 31px 58px),radial-gradient(circle at 88% 8%,rgba(190,155,85,.12),transparent 34%)}
+.br-cipher-header{display:flex;align-items:center;gap:17px;padding-bottom:22px;border-bottom:1px solid rgba(187,156,88,.27)}
+.br-cipher-seal{flex:none;width:64px;height:64px;color:#c3a460;filter:drop-shadow(0 0 9px rgba(195,164,96,.16))}
+.br-cipher-brand{min-width:0;flex:1}
+.br-cipher-overline{color:#bba36e;font:700 .67rem/1.5 "Courier New",monospace;letter-spacing:.12em}
+.br-cipher-brand h1{margin:4px 0 2px;color:#f1eee6;font-size:clamp(1.35rem,4vw,2rem);font-weight:750;letter-spacing:.015em}
+.br-cipher-brand p{margin:0;color:#9ba4ac;font-size:.84rem}
+.br-cipher-scribble{flex:none;width:150px;max-width:25%;height:52px;color:rgba(195,164,96,.55)}
+.br-cipher-privacy{display:flex;align-items:flex-start;gap:10px;margin:18px 0;padding:12px 14px;color:#c9c3b4;background:rgba(184,151,83,.07);border:1px solid rgba(187,156,88,.2);border-inline-start:3px solid #ad9257;border-radius:4px;font-size:.82rem;line-height:1.75}
+.br-cipher-privacy i{margin-top:4px;color:#c4a461}
+.br-cipher-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:20px 0 18px}
+.br-cipher-tab{min-height:46px;padding:10px 14px;color:#aeb6bd;background:#10171e;border:1px solid #26323c;border-radius:4px;font-family:inherit;font-size:.9rem;font-weight:700;line-height:1.4;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.br-cipher-tab:hover{border-color:rgba(195,164,96,.55);color:#eee8db}
+.br-cipher-tab.is-active{color:#f2e7c9;background:linear-gradient(180deg,rgba(178,145,76,.18),rgba(178,145,76,.07));border-color:#a88b50;box-shadow:inset 0 -2px 0 #b99a57}
+.br-cipher-panel{min-width:0}
+.br-cipher-panel[hidden],.br-cipher-result[hidden]{display:none!important}
+.br-cipher-label{display:block;margin:15px 0 7px;color:#d7dce0;font-size:.83rem;font-weight:700}
+.br-cipher-input,.br-cipher-output{display:block;width:100%;min-width:0;padding:12px 14px;color:#e5e9ec;background:#080d12;border:1px solid #2b3741;border-radius:4px;font: .9rem/1.8 system-ui,sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}
+.br-cipher-input:focus{border-color:#a88b50;box-shadow:0 0 0 3px rgba(184,151,83,.12)}
+.br-cipher-input::placeholder{color:#697681}
+.br-cipher-input[type=password]{direction:ltr;text-align:left}
+.br-cipher-input:not(textarea){min-height:46px}
+.br-cipher-code-input,.br-cipher-output{direction:ltr;text-align:left;font: .87rem/1.8 "Courier New",monospace;overflow-wrap:anywhere}
+.br-cipher-code-input{color:#d5bd83}
+.br-cipher-output{min-height:132px;resize:vertical;color:#dfca93;border-color:rgba(185,154,87,.35);background:rgba(4,8,12,.82);white-space:pre-wrap;overflow-wrap:anywhere}
+.br-cipher-plaintext-output{color:#e6ebef}
+.br-cipher-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+.br-cipher-actions-compact{justify-content:flex-start;margin:8px 0 12px}
+.br-cipher-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:9px 16px;color:#d8dee3;background:#151d24;border:1px solid #33404b;border-radius:4px;font-family:inherit;font-size:.8rem;font-weight:700;line-height:1.3;cursor:pointer;transition:background .15s,border-color .15s,transform .15s}
+.br-cipher-button:hover:not(:disabled){background:#1d2831;border-color:#78838c;transform:translateY(-1px)}
+.br-cipher-button:focus-visible,.br-cipher-tab:focus-visible{outline:2px solid #d0b36f;outline-offset:2px}
+.br-cipher-button:disabled{opacity:.65;cursor:wait}
+.br-cipher-button-primary{color:#17140c;background:linear-gradient(180deg,#cfb26c,#a78948);border-color:#d0b36f}
+.br-cipher-button-primary:hover:not(:disabled){background:linear-gradient(180deg,#ddc17d,#b59551);border-color:#e0c57b}
+.br-cipher-button-quiet{min-height:34px;padding:6px 11px;color:#ddc78f;background:transparent;border-color:rgba(185,154,87,.36)}
+.br-cipher-status{min-height:1.5em;margin:10px 0 0;color:#9ba7af;font-size:.81rem;line-height:1.6}
+.br-cipher-status[data-kind=success]{color:#9bcaad}
+.br-cipher-status[data-kind=error]{color:#f09b9b}
+.br-cipher-result{margin-top:12px;padding:13px;background:rgba(4,8,12,.48);border:1px solid rgba(185,154,87,.22);border-radius:5px}
+.br-cipher-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;color:#e2d6b7;font-size:.83rem;font-weight:700}
+.br-cipher-footer{display:flex;justify-content:space-between;gap:10px;margin-top:22px;padding-top:12px;color:#7e8991;border-top:1px solid rgba(187,156,88,.18);font:600 .61rem/1.5 "Courier New",monospace;letter-spacing:.06em}
+@media(max-width:600px){.br-cipher-page{padding:6px!important}.br-cipher-shell{padding:17px 13px;border-radius:6px}.br-cipher-header{gap:11px}.br-cipher-seal{width:50px;height:50px}.br-cipher-scribble{width:76px;height:40px}.br-cipher-brand h1{font-size:1.3rem}.br-cipher-brand p{font-size:.74rem}.br-cipher-privacy{font-size:.76rem;padding:10px}.br-cipher-tabs{gap:6px}.br-cipher-tab{padding:9px 6px;font-size:.8rem}.br-cipher-actions .br-cipher-button{flex:1}.br-cipher-footer{flex-wrap:wrap;font-size:.57rem}.br-cipher-result-head{align-items:flex-start}}
+@media(prefers-reduced-motion:reduce){.br-cipher-tab,.br-cipher-button,.br-cipher-input{transition:none}}
