@@ -10424,7 +10424,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const current = (state.cia_attendance || []).find(
         (item) => item.userId === actor.id && item.dayKey === dayKey && !item.endedAt
       );
-      if (current) return ok(cb, { attendance: current });
+      if (current) {
+        actor.activeService = true;
+        actor.online = true;
+        actor.status = 'في الخدمة';
+        saveState();
+        emitState();
+        return ok(cb, { attendance: current, user: publicUser(actor, actor) });
+      }
       const attendance = {
         id: makeId('DUTY'),
         userId: actor.id,

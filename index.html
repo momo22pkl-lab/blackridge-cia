@@ -5531,7 +5531,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if(currentUser.serviceApproved !== true) return alert('أكمل موافقات الشخصية والهوية وطلب دخول الخدمة أولاً.');
       ciaSocket.emit('duty:start',{},r=>{
         if(!r||!r.ok)return alert((r&&r.message)||'تعذر تسجيل المباشرة.');
-        currentUser = r.user || {...currentUser, activeService:true, status:'في الخدمة'};
+        if(!r.user || r.user.activeService !== true) {
+          updateServiceUI();
+          return alert('لم يؤكد الخادم بدء المناوبة؛ لم تتغير حالة الخدمة.');
+        }
+        currentUser = r.user;
         updateServiceUI();
         updateViews();
       });
