@@ -71,3 +71,29 @@ test('remote audio starts at unity volume without changing system volume or appl
   assert.match(html, /RadioAudioHealth\.summarize/);
   assert.doesNotMatch(html, /audio\.volume\s*=\s*(?:[1-9]\d{2,}|\d+\.\d{2,})/);
 });
+
+test('custom radio entry stays outside the main-channel list and preserves the existing radio controls', () => {
+  assert.match(html, /id="radio-custom-channel-input"[^>]*maxlength="43"/);
+  assert.match(html, /onclick="joinCustomRadioChannel\(\)"/);
+  assert.match(html, /function joinCustomRadioChannel\(\)/);
+  assert.match(html, /function normalizeCustomRadioLabel\(value\)/);
+  assert.match(html, /isValidCustomRadioChannelKey\(saved\.channel\)/);
+  for (const channel of ['CH-1', 'TAC-1', 'CH-3']) {
+    assert.match(html, new RegExp(`data-channel="${channel}"`));
+  }
+  assert.match(html, /هذه موجة افتراضية داخل الموقع وليست تردداً فعلياً/);
+});
+
+test('private radio membership and leadership roster are enforced on the server', () => {
+  const subscribeStart = server.indexOf("socket.on('radio:admin:subscribe'");
+  const subscribeEnd = server.indexOf("socket.on('radio:admin:unsubscribe'", subscribeStart);
+  assert.ok(subscribeStart >= 0 && subscribeEnd > subscribeStart, 'radio admin subscription handler exists');
+  const subscribeHandler = server.slice(subscribeStart, subscribeEnd);
+  assert.match(subscribeHandler, /requireSocketUser\(socket\)/);
+  assert.match(subscribeHandler, /if \(!isChief\(actor\)\)/);
+  assert.match(subscribeHandler, /radioAdminChannelList\(\)/);
+  assert.match(server, /targetSocket\.radioAdminSubscribed === true && isChief\(viewer\)/);
+  assert.match(server, /canSeeRadioChannel \? \(user\.radioChannel \|\| 'CH-1'\) : null/);
+  assert.match(server, /canSeeRadioChannel && !!user\.radioOnline/);
+  assert.match(server, /radioSocketIsEligible\(socketId, channel\)/);
+});
