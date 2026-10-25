@@ -100,12 +100,18 @@ class DevToolsPage {
   }
 
   async evaluate(expression) {
-    const result = await this.command('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-      userGesture: true
-    });
+    let result;
+    try {
+      result = await this.command('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+        userGesture: true
+      });
+    } catch (error) {
+      const preview = expression.replace(/\s+/g, ' ').slice(0, 160);
+      throw new Error(`${error.message}; expression=${preview}`);
+    }
     if (result.exceptionDetails) {
       throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     }
@@ -138,6 +144,11 @@ async function launchBrowser(debugPort, appUrl, profilePath) {
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',
+    '--disable-background-networking',
+    '--disable-component-update',
+    '--disable-default-apps',
+    '--disable-extensions',
+    '--no-first-run',
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
     '--autoplay-policy=no-user-gesture-required',
@@ -245,8 +256,8 @@ test('real browser WebRTC keeps both radio talkers transmitting through overlap,
   const stateFile = path.join(tempDir, 'state.json');
   const port = await freePort();
   const users = [
-    makeUser('browser-radio-a', 'Browser Radio Alpha', 'BRT-A', 'browser-test-a'),
-    makeUser('browser-radio-b', 'Browser Radio Bravo', 'BRT-B', 'browser-test-b')
+    makeUser('browser-radio-a', 'Browser Radio Alpha', 'BRT-A', '8101'),
+    makeUser('browser-radio-b', 'Browser Radio Bravo', 'BRT-B', '8102')
   ];
   fs.writeFileSync(stateFile, JSON.stringify({ cia_users: users }), 'utf8');
 
@@ -302,8 +313,8 @@ test('real browser WebRTC keeps both radio talkers transmitting through overlap,
   const b = await launchBrowser(await freePort(), appUrl, path.join(tempDir, 'chrome-b'));
   browsers.push(a.process, b.process);
   pages.push(a.page, b.page);
-  await authenticateAndJoin(a.page, 'Browser Radio Alpha', 'browser-test-a');
-  await authenticateAndJoin(b.page, 'Browser Radio Bravo', 'browser-test-b');
+  await authenticateAndJoin(a.page, 'Browser Radio Alpha', '8101');
+  await authenticateAndJoin(b.page, 'Browser Radio Bravo', '8102');
 
   await a.page.evaluate('startPTT(); true');
   await waitFor(a.page, 'radioPTTActive === true', 'A starting PTT');
