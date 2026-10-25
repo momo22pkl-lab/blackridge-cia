@@ -96,4 +96,12 @@ test('private radio membership and leadership roster are enforced on the server'
   assert.match(server, /canSeeRadioChannel \? \(user\.radioChannel \|\| 'CH-1'\) : null/);
   assert.match(server, /canSeeRadioChannel && !!user\.radioOnline/);
   assert.match(server, /radioSocketIsEligible\(socketId, channel\)/);
+  assert.match(html, /data-radio-access-mode/);
+  assert.match(html, /data-radio-add-user/);
+  assert.match(html, /data-radio-remove-user/);
+  assert.match(html, /radio:access-revoked/);
+  assert.match(server, /socket\.on\('radio:admin:set-access-mode'/);
+  assert.match(server, /socket\.on\('radio:admin:update-allowlist'/);
+  assert.match(server, /accessMode: 'open', allowedUserIds: \[\]/);
+  assert.match(server, /radioCustomChannelAllows\(channel, actor\.id\)/);
 });

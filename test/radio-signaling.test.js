@@ -148,6 +148,9 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   const today = new Date().toISOString().slice(0, 10);
   fs.writeFileSync(stateFile, JSON.stringify({
     cia_users: testUsers,
+    cia_custom_radio_channels: [
+      { id: 'CUSTOM:103.6', label: '103.6', createdAt: new Date().toISOString() }
+    ],
     cia_attendance: [{
       id: 'DUTY-EXISTING-SPEAKER',
       userId: 'radio-speaker',
@@ -369,6 +372,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     initialAdminList.channels.filter((channel) => channel.type === 'main').map((channel) => channel.id).sort(),
     ['CH-1', 'CH-3', 'TAC-1']
   );
+  assert.equal(initialAdminList.channels.find((channel) => channel.name === '103.6').accessMode, 'open', 'legacy custom waves must stay open when no access mode was saved');
   const deniedAdminList = await speaker.emit('radio:admin:subscribe', {});
   assert.equal(deniedAdminList.ok, false, 'ordinary members must not access the server-authorized monitor');
   assert.equal(deniedAdminList.channels, undefined, 'denied monitor requests must not return channel data');
@@ -389,6 +393,8 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   );
   const privateAdminWave = privateAdminState.channels.find((channel) => channel.name === '103.6');
   assert.equal(privateAdminWave.type, 'custom');
+  assert.equal(privateAdminWave.accessMode, 'open', 'new custom waves must be open by default');
+  assert.ok(privateAdminWave.eligibleMembers.some((member) => member.id === 'radio-listener-b'));
   assert.deepEqual(new Set(privateAdminWave.members.map((member) => member.publicCode)), new Set(['RAD-101', 'RAD-103']));
   assert.ok(privateAdminWave.members.every((member) => member.name && member.connectionStatus === 'متصل'));
   const persistedCustomChannels = JSON.parse(fs.readFileSync(stateFile, 'utf8')).cia_custom_radio_channels;
@@ -407,6 +413,10 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   const separatePrivateJoin = await switcher.emit('radio:join', { channel: '111' });
   assert.equal(separatePrivateJoin.ok, true);
   assert.equal(separatePrivateJoin.channel, 'CUSTOM:111');
+  const newlyCreatedWave = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '111' && channel.memberCount === 1)
+  );
+  assert.equal(newlyCreatedWave.channels.find((channel) => channel.name === '111').accessMode, 'open');
   const sameWaveTransmission = await speaker.emit('radio:ptt:start', { channel: privateJoinA.channel });
   assert.equal(sameWaveTransmission.ok, true);
   assert.deepEqual(sameWaveTransmission.peers, [listenerB.id]);
@@ -452,4 +462,50 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     payload.channels.some((channel) => channel.name === '103.6' && channel.memberCount === 1)
   );
   assert.equal(disconnectedAdminState.channels.find((channel) => channel.name === '103.6').members[0].publicCode, 'RAD-101');
+
+  const deniedAllowlistUpdate = await speaker.emit('radio:admin:update-allowlist', {
+    channel: privateJoinA.channel, userId: 'radio-listener-b', action: 'add'
+  });
+  assert.equal(deniedAllowlistUpdate.ok, false, 'ordinary members must not edit a custom-wave allowlist');
+  assert.equal((await speaker.emit('radio:admin:set-access-mode', {
+    channel: privateJoinA.channel, mode: 'restricted'
+  })).ok, false, 'ordinary members must not change custom-wave access mode');
+
+  const addAllowedMember = await chief.emit('radio:admin:update-allowlist', {
+    channel: privateJoinA.channel, userId: 'radio-listener-b', action: 'add'
+  });
+  assert.equal(addAllowedMember.ok, true);
+  assert.equal(addAllowedMember.accessMode, 'restricted', 'adding a member must enable allowlist enforcement');
+  const restrictedAfterAdd = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.accessMode === 'restricted' && channel.memberCount === 0)
+  );
+  assert.deepEqual(restrictedAfterAdd.channels.find((channel) => channel.name === '103.6').allowedMembers.map((member) => member.id), ['radio-listener-b']);
+
+  assert.equal((await speaker.emit('radio:join', { channel: privateJoinA.channel })).ok, false, 'unlisted users must be denied by radio:join');
+  assert.equal((await speaker.emit('radio:setChannel', { channel: privateJoinA.channel })).ok, false, 'radio:setChannel must enforce the same allowlist');
+  const rejoinedAllowedMember = await login('Listener Bravo', '8103', true);
+  assert.equal((await rejoinedAllowedMember.emit('radio:join', { channel: privateJoinA.channel })).ok, true, 'an allowed user must be able to join');
+  assert.equal((await switcher.emit('radio:join', { channel: privateJoinA.channel })).ok, false, 'a different member must not enter a restricted wave');
+  assert.equal((await speaker.emit('radio:ptt:start', { channel: privateJoinA.channel })).ok, false, 'an ejected user must not start PTT');
+  assert.equal((await speaker.emit('radio:voice:signal', {
+    channel: privateJoinA.channel, to: rejoinedAllowedMember.id, type: 'offer', sdp: customOffer
+  })).ok, false, 'an ejected user must not signal into the restricted wave');
+
+  const removeAllowedMember = await chief.emit('radio:admin:update-allowlist', {
+    channel: privateJoinA.channel, userId: 'radio-listener-b', action: 'remove'
+  });
+  assert.equal(removeAllowedMember.ok, true);
+  const restrictedAfterRemove = await chief.waitFor('radio:admin:state', (payload) =>
+    payload.channels.some((channel) => channel.name === '103.6' && channel.accessMode === 'restricted' && channel.memberCount === 0)
+  );
+  assert.deepEqual(restrictedAfterRemove.channels.find((channel) => channel.name === '103.6').allowedMembers, []);
+  assert.equal((await rejoinedAllowedMember.emit('radio:join', { channel: privateJoinA.channel })).ok, false, 'removing an allowed member must revoke existing access');
+  assert.equal((await rejoinedAllowedMember.emit('radio:text', { channel: privateJoinA.channel, text: 'should be blocked' })).ok, false);
+
+  const reopenWave = await chief.emit('radio:admin:set-access-mode', {
+    channel: privateJoinA.channel, mode: 'open'
+  });
+  assert.equal(reopenWave.ok, true);
+  assert.equal(reopenWave.accessMode, 'open');
+  assert.equal((await speaker.emit('radio:join', { channel: privateJoinA.channel })).ok, true, 'an open wave must accept members again');
 });

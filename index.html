@@ -3783,6 +3783,18 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
         renderRadioLeadershipChannels(payload && payload.channels);
       });
+      ciaSocket.on('radio:access-revoked', function(data) {
+        if (!data || data.channel !== radioChannel) return;
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinPendingChannel = '';
+        radioJoinConfirmed = false;
+        resetRadioVoice();
+        radioChannel = 'CH-1';
+        radioCustomLabel = '';
+        changeRadioChannel('CH-1', '104.50', 'القناة العامة');
+        setRadioActivity(data.message || 'لم تعد مخوّلاً لهذه الموجة؛ عاد الراديو إلى القناة العامة.', 7000);
+      });
       ciaSocket.on('radio:voice:signal', handleRadioVoiceSignal);
       ciaSocket.on('radio:voice:peer', function(data) {
         if (!data || data.channel !== radioChannel || !radioPTTActive || !radioPTTChannel) return;
@@ -6713,6 +6725,9 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
       list.innerHTML = channels.map(channel => {
         const members = Array.isArray(channel.members) ? channel.members : [];
+        const allowedMembers = Array.isArray(channel.allowedMembers) ? channel.allowedMembers : [];
+        const eligibleMembers = Array.isArray(channel.eligibleMembers) ? channel.eligibleMembers : [];
+        const allowedIds = new Set(allowedMembers.map(member => String(member.id)));
         const frequency = channel.frequency ? `<span style="color:var(--cyan-glow);font-family:monospace;">${esc(channel.frequency)} MHz</span>` : '';
         const memberList = members.length
           ? `<ul style="list-style:none;padding:0;margin:8px 0 0;display:grid;gap:5px;">${members.map(member => `
@@ -6722,14 +6737,88 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
               </li>`).join('')}</ul>`
           : '<div style="margin-top:7px;color:var(--text-dim);font-size:.67rem;">لا يوجد أعضاء متصلون بهذه الموجة.</div>';
         const typeLabel = channel.type === 'custom' ? 'مخصصة / غير مدرجة' : 'رئيسية';
+        const accessControls = channel.type === 'custom' ? (() => {
+          const accessMode = channel.accessMode === 'restricted' ? 'restricted' : 'open';
+          const selectableMembers = eligibleMembers.filter(member => !allowedIds.has(String(member.id)));
+          const selectId = `radio-custom-allow-member-${channels.indexOf(channel)}`;
+          const memberOptions = selectableMembers.map(member =>
+            `<option value="${esc(member.id)}">${esc(member.name || member.publicCode || 'عضو')} · #${esc(member.publicCode || '—')} · ${esc(member.rank || '')}</option>`
+          ).join('');
+          const allowedList = allowedMembers.length
+            ? `<ul style="list-style:none;padding:0;margin:7px 0;display:grid;gap:5px;">${allowedMembers.map(member => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 7px;background:#090d12;border:1px solid #273342;border-radius:4px;font-size:.66rem;">
+                  <span>${esc(member.name || member.publicCode || 'عضو')} · #${esc(member.publicCode || '—')} · ${esc(member.rank || '')}</span>
+                  <button type="button" data-radio-remove-user="${esc(member.id)}" data-radio-channel="${esc(channel.id)}" style="background:transparent;border:1px solid #a84d4d;color:#ffaaaa;border-radius:4px;padding:3px 7px;cursor:pointer;">إزالة</button>
+                </li>`).join('')}</ul>`
+            : `<div style="margin-top:6px;color:var(--text-dim);font-size:.65rem;">${accessMode === 'restricted' ? 'القائمة فارغة؛ لا يستطيع أي عضو الانضمام.' : 'لا توجد أعضاء محفوظون في قائمة السماح.'}</div>`;
+          return `<div style="margin-top:9px;padding:8px;border:1px solid #273342;border-radius:5px;background:#0b1016;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:.68rem;">الوصول: <b style="color:${accessMode === 'restricted' ? '#ffbd73' : 'var(--green-status)'};">${accessMode === 'restricted' ? 'مقيّدة للأعضاء المحددين' : 'مفتوحة للجميع'}</b></span>
+              <button type="button" data-radio-access-mode="${accessMode === 'restricted' ? 'open' : 'restricted'}" data-radio-channel="${esc(channel.id)}" style="background:#131b24;border:1px solid #596474;color:var(--text-bright);border-radius:4px;padding:5px 8px;cursor:pointer;font-size:.65rem;">${accessMode === 'restricted' ? 'فتح للجميع' : 'تقييد الموجة'}</button>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;">
+              <select id="${selectId}" style="flex:1;min-width:0;background:#05080c;color:#e2e6eb;border:1px solid #596474;border-radius:4px;padding:6px;font-size:.66rem;">
+                <option value="">اختر عضواً لإضافته</option>${memberOptions}
+              </select>
+              <button type="button" data-radio-add-user="true" data-radio-channel="${esc(channel.id)}" data-radio-select-id="${selectId}" style="background:#26382e;border:1px solid #4b8060;color:#d5f2dc;border-radius:4px;padding:5px 9px;cursor:pointer;font-size:.66rem;">إضافة وتقييد</button>
+            </div>
+            <div style="margin-top:7px;color:var(--text-dim);font-size:.63rem;">إضافة عضو تفعّل التقييد تلقائياً. عند فتح الموجة للجميع تبقى القائمة محفوظة ولا تمنع الانضمام.</div>
+            <div style="margin-top:7px;font-size:.65rem;">${accessMode === 'restricted' ? 'الأعضاء المسموح لهم:' : 'الأعضاء المحفوظون:'}</div>${allowedList}
+          </div>`;
+        })() : '';
         return `<article style="padding:10px;border:1px solid #344154;border-radius:6px;background:#080c11;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
             <div><b style="color:var(--primary-gold);font-size:.78rem;">${esc(channel.name || channel.id || 'موجة')}</b>
               <span style="color:var(--text-dim);font-size:.64rem;">${esc(channel.description || typeLabel)} · ${esc(typeLabel)}</span></div>
             <div style="display:flex;gap:9px;align-items:center;font-size:.67rem;"><span>${Number(channel.memberCount) || 0} عضو</span>${frequency}</div>
           </div>${memberList}
+          ${accessControls}
         </article>`;
       }).join('');
+
+      list.querySelectorAll('[data-radio-access-mode]').forEach(button => {
+        button.addEventListener('click', () => {
+          sendRadioAdminMutation('radio:admin:set-access-mode', {
+            channel: button.dataset.radioChannel,
+            mode: button.dataset.radioAccessMode
+          });
+        });
+      });
+      list.querySelectorAll('[data-radio-add-user]').forEach(button => {
+        button.addEventListener('click', () => {
+          const select = document.getElementById(button.dataset.radioSelectId);
+          if (!select || !select.value) {
+            setRadioActivity('اختر عضواً من القائمة أولاً.', 5000);
+            return;
+          }
+          sendRadioAdminMutation('radio:admin:update-allowlist', {
+            channel: button.dataset.radioChannel,
+            userId: select.value,
+            action: 'add'
+          });
+        });
+      });
+      list.querySelectorAll('[data-radio-remove-user]').forEach(button => {
+        button.addEventListener('click', () => {
+          sendRadioAdminMutation('radio:admin:update-allowlist', {
+            channel: button.dataset.radioChannel,
+            userId: button.dataset.radioRemoveUser,
+            action: 'remove'
+          });
+        });
+      });
+    }
+
+    function sendRadioAdminMutation(eventName, payload) {
+      if (!isRadioLeadershipViewer() || !ciaSocket || !ciaSocket.connected) {
+        setRadioActivity('تعذر تحديث صلاحيات الموجة؛ تحقق من اتصال القائد.', 6000);
+        return;
+      }
+      ciaSocket.emit(eventName, payload, function(result) {
+        if (!result || result.ok !== true) {
+          setRadioActivity((result && result.message) || 'تعذر تحديث صلاحيات الموجة.', 7000);
+        }
+      });
     }
 
     function syncRadioLeadershipPanel() {
