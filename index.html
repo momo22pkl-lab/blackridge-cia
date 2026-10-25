@@ -2472,6 +2472,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <button type="button" class="radio-small-btn" onclick="radioClearActivity()" title="مسح شاشة النشاط"><i class="fa-solid fa-eraser"></i></button>
         </div>
 
+        <div class="radio-section-title" style="justify-content:center;"><i class="fa-solid fa-user-shield"></i> موجة خاصة / مخصصة</div>
+        <div style="display:flex;gap:7px;align-items:center;justify-content:center;">
+          <input id="radio-custom-channel-input" type="text" maxlength="43" autocomplete="off" aria-label="اسم أو تردد الموجة الخاصة" placeholder="اكتب تردداً أو اسماً للموجة" onkeydown="if(event.key==='Enter') joinCustomRadioChannel()" style="flex:1;min-width:0;padding:10px 8px;background:#05080c;color:#e2e6eb;border:1px solid #596474;border-radius:5px;text-align:center;">
+          <button type="button" class="radio-send-btn" onclick="joinCustomRadioChannel()" style="white-space:nowrap;padding:9px 10px;">دخول الموجة</button>
+        </div>
+        <div style="margin-top:5px;text-align:center;color:var(--text-dim);font-size:.62rem;line-height:1.5;">استخدم رقماً أو اسماً حتى 43 حرفاً. الموجة غير مدرجة؛ شارك قيمتها مع من تريد. هذه موجة افتراضية داخل الموقع وليست تردداً فعلياً.</div>
+
         <div id="radio-interactive" class="radio-interactive" style="display:none;">
           <div class="radio-section-title"><i class="fa-solid fa-layer-group"></i> اختيار الموجة</div>
           <div class="radio-channel-grid">
@@ -2512,6 +2519,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           </div>
         </div>
       </div>
+      <section id="radio-leadership-panel" class="card" style="display:none;max-width:760px;margin:12px auto;border-color:var(--primary-gold);">
+        <h4 style="color:var(--primary-gold);font-size:.88rem;margin-bottom:6px;"><i class="fa-solid fa-tower-broadcast"></i> متابعة الموجات — CIA CHIEF</h4>
+        <p style="color:var(--text-dim);font-size:.67rem;line-height:1.55;margin-bottom:10px;">عرض قيادي مباشر للموجات الرئيسية والمخصصة. لا تُرسل قائمة الأعضاء أو أسماء الموجات المخصصة إلى حسابات الأعضاء.</p>
+        <div id="radio-leadership-channel-list" style="display:grid;gap:8px;"><div class="radio-empty">جارٍ تحميل حالة الموجات...</div></div>
+      </section>
     </div>
 
     <!-- Chat View -->
@@ -3097,6 +3109,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioJoinRequestId = 0;
     let radioJoinPendingChannel = '';
     let radioChannel = 'CH-1';
+    let radioCustomLabel = '';
     let radioVolume = 100;
     let radioLiveLog = [];
     let radioPTTHeld = false;
@@ -3110,6 +3123,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioConnectionGeneration = 0;
     let radioLifecycleConnectPending = false;
     const RADIO_ALLOWED_CHANNELS = new Set(['CH-1', 'TAC-1', 'CH-3']);
+    const RADIO_CUSTOM_CHANNEL_PREFIX = 'CUSTOM:';
+    const RADIO_CUSTOM_LABEL_MAX_LENGTH = 43;
     const RADIO_PREFERENCE_PREFIX = 'blackridge:radio-preference:';
     const radioVoicePeers = new Map();
     const radioEarlyVoiceCandidates = window.RadioVoiceSignalPolicy &&
@@ -3122,6 +3137,29 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     const radioVoiceIceConfigRequests = new Map();
     const radioPeersReceiving = new Set();
     let radioAudioUnlockInstalled = false;
+
+    function normalizeCustomRadioLabel(value) {
+      const raw = String(value ?? '').normalize('NFKC');
+      if (/[\u0000-\u001f\u007f-\u009f]/u.test(raw)) return '';
+      const label = raw.trim().replace(/\s+/gu, ' ');
+      if (!label || label.length > RADIO_CUSTOM_LABEL_MAX_LENGTH) return '';
+      return label;
+    }
+
+    function isCustomRadioChannel(channel) {
+      return String(channel ?? '').startsWith(RADIO_CUSTOM_CHANNEL_PREFIX);
+    }
+
+    function isValidCustomRadioChannelKey(channel) {
+      if (!isCustomRadioChannel(channel)) return false;
+      const label = normalizeCustomRadioLabel(String(channel).slice(RADIO_CUSTOM_CHANNEL_PREFIX.length));
+      return !!label && RADIO_CUSTOM_CHANNEL_PREFIX + label.toLowerCase() === channel;
+    }
+
+    function radioChannelDisplayName(channel = radioChannel) {
+      if (!isCustomRadioChannel(channel)) return String(channel || 'CH-1');
+      return radioCustomLabel || String(channel).slice(RADIO_CUSTOM_CHANNEL_PREFIX.length);
+    }
     let bootstrapMode = false;
     let identityPendingUser = null;
     let serverHasChief = null;
@@ -3738,6 +3776,25 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
         updateRadioVoiceStatus();
       });
+      ciaSocket.on('radio:admin:state', function(payload) {
+        if (!isRadioLeadershipViewer()) {
+          clearRadioLeadershipPanel();
+          return;
+        }
+        renderRadioLeadershipChannels(payload && payload.channels);
+      });
+      ciaSocket.on('radio:access-revoked', function(data) {
+        if (!data || data.channel !== radioChannel) return;
+        radioJoinRequestId += 1;
+        radioJoinPending = false;
+        radioJoinPendingChannel = '';
+        radioJoinConfirmed = false;
+        resetRadioVoice();
+        radioChannel = 'CH-1';
+        radioCustomLabel = '';
+        changeRadioChannel('CH-1', '104.50', 'القناة العامة');
+        setRadioActivity(data.message || 'لم تعد مخوّلاً لهذه الموجة؛ عاد الراديو إلى القناة العامة.', 7000);
+      });
       ciaSocket.on('radio:voice:signal', handleRadioVoiceSignal);
       ciaSocket.on('radio:voice:peer', function(data) {
         if (!data || data.channel !== radioChannel || !radioPTTActive || !radioPTTChannel) return;
@@ -4177,12 +4234,28 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const savedRadioPreference = loadRadioPreference(currentUser.id);
       if (savedRadioPreference) {
         radioChannel = savedRadioPreference.channel;
+        radioCustomLabel = savedRadioPreference.customLabel || '';
         radioPoweredOn = savedRadioPreference.enabled === true && currentUser.activeService === true;
         if (savedRadioPreference.enabled && currentUser.activeService !== true) {
           saveRadioPreference(false, savedRadioPreference.channel);
         }
       } else if (currentUser.radioChannel) {
-        radioChannel = currentUser.radioChannel;
+        const savedChannel = String(currentUser.radioChannel);
+        if (RADIO_ALLOWED_CHANNELS.has(savedChannel) || isValidCustomRadioChannelKey(savedChannel)) {
+          radioChannel = savedChannel;
+          radioCustomLabel = isCustomRadioChannel(savedChannel)
+            ? normalizeCustomRadioLabel(savedChannel.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length))
+            : '';
+        } else {
+          const legacyChannelLabel = normalizeCustomRadioLabel(savedChannel);
+          radioChannel = legacyChannelLabel
+            ? RADIO_CUSTOM_CHANNEL_PREFIX + legacyChannelLabel.toLowerCase()
+            : 'CH-1';
+          radioCustomLabel = legacyChannelLabel;
+        }
+      } else {
+        radioChannel = 'CH-1';
+        radioCustomLabel = '';
       }
       if (currentUser.activeService !== true) radioPoweredOn = false;
       renderBank();
@@ -6321,9 +6394,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       try {
         const saved = JSON.parse(localStorage.getItem(RADIO_PREFERENCE_PREFIX + String(identity)) || 'null');
         if (!saved || typeof saved !== 'object') return null;
+        const channel = RADIO_ALLOWED_CHANNELS.has(saved.channel)
+          ? saved.channel
+          : (isValidCustomRadioChannelKey(saved.channel) ? saved.channel : 'CH-1');
+        const customLabel = isCustomRadioChannel(channel)
+          ? (normalizeCustomRadioLabel(saved.customLabel) || normalizeCustomRadioLabel(channel.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length)))
+          : '';
         return {
           enabled: saved.enabled === true,
-          channel: RADIO_ALLOWED_CHANNELS.has(saved.channel) ? saved.channel : 'CH-1'
+          channel,
+          customLabel
         };
       } catch (error) {
         return null;
@@ -6333,11 +6413,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function saveRadioPreference(enabled, channel = radioChannel) {
       const identity = currentUser && (currentUser.id || currentUser.publicCode);
       if (!identity) return;
-      const selectedChannel = RADIO_ALLOWED_CHANNELS.has(channel) ? channel : 'CH-1';
+      const selectedChannel = RADIO_ALLOWED_CHANNELS.has(channel)
+        ? channel
+        : (isValidCustomRadioChannelKey(channel) ? channel : 'CH-1');
       try {
         localStorage.setItem(RADIO_PREFERENCE_PREFIX + String(identity), JSON.stringify({
           enabled: enabled === true,
-          channel: selectedChannel
+          channel: selectedChannel,
+          customLabel: isCustomRadioChannel(selectedChannel)
+            ? (normalizeCustomRadioLabel(radioCustomLabel) || selectedChannel.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length))
+            : ''
         }));
       } catch (error) {}
     }
@@ -6422,7 +6507,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       radioJoinPendingChannel = requestedChannel;
       radioJoinConfirmed = false;
       updateRadioPowerUI();
-      setRadioActivity('جارٍ تأكيد الانضمام إلى القناة ' + requestedChannel + '...', 0);
+      setRadioActivity('جارٍ تأكيد الانضمام إلى الموجة ' + radioChannelDisplayName(requestedChannel) + '...', 0);
 
       let settled = false;
       let timer;
@@ -6442,11 +6527,15 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
           setRadioActivity((result && result.message) || 'لم يؤكد الخادم الانضمام؛ سيعيد الراديو المحاولة عند عودة الاتصال.', 0);
           return;
         }
+        if (isCustomRadioChannel(requestedChannel)) {
+          radioCustomLabel = normalizeCustomRadioLabel(result.channelLabel) ||
+            normalizeCustomRadioLabel(requestedChannel.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length));
+        }
         radioJoinConfirmed = true;
         updateRadioPowerUI();
         if (options.playBeep === true) playRadioBeep(900);
         requestRadioVoiceIceServers(requestedChannel, true);
-        setRadioActivity('تم تأكيد الاتصال بالقناة ' + requestedChannel + '.', 5000);
+        setRadioActivity('تم تأكيد الاتصال بالموجة ' + radioChannelDisplayName(requestedChannel) + '.', 5000);
       };
 
       timer = setTimeout(() => finish({
@@ -6507,7 +6596,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const connectionLabel = radioJoinPending ? 'جارٍ الاتصال' : (radioJoinConfirmed ? 'متصل' : 'غير متصل');
         if (status) {
           status.classList.toggle('off', !radioJoinConfirmed);
-          status.innerHTML = '<i class="fa-solid fa-signal"></i> ' + connectionLabel + ' - ' + radioChannel;
+          status.innerHTML = '<i class="fa-solid fa-signal"></i> ' + connectionLabel + ' - ' + esc(radioChannelDisplayName());
         }
         if (inter) inter.style.display = 'block';
       } else {
@@ -6542,11 +6631,18 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         radioPeersReceiving.clear();
       }
       radioChannel = ch;
+      if (isCustomRadioChannel(ch)) {
+        radioCustomLabel = normalizeCustomRadioLabel(radioCustomLabel) ||
+          normalizeCustomRadioLabel(String(ch).slice(RADIO_CUSTOM_CHANNEL_PREFIX.length));
+      } else {
+        radioCustomLabel = '';
+      }
       saveRadioPreference(radioPoweredOn, radioChannel);
       const freqDisplay = document.getElementById('radio-freq-display');
       const chShort = document.getElementById('radio-channel-short');
-      if (freqDisplay) freqDisplay.innerText = freq;
-      if (chShort) chShort.innerText = ch;
+      const displayName = radioChannelDisplayName(ch);
+      if (freqDisplay) freqDisplay.innerText = isCustomRadioChannel(ch) ? displayName : freq;
+      if (chShort) chShort.innerText = displayName;
 
       document.querySelectorAll('.radio-channel-btn').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-channel') === ch);
@@ -6556,16 +6652,196 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (radioPoweredOn && (channelChanged || !radioJoinConfirmed)) {
         requestRadioJoin(ch);
       } else {
-        setRadioActivity('تم التبديل إلى ' + label + ' (' + freq + ' MHz)', 5000);
+        setRadioActivity(isCustomRadioChannel(ch)
+          ? 'تم اختيار الموجة الخاصة ' + displayName + '.'
+          : 'تم التبديل إلى ' + label + ' (' + freq + ' MHz)', 5000);
       }
     }
 
+    function joinCustomRadioChannel() {
+      const input = document.getElementById('radio-custom-channel-input');
+      const label = normalizeCustomRadioLabel(input && input.value);
+      if (!label) {
+        setRadioActivity('أدخل اسماً أو تردداً صالحاً للموجة (حتى 43 حرفاً).', 6000);
+        if (input) input.focus();
+        return false;
+      }
+      if (!currentUser || !ciaSessionAuthenticated) {
+        setRadioActivity('سجّل الدخول إلى الحساب أولاً.', 6000);
+        return false;
+      }
+      if (currentUser.activeService !== true) {
+        setRadioActivity('يجب بدء المناوبة قبل دخول موجة الراديو.', 6000);
+        return false;
+      }
+
+      const channel = RADIO_CUSTOM_CHANNEL_PREFIX + label.toLowerCase();
+      radioCustomLabel = label;
+      if (input) input.value = label;
+      changeRadioChannel(channel, label, 'موجة خاصة');
+      if (!radioPoweredOn) toggleRadioPower();
+      return true;
+    }
+
     function syncRadioChannelUI() {
+      if (isCustomRadioChannel(radioChannel)) {
+        radioCustomLabel = normalizeCustomRadioLabel(radioCustomLabel) ||
+          normalizeCustomRadioLabel(radioChannel.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length));
+        changeRadioChannel(radioChannel, radioCustomLabel, 'موجة مخصصة');
+        syncRadioLeadershipPanel();
+        return;
+      }
       let freq = '104.50';
       let label = 'القناة العامة';
       if (radioChannel === 'TAC-1') { freq = '108.20'; label = 'قناة المطاردات'; }
       if (radioChannel === 'CH-3') { freq = '112.90'; label = 'القيادة المشفرة'; }
       changeRadioChannel(radioChannel, freq, label);
+      syncRadioLeadershipPanel();
+    }
+
+    function isRadioLeadershipViewer() {
+      return !!currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
+    }
+
+    function clearRadioLeadershipPanel() {
+      const panel = document.getElementById('radio-leadership-panel');
+      const list = document.getElementById('radio-leadership-channel-list');
+      if (panel) panel.style.display = 'none';
+      if (list) list.innerHTML = '';
+    }
+
+    function renderRadioLeadershipChannels(channels) {
+      if (!isRadioLeadershipViewer()) {
+        clearRadioLeadershipPanel();
+        return;
+      }
+      const panel = document.getElementById('radio-leadership-panel');
+      const list = document.getElementById('radio-leadership-channel-list');
+      if (!panel || !list) return;
+      panel.style.display = 'block';
+      if (!Array.isArray(channels) || !channels.length) {
+        list.innerHTML = '<div class="radio-empty">لا توجد موجات لعرضها.</div>';
+        return;
+      }
+      list.innerHTML = channels.map(channel => {
+        const members = Array.isArray(channel.members) ? channel.members : [];
+        const allowedMembers = Array.isArray(channel.allowedMembers) ? channel.allowedMembers : [];
+        const eligibleMembers = Array.isArray(channel.eligibleMembers) ? channel.eligibleMembers : [];
+        const allowedIds = new Set(allowedMembers.map(member => String(member.id)));
+        const frequency = channel.frequency ? `<span style="color:var(--cyan-glow);font-family:monospace;">${esc(channel.frequency)} MHz</span>` : '';
+        const memberList = members.length
+          ? `<ul style="list-style:none;padding:0;margin:8px 0 0;display:grid;gap:5px;">${members.map(member => `
+              <li style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;background:#090d12;border:1px solid #273342;border-radius:4px;font-size:.69rem;">
+                <span><b style="color:var(--text-bright);">${esc(member.name || member.publicCode || 'عضو')}</b> <span style="color:var(--text-dim);">#${esc(member.publicCode || '—')} · ${esc(member.rank || '')}</span></span>
+                <span style="color:var(--green-status);white-space:nowrap;">${esc(member.connectionStatus || 'متصل')}${Number(member.connections) > 1 ? ` (${Number(member.connections)} أجهزة)` : ''}</span>
+              </li>`).join('')}</ul>`
+          : '<div style="margin-top:7px;color:var(--text-dim);font-size:.67rem;">لا يوجد أعضاء متصلون بهذه الموجة.</div>';
+        const typeLabel = channel.type === 'custom' ? 'مخصصة / غير مدرجة' : 'رئيسية';
+        const accessControls = channel.type === 'custom' ? (() => {
+          const accessMode = channel.accessMode === 'restricted' ? 'restricted' : 'open';
+          const selectableMembers = eligibleMembers.filter(member => !allowedIds.has(String(member.id)));
+          const selectId = `radio-custom-allow-member-${channels.indexOf(channel)}`;
+          const memberOptions = selectableMembers.map(member =>
+            `<option value="${esc(member.id)}">${esc(member.name || member.publicCode || 'عضو')} · #${esc(member.publicCode || '—')} · ${esc(member.rank || '')}</option>`
+          ).join('');
+          const allowedList = allowedMembers.length
+            ? `<ul style="list-style:none;padding:0;margin:7px 0;display:grid;gap:5px;">${allowedMembers.map(member => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 7px;background:#090d12;border:1px solid #273342;border-radius:4px;font-size:.66rem;">
+                  <span>${esc(member.name || member.publicCode || 'عضو')} · #${esc(member.publicCode || '—')} · ${esc(member.rank || '')}</span>
+                  <button type="button" data-radio-remove-user="${esc(member.id)}" data-radio-channel="${esc(channel.id)}" style="background:transparent;border:1px solid #a84d4d;color:#ffaaaa;border-radius:4px;padding:3px 7px;cursor:pointer;">إزالة</button>
+                </li>`).join('')}</ul>`
+            : `<div style="margin-top:6px;color:var(--text-dim);font-size:.65rem;">${accessMode === 'restricted' ? 'القائمة فارغة؛ لا يستطيع أي عضو الانضمام.' : 'لا توجد أعضاء محفوظون في قائمة السماح.'}</div>`;
+          return `<div style="margin-top:9px;padding:8px;border:1px solid #273342;border-radius:5px;background:#0b1016;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:.68rem;">الوصول: <b style="color:${accessMode === 'restricted' ? '#ffbd73' : 'var(--green-status)'};">${accessMode === 'restricted' ? 'مقيّدة للأعضاء المحددين' : 'مفتوحة للجميع'}</b></span>
+              <button type="button" data-radio-access-mode="${accessMode === 'restricted' ? 'open' : 'restricted'}" data-radio-channel="${esc(channel.id)}" style="background:#131b24;border:1px solid #596474;color:var(--text-bright);border-radius:4px;padding:5px 8px;cursor:pointer;font-size:.65rem;">${accessMode === 'restricted' ? 'فتح للجميع' : 'تقييد الموجة'}</button>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;">
+              <select id="${selectId}" style="flex:1;min-width:0;background:#05080c;color:#e2e6eb;border:1px solid #596474;border-radius:4px;padding:6px;font-size:.66rem;">
+                <option value="">اختر عضواً لإضافته</option>${memberOptions}
+              </select>
+              <button type="button" data-radio-add-user="true" data-radio-channel="${esc(channel.id)}" data-radio-select-id="${selectId}" style="background:#26382e;border:1px solid #4b8060;color:#d5f2dc;border-radius:4px;padding:5px 9px;cursor:pointer;font-size:.66rem;">إضافة وتقييد</button>
+            </div>
+            <div style="margin-top:7px;color:var(--text-dim);font-size:.63rem;">إضافة عضو تفعّل التقييد تلقائياً. عند فتح الموجة للجميع تبقى القائمة محفوظة ولا تمنع الانضمام.</div>
+            <div style="margin-top:7px;font-size:.65rem;">${accessMode === 'restricted' ? 'الأعضاء المسموح لهم:' : 'الأعضاء المحفوظون:'}</div>${allowedList}
+          </div>`;
+        })() : '';
+        return `<article style="padding:10px;border:1px solid #344154;border-radius:6px;background:#080c11;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div><b style="color:var(--primary-gold);font-size:.78rem;">${esc(channel.name || channel.id || 'موجة')}</b>
+              <span style="color:var(--text-dim);font-size:.64rem;">${esc(channel.description || typeLabel)} · ${esc(typeLabel)}</span></div>
+            <div style="display:flex;gap:9px;align-items:center;font-size:.67rem;"><span>${Number(channel.memberCount) || 0} عضو</span>${frequency}</div>
+          </div>${memberList}
+          ${accessControls}
+        </article>`;
+      }).join('');
+
+      list.querySelectorAll('[data-radio-access-mode]').forEach(button => {
+        button.addEventListener('click', () => {
+          sendRadioAdminMutation('radio:admin:set-access-mode', {
+            channel: button.dataset.radioChannel,
+            mode: button.dataset.radioAccessMode
+          });
+        });
+      });
+      list.querySelectorAll('[data-radio-add-user]').forEach(button => {
+        button.addEventListener('click', () => {
+          const select = document.getElementById(button.dataset.radioSelectId);
+          if (!select || !select.value) {
+            setRadioActivity('اختر عضواً من القائمة أولاً.', 5000);
+            return;
+          }
+          sendRadioAdminMutation('radio:admin:update-allowlist', {
+            channel: button.dataset.radioChannel,
+            userId: select.value,
+            action: 'add'
+          });
+        });
+      });
+      list.querySelectorAll('[data-radio-remove-user]').forEach(button => {
+        button.addEventListener('click', () => {
+          sendRadioAdminMutation('radio:admin:update-allowlist', {
+            channel: button.dataset.radioChannel,
+            userId: button.dataset.radioRemoveUser,
+            action: 'remove'
+          });
+        });
+      });
+    }
+
+    function sendRadioAdminMutation(eventName, payload) {
+      if (!isRadioLeadershipViewer() || !ciaSocket || !ciaSocket.connected) {
+        setRadioActivity('تعذر تحديث صلاحيات الموجة؛ تحقق من اتصال القائد.', 6000);
+        return;
+      }
+      ciaSocket.emit(eventName, payload, function(result) {
+        if (!result || result.ok !== true) {
+          setRadioActivity((result && result.message) || 'تعذر تحديث صلاحيات الموجة.', 7000);
+        }
+      });
+    }
+
+    function syncRadioLeadershipPanel() {
+      if (!isRadioLeadershipViewer() || !ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected) {
+        clearRadioLeadershipPanel();
+        if (ciaSocket && ciaSocket.connected) ciaSocket.emit('radio:admin:unsubscribe', {}, function() {});
+        return;
+      }
+      const panel = document.getElementById('radio-leadership-panel');
+      const list = document.getElementById('radio-leadership-channel-list');
+      if (panel) panel.style.display = 'block';
+      if (list) list.innerHTML = '<div class="radio-empty">جارٍ تحميل حالة الموجات...</div>';
+      ciaSocket.emit('radio:admin:subscribe', {}, function(result) {
+        if (!isRadioLeadershipViewer()) {
+          clearRadioLeadershipPanel();
+          return;
+        }
+        if (!result || result.ok !== true) {
+          clearRadioLeadershipPanel();
+          return;
+        }
+        renderRadioLeadershipChannels(result.channels);
+      });
     }
 
     function stopRadioLocalStream() {

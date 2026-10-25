@@ -226,6 +226,66 @@ const redactSecurityReason = (value) => clean(value, 300)
   .replace(/(كلمة المرور|كلمه المرور|رمز الدخول|الكود السري)\s*(?::|=|هو)?\s*[^\s,;]+/gu, '$1=[محجوب]');
 const lower = (value) => clean(value, 200).toLowerCase();
 const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
+const RADIO_MAIN_CHANNELS = Object.freeze([
+  { id: 'CH-1', name: 'القناة العامة', frequency: '104.50' },
+  { id: 'TAC-1', name: 'قناة المطاردات', frequency: '108.20' },
+  { id: 'CH-3', name: 'القيادة المشفرة', frequency: '112.90' }
+]);
+const RADIO_MAIN_CHANNEL_IDS = new Set(RADIO_MAIN_CHANNELS.map((channel) => channel.id));
+const RADIO_CUSTOM_CHANNEL_PREFIX = 'CUSTOM:';
+const RADIO_CUSTOM_CHANNEL_LIMIT = 500;
+
+function normalizeCustomRadioLabel(value) {
+  const raw = String(value ?? '').normalize('NFKC');
+  if (/[\u0000-\u001f\u007f-\u009f]/u.test(raw)) return '';
+  const label = raw.trim().replace(/\s+/gu, ' ');
+  if (!label || label.length > 43) return '';
+  return label;
+}
+
+function customRadioChannelKey(value) {
+  const label = normalizeCustomRadioLabel(value);
+  return label ? RADIO_CUSTOM_CHANNEL_PREFIX + label.toLowerCase() : '';
+}
+
+function isCustomRadioChannel(value) {
+  return String(value ?? '').startsWith(RADIO_CUSTOM_CHANNEL_PREFIX);
+}
+
+function isPrivateRadioChannel(value) {
+  const channel = String(value || 'CH-1');
+  return !RADIO_MAIN_CHANNEL_IDS.has(channel);
+}
+
+function normalizeCustomRadioChannels(value) {
+  const channels = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(value) ? value : []) {
+    const source = entry && typeof entry === 'object' ? entry.label : entry;
+    const label = normalizeCustomRadioLabel(source);
+    const id = customRadioChannelKey(label);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const allowedUserIds = [];
+    const allowedSet = new Set();
+    for (const value of Array.isArray(entry?.allowedUserIds) ? entry.allowedUserIds : []) {
+      const userId = clean(value, 120);
+      if (!userId || allowedSet.has(userId)) continue;
+      allowedSet.add(userId);
+      allowedUserIds.push(userId);
+      if (allowedUserIds.length >= 1000) break;
+    }
+    channels.push({
+      id,
+      label,
+      createdAt: clean(entry?.createdAt, 40) || null,
+      accessMode: entry?.accessMode === 'restricted' ? 'restricted' : 'open',
+      allowedUserIds
+    });
+    if (channels.length >= RADIO_CUSTOM_CHANNEL_LIMIT) break;
+  }
+  return channels;
+}
 
 const CHIEF_BOOTSTRAP = readChiefBootstrapConfig(process.env);
 const SYSTEM = Object.freeze({
@@ -241,6 +301,7 @@ function chiefBootstrapCodesAreConfigured() {
 
 const EMPTY_STATE = {
   cia_users: [],
+  cia_custom_radio_channels: [],
   cia_queue: [],
   cia_support: [],
   cia_character_queue: [],
@@ -306,7 +367,8 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     cia_chats: {
       global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
       private: parsed.cia_chats?.private && typeof parsed.cia_chats.private === 'object' ? parsed.cia_chats.private : {}
-    }
+    },
+    cia_custom_radio_channels: normalizeCustomRadioChannels(parsed.cia_custom_radio_channels)
   };
 
   if (loadedState.settings.rankSalaries && loadedState.settings.rankSalaries['Senior Commander CIA'] !== undefined) {
@@ -939,6 +1001,8 @@ function publicUser(user, viewer = null) {
   const self =
     !!viewer &&
     viewer.id === user.id;
+  const privateRadio = isPrivateRadioChannel(user.radioChannel);
+  const canSeeRadioChannel = self || isChief(viewer) || !privateRadio;
 
   const result = {
     id: user.id,
@@ -1053,14 +1117,13 @@ function publicUser(user, viewer = null) {
         : null,
 
     radioChannel:
-      user.radioChannel ||
-      'CH-1',
+      canSeeRadioChannel ? (user.radioChannel || 'CH-1') : null,
 
     ibpLanguage:
       user.ibpLanguage === 'en' ? 'en' : 'ar',
 
     radioOnline:
-      !!user.radioOnline
+      canSeeRadioChannel && !!user.radioOnline
   };
 
   if (self || canManageMember(viewer, user)) {
@@ -2340,8 +2403,92 @@ function addRadioMember(
     .add(socketId);
 }
 
+function resolveRadioChannel(value) {
+  const candidate = clean(value, 50);
+  if (!candidate) return null;
+  if (RADIO_MAIN_CHANNEL_IDS.has(candidate)) {
+    return { id: candidate, label: candidate, custom: false };
+  }
+
+  const label = normalizeCustomRadioLabel(
+    isCustomRadioChannel(candidate)
+      ? candidate.slice(RADIO_CUSTOM_CHANNEL_PREFIX.length)
+      : candidate
+  );
+  if (!label) return null;
+
+  const id = customRadioChannelKey(label);
+  let channel = state.cia_custom_radio_channels.find((item) => item.id === id);
+  if (!channel) {
+    if (state.cia_custom_radio_channels.length >= RADIO_CUSTOM_CHANNEL_LIMIT) return null;
+    channel = { id, label, createdAt: now(), accessMode: 'open', allowedUserIds: [] };
+    state.cia_custom_radio_channels.push(channel);
+  }
+  return { id: channel.id, label: channel.label, custom: true };
+}
+
+function findCustomRadioChannelById(value) {
+  const channelId = clean(value, 50);
+  if (!isCustomRadioChannel(channelId)) return null;
+  return state.cia_custom_radio_channels.find((channel) => channel.id === channelId) || null;
+}
+
+function radioCustomChannelAllows(channelId, userId) {
+  const channel = findCustomRadioChannelById(channelId);
+  if (!channel) return false;
+  if (channel.accessMode !== 'restricted') return true;
+  return channel.allowedUserIds.includes(String(userId || ''));
+}
+
+function radioAdminDirectoryMembers() {
+  return state.cia_users
+    .filter((user) =>
+      user.approved !== false &&
+      user.serviceApproved !== false &&
+      user.suspended !== true &&
+      user.securityStatus === 'ACTIVE'
+    )
+    .map((user) => ({
+      id: String(user.id),
+      name: clean(user.identity?.fullName || user.name || '', 160),
+      publicCode: clean(user.publicCode, 100),
+      rank: rankLabel(user.rank)
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function enforceCustomRadioAllowlist(channel) {
+  if (!channel || channel.accessMode !== 'restricted') return;
+  const revokedUsers = new Set();
+  for (const socketId of radioTargets(channel.id)) {
+    const targetSocket = io.sockets.sockets.get(socketId);
+    const user = targetSocket ? requireSocketUser(targetSocket) : null;
+    if (user && radioCustomChannelAllows(channel.id, user.id)) continue;
+    if (user) revokedUsers.add(String(user.id));
+    releaseRadioTransmission(socketId);
+    removeRadioMember(socketId, false);
+    if (user && user.radioChannel === channel.id) user.radioChannel = 'CH-1';
+    if (targetSocket) {
+      targetSocket.emit('radio:access-revoked', {
+        channel: channel.id,
+        message: 'تم تحديث صلاحيات الموجة، ولم تعد ضمن قائمة الأعضاء المسموح لهم.'
+      });
+    }
+  }
+  for (const userId of revokedUsers) {
+    const user = getUserById(userId);
+    if (user) user.radioOnline = hasOtherRadioMemberForUser(userId);
+  }
+  if (revokedUsers.size) {
+    saveState();
+    emitState();
+  }
+  emitRadioAdminState();
+}
+
 function removeRadioMember(
-  socketId
+  socketId,
+  notifyAdmin = true
 ) {
   for (const [channel, members] of radioChannels.entries()) {
     if (!members.delete(socketId)) continue;
@@ -2356,6 +2503,7 @@ function removeRadioMember(
   const userId = socketToUser.get(socketId);
   const user = userId ? getUserById(userId) : null;
   if (user) user.radioOnline = hasOtherRadioMemberForUser(userId, socketId);
+  if (notifyAdmin) emitRadioAdminState();
 }
 
 function hasOtherRadioMemberForUser(userId, excludingSocketId = '') {
@@ -2382,7 +2530,7 @@ function removeUserRadioMembers(userId) {
   }
   for (const socketId of socketIds) {
     releaseRadioTransmission(socketId);
-    removeRadioMember(socketId);
+    removeRadioMember(socketId, false);
     const targetSocket = io.sockets.sockets.get(socketId);
     if (targetSocket) {
       targetSocket.radioOnline = false;
@@ -2392,6 +2540,7 @@ function removeUserRadioMembers(userId) {
   }
   const user = getUserById(userId);
   if (user) user.radioOnline = false;
+  emitRadioAdminState();
 }
 
 function radioTargets(channel) {
@@ -2440,6 +2589,78 @@ function radioSocketIsEligible(socketId, channel) {
   const user = targetSocket ? requireSocketUser(targetSocket) : null;
   return !!user && targetSocket.radioOnline === true && targetSocket.radioChannel === channel &&
     user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
+}
+
+function radioAdminMembers(channel) {
+  const membersByUser = new Map();
+  for (const socketId of radioTargets(channel)) {
+    if (!radioSocketIsEligible(socketId, channel)) continue;
+    const targetSocket = io.sockets.sockets.get(socketId);
+    const user = targetSocket ? requireSocketUser(targetSocket) : null;
+    if (!user) continue;
+    const key = String(user.id);
+    let member = membersByUser.get(key);
+    if (!member) {
+      member = {
+        name: clean(user.identity?.fullName || user.name, 160),
+        publicCode: clean(user.publicCode, 100),
+        rank: rankLabel(user.rank),
+        connectionStatus: 'متصل',
+        connections: 0
+      };
+      membersByUser.set(key, member);
+    }
+    if (targetSocket.connected) member.connections += 1;
+  }
+  return [...membersByUser.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function radioAdminChannelList() {
+  const directory = radioAdminDirectoryMembers();
+  const directoryById = new Map(directory.map((member) => [member.id, member]));
+  const main = RADIO_MAIN_CHANNELS.map((channel) => {
+    const members = radioAdminMembers(channel.id);
+    return {
+      id: channel.id,
+      name: channel.id,
+      description: channel.name,
+      frequency: channel.frequency,
+      type: 'main',
+      memberCount: members.length,
+      members
+    };
+  });
+  const custom = normalizeCustomRadioChannels(state.cia_custom_radio_channels)
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((channel) => {
+      const members = radioAdminMembers(channel.id);
+      const allowedMembers = channel.allowedUserIds
+        .map((userId) => directoryById.get(String(userId)))
+        .filter(Boolean);
+      return {
+        id: channel.id,
+        name: channel.label,
+        description: 'موجة مخصصة',
+        frequency: '',
+        type: 'custom',
+        accessMode: channel.accessMode,
+        allowedMembers,
+        eligibleMembers: directory,
+        memberCount: members.length,
+        members
+      };
+    });
+  return [...main, ...custom];
+}
+
+function emitRadioAdminState() {
+  const channels = radioAdminChannelList();
+  for (const targetSocket of io.sockets.sockets.values()) {
+    const viewer = requireSocketUser(targetSocket);
+    if (targetSocket.radioAdminSubscribed === true && isChief(viewer)) {
+      targetSocket.emit('radio:admin:state', { channels });
+    }
+  }
 }
 
 function releaseRadioTransmission(socketId) {
@@ -7587,6 +7808,72 @@ socket.on('member:saveIdentity', (payload, cb) => {
        RADIO
     ===================================================== */
 
+    socket.on('radio:admin:subscribe', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) return no(cb, 'لوحة متابعة الموجات متاحة لـ CIA CHIEF فقط.');
+      socket.radioAdminSubscribed = true;
+      return ok(cb, { channels: radioAdminChannelList() });
+    });
+
+    socket.on('radio:admin:unsubscribe', (payload, cb) => {
+      socket.radioAdminSubscribed = false;
+      return ok(cb);
+    });
+
+    socket.on('radio:admin:set-access-mode', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) return no(cb, 'تعديل صلاحيات الموجات متاح لـ CIA CHIEF فقط.');
+      const channel = findCustomRadioChannelById(payload?.channel);
+      if (!channel) return no(cb, 'الموجة المخصصة غير موجودة.');
+      const accessMode = payload?.mode;
+      if (!['open', 'restricted'].includes(accessMode)) return no(cb, 'وضع الوصول غير صالح.');
+
+      channel.accessMode = accessMode;
+      saveState();
+      if (accessMode === 'restricted') enforceCustomRadioAllowlist(channel);
+      else emitRadioAdminState();
+      return ok(cb, { channel: channel.id, accessMode: channel.accessMode });
+    });
+
+    socket.on('radio:admin:update-allowlist', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      if (!isChief(actor)) return no(cb, 'تعديل صلاحيات الموجات متاح لـ CIA CHIEF فقط.');
+      const channel = findCustomRadioChannelById(payload?.channel);
+      if (!channel) return no(cb, 'الموجة المخصصة غير موجودة.');
+      const userId = clean(payload?.userId, 120);
+      const target = getUserById(userId);
+      if (!target ||
+          target.approved === false ||
+          target.serviceApproved === false ||
+          target.suspended === true ||
+          target.securityStatus !== 'ACTIVE') {
+        return no(cb, 'العضو غير موجود أو غير مخوّل لدخول الخدمة.');
+      }
+
+      if (payload?.action === 'add') {
+        if (!channel.allowedUserIds.includes(String(target.id))) {
+          channel.allowedUserIds.push(String(target.id));
+        }
+        channel.accessMode = 'restricted';
+      } else if (payload?.action === 'remove') {
+        channel.allowedUserIds = channel.allowedUserIds.filter((id) => id !== String(target.id));
+      } else {
+        return no(cb, 'إجراء قائمة السماح غير صالح.');
+      }
+
+      saveState();
+      if (channel.accessMode === 'restricted') enforceCustomRadioAllowlist(channel);
+      else emitRadioAdminState();
+      return ok(cb, {
+        channel: channel.id,
+        accessMode: channel.accessMode,
+        allowedUserIds: channel.allowedUserIds
+      });
+    });
+
     socket.on(
       'radio:join',
       (payload, cb) => {
@@ -7601,17 +7888,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
         if (actor.activeService !== true) return no(cb, 'يجب بدء المناوبة قبل تشغيل الراديو.');
 
-        const channel =
-          clean(
-            payload?.channel ||
-            actor.radioChannel ||
-            'CH-1',
-            50
-          );
+        const requestedChannel = payload && Object.prototype.hasOwnProperty.call(payload, 'channel')
+          ? payload.channel
+          : (actor.radioChannel || 'CH-1');
+        const resolvedChannel = resolveRadioChannel(requestedChannel);
+        if (!resolvedChannel) return no(cb, 'أدخل اسم موجة صالحاً (حتى 43 حرفاً، دون محارف تحكم).');
+        const channel = resolvedChannel.id;
+        if (resolvedChannel.custom && !radioCustomChannelAllows(channel, actor.id)) {
+          return no(cb, 'هذه الموجة مقيّدة بالأعضاء المسموح لهم فقط.');
+        }
 
         releaseRadioTransmission(socket.id);
         removeRadioMember(
-          socket.id
+          socket.id,
+          false
         );
 
         addRadioMember(
@@ -7630,11 +7920,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
         announceActiveRadioTalkers(channel, socket.id);
         saveState();
         emitState();
+        emitRadioAdminState();
 
         return ok(
           cb,
           {
-            channel
+            channel,
+            channelLabel: resolvedChannel.label,
+            custom: resolvedChannel.custom
           }
         );
       }
@@ -7684,22 +7977,17 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
         if (actor.activeService !== true) return no(cb, 'يجب بدء المناوبة قبل تغيير قناة الراديو.');
 
-        const channel =
-          clean(
-            payload?.channel,
-            50
-          );
-
-        if (!channel) {
-          return no(
-            cb,
-            'القناة غير صحيحة.'
-          );
+        const resolvedChannel = resolveRadioChannel(payload?.channel);
+        if (!resolvedChannel) return no(cb, 'أدخل اسم موجة صالحاً (حتى 43 حرفاً، دون محارف تحكم).');
+        const channel = resolvedChannel.id;
+        if (resolvedChannel.custom && !radioCustomChannelAllows(channel, actor.id)) {
+          return no(cb, 'هذه الموجة مقيّدة بالأعضاء المسموح لهم فقط.');
         }
 
         releaseRadioTransmission(socket.id);
         removeRadioMember(
-          socket.id
+          socket.id,
+          false
         );
 
         addRadioMember(
@@ -7718,11 +8006,14 @@ socket.on('member:saveIdentity', (payload, cb) => {
         announceActiveRadioTalkers(channel, socket.id);
         saveState();
         emitState();
+        emitRadioAdminState();
 
         return ok(
           cb,
           {
-            channel
+            channel,
+            channelLabel: resolvedChannel.label,
+            custom: resolvedChannel.custom
           }
         );
       }
