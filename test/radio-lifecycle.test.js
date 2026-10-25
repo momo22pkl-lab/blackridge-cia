@@ -60,6 +60,15 @@ test('full-duplex PTT keeps the peer connection and receive path when one microp
   assert.doesNotMatch(stateHandler, /closeRadioVoicePeer\(data\.socketId\)/);
 });
 
+test('duty UI only enables radio service after the server confirms active duty', () => {
+  const startStart = html.indexOf('function startDuty()');
+  const startEnd = html.indexOf('function endDuty()', startStart);
+  assert.ok(startStart >= 0 && startEnd > startStart, 'duty-start handler exists');
+  const startHandler = html.slice(startStart, startEnd);
+  assert.match(startHandler, /r\.user\.activeService !== true/);
+  assert.doesNotMatch(startHandler, /r\.user \|\| \{\.\.\.currentUser,\s*activeService:\s*true/);
+});
+
 test('remote audio starts at unity volume without changing system volume or applying a gain boost', () => {
   assert.match(html, /let radioVolume = 100/);
   assert.match(html, /audio\.volume = radioVolume \/ 100/);
@@ -70,4 +79,38 @@ test('remote audio starts at unity volume without changing system volume or appl
   assert.match(html, /track => \{ track\.enabled = true; \}/);
   assert.match(html, /RadioAudioHealth\.summarize/);
   assert.doesNotMatch(html, /audio\.volume\s*=\s*(?:[1-9]\d{2,}|\d+\.\d{2,})/);
+});
+
+test('custom radio entry stays outside the main-channel list and preserves the existing radio controls', () => {
+  assert.match(html, /id="radio-custom-channel-input"[^>]*maxlength="43"/);
+  assert.match(html, /onclick="joinCustomRadioChannel\(\)"/);
+  assert.match(html, /function joinCustomRadioChannel\(\)/);
+  assert.match(html, /function normalizeCustomRadioLabel\(value\)/);
+  assert.match(html, /isValidCustomRadioChannelKey\(saved\.channel\)/);
+  for (const channel of ['CH-1', 'TAC-1', 'CH-3']) {
+    assert.match(html, new RegExp(`data-channel="${channel}"`));
+  }
+  assert.match(html, /هذه موجة افتراضية داخل الموقع وليست تردداً فعلياً/);
+});
+
+test('private radio membership and leadership roster are enforced on the server', () => {
+  const subscribeStart = server.indexOf("socket.on('radio:admin:subscribe'");
+  const subscribeEnd = server.indexOf("socket.on('radio:admin:unsubscribe'", subscribeStart);
+  assert.ok(subscribeStart >= 0 && subscribeEnd > subscribeStart, 'radio admin subscription handler exists');
+  const subscribeHandler = server.slice(subscribeStart, subscribeEnd);
+  assert.match(subscribeHandler, /requireSocketUser\(socket\)/);
+  assert.match(subscribeHandler, /if \(!isChief\(actor\)\)/);
+  assert.match(subscribeHandler, /radioAdminChannelList\(\)/);
+  assert.match(server, /targetSocket\.radioAdminSubscribed === true && isChief\(viewer\)/);
+  assert.match(server, /canSeeRadioChannel \? \(user\.radioChannel \|\| 'CH-1'\) : null/);
+  assert.match(server, /canSeeRadioChannel && !!user\.radioOnline/);
+  assert.match(server, /radioSocketIsEligible\(socketId, channel\)/);
+  assert.match(html, /data-radio-access-mode/);
+  assert.match(html, /data-radio-add-user/);
+  assert.match(html, /data-radio-remove-user/);
+  assert.match(html, /radio:access-revoked/);
+  assert.match(server, /socket\.on\('radio:admin:set-access-mode'/);
+  assert.match(server, /socket\.on\('radio:admin:update-allowlist'/);
+  assert.match(server, /accessMode: 'open', allowedUserIds: \[\]/);
+  assert.match(server, /radioCustomChannelAllows\(channel, actor\.id\)/);
 });
