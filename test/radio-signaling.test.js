@@ -213,6 +213,14 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     clients.push(client);
     const result = await client.emit('auth:login', { name, code, resumeService });
     assert.equal(result.ok, true, 'local radio test login failed: ' + JSON.stringify(result));
+    if (!resumeService) {
+      const offDutyJoin = await client.emit('radio:join', { channel: 'CH-1' });
+      assert.equal(offDutyJoin.ok, false, 'radio join must remain blocked before duty starts');
+      assert.match(offDutyJoin.message, /يجب بدء المناوبة قبل تشغيل الراديو/);
+      const offDutyPtt = await client.emit('radio:ptt:start', { channel: 'CH-1' });
+      assert.equal(offDutyPtt.ok, false, 'PTT must remain blocked before duty starts');
+      assert.match(offDutyPtt.message, /يجب بدء المناوبة قبل إرسال الصوت/);
+    }
     const duty = await client.emit('duty:start', {});
     assert.equal(duty.ok, true, 'local radio test could not start service: ' + JSON.stringify(duty));
     assert.equal(duty.user?.activeService, true, 'duty start did not return authoritative active-service state');
