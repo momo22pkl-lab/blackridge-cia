@@ -2222,20 +2222,38 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <textarea id="br-cipher-plain" class="br-cipher-input" rows="6" maxlength="20000" autocomplete="off" spellcheck="false" placeholder="اكتب الرسالة هنا باللغة الإنجليزية"></textarea>
           <label class="br-cipher-label" for="br-cipher-encrypt-key">المفتاح المشترك</label>
           <input id="br-cipher-encrypt-key" class="br-cipher-input" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" placeholder="أدخل عبارة سرية من 8 أحرف على الأقل">
+          <label class="br-cipher-label" for="br-cipher-output-mode">طريقة عرض الشفرة</label>
+          <select id="br-cipher-output-mode" class="br-cipher-input br-cipher-mode-select">
+            <option value="symbol">SYMBOL MODE — رموز هندسية</option>
+            <option value="scribble">SCRIBBLE MODE — صورة خطوط مشفّرة</option>
+          </select>
           <div class="br-cipher-actions">
             <button class="br-cipher-button br-cipher-button-primary" type="button" data-cipher-action="encrypt"><i class="fa-solid fa-lock" aria-hidden="true"></i> تشفير</button>
             <button class="br-cipher-button" type="button" data-cipher-action="clear-encrypt">مسح</button>
           </div>
           <p class="br-cipher-status" data-cipher-status="encrypt" role="status" aria-live="polite"></p>
           <div class="br-cipher-result" data-cipher-result="encrypted" hidden>
-            <div class="br-cipher-result-head"><span>الشفرة الرمزية</span><button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="copy-encrypted">نسخ الشفرة</button></div>
-            <textarea id="br-cipher-output" class="br-cipher-output" rows="8" readonly spellcheck="false" aria-label="الشفرة الرمزية الناتجة"></textarea>
+            <div data-cipher-symbol-result>
+              <div class="br-cipher-result-head"><span>الرموز الهندسية</span><button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="copy-encrypted">نسخ الرموز</button></div>
+              <textarea id="br-cipher-output" class="br-cipher-output" rows="8" readonly spellcheck="false" aria-label="الرموز الهندسية الناتجة"></textarea>
+            </div>
+            <div data-cipher-scribble-result hidden>
+              <div class="br-cipher-result-head"><span>صورة الشخابيط المشفّرة</span></div>
+              <img id="br-cipher-scribble-preview" class="br-cipher-scribble-preview" alt="خط أبيض متصل على خلفية سوداء يمثّل البيانات المشفّرة">
+              <div class="br-cipher-actions">
+                <a id="br-cipher-scribble-download" class="br-cipher-button br-cipher-button-primary" download="blackridge-scribble.png" hidden>تنزيل صورة PNG</a>
+              </div>
+              <p class="br-cipher-image-note">الخطوط تحمل الشفرة نفسها. أرسل صورة PNG كما هي دون قص أو تعديل؛ ويحتاج المستلم إلى المفتاح المشترك.</p>
+            </div>
           </div>
         </section>
 
         <section id="br-cipher-decrypt-panel" class="br-cipher-panel" role="tabpanel" aria-labelledby="br-cipher-decrypt-tab" data-cipher-panel="decrypt" hidden>
           <label class="br-cipher-label" for="br-cipher-code">الشفرة الرمزية</label>
           <textarea id="br-cipher-code" class="br-cipher-input br-cipher-code-input" rows="8" autocomplete="off" spellcheck="false" placeholder="الصق شفرة BLACKRIDGE هنا"></textarea>
+          <label class="br-cipher-label" for="br-cipher-scribble-upload">أو ارفع صورة SCRIBBLE بصيغة PNG</label>
+          <input id="br-cipher-scribble-upload" class="br-cipher-input br-cipher-file-input" type="file" accept="image/png,.png">
+          <p class="br-cipher-image-note">ارفع صورة PNG الأصلية دون قص أو تعديل. تُقرأ الخطوط محليًا على جهازك.</p>
           <div class="br-cipher-actions br-cipher-actions-compact">
             <button class="br-cipher-button br-cipher-button-quiet" type="button" data-cipher-action="paste-code">لصق</button>
           </div>
