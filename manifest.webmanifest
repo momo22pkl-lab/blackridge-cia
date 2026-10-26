@@ -1,0 +1,26 @@
+{
+  "name": "BLACK RIDGE CITY CIA SYSTEM",
+  "short_name": "BLACK RIDGE CIA",
+  "description": "BLACK RIDGE CITY CIA mobile web application",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080d13",
+  "theme_color": "#0b1119",
+  "icons": [
+    {
+      "src": "/blackridge-push-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/blackridge-push-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

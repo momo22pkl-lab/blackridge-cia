@@ -33,6 +33,7 @@ const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
+const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const {
   accountIdentity,
@@ -140,6 +141,9 @@ function prepareFileStorage() {
 let postgresPool = null;
 let stateStore = null;
 let notificationsStore = null;
+let mobilePushStore = null;
+let appEntryHtml = null;
+const mobilePushTransport = createWebPushTransport();
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -190,6 +194,10 @@ app.get('/blackridge-warning-prototype', (req, res) => {
 const publicAssets = Object.freeze({
   '/notifications.css': 'notifications.css',
   '/notifications-client.js': 'notifications-client.js',
+  '/mobile-push-client.js': 'mobile-push-client.js',
+  '/manifest.webmanifest': 'manifest.webmanifest',
+  '/blackridge-push-icon-192.png': 'blackridge-push-icon-192.png',
+  '/blackridge-push-icon-512.png': 'blackridge-push-icon-512.png',
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
@@ -209,12 +217,26 @@ for (const [route, file] of Object.entries(publicAssets)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
 }
 
+app.get('/service-worker.js', (req, res) => {
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Service-Worker-Allowed': '/',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  return res.sendFile(path.join(__dirname, 'service-worker.js'));
+});
+
 app.get(['/', '/index.html'], (req, res) => {
   const entryPoint = path.join(__dirname, 'index.html');
   if (!fs.existsSync(entryPoint)) {
     return res.status(404).send('BLACK RIDGE CIA: index.html not found.');
   }
-  return res.sendFile(entryPoint);
+  try {
+    if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
+    return res.status(200).type('html').send(injectMobilePushMarkup(appEntryHtml));
+  } catch (_error) {
+    return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
+  }
 });
 
 registerPages(app);
@@ -318,6 +340,7 @@ const EMPTY_STATE = {
   cia_attendance: [],
   cia_operations: [],
   cia_notifications: [],
+  cia_web_push_subscriptions: [],
   cia_battalions: [],
   ibp_deployments: [],
   ibp_operations: [],
@@ -385,7 +408,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
     'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
-    'cia_notifications', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
+    'cia_notifications', 'cia_web_push_subscriptions', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
@@ -3311,6 +3334,18 @@ io.on(
           if (targetSocket) targetSocket.emit(event, payload);
         }
       }
+    });
+
+    registerMobilePushSocket(socket, {
+      requireSocketUser,
+      isLeadership,
+      getUsers: () => state.cia_users,
+      getUnits: () => state.cia_battalions,
+      store: mobilePushStore,
+      transport: mobilePushTransport,
+      makeId,
+      addAuditLog,
+      saveState
     });
 
     socket.emit(
@@ -11149,6 +11184,8 @@ async function initializePersistence() {
       }
     });
     await notificationsStore.initialize();
+    mobilePushStore = new WebPushStore(postgresPool);
+    await mobilePushStore.initialize();
     installPersistenceEmitBarriers();
     console.log('[BLACK RIDGE] PostgreSQL state store ready.');
     console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
@@ -11169,6 +11206,14 @@ async function initializePersistence() {
     }
   });
   await notificationsStore.initialize();
+  mobilePushStore = new WebPushStore(null, {
+    getRows: () => state.cia_web_push_subscriptions || [],
+    setRows: async (rows) => {
+      state.cia_web_push_subscriptions = rows;
+      await saveState();
+    }
+  });
+  await mobilePushStore.initialize();
   console.log((IS_RENDER_RUNTIME ? '[BLACK RIDGE] Render temporary JSON state store ready: ' : '[BLACK RIDGE] Local JSON state store ready: ') + DATA_FILE);
 }
 
