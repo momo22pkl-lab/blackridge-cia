@@ -42,6 +42,20 @@ On startup, the server creates the `notifications` table and its indexes in the 
 
 Notifications are scoped to the authenticated server-side user ID. The Socket.IO API supports counts, paged/searchable lists, missed-event summaries, mark-read, and acknowledgement of critical alerts. Reading a critical alert does not acknowledge it. The client adds a responsive notification center, critical unread banner, live toasts, and a welcome-back brief. `npm test` also exercises per-user isolation and notification state transitions.
 
+## Mobile Web Push (Phase 1)
+
+Mobile push announcements are separate from the intelligence notification center: they are not inserted into the `notifications` table and do not add an in-app inbox or toast. An active, authenticated member can opt in on each device. Only CIA CHIEF and SUPREME COMMANDER can send a title, message, and priority to either all eligible members assigned to active battalions in a selected sector or one eligible member in that sector. The client may request a member ID, but the server revalidates that the member is active, eligible, and assigned to the selected sector before sending. Sector and member options are derived from saved battalion membership; when no eligible members exist, the sender sees an empty-state message instead of an unusable blank selector.
+
+Before sending real pushes, configure these server-side environment variables:
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY` — keep this in the deployment's secret manager; never commit or share it.
+- `VAPID_SUBJECT` — a valid `mailto:` contact or HTTPS URL for the application operator.
+
+Generate a matching key pair with `npx web-push generate-vapid-keys`, then put the public and private keys into the service environment. If any value is missing or invalid, subscription and sending remain disabled without affecting login, radio, IBP, OSD, or the existing notification center. PostgreSQL installations create the separate `web_push_subscriptions` table and index automatically; local development stores subscriptions in the existing local state file.
+
+The application must be served over HTTPS outside localhost. Android browsers based on current Chrome support Web Push when the user grants permission. On iPhone/iPad, Web Push requires iOS/iPadOS 16.4 or later, adding the site to the Home Screen, opening it from that icon, and granting permission from the user-initiated enable button. Other browsers without the required Notification, Service Worker, or Push API show a compatibility message and do not attempt to subscribe.
+
 ## Security and moderation
 
 Message checks run on the server before persistence or broadcast for global/private chat, radio text/codes, Morse translation, and support messages/replies. The starter English and Arabic blocklist is intentionally small; add project-specific terms with the `CIA_SECURITY_BLOCKED_TERMS` environment variable, one term or phrase per line or separated by semicolons. Entries default to level 1; prefix one with `LEVEL 2:`, `LEVEL 3:`, or `LEVEL 4:` to set its severity. These terms are configuration, not credentials.
