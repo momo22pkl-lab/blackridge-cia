@@ -21,6 +21,7 @@ const {
   injectMobilePushMarkup,
   registerMobilePushSocket,
   sectorMembers,
+  sectorMemberOptions,
   sectorOptions,
   sendBatched
 } = require('../mobile-push');
@@ -81,6 +82,16 @@ test('push manifest metadata is injected once without changing the underlying ap
   assert.match(injected, /src="\/mobile-push-client\.js"/);
   assert.equal(injectMobilePushMarkup(injected), injected);
   assert.equal(injectMobilePushMarkup('<html>incomplete</html>'), '<html>incomplete</html>');
+});
+
+test('mobile push form offers sector-wide and single-member targeting with an empty-sector explanation', () => {
+  const source = fs.readFileSync(path.join(projectRoot, 'mobile-push-client.js'), 'utf8');
+  assert.match(source, /name="audience"/);
+  assert.match(source, /value="SECTOR">كل أفراد القطاع/);
+  assert.match(source, /value="MEMBER">شخص معين/);
+  assert.match(source, /name="memberId"/);
+  assert.match(source, /لا توجد قطاعات مؤهلة للإرسال بعد/);
+  assert.match(source, /mobile-push:members/);
 });
 
 test('push endpoints are HTTPS push-service URLs and invalid subscriptions are rejected', () => {
@@ -187,6 +198,10 @@ test('sector audience deduplicates members across active battalions and excludes
     { name: 'Los Santos', memberCount: 2 },
     { name: 'North', memberCount: 1 }
   ]);
+  assert.deepEqual(sectorMemberOptions(users, units, 'LOS SANTOS'), [
+    { id: 'agent-a', name: 'AG-101', publicCode: 'AG-101' },
+    { id: 'agent-b', name: 'AG-102', publicCode: 'AG-102' }
+  ]);
 });
 
 test('mobile push sends only to subscribed sector members and does not enter the in-app notification store', async () => {
@@ -235,6 +250,15 @@ test('mobile push sends only to subscribed sector members and does not enter the
   assert.equal(info.ok, true);
   assert.equal(info.canSend, true);
   assert.deepEqual(info.sectors, [{ name: 'Los Santos', memberCount: 2 }, { name: 'Vespucci', memberCount: 1 }]);
+  const members = await socket.call('mobile-push:members', { sector: 'LOS SANTOS' });
+  assert.deepEqual(members, {
+    ok: true,
+    sector: 'Los Santos',
+    members: [
+      { id: 'agent-a', name: 'AG-101', publicCode: 'AG-101' },
+      { id: 'agent-b', name: 'AG-102', publicCode: 'AG-102' }
+    ]
+  });
   const result = await socket.call('mobile-push:send-sector', {
     sector: 'LOS SANTOS',
     title: 'تنبيه القطاع',
@@ -252,6 +276,100 @@ test('mobile push sends only to subscribed sector members and does not enter the
   assert.ok(sent.every((entry) => entry.payload.priority === 'CRITICAL'));
   const implementation = fs.readFileSync(path.join(projectRoot, 'mobile-push.js'), 'utf8');
   assert.doesNotMatch(implementation, /publishNotifications|notificationsStore|notification:new/);
+});
+
+test('mobile push can target one eligible member and only that member’s devices', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  const users = [
+    person('chief-target-test', 'CHIEF-301', { rank: 'CIA CHIEF' }),
+    person('member-a', 'AG-301', { name: 'Member A' }),
+    person('member-b', 'AG-302', { name: 'Member B' }),
+    person('member-unapproved', 'AG-303', { name: 'Not eligible', serviceApproved: false }),
+    person('member-other-sector', 'AG-401', { name: 'Other sector' })
+  ];
+  const units = [
+    { id: 'unit-east', sector: 'East', status: 'ACTIVE', memberCodes: ['AG-301', 'AG-302', 'AG-303'] },
+    { id: 'unit-west', sector: 'West', status: 'ACTIVE', memberCodes: ['AG-401'] }
+  ];
+  const savedSubscriptions = [
+    { userId: 'member-a', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/a', keys: { p256dh: 'a', auth: 'a' } } },
+    { userId: 'member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/b', keys: { p256dh: 'b', auth: 'b' } } }
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF',
+    getUsers: () => users,
+    getUnits: () => units,
+    store: {
+      async listForUsers(ids) { return savedSubscriptions.filter((item) => ids.includes(item.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      publicKey: 'A'.repeat(87),
+      async sendNotification(subscriptionValue, payload) {
+        sent.push({ endpoint: subscriptionValue.endpoint, payload: JSON.parse(payload) });
+      }
+    },
+    makeId: () => 'PUSH-target-test',
+    addAuditLog() {},
+    async saveState() {}
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    sector: 'East',
+    audience: 'MEMBER',
+    memberId: 'member-b',
+    title: 'اختبار فردي',
+    message: 'رسالة إلى عضو واحد.',
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.audience, 'MEMBER');
+  assert.equal(result.targetMemberName, 'Member B');
+  assert.equal(result.recipientCount, 1);
+  assert.equal(result.deviceCount, 1);
+  assert.equal(result.acceptedByPushService, 1);
+  assert.deepEqual(sent.map((item) => item.endpoint), ['https://fcm.googleapis.com/push/send/b']);
+  assert.equal(sent[0].payload.sector, 'East');
+});
+
+test('targeted mobile push rejects a member outside the selected sector', async () => {
+  const socket = mockSocket();
+  let sends = 0;
+  const users = [
+    person('chief-target-boundary-test', 'CHIEF-401', { rank: 'CIA CHIEF' }),
+    person('east-member', 'AG-401'),
+    person('west-member', 'AG-402')
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF',
+    getUsers: () => users,
+    getUnits: () => [
+      { id: 'east-unit', sector: 'East', status: 'ACTIVE', memberCodes: ['AG-401'] },
+      { id: 'west-unit', sector: 'West', status: 'ACTIVE', memberCodes: ['AG-402'] }
+    ],
+    store: { async listForUsers() { return []; } },
+    transport: {
+      configured: true,
+      publicKey: 'A'.repeat(87),
+      async sendNotification() { sends += 1; }
+    }
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    sector: 'East',
+    audience: 'MEMBER',
+    memberId: 'west-member',
+    title: 'Test',
+    message: 'Test',
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /لا ينتمي إلى القطاع/);
+  assert.equal(sends, 0);
 });
 
 test('non-leaders cannot send a sector push even when the browser asks directly', async () => {
@@ -275,6 +393,9 @@ test('non-leaders cannot send a sector push even when the browser asks directly'
   assert.equal(result.ok, false);
   assert.match(result.message, /CIA CHIEF/);
   assert.equal(sends, 0);
+  const memberList = await socket.call('mobile-push:members', { sector: 'Any' });
+  assert.equal(memberList.ok, false);
+  assert.match(memberList.message, /متاحة/);
 });
 
 test('sending to a sector with no opted-in phones is reported as not sent', async () => {

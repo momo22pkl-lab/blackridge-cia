@@ -2,7 +2,7 @@
   'use strict';
 
   const socket = () => window.blackRidgeSocket || null;
-  const state = { info: null, busy: false, opened: false, subscribed: false };
+  const state = { info: null, busy: false, opened: false, subscribed: false, memberLoadId: 0 };
   const IOS_DEVICE = /iphone|ipad|ipod/i.test(navigator.userAgent || '') ||
     (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1);
 
@@ -129,6 +129,16 @@
             <label class="mobile-push-field">القطاع
               <select name="sector" required></select>
             </label>
+            <p class="mobile-push-help" id="mobile-push-no-sectors" role="status" hidden>لا توجد قطاعات مؤهلة للإرسال بعد. يلزم وجود وحدة نشطة وعضو مؤهل فيها.</p>
+            <label class="mobile-push-field" id="mobile-push-audience-field" hidden>المستلمون
+              <select name="audience" required disabled>
+                <option value="SECTOR">كل أفراد القطاع</option>
+                <option value="MEMBER">شخص معين</option>
+              </select>
+            </label>
+            <label class="mobile-push-field" id="mobile-push-member-field" hidden>الشخص
+              <select name="memberId" disabled></select>
+            </label>
             <label class="mobile-push-field">العنوان
               <input name="title" type="text" maxlength="100" required autocomplete="off">
             </label>
@@ -151,6 +161,9 @@
       });
       overlay.querySelector('[data-mobile-push-enable]').addEventListener('click', enablePush);
       overlay.querySelector('[data-mobile-push-disable]').addEventListener('click', disablePush);
+      overlay.querySelector('#mobile-push-send-form [name="sector"]').addEventListener('change', handleSectorChange);
+      overlay.querySelector('#mobile-push-send-form [name="audience"]').addEventListener('change', handleAudienceChange);
+      overlay.querySelector('#mobile-push-send-form [name="memberId"]').addEventListener('change', updateSendAvailability);
       overlay.querySelector('#mobile-push-send-form').addEventListener('submit', sendSectorPush);
       document.body.appendChild(overlay);
     }
@@ -209,11 +222,126 @@
     const select = document.querySelector('#mobile-push-send-form [name="sector"]');
     if (!select) return;
     select.replaceChildren();
-    for (const sector of Array.isArray(sectors) ? sectors : []) {
+    const availableSectors = Array.isArray(sectors) ? sectors : [];
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = availableSectors.length ? 'اختر القطاع' : 'لا توجد قطاعات مؤهلة';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+    for (const sector of availableSectors) {
       const option = document.createElement('option');
       option.value = String(sector.name || '');
       option.textContent = `${String(sector.name || '')} — ${Number(sector.memberCount) || 0} فرد`;
       select.appendChild(option);
+    }
+    select.disabled = availableSectors.length === 0;
+    const emptyMessage = document.getElementById('mobile-push-no-sectors');
+    if (emptyMessage) emptyMessage.hidden = availableSectors.length > 0;
+    resetAudienceControls();
+    updateSendAvailability();
+  }
+
+  function resetAudienceControls() {
+    const audienceField = document.getElementById('mobile-push-audience-field');
+    const audienceSelect = document.querySelector('#mobile-push-send-form [name="audience"]');
+    const memberField = document.getElementById('mobile-push-member-field');
+    const memberSelect = document.querySelector('#mobile-push-send-form [name="memberId"]');
+    if (audienceField) audienceField.hidden = true;
+    if (audienceSelect) {
+      audienceSelect.value = 'SECTOR';
+      audienceSelect.disabled = true;
+    }
+    if (memberField) memberField.hidden = true;
+    if (memberSelect) {
+      memberSelect.replaceChildren();
+      memberSelect.disabled = true;
+      memberSelect.required = false;
+    }
+    state.memberLoadId += 1;
+  }
+
+  function updateSendAvailability() {
+    const form = document.getElementById('mobile-push-send-form');
+    const send = form?.querySelector('[type="submit"]');
+    if (!form || !send) return;
+    const sector = form.querySelector('[name="sector"]')?.value || '';
+    const audience = form.querySelector('[name="audience"]')?.value || 'SECTOR';
+    const member = form.querySelector('[name="memberId"]');
+    send.disabled = state.busy || !sector ||
+      (audience === 'MEMBER' && (!member?.value || member.disabled));
+  }
+
+  function handleSectorChange(event) {
+    const audienceField = document.getElementById('mobile-push-audience-field');
+    const audienceSelect = document.querySelector('#mobile-push-send-form [name="audience"]');
+    resetAudienceControls();
+    const hasSector = !!event.currentTarget.value;
+    if (audienceField) audienceField.hidden = !hasSector;
+    if (audienceSelect) audienceSelect.disabled = !hasSector;
+    updateSendAvailability();
+  }
+
+  async function handleAudienceChange(event) {
+    const audienceSelect = event.currentTarget;
+    const wantsOneMember = audienceSelect.value === 'MEMBER';
+    const memberField = document.getElementById('mobile-push-member-field');
+    const memberSelect = document.querySelector('#mobile-push-send-form [name="memberId"]');
+    const sectorSelect = document.querySelector('#mobile-push-send-form [name="sector"]');
+    const requestedSector = sectorSelect?.value || '';
+    if (memberField) memberField.hidden = !wantsOneMember;
+    if (!memberSelect) return;
+    memberSelect.replaceChildren();
+    memberSelect.disabled = !wantsOneMember;
+    memberSelect.required = wantsOneMember;
+    updateSendAvailability();
+    if (!wantsOneMember || !sectorSelect?.value) return;
+
+    const loadId = ++state.memberLoadId;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'جارٍ تحميل الأسماء…';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    memberSelect.appendChild(placeholder);
+    memberSelect.disabled = true;
+    try {
+      const result = await emit('mobile-push:members', { sector: sectorSelect.value });
+      if (loadId !== state.memberLoadId ||
+          audienceSelect.value !== 'MEMBER' ||
+          sectorSelect.value !== requestedSector ||
+          sectorSelect.value !== result.sector) return;
+      memberSelect.replaceChildren();
+      const members = Array.isArray(result.members) ? result.members : [];
+      const choose = document.createElement('option');
+      choose.value = '';
+      choose.textContent = members.length ? 'اختر الشخص' : 'لا يوجد أفراد مؤهلون';
+      choose.disabled = true;
+      choose.selected = true;
+      memberSelect.appendChild(choose);
+      for (const member of members) {
+        const option = document.createElement('option');
+        option.value = String(member.id || '');
+        option.textContent = member.publicCode
+          ? `${String(member.name || 'عضو')} — ${String(member.publicCode)}`
+          : String(member.name || 'عضو');
+        memberSelect.appendChild(option);
+      }
+      memberSelect.disabled = members.length === 0;
+      if (!members.length) setStatus('لا يوجد أفراد مؤهلون في القطاع المحدد.', 'error');
+      updateSendAvailability();
+    } catch (error) {
+      if (loadId !== state.memberLoadId) return;
+      memberSelect.replaceChildren();
+      const failed = document.createElement('option');
+      failed.value = '';
+      failed.textContent = 'تعذر تحميل الأفراد';
+      failed.disabled = true;
+      failed.selected = true;
+      memberSelect.appendChild(failed);
+      memberSelect.disabled = true;
+      setStatus(error.message, 'error');
+      updateSendAvailability();
     }
   }
 
@@ -360,12 +488,14 @@
     try {
       const result = await emit('mobile-push:send-sector', {
         sector: data.get('sector'),
+        audience: data.get('audience') || 'SECTOR',
+        memberId: data.get('memberId'),
         title: data.get('title'),
         message: data.get('message'),
         priority: data.get('priority')
       });
       setStatus(
-        `قبلت خدمة الإشعارات ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}. الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
+        `المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. قبلت خدمة الإشعارات ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}. الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
         result.failed || result.noSubscriptionMembers ? 'error' : 'success'
       );
       form.reset();
@@ -374,7 +504,7 @@
       setStatus(error.message, 'error');
     } finally {
       state.busy = false;
-      send.disabled = false;
+      updateSendAvailability();
     }
   }
 

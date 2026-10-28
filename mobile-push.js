@@ -113,6 +113,14 @@ function sectorMembers(users, units, sectorName) {
   });
 }
 
+function sectorMemberOptions(users, units, sectorName) {
+  return sectorMembers(users, units, sectorName).map((person) => ({
+    id: String(person.id),
+    name: clean(person.identity?.fullName || person.name || person.publicCode || 'عضو', 100),
+    publicCode: clean(person.publicCode, 100)
+  }));
+}
+
 function urgencyForPriority(priority) {
   return priority === 'NORMAL' ? 'normal' : 'high';
 }
@@ -170,6 +178,25 @@ function registerMobilePushSocket(socket, context) {
     });
   });
 
+  socket.on('mobile-push:members', (payload, callback) => {
+    const actor = getActor();
+    if (!actor) return fail(callback, 'يجب تسجيل الدخول إلى الخدمة أولاً.');
+    if (!context.isLeadership(actor)) return fail(callback, 'قائمة مستلمي الإشعارات متاحة للقيادة فقط.');
+    if (context.transport.configured !== true) return fail(callback, 'إشعارات الهاتف غير مهيأة على الخادم بعد.');
+
+    const requestedSector = clean(payload?.sector, 100);
+    const sector = sectorOptions(getUnits(), context.getUsers()).find((item) =>
+      item.name.toLocaleLowerCase() === requestedSector.toLocaleLowerCase()
+    );
+    if (!sector) return fail(callback, 'القطاع المحدد غير موجود أو لا يحتوي أفراداً مؤهلين.');
+
+    return reply(callback, {
+      ok: true,
+      sector: sector.name,
+      members: sectorMemberOptions(context.getUsers(), getUnits(), sector.name)
+    });
+  });
+
   socket.on('mobile-push:subscribe', async (payload, callback) => {
     const actor = getActor();
     if (!actor) return fail(callback, 'يجب تسجيل الدخول إلى الخدمة أولاً.');
@@ -206,9 +233,12 @@ function registerMobilePushSocket(socket, context) {
     const title = clean(payload?.title, 100);
     const message = clean(payload?.message, 600);
     const requestedSector = clean(payload?.sector, 100);
+    const audience = String(payload?.audience || 'SECTOR').trim().toUpperCase();
+    const requestedMemberId = clean(payload?.memberId, 100);
     const priority = String(payload?.priority || 'NORMAL').trim().toUpperCase();
-    if (!title || !message || !requestedSector || !PRIORITIES.has(priority)) {
-      return fail(callback, 'أدخل القطاع والعنوان والرسالة واختر أولوية صالحة.');
+    if (!title || !message || !requestedSector || !PRIORITIES.has(priority) ||
+        !['SECTOR', 'MEMBER'].includes(audience) || (audience === 'MEMBER' && !requestedMemberId)) {
+      return fail(callback, 'أدخل القطاع والعنوان والرسالة وحدد مستلماً وأولوية صالحة.');
     }
 
     const options = sectorOptions(getUnits(), context.getUsers());
@@ -222,8 +252,15 @@ function registerMobilePushSocket(socket, context) {
     }
     lastBroadcastAt.set(String(actor.id), nowMs);
 
-    const recipients = sectorMembers(context.getUsers(), getUnits(), sector.name);
-    if (!recipients.length) return fail(callback, 'لا يوجد أفراد مؤهلون في هذا القطاع.');
+    const eligibleRecipients = sectorMembers(context.getUsers(), getUnits(), sector.name);
+    if (!eligibleRecipients.length) return fail(callback, 'لا يوجد أفراد مؤهلون في هذا القطاع.');
+    let recipients = eligibleRecipients;
+    let targetMember = null;
+    if (audience === 'MEMBER') {
+      targetMember = eligibleRecipients.find((person) => String(person.id) === requestedMemberId);
+      if (!targetMember) return fail(callback, 'الشخص المحدد غير مؤهل أو لا ينتمي إلى القطاع المختار.');
+      recipients = [targetMember];
+    }
 
     let subscriptions;
     try {
@@ -259,10 +296,10 @@ function registerMobilePushSocket(socket, context) {
     if (typeof context.addAuditLog === 'function') {
       try {
         context.addAuditLog(
-          'إرسال إشعار هاتف للقطاع',
+          'إرسال إشعار هاتف',
           actor,
           null,
-          `القطاع: ${sector.name}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
+          `القطاع: ${sector.name}؛ المستهدف: ${audience === 'MEMBER' ? `الفرد ${targetMember.publicCode}` : 'كل أفراد القطاع'}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
         );
         if (typeof context.saveState === 'function') await context.saveState();
       } catch (_error) {
@@ -273,6 +310,10 @@ function registerMobilePushSocket(socket, context) {
     return reply(callback, {
       ok: true,
       sector: sector.name,
+      audience,
+      targetMemberName: targetMember
+        ? clean(targetMember.identity?.fullName || targetMember.name || targetMember.publicCode || 'عضو', 100)
+        : '',
       priority,
       recipientCount: recipients.length,
       subscribedMembers: new Set(subscriptions.map((item) => item.userId)).size,
@@ -297,6 +338,7 @@ module.exports = {
   activeSectorUnits,
   sectorOptions,
   sectorMembers,
+  sectorMemberOptions,
   urgencyForPriority,
   sendBatched,
   registerMobilePushSocket,

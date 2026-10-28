@@ -44,7 +44,7 @@ Notifications are scoped to the authenticated server-side user ID. The Socket.IO
 
 ## Mobile Web Push (Phase 1)
 
-Mobile push announcements are separate from the intelligence notification center: they are not inserted into the `notifications` table and do not add an in-app inbox or toast. An active, authenticated member can opt in on each device. Only CIA CHIEF and SUPREME COMMANDER can send a title, message, and priority to all eligible members assigned to active battalions in a selected sector. The server derives recipients from the saved battalion membership; client-provided recipient IDs are never accepted.
+Mobile push announcements are separate from the intelligence notification center: they are not inserted into the `notifications` table and do not add an in-app inbox or toast. An active, authenticated member can opt in on each device. Only CIA CHIEF and SUPREME COMMANDER can send a title, message, and priority to either all eligible members assigned to active battalions in a selected sector or one eligible member in that sector. The client may request a member ID, but the server revalidates that the member is active, eligible, and assigned to the selected sector before sending. Sector and member options are derived from saved battalion membership; when no eligible members exist, the sender sees an empty-state message instead of an unusable blank selector.
 
 Before sending real pushes, configure these server-side environment variables:
 
