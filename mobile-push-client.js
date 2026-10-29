@@ -75,6 +75,7 @@
       .mobile-push-button:disabled { opacity:.55; cursor:wait; }
       #mobile-push-send-form { display:grid; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid rgba(148,163,184,.2); }
       #mobile-push-send-form[hidden] { display:none!important; }
+      #mobile-push-send-form .mobile-push-field[hidden] { display:none!important; }
       .mobile-push-form-title { margin:0 0 2px; color:#e8c778; font-size:.9rem; }
       .mobile-push-field { display:grid; gap:5px; color:#bfccd5; font-size:.75rem; }
       .mobile-push-field input,.mobile-push-field textarea,.mobile-push-field select { width:100%; min-height:42px; padding:9px 10px; color:#edf2f6; background:#080e15; border:1px solid #354656; border-radius:5px; font:inherit; }
@@ -117,7 +118,7 @@
             <h2 id="mobile-push-title">إشعارات الهاتف</h2>
             <button type="button" class="mobile-push-close" data-mobile-push-close aria-label="إغلاق">×</button>
           </header>
-          <p class="mobile-push-intro">تُرسل الاستدعاءات إلى أجهزة المستلمين المشتركين، وتُحفظ أيضًا في مركز إشعارات BLACK RIDGE CIA.</p>
+          <p class="mobile-push-intro">تُرسل الاستدعاءات والتعاميم إلى أجهزة المستلمين المشتركين، وتُحفظ في مركز إشعارات BLACK RIDGE CIA.</p>
           <p id="mobile-push-status" role="status" aria-live="polite"></p>
           <div class="mobile-push-controls">
             <button type="button" class="mobile-push-button" data-mobile-push-enable>تفعيل على هذا الجهاز</button>
@@ -129,6 +130,7 @@
             <label class="mobile-push-field">نوع الإشعار
               <select name="notificationType" required>
                 <option value="OFFICIAL_SUMMON">استدعاء رسمي</option>
+                <option value="COMMAND_CIRCULAR">تعميم قيادي</option>
               </select>
             </label>
             <label class="mobile-push-field">القطاع
@@ -144,10 +146,12 @@
             <label class="mobile-push-field" id="mobile-push-member-field" hidden>الشخص
               <select name="memberId" disabled></select>
             </label>
-            <label class="mobile-push-field">موضوع الاستدعاء
+            <label class="mobile-push-field">
+              <span data-push-subject-label>موضوع الاستدعاء</span>
               <input name="subject" type="text" maxlength="180" required autocomplete="off">
             </label>
-            <label class="mobile-push-field">نص الاستدعاء
+            <label class="mobile-push-field">
+              <span data-push-message-label>نص الاستدعاء</span>
               <textarea name="message" maxlength="600" required></textarea>
             </label>
             <label class="mobile-push-field">الأولوية
@@ -157,7 +161,7 @@
                 <option value="CRITICAL">حرجة</option>
               </select>
             </label>
-            <button class="mobile-push-button" type="submit">إصدار الاستدعاء وإرساله</button>
+            <button class="mobile-push-button" type="submit" data-push-submit-label>إصدار الاستدعاء وإرساله</button>
           </form>
         </section>
       `;
@@ -169,8 +173,10 @@
       overlay.querySelector('#mobile-push-send-form [name="sector"]').addEventListener('change', handleSectorChange);
       overlay.querySelector('#mobile-push-send-form [name="audience"]').addEventListener('change', handleAudienceChange);
       overlay.querySelector('#mobile-push-send-form [name="memberId"]').addEventListener('change', updateSendAvailability);
+      overlay.querySelector('#mobile-push-send-form [name="notificationType"]').addEventListener('change', updateNotificationTypeFields);
       overlay.querySelector('#mobile-push-send-form').addEventListener('submit', sendSectorPush);
       document.body.appendChild(overlay);
+      updateNotificationTypeFields();
     }
     addStyles();
   }
@@ -275,6 +281,22 @@
     const member = form.querySelector('[name="memberId"]');
     send.disabled = state.busy || !sector ||
       (audience === 'MEMBER' && (!member?.value || member.disabled));
+  }
+
+  function updateNotificationTypeFields() {
+    const form = document.getElementById('mobile-push-send-form');
+    if (!form) return;
+    const isCircular = form.querySelector('[name="notificationType"]')?.value === 'COMMAND_CIRCULAR';
+    const formTitle = form.querySelector('.mobile-push-form-title');
+    const subjectLabel = form.querySelector('[data-push-subject-label]');
+    const messageLabel = form.querySelector('[data-push-message-label]');
+    const messageInput = form.querySelector('[name="message"]');
+    const submitLabel = form.querySelector('[data-push-submit-label]');
+    if (formTitle) formTitle.textContent = isCircular ? 'إصدار تعميم قيادي' : 'إصدار استدعاء رسمي';
+    if (subjectLabel) subjectLabel.textContent = isCircular ? 'عنوان التعميم' : 'موضوع الاستدعاء';
+    if (messageLabel) messageLabel.textContent = isCircular ? 'محتوى التعميم' : 'نص الاستدعاء';
+    if (messageInput) messageInput.maxLength = isCircular ? 3000 : 600;
+    if (submitLabel) submitLabel.textContent = isCircular ? 'إصدار التعميم وإرساله' : 'إصدار الاستدعاء وإرساله';
   }
 
   function handleSectorChange(event) {
@@ -500,14 +522,17 @@
         message: data.get('message'),
         priority: data.get('priority')
       });
+      const isCircular = result.notificationType === 'COMMAND_CIRCULAR';
+      const documentType = isCircular ? 'تعميم' : 'استدعاء';
       const pushStatus = result.deviceCount
         ? `قبلت خدمة الهاتف ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}.`
-        : 'لا توجد أجهزة هاتف مشتركة؛ حُفظ الاستدعاء في مركز الإشعارات فقط.';
+        : `لا توجد أجهزة هاتف مشتركة؛ حُفظ ${documentType} في مركز الإشعارات فقط.`;
       setStatus(
-        `تم حفظ ${result.savedNotificationCount || 0} استدعاء في مركز الإشعارات. المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
+        `تم حفظ ${result.savedNotificationCount || 0} ${documentType} في مركز الإشعارات.${result.circularNumber ? ` رقم التعميم: ${result.circularNumber}.` : ''} المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
         result.failed || result.noSubscriptionMembers ? 'error' : 'success'
       );
       form.reset();
+      updateNotificationTypeFields();
       fillSectorOptions(state.info?.sectors);
     } catch (error) {
       setStatus(error.message, 'error');

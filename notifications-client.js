@@ -24,6 +24,7 @@
     deepLinkInFlight: ''
   };
   const OFFICIAL_SUMMON_TYPE = 'OFFICIAL_SUMMON';
+  const COMMAND_CIRCULAR_TYPE = 'COMMAND_CIRCULAR';
   const deepLinkedNotificationId = new URLSearchParams(window.location.search).get('notificationId') || '';
 
   const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (character) => ({
@@ -123,7 +124,7 @@
       detail.className = 'notification-detail-overlay';
       detail.hidden = true;
       detail.addEventListener('click', (event) => {
-        if (event.target === detail || event.target.closest('[data-action="close-summons"]')) {
+        if (event.target === detail || event.target.closest('[data-action="close-summons"], [data-action="close-notification-detail"]')) {
           detail.hidden = true;
           detail.innerHTML = '';
         }
@@ -285,6 +286,40 @@
     </article>`;
   }
 
+  function renderCommandCircularCard(row, priority, isUnread, stateLabel) {
+    const metadata = row.metadata || {};
+    const dateParts = formatArabicDateParts(metadata.issuedAt || row.createdAt);
+    const issuer = metadata.issuerName || metadata.sourceName || 'BLACK RIDGE CIA';
+    const issuerRank = metadata.issuerRank || '';
+    const circularTitle = metadata.circularTitle || metadata.subject || row.title || 'تعميم قيادي';
+    const circularNumber = metadata.circularNumber || row.relatedId || '—';
+    const sector = metadata.sector || '';
+    return `<article class="notification-card notification-card--circular${isUnread ? ' is-unread' : ''}" data-id="${escapeHtml(row.id)}" data-priority="${priority}" role="listitem" dir="rtl">
+      <header class="circular-card-header">
+        <img src="/brand-seal.jpg" alt="شعار BLACK RIDGE CIA" loading="lazy">
+        <div class="circular-card-brand"><span>BLACK RIDGE CIA</span><h3>تعميم قيادي</h3><small>توجيه صادر عن القيادة</small></div>
+        <span class="circular-card-stamp"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> تعميم</span>
+      </header>
+      <div class="circular-card-meta">
+        <div><i class="fa-solid fa-building-shield" aria-hidden="true"></i><span>الجهة المصدرة</span><strong>${escapeHtml(issuer)}${issuerRank ? ` · ${escapeHtml(issuerRank)}` : ''}</strong></div>
+        <div><i class="fa-regular fa-calendar" aria-hidden="true"></i><span>تاريخ التعميم</span><strong>${escapeHtml(dateParts.date)} · ${escapeHtml(dateParts.time)}</strong></div>
+        <div><i class="fa-solid fa-hashtag" aria-hidden="true"></i><span>رقم التعميم</span><strong>${escapeHtml(circularNumber)}</strong></div>
+        ${sector ? `<div><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span>القطاع</span><strong>${escapeHtml(sector)}</strong></div>` : ''}
+      </div>
+      <div class="circular-card-subject"><span>عنوان التعميم</span><strong>${escapeHtml(circularTitle)}</strong></div>
+      <p class="circular-card-message">${escapeHtml(row.message || '')}</p>
+      <footer class="circular-card-footer">
+        <span>BLACK RIDGE CIA <b>|</b> تعميم قيادي</span>
+        <div class="notification-card-actions">
+          <button type="button" data-action="circular-details" data-id="${escapeHtml(row.id)}"><i class="fa-regular fa-file-lines" aria-hidden="true"></i> قراءة التعميم</button>
+          ${isUnread ? `<button type="button" data-action="read" data-id="${escapeHtml(row.id)}">تحديد كمقروء</button>` : ''}
+          ${priority === 'CRITICAL' && !row.acknowledgedAt ? `<button type="button" class="notification-ack-button" data-action="acknowledge" data-id="${escapeHtml(row.id)}">تأكيد الاستلام</button>` : ''}
+        </div>
+      </footer>
+      <span class="notification-circular-state">${escapeHtml(stateLabel)}</span>
+    </article>`;
+  }
+
   function renderRows(append = false) {
     const feed = document.getElementById('notification-feed');
     if (!feed) return;
@@ -299,6 +334,9 @@
       const stateLabel = row.acknowledgedAt ? 'ACKNOWLEDGED' : row.readAt ? 'SEEN' : row.status || 'SENT';
       if (row.type === OFFICIAL_SUMMON_TYPE) {
         return renderOfficialSummonCard(row, priority, isUnread, stateLabel);
+      }
+      if (row.type === COMMAND_CIRCULAR_TYPE) {
+        return renderCommandCircularCard(row, priority, isUnread, stateLabel);
       }
       return `<article class="notification-card${isUnread ? ' is-unread' : ''}" data-id="${escapeHtml(row.id)}" data-priority="${priority}" role="listitem">
         <div class="notification-card-head"><div class="notification-card-title">${escapeHtml(row.title || row.type)}</div><span class="notification-priority">${priority}</span></div>
@@ -369,11 +407,13 @@
     toast.type = 'button';
     toast.className = 'notification-toast';
     if (row.type === OFFICIAL_SUMMON_TYPE) toast.classList.add('notification-toast--summons');
+    if (row.type === COMMAND_CIRCULAR_TYPE) toast.classList.add('notification-toast--circular');
     toast.dataset.priority = row.priority || 'NOTICE';
     toast.innerHTML = `<strong>${escapeHtml(row.title || 'NEW INTELLIGENCE')}</strong><span>${escapeHtml(row.message || '')}</span>`;
     toast.addEventListener('click', () => {
       toast.remove();
       if (row.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+      else if (row.type === COMMAND_CIRCULAR_TYPE) openCommandCircular(row);
       else openCenter(row.priority === 'CRITICAL' ? 'critical' : 'all');
     });
     stack.prepend(toast);
@@ -449,6 +489,55 @@
     markRead(row.id, (result) => displayOfficialSummonsDetails(result?.notification || row));
   }
 
+  function displayCommandCircularDetails(row) {
+    const overlay = document.getElementById('notification-detail-overlay');
+    if (!overlay || !row) return;
+    const metadata = row.metadata || {};
+    const dateParts = formatArabicDateParts(metadata.issuedAt || row.createdAt);
+    const issuer = metadata.issuerName || metadata.sourceName || 'BLACK RIDGE CIA';
+    const issuerRank = metadata.issuerRank || '';
+    const circularTitle = metadata.circularTitle || metadata.subject || row.title || 'تعميم قيادي';
+    const circularNumber = metadata.circularNumber || row.relatedId || '—';
+    const sector = metadata.sector || 'غير محدد';
+    overlay.innerHTML = `<article class="notification-detail-dialog command-circular-detail" role="dialog" aria-modal="true" aria-labelledby="command-circular-detail-title" dir="rtl">
+      <header class="command-circular-document-head">
+        <img src="/brand-seal.jpg" alt="شعار BLACK RIDGE CIA" loading="lazy">
+        <div class="command-circular-document-brand"><span>BLACK RIDGE CIA</span><small>COMMAND INTELLIGENCE DIRECTIVE</small></div>
+        <span class="command-circular-stamp"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> تعميم قيادي</span>
+      </header>
+      <div class="command-circular-document-title">
+        <span class="command-circular-kicker">توجيه صادر عن القيادة</span>
+        <h2 id="command-circular-detail-title"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> ${escapeHtml(circularTitle)}</h2>
+      </div>
+      <div class="command-circular-document-fields">
+        <div><span>الجهة المصدرة</span><strong>${escapeHtml(issuer)}${issuerRank ? ` · ${escapeHtml(issuerRank)}` : ''}</strong></div>
+        <div><span>تاريخ التعميم</span><strong>${escapeHtml(dateParts.date)}</strong></div>
+        <div><span>وقت الإصدار</span><strong>${escapeHtml(dateParts.time)}</strong></div>
+        <div><span>رقم التعميم</span><strong>${escapeHtml(circularNumber)}</strong></div>
+        <div><span>القطاع</span><strong>${escapeHtml(sector)}</strong></div>
+      </div>
+      <section class="command-circular-document-body">
+        <h3>محتوى التعميم</h3>
+        <p>${escapeHtml(row.message || '')}</p>
+      </section>
+      <footer class="command-circular-document-footer">
+        <span>BLACK RIDGE CIA <b>|</b> تعميم قيادي</span>
+        <button type="button" class="notification-action" data-action="close-notification-detail"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> إغلاق التعميم</button>
+      </footer>
+    </article>`;
+    overlay.hidden = false;
+    overlay.querySelector('[data-action="close-notification-detail"]')?.focus();
+  }
+
+  function openCommandCircular(row, alreadyRead = false) {
+    if (!row) return;
+    if (alreadyRead) {
+      displayCommandCircularDetails(row);
+      return;
+    }
+    markRead(row.id, (result) => displayCommandCircularDetails(result?.notification || row));
+  }
+
   function clearNotificationDeepLink() {
     try {
       const url = new URL(window.location.href);
@@ -476,6 +565,7 @@
       renderRows(false);
       clearNotificationDeepLink();
       if (row.type === OFFICIAL_SUMMON_TYPE) displayOfficialSummonsDetails(row);
+      else if (row.type === COMMAND_CIRCULAR_TYPE) displayCommandCircularDetails(row);
       else openCenter('all');
     });
   }
@@ -508,6 +598,7 @@
       if (card) {
         const row = findRow(card.dataset.id);
         if (row?.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+        else if (row?.type === COMMAND_CIRCULAR_TYPE) openCommandCircular(row);
         else if (row) markRead(row.id, () => openTarget(row));
       }
       return;
@@ -528,6 +619,10 @@
       const row = findRow(id);
       if (row) openOfficialSummons(row);
     }
+    if (action === 'circular-details' && id) {
+      const row = findRow(id);
+      if (row) openCommandCircular(row);
+    }
     if (action === 'acknowledge' && id) {
       socket()?.emit('notification:acknowledge', { id }, (result) => {
         if (result?.ok && result.notification) {
@@ -540,6 +635,7 @@
     if (action === 'open' && id) {
       const row = findRow(id);
       if (row?.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+      else if (row?.type === COMMAND_CIRCULAR_TYPE) openCommandCircular(row);
       else if (row) markRead(row.id, () => openTarget(row));
     }
   }

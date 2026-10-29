@@ -145,14 +145,22 @@ test('official summons use the existing system category and remain isolated by r
       relatedId: 'SUM-2026-001',
       metadata: { subject: 'موضوع فعلي', recipientName: 'المستلم أ' }
     },
+    {
+      ...notification('circular-a', 'agent-a', 'NOTICE', 'COMMAND_CIRCULAR'),
+      title: 'تعميم قيادي',
+      message: 'محتوى التعميم',
+      relatedId: 'BR-CIR-reference-123',
+      metadata: { circularTitle: 'عنوان فعلي', circularNumber: 'BR-CIR-reference-123' }
+    },
     notification('summons-b', 'agent-b', 'NOTICE', 'OFFICIAL_SUMMON')
   ]);
   const page = await store.listForUser({ userId: 'agent-a', category: 'system' });
-  assert.equal(page.rows.length, 1);
-  assert.equal(page.rows[0].type, 'OFFICIAL_SUMMON');
-  assert.equal(page.rows[0].metadata.subject, 'موضوع فعلي');
-  assert.equal((await store.countsForUser('agent-a')).system, 1);
+  assert.equal(page.rows.length, 2);
+  assert.equal(page.rows.find((row) => row.type === 'OFFICIAL_SUMMON').metadata.subject, 'موضوع فعلي');
+  assert.equal(page.rows.find((row) => row.type === 'COMMAND_CIRCULAR').metadata.circularTitle, 'عنوان فعلي');
+  assert.equal((await store.countsForUser('agent-a')).system, 2);
   assert.equal((await store.listForUser({ userId: 'agent-a', type: 'OFFICIAL_SUMMON' })).rows.length, 1);
+  assert.equal((await store.listForUser({ userId: 'agent-a', type: 'COMMAND_CIRCULAR' })).rows.length, 1);
   assert.equal((await store.listForUser({ userId: 'agent-b', category: 'system' })).rows[0].userId, 'agent-b');
 });
 
@@ -162,10 +170,12 @@ test('official warnings and replies retain up to 3000 characters without changin
   const created = await store.createMany([
     { ...notification('warning-long', 'agent-a', 'CRITICAL', 'WARNING'), message: longText },
     { ...notification('reply-long', 'chief-a', 'HIGH', 'WARNING_RESPONSE'), message: longText },
+    { ...notification('circular-long', 'agent-a', 'NOTICE', 'COMMAND_CIRCULAR'), message: longText },
     { ...notification('message-long', 'agent-a', 'NOTICE', 'MESSAGE'), message: longText }
   ]);
   assert.equal(created.find((row) => row.id === 'warning-long').message.length, 3000);
   assert.equal(created.find((row) => row.id === 'reply-long').message.length, 3000);
+  assert.equal(created.find((row) => row.id === 'circular-long').message.length, 3000);
   assert.equal(created.find((row) => row.id === 'message-long').message.length, 1000);
 });
 
