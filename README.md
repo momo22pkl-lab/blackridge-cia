@@ -44,7 +44,11 @@ Notifications are scoped to the authenticated server-side user ID. The Socket.IO
 
 ## Mobile Web Push (Phase 1)
 
-Mobile push announcements are separate from the intelligence notification center: they are not inserted into the `notifications` table and do not add an in-app inbox or toast. An active, authenticated member can opt in on each device. Only CIA CHIEF and SUPREME COMMANDER can send a title, message, and priority to either all eligible members assigned to active battalions in a selected sector or one eligible member in that sector. The client may request a member ID, but the server revalidates that the member is active, eligible, and assigned to the selected sector before sending. Sector and member options are derived from saved battalion membership; when no eligible members exist, the sender sees an empty-state message instead of an unusable blank selector.
+An active, authenticated member can opt in on each device. The current mobile-push composer issues an official summons with a subject and message to either all eligible members assigned to active battalions in a selected sector or one eligible member in that sector. Only CIA CHIEF and SUPREME COMMANDER can send. The client may request a sector or member ID, but the server revalidates the sender's leadership permission and each recipient's active status, eligibility, and sector membership before persisting or sending.
+
+Each official summons is stored as an owner-scoped `OFFICIAL_SUMMON` row in the existing `notifications` table; its issuer, recipient, reference number, subject, and issue time use the existing JSONB metadata field. It appears in the existing intelligence center and is also sent to each recipient's subscribed phone devices. A recipient without a push subscription still receives the saved in-app summons. A tap on a phone notification opens that recipient's matching in-app record. This does not create a second notification database or require a schema migration. Older generic mobile-push payloads remain accepted for compatibility.
+
+The site controls the in-app document design. Android and browser notification surfaces are OS-managed, so the service worker can provide the title, live message text, existing BLACK RIDGE emblem, Arabic direction hint, same-origin click-through, and a “عرض تفاصيل الاستدعاء” action where the browser supports actions, but cannot guarantee a custom card layout on every device.
 
 Before sending real pushes, configure these server-side environment variables:
 

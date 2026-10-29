@@ -114,7 +114,7 @@ const CATEGORY_SQL = Object.freeze({
   sos: " AND type = 'SOS'",
   operations: " AND type = 'OPERATION'",
   finance: " AND type IN ('SALARY', 'TRANSACTION', 'FINANCE')",
-  system: " AND type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE')"
+  system: " AND type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE', 'OFFICIAL_SUMMON')"
 });
 
 function number(value) {
@@ -333,7 +333,7 @@ class NotificationsStore {
       metadata: record.metadata
     }));
     const rows = [...additions, ...(this.getFallbackRows() || [])].slice(0, 10000);
-    this.setFallbackRows(rows);
+    await this.setFallbackRows(rows);
     return additions;
   }
 
@@ -501,7 +501,7 @@ class NotificationsStore {
     if (category === 'sos') return row.type === 'SOS';
     if (category === 'operations') return row.type === 'OPERATION';
     if (category === 'finance') return ['SALARY', 'TRANSACTION', 'FINANCE'].includes(row.type);
-    if (category === 'system') return ['CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE'].includes(row.type);
+    if (category === 'system') return ['CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE', 'OFFICIAL_SUMMON'].includes(row.type);
     return category === 'all';
   }
 
@@ -519,7 +519,7 @@ class NotificationsStore {
            COUNT(*) FILTER (WHERE type = 'SOS')::int AS sos,
            COUNT(*) FILTER (WHERE type = 'OPERATION')::int AS operations,
            COUNT(*) FILTER (WHERE type IN ('SALARY', 'TRANSACTION', 'FINANCE'))::int AS finance,
-           COUNT(*) FILTER (WHERE type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE'))::int AS system,
+           COUNT(*) FILTER (WHERE type IN ('CASE', 'REPORT', 'PROFILE', 'RANK', 'PERMISSION', 'REQUEST', 'LOGIN', 'SECURITY', 'SYSTEM', 'WARNING', 'WARNING_RESPONSE', 'OFFICIAL_SUMMON'))::int AS system,
            COUNT(*) FILTER (WHERE read_at IS NULL)::int AS unread,
             COUNT(*) FILTER (WHERE read_at IS NULL AND priority = 'CRITICAL')::int AS "unreadCritical",
             COUNT(*) FILTER (WHERE read_at IS NULL AND type = 'SECURITY')::int AS "unreadSecurity"

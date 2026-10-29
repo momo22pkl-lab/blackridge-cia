@@ -611,6 +611,21 @@ async function publishNotifications(recipients, details = {}) {
   }
 }
 
+async function persistPushNotifications(records) {
+  if (!notificationsStore || !Array.isArray(records) || !records.length) return [];
+  const created = await notificationsStore.createMany(records);
+  const usersToRefresh = new Set();
+  for (const notification of created) {
+    usersToRefresh.add(notification.userId);
+    for (const socketId of sessions.get(notification.userId) || []) {
+      const targetSocket = io.sockets.sockets.get(socketId);
+      if (targetSocket) targetSocket.emit('notification:new', notification);
+    }
+  }
+  await Promise.all([...usersToRefresh].map(sendNotificationCounts));
+  return created;
+}
+
 function missionMapColor(value) {
   const color = String(value || '').trim();
   return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#facc15';
@@ -3344,6 +3359,7 @@ io.on(
       store: mobilePushStore,
       transport: mobilePushTransport,
       makeId,
+      persistNotifications: persistPushNotifications,
       addAuditLog,
       saveState
     });

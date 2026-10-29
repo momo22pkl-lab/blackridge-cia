@@ -117,7 +117,7 @@
             <h2 id="mobile-push-title">إشعارات الهاتف</h2>
             <button type="button" class="mobile-push-close" data-mobile-push-close aria-label="إغلاق">×</button>
           </header>
-          <p class="mobile-push-intro">إعدادات الإشعارات التي يرسلها نظام الهاتف نفسه؛ لا تُضاف إلى مركز الإشعارات داخل الموقع.</p>
+          <p class="mobile-push-intro">تُرسل الاستدعاءات إلى أجهزة المستلمين المشتركين، وتُحفظ أيضًا في مركز إشعارات BLACK RIDGE CIA.</p>
           <p id="mobile-push-status" role="status" aria-live="polite"></p>
           <div class="mobile-push-controls">
             <button type="button" class="mobile-push-button" data-mobile-push-enable>تفعيل على هذا الجهاز</button>
@@ -125,7 +125,12 @@
           </div>
           <p class="mobile-push-help" id="mobile-push-compatibility"></p>
           <form id="mobile-push-send-form" hidden>
-            <h3 class="mobile-push-form-title">إرسال إشعار موبايل للقطاع</h3>
+            <h3 class="mobile-push-form-title">إصدار استدعاء رسمي</h3>
+            <label class="mobile-push-field">نوع الإشعار
+              <select name="notificationType" required>
+                <option value="OFFICIAL_SUMMON">استدعاء رسمي</option>
+              </select>
+            </label>
             <label class="mobile-push-field">القطاع
               <select name="sector" required></select>
             </label>
@@ -139,10 +144,10 @@
             <label class="mobile-push-field" id="mobile-push-member-field" hidden>الشخص
               <select name="memberId" disabled></select>
             </label>
-            <label class="mobile-push-field">العنوان
-              <input name="title" type="text" maxlength="100" required autocomplete="off">
+            <label class="mobile-push-field">موضوع الاستدعاء
+              <input name="subject" type="text" maxlength="180" required autocomplete="off">
             </label>
-            <label class="mobile-push-field">الرسالة
+            <label class="mobile-push-field">نص الاستدعاء
               <textarea name="message" maxlength="600" required></textarea>
             </label>
             <label class="mobile-push-field">الأولوية
@@ -152,7 +157,7 @@
                 <option value="CRITICAL">حرجة</option>
               </select>
             </label>
-            <button class="mobile-push-button" type="submit">إرسال إشعار الهاتف</button>
+            <button class="mobile-push-button" type="submit">إصدار الاستدعاء وإرساله</button>
           </form>
         </section>
       `;
@@ -487,15 +492,19 @@
     setStatus('جارٍ إرسال إشعار الهاتف إلى أجهزة الأفراد المشتركين…');
     try {
       const result = await emit('mobile-push:send-sector', {
+        notificationType: data.get('notificationType'),
         sector: data.get('sector'),
         audience: data.get('audience') || 'SECTOR',
         memberId: data.get('memberId'),
-        title: data.get('title'),
+        subject: data.get('subject'),
         message: data.get('message'),
         priority: data.get('priority')
       });
+      const pushStatus = result.deviceCount
+        ? `قبلت خدمة الهاتف ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}.`
+        : 'لا توجد أجهزة هاتف مشتركة؛ حُفظ الاستدعاء في مركز الإشعارات فقط.';
       setStatus(
-        `المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. قبلت خدمة الإشعارات ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}. الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
+        `تم حفظ ${result.savedNotificationCount || 0} استدعاء في مركز الإشعارات. المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
         result.failed || result.noSubscriptionMembers ? 'error' : 'success'
       );
       form.reset();
