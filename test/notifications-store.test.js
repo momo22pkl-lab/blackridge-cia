@@ -135,6 +135,27 @@ test('search and category filters are bounded and do not return another user’s
   assert.deepEqual((await store.listForUser({ userId: 'agent-a', category: 'invalid' })).rows, []);
 });
 
+test('official summons use the existing system category and remain isolated by recipient', async () => {
+  const { store } = makeStore();
+  await store.createMany([
+    {
+      ...notification('summons-a', 'agent-a', 'NOTICE', 'OFFICIAL_SUMMON'),
+      title: 'استدعاء رسمي',
+      message: 'نص الاستدعاء',
+      relatedId: 'SUM-2026-001',
+      metadata: { subject: 'موضوع فعلي', recipientName: 'المستلم أ' }
+    },
+    notification('summons-b', 'agent-b', 'NOTICE', 'OFFICIAL_SUMMON')
+  ]);
+  const page = await store.listForUser({ userId: 'agent-a', category: 'system' });
+  assert.equal(page.rows.length, 1);
+  assert.equal(page.rows[0].type, 'OFFICIAL_SUMMON');
+  assert.equal(page.rows[0].metadata.subject, 'موضوع فعلي');
+  assert.equal((await store.countsForUser('agent-a')).system, 1);
+  assert.equal((await store.listForUser({ userId: 'agent-a', type: 'OFFICIAL_SUMMON' })).rows.length, 1);
+  assert.equal((await store.listForUser({ userId: 'agent-b', category: 'system' })).rows[0].userId, 'agent-b');
+});
+
 test('official warnings and replies retain up to 3000 characters without changing other notification limits', async () => {
   const { store } = makeStore();
   const longText = 'x'.repeat(3000);

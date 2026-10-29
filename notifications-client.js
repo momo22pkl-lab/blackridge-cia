@@ -20,8 +20,11 @@
     search: '',
     user: null,
     searchTimer: null,
-    welcomeKey: ''
+    welcomeKey: '',
+    deepLinkInFlight: ''
   };
+  const OFFICIAL_SUMMON_TYPE = 'OFFICIAL_SUMMON';
+  const deepLinkedNotificationId = new URLSearchParams(window.location.search).get('notificationId') || '';
 
   const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -104,8 +107,28 @@
         state.searchTimer = setTimeout(() => loadRows(true), 220);
       });
       document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeCenter();
+        if (event.key !== 'Escape') return;
+        const detail = document.getElementById('notification-detail-overlay');
+        if (detail && !detail.hidden) {
+          detail.hidden = true;
+          detail.innerHTML = '';
+          return;
+        }
+        closeCenter();
       });
+    }
+    if (!document.getElementById('notification-detail-overlay')) {
+      const detail = document.createElement('div');
+      detail.id = 'notification-detail-overlay';
+      detail.className = 'notification-detail-overlay';
+      detail.hidden = true;
+      detail.addEventListener('click', (event) => {
+        if (event.target === detail || event.target.closest('[data-action="close-summons"]')) {
+          detail.hidden = true;
+          detail.innerHTML = '';
+        }
+      });
+      document.body.appendChild(detail);
     }
     if (!document.getElementById('notification-welcome-summary')) {
       const welcome = document.createElement('div');
@@ -219,6 +242,49 @@
     return date.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  function formatArabicDateParts(value) {
+    const date = new Date(value || '');
+    if (!Number.isFinite(date.getTime())) return { date: 'غير متاح', time: 'غير متاح' };
+    return {
+      date: date.toLocaleDateString('ar-JO', { year: 'numeric', month: 'long', day: 'numeric' }),
+      time: date.toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' })
+    };
+  }
+
+  function renderOfficialSummonCard(row, priority, isUnread, stateLabel) {
+    const metadata = row.metadata || {};
+    const dateParts = formatArabicDateParts(metadata.issuedAt || row.createdAt);
+    const issuer = metadata.issuerName || metadata.sourceName || 'BLACK RIDGE CIA';
+    const issuerRank = metadata.issuerRank || '';
+    const recipient = metadata.recipientName || 'المستلم';
+    const subject = metadata.subject || 'استدعاء رسمي';
+    const summonsNumber = metadata.summonsNumber || row.relatedId || '—';
+    return `<article class="notification-card notification-card--summons${isUnread ? ' is-unread' : ''}" data-id="${escapeHtml(row.id)}" data-priority="${priority}" role="listitem" dir="rtl">
+      <header class="summons-card-header">
+        <img src="/brand-seal.jpg" alt="ختم BLACK RIDGE CIA" loading="lazy">
+        <div class="summons-card-brand"><span>BLACK RIDGE CIA</span><h3>استدعاء رسمي</h3><small>وثيقة صادرة عن القيادة</small></div>
+        <span class="summons-official-mark"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> رسمي</span>
+      </header>
+      <div class="summons-card-meta">
+        <div><i class="fa-solid fa-building-shield" aria-hidden="true"></i><span>الجهة المصدرة</span><strong>${escapeHtml(issuer)}${issuerRank ? ` · ${escapeHtml(issuerRank)}` : ''}</strong></div>
+        <div><i class="fa-solid fa-user" aria-hidden="true"></i><span>المستلم</span><strong>${escapeHtml(recipient)}</strong></div>
+        <div><i class="fa-regular fa-calendar" aria-hidden="true"></i><span>التاريخ والوقت</span><strong>${escapeHtml(dateParts.date)} · ${escapeHtml(dateParts.time)}</strong></div>
+        <div><i class="fa-solid fa-hashtag" aria-hidden="true"></i><span>رقم الاستدعاء</span><strong>${escapeHtml(summonsNumber)}</strong></div>
+      </div>
+      <div class="summons-card-subject"><span>موضوع الاستدعاء</span><strong>${escapeHtml(subject)}</strong></div>
+      <p class="summons-card-message">${escapeHtml(row.message || '')}</p>
+      <footer class="summons-card-footer">
+        <span>BLACK RIDGE CIA <b>|</b> استدعاء رسمي</span>
+        <div class="notification-card-actions">
+          <button type="button" data-action="summons-details" data-id="${escapeHtml(row.id)}"><i class="fa-regular fa-eye" aria-hidden="true"></i> عرض تفاصيل الاستدعاء</button>
+          ${isUnread ? `<button type="button" data-action="read" data-id="${escapeHtml(row.id)}">تحديد كمقروء</button>` : ''}
+          ${priority === 'CRITICAL' && !row.acknowledgedAt ? `<button type="button" class="notification-ack-button" data-action="acknowledge" data-id="${escapeHtml(row.id)}">تأكيد الاستلام</button>` : ''}
+        </div>
+      </footer>
+      <span class="notification-summons-state">${escapeHtml(stateLabel)}</span>
+    </article>`;
+  }
+
   function renderRows(append = false) {
     const feed = document.getElementById('notification-feed');
     if (!feed) return;
@@ -231,6 +297,9 @@
       const source = row.sourceCode ? `${sourceName}SOURCE #${escapeHtml(row.sourceCode)}` : 'BLACK RIDGE SYSTEM';
       const related = row.relatedId ? `REF ${escapeHtml(row.relatedId)}` : '';
       const stateLabel = row.acknowledgedAt ? 'ACKNOWLEDGED' : row.readAt ? 'SEEN' : row.status || 'SENT';
+      if (row.type === OFFICIAL_SUMMON_TYPE) {
+        return renderOfficialSummonCard(row, priority, isUnread, stateLabel);
+      }
       return `<article class="notification-card${isUnread ? ' is-unread' : ''}" data-id="${escapeHtml(row.id)}" data-priority="${priority}" role="listitem">
         <div class="notification-card-head"><div class="notification-card-title">${escapeHtml(row.title || row.type)}</div><span class="notification-priority">${priority}</span></div>
         <div class="notification-card-message">${escapeHtml(row.message)}</div>
@@ -299,11 +368,13 @@
     const toast = document.createElement('button');
     toast.type = 'button';
     toast.className = 'notification-toast';
+    if (row.type === OFFICIAL_SUMMON_TYPE) toast.classList.add('notification-toast--summons');
     toast.dataset.priority = row.priority || 'NOTICE';
     toast.innerHTML = `<strong>${escapeHtml(row.title || 'NEW INTELLIGENCE')}</strong><span>${escapeHtml(row.message || '')}</span>`;
     toast.addEventListener('click', () => {
       toast.remove();
-      openCenter(row.priority === 'CRITICAL' ? 'critical' : 'all');
+      if (row.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+      else openCenter(row.priority === 'CRITICAL' ? 'critical' : 'all');
     });
     stack.prepend(toast);
     while (stack.children.length > 3) stack.lastElementChild.remove();
@@ -324,6 +395,88 @@
         renderRows(false);
       }
       if (typeof onDone === 'function') onDone(result);
+    });
+  }
+
+  function displayOfficialSummonsDetails(row) {
+    const overlay = document.getElementById('notification-detail-overlay');
+    if (!overlay || !row) return;
+    const metadata = row.metadata || {};
+    const dateParts = formatArabicDateParts(metadata.issuedAt || row.createdAt);
+    const issuer = metadata.issuerName || metadata.sourceName || 'BLACK RIDGE CIA';
+    const issuerRank = metadata.issuerRank || '';
+    const recipient = metadata.recipientName || 'المستلم';
+    const subject = metadata.subject || 'استدعاء رسمي';
+    const number = metadata.summonsNumber || row.relatedId || '—';
+    const body = row.message || '';
+    overlay.innerHTML = `<article class="notification-detail-dialog official-summons-detail" role="dialog" aria-modal="true" aria-labelledby="official-summons-detail-title" dir="rtl">
+      <header class="official-summons-document-head">
+        <img src="/brand-seal.jpg" alt="ختم BLACK RIDGE CIA" loading="lazy">
+        <div class="official-summons-document-brand"><span>BLACK RIDGE CIA</span><small>BLACK RIDGE COMMAND</small></div>
+        <span class="official-summons-stamp"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> رسمي</span>
+      </header>
+      <div class="official-summons-document-title">
+        <span class="official-summons-kicker">وثيقة صادرة عن القيادة</span>
+        <h2 id="official-summons-detail-title"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> استدعاء رسمي</h2>
+      </div>
+      <div class="official-summons-document-fields">
+        <div><span>الجهة المصدرة</span><strong>${escapeHtml(issuer)}${issuerRank ? ` · ${escapeHtml(issuerRank)}` : ''}</strong></div>
+        <div><span>المستلم</span><strong>${escapeHtml(recipient)}</strong></div>
+        <div><span>التاريخ</span><strong>${escapeHtml(dateParts.date)}</strong></div>
+        <div><span>الوقت</span><strong>${escapeHtml(dateParts.time)}</strong></div>
+        <div><span>رقم الاستدعاء</span><strong>${escapeHtml(number)}</strong></div>
+        <div><span>موضوع الاستدعاء</span><strong>${escapeHtml(subject)}</strong></div>
+      </div>
+      <section class="official-summons-document-body">
+        <h3>نص الاستدعاء</h3>
+        <p>${escapeHtml(body)}</p>
+      </section>
+      <footer class="official-summons-document-footer">
+        <span>BLACK RIDGE CIA <b>|</b> استدعاء رسمي</span>
+        <button type="button" class="notification-action" data-action="close-summons"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> إغلاق التفاصيل</button>
+      </footer>
+    </article>`;
+    overlay.hidden = false;
+    overlay.querySelector('[data-action="close-summons"]')?.focus();
+  }
+
+  function openOfficialSummons(row, alreadyRead = false) {
+    if (!row) return;
+    if (alreadyRead) {
+      displayOfficialSummonsDetails(row);
+      return;
+    }
+    markRead(row.id, (result) => displayOfficialSummonsDetails(result?.notification || row));
+  }
+
+  function clearNotificationDeepLink() {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('notificationId');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch (_error) {}
+  }
+
+  function openDeepLinkedNotification() {
+    const id = String(deepLinkedNotificationId).slice(0, 200);
+    const connection = socket();
+    const session = syncAppSession();
+    if (!id || !state.user || !session?.authenticated || !connection?.connected || state.deepLinkInFlight === id) return;
+    state.deepLinkInFlight = id;
+    connection.emit('notification:read', { id }, (result) => {
+      state.deepLinkInFlight = '';
+      if (!result?.ok || !result.notification) {
+        clearNotificationDeepLink();
+        return;
+      }
+      const row = result.notification;
+      const index = state.rows.findIndex((item) => item.id === row.id);
+      if (index >= 0) state.rows[index] = row;
+      else state.rows.unshift(row);
+      renderRows(false);
+      clearNotificationDeepLink();
+      if (row.type === OFFICIAL_SUMMON_TYPE) displayOfficialSummonsDetails(row);
+      else openCenter('all');
     });
   }
 
@@ -354,7 +507,8 @@
       const card = event.target.closest('.notification-card');
       if (card) {
         const row = findRow(card.dataset.id);
-        if (row) markRead(row.id, () => openTarget(row));
+        if (row?.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+        else if (row) markRead(row.id, () => openTarget(row));
       }
       return;
     }
@@ -370,6 +524,10 @@
       });
     }
     if (action === 'read' && id) markRead(id);
+    if (action === 'summons-details' && id) {
+      const row = findRow(id);
+      if (row) openOfficialSummons(row);
+    }
     if (action === 'acknowledge' && id) {
       socket()?.emit('notification:acknowledge', { id }, (result) => {
         if (result?.ok && result.notification) {
@@ -381,7 +539,8 @@
     }
     if (action === 'open' && id) {
       const row = findRow(id);
-      if (row) markRead(row.id, () => openTarget(row));
+      if (row?.type === OFFICIAL_SUMMON_TYPE) openOfficialSummons(row);
+      else if (row) markRead(row.id, () => openTarget(row));
     }
   }
 
@@ -410,7 +569,8 @@
       REQUEST: 'REQUESTS',
       LOGIN: 'SIGN-IN EVENTS',
       SECURITY: 'SECURITY EVENTS',
-      SYSTEM: 'SYSTEM UPDATES'
+      SYSTEM: 'SYSTEM UPDATES',
+      OFFICIAL_SUMMON: 'OFFICIAL SUMMONS'
     };
     const entries = Object.entries(summary.byType || {}).filter(([, amount]) => Number(amount) > 0);
     if (grid) grid.innerHTML = entries.map(([type, amount]) => `<div class="notification-summary-item">${escapeHtml(labels[type] || type)}<strong>${Number(amount)}</strong></div>`).join('');
@@ -446,6 +606,7 @@
       if (document.getElementById('notification-modal-overlay')?.classList.contains('is-open')) loadRows(true);
       showToast(row);
     });
+    connection.on('connect', openDeepLinkedNotification);
     connection.on('auth:login:result', (result) => {
       if (!result?.ok || !result.user) {
         const session = syncAppSession();
@@ -453,6 +614,7 @@
         return;
       }
       state.user = result.user;
+      openDeepLinkedNotification();
       connection.emit('notification:count', {}, (response) => {
         if (response?.counts) updateCounts(response.counts);
       });
@@ -474,6 +636,7 @@
 
   buildUI();
   installSocketHandlers();
+  openDeepLinkedNotification();
 })();
 
 (function loadWorldCommandBattalionPhase2() {

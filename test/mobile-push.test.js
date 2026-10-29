@@ -15,8 +15,10 @@ const {
   normalizePushSubscription,
   WebPushStore
 } = require('../mobile-push-store');
+const { NotificationsStore } = require('../notifications-store');
 const {
   BROADCAST_INTERVAL_MS,
+  OFFICIAL_SUMMON_TYPE,
   createWebPushTransport,
   injectMobilePushMarkup,
   registerMobilePushSocket,
@@ -90,8 +92,20 @@ test('mobile push form offers sector-wide and single-member targeting with an em
   assert.match(source, /value="SECTOR">كل أفراد القطاع/);
   assert.match(source, /value="MEMBER">شخص معين/);
   assert.match(source, /name="memberId"/);
+  assert.match(source, /name="notificationType"/);
+  assert.match(source, /value="OFFICIAL_SUMMON">استدعاء رسمي/);
+  assert.match(source, /name="subject"/);
+  assert.match(source, /نص الاستدعاء/);
   assert.match(source, /لا توجد قطاعات مؤهلة للإرسال بعد/);
   assert.match(source, /mobile-push:members/);
+
+  const inboxClient = fs.readFileSync(path.join(projectRoot, 'notifications-client.js'), 'utf8');
+  const inboxStyles = fs.readFileSync(path.join(projectRoot, 'notifications.css'), 'utf8');
+  assert.match(inboxClient, /notification-card--summons/);
+  assert.match(inboxClient, /عرض تفاصيل الاستدعاء/);
+  assert.match(inboxClient, /openDeepLinkedNotification/);
+  assert.match(inboxStyles, /\.notification-detail-dialog/);
+  assert.match(inboxStyles, /@media \(max-width: 700px\)/);
 });
 
 test('push endpoints are HTTPS push-service URLs and invalid subscriptions are rejected', () => {
@@ -278,6 +292,100 @@ test('mobile push sends only to subscribed sector members and does not enter the
   assert.doesNotMatch(implementation, /publishNotifications|notificationsStore|notification:new/);
 });
 
+test('official summons persist in the existing private inbox and push links open each recipient record', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  let id = 0;
+  const users = [
+    person('summons-chief', 'CHIEF-900', {
+      rank: 'CIA CHIEF',
+      name: 'Chief Account',
+      identity: { fullName: 'قائد الاختبار' }
+    }),
+    person('summons-member-a', 'AG-901', {
+      name: 'Member A',
+      identity: { fullName: 'المستلم الأول' }
+    }),
+    person('summons-member-b', 'AG-902', {
+      name: 'Member B',
+      identity: { fullName: 'المستلم الثاني' }
+    })
+  ];
+  const subscriptions = [
+    { userId: 'summons-member-a', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/a1', keys: { p256dh: 'a', auth: 'a' } } },
+    { userId: 'summons-member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/b1', keys: { p256dh: 'b', auth: 'b' } } },
+    { userId: 'summons-member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/b2', keys: { p256dh: 'b', auth: 'b' } } }
+  ];
+  let storedNotifications = [];
+  const inbox = new NotificationsStore(null, {
+    getRows: () => storedNotifications,
+    setRows: (rows) => { storedNotifications = rows; }
+  });
+  const units = [{ id: 'summons-unit', sector: 'North Ridge', status: 'ACTIVE', memberCodes: ['AG-901', 'AG-902'] }];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF' || actor.rank === 'SUPREME COMMANDER',
+    getUsers: () => users,
+    getUnits: () => units,
+    store: {
+      async listForUsers(ids) { return subscriptions.filter((item) => ids.includes(item.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      async sendNotification(subscriptionValue, payload, options) {
+        sent.push({ endpoint: subscriptionValue.endpoint, payload: JSON.parse(payload), options });
+      }
+    },
+    makeId: (prefix) => `${prefix}-test-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records),
+    addAuditLog() {},
+    async saveState() {}
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: OFFICIAL_SUMMON_TYPE,
+    sector: 'North Ridge',
+    audience: 'SECTOR',
+    subject: 'مراجعة ملف المهمة',
+    message: 'يرجى الحضور إلى مقر القيادة في الموعد المحدد.',
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.notificationType, OFFICIAL_SUMMON_TYPE);
+  assert.equal(result.recipientCount, 2);
+  assert.equal(result.savedNotificationCount, 2);
+  assert.equal(result.deviceCount, 3);
+
+  const firstInbox = await inbox.listForUser({ userId: 'summons-member-a' });
+  const secondInbox = await inbox.listForUser({ userId: 'summons-member-b' });
+  assert.equal(firstInbox.rows.length, 1);
+  assert.equal(secondInbox.rows.length, 1);
+  assert.equal((await inbox.listForUser({ userId: 'unrelated-member' })).rows.length, 0);
+  for (const row of [...firstInbox.rows, ...secondInbox.rows]) {
+    assert.equal(row.type, OFFICIAL_SUMMON_TYPE);
+    assert.equal(row.title, 'استدعاء رسمي');
+    assert.equal(row.message, 'يرجى الحضور إلى مقر القيادة في الموعد المحدد.');
+    assert.equal(row.priority, 'NOTICE');
+    assert.equal(row.metadata.subject, 'مراجعة ملف المهمة');
+    assert.equal(row.metadata.issuerName, 'قائد الاختبار');
+    assert.equal(row.metadata.issuerOrganization, 'BLACK RIDGE CIA');
+    assert.equal(row.metadata.summonsNumber, result.summonsNumber);
+    assert.ok(row.metadata.issuedAt);
+  }
+  assert.equal(firstInbox.rows[0].metadata.recipientName, 'المستلم الأول');
+  assert.equal(secondInbox.rows[0].metadata.recipientName, 'المستلم الثاني');
+  assert.equal(sent.length, 3);
+  const firstPush = sent.find((entry) => entry.endpoint.endsWith('/a1'));
+  const secondPushes = sent.filter((entry) => entry.endpoint.endsWith('/b1') || entry.endpoint.endsWith('/b2'));
+  assert.equal(firstPush.payload.title, 'استدعاء رسمي');
+  assert.match(firstPush.payload.body, /مراجعة ملف المهمة/);
+  assert.equal(firstPush.payload.notificationType, OFFICIAL_SUMMON_TYPE);
+  assert.match(firstPush.payload.url, /notificationId=NTF-test-/);
+  assert.equal(secondPushes[0].payload.notificationId, secondPushes[1].payload.notificationId);
+  assert.notEqual(firstPush.payload.notificationId, secondPushes[0].payload.notificationId);
+});
+
 test('mobile push can target one eligible member and only that member’s devices', async () => {
   const socket = mockSocket();
   const sent = [];
@@ -386,7 +494,8 @@ test('non-leaders cannot send a sector push even when the browser asks directly'
   });
   const result = await socket.call('mobile-push:send-sector', {
     sector: 'Los Santos',
-    title: 'Test',
+    notificationType: OFFICIAL_SUMMON_TYPE,
+    subject: 'Unauthorized',
     message: 'Test',
     priority: 'NORMAL'
   });
@@ -423,6 +532,46 @@ test('sending to a sector with no opted-in phones is reported as not sent', asyn
   assert.equal(result.ok, false);
   assert.match(result.message, /لا يملك أي فرد/);
   assert.equal(sends, 0);
+});
+
+test('official summons are still saved in the existing inbox when recipients have no push subscription', async () => {
+  const socket = mockSocket();
+  let savedRows = [];
+  let id = 0;
+  let sends = 0;
+  const inbox = new NotificationsStore(null, {
+    getRows: () => savedRows,
+    setRows: (rows) => { savedRows = rows; }
+  });
+  const users = [
+    person('chief-no-summons-device', 'CHIEF-600', { rank: 'CIA CHIEF' }),
+    person('member-no-summons-device', 'AG-601', { identity: { fullName: 'مستلم بلا جهاز' } })
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF',
+    getUsers: () => users,
+    getUnits: () => [{ id: 'no-device-unit', sector: 'South', status: 'ACTIVE', memberCodes: ['AG-601'] }],
+    store: { async listForUsers() { return []; } },
+    transport: { configured: true, async sendNotification() { sends += 1; } },
+    makeId: (prefix) => `${prefix}-offline-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records)
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: OFFICIAL_SUMMON_TYPE,
+    sector: 'South',
+    subject: 'مراجعة حضور',
+    message: 'يرجى مراجعة مكتب القيادة.',
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.savedNotificationCount, 1);
+  assert.equal(result.deviceCount, 0);
+  assert.equal(result.noSubscriptionMembers, 1);
+  assert.equal(sends, 0);
+  const page = await inbox.listForUser({ userId: 'member-no-summons-device' });
+  assert.equal(page.rows[0].metadata.subject, 'مراجعة حضور');
 });
 
 test('expired Web Push subscriptions are removed while other failures remain registered', async () => {
@@ -469,12 +618,44 @@ test('service worker displays OS notifications and opens only the same-origin ap
   assert.equal(shown[0].options.icon, '/blackridge-push-icon-192.png');
 
   let clickPromise;
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: 'NTF-summons-a',
+        notificationId: 'NTF-summons-a',
+        notificationType: OFFICIAL_SUMMON_TYPE,
+        title: 'استدعاء رسمي',
+        body: 'الجهة: قيادة الاختبار · الموضوع: مراجعة الملف',
+        priority: 'NORMAL',
+        url: '/?notificationId=NTF-summons-a'
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[1].title, 'استدعاء رسمي');
+  assert.equal(shown[1].options.dir, 'rtl');
+  assert.equal(shown[1].options.lang, 'ar');
+  assert.equal(shown[1].options.actions[0].title, 'عرض تفاصيل الاستدعاء');
+  assert.equal(shown[1].options.data.notificationId, 'NTF-summons-a');
+  assert.equal(shown[1].options.data.notificationType, OFFICIAL_SUMMON_TYPE);
+
+  listeners.get('notificationclick')({
+    notification: { data: shown[1].options.data, close() {} },
+    waitUntil(value) { clickPromise = value; }
+  });
+  await clickPromise;
+  assert.deepEqual(opened, ['https://blackridge.example/?notificationId=NTF-summons-a']);
+
   listeners.get('notificationclick')({
     notification: { data: { url: 'https://attacker.example/path' }, close() {} },
     waitUntil(value) { clickPromise = value; }
   });
   await clickPromise;
-  assert.deepEqual(opened, ['https://blackridge.example/']);
+  assert.deepEqual(opened, [
+    'https://blackridge.example/?notificationId=NTF-summons-a',
+    'https://blackridge.example/'
+  ]);
 });
 
 test('local app routes serve mobile metadata, root-scope worker, client, and icons', async (t) => {
@@ -537,7 +718,13 @@ test('local app routes serve mobile metadata, root-scope worker, client, and ico
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.icons.length, 2);
 
-  for (const route of ['/mobile-push-client.js', '/blackridge-push-icon-192.png', '/blackridge-push-icon-512.png']) {
+  for (const route of [
+    '/mobile-push-client.js',
+    '/notifications-client.js',
+    '/brand-seal.jpg',
+    '/blackridge-push-icon-192.png',
+    '/blackridge-push-icon-512.png'
+  ]) {
     const response = await fetch(`${origin}${route}`);
     assert.equal(response.status, 200, `missing ${route}`);
   }

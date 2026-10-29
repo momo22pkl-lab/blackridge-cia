@@ -8,7 +8,9 @@ self.addEventListener('push', (event) => {
     payload = { body: event.data ? event.data.text() : '' };
   }
 
-  const title = String(payload.title || 'BLACK RIDGE CIA').slice(0, 100);
+  const notificationType = String(payload.notificationType || '').trim().toUpperCase();
+  const isOfficialSummon = notificationType === 'OFFICIAL_SUMMON';
+  const title = String(payload.title || (isOfficialSummon ? 'استدعاء رسمي' : 'BLACK RIDGE CIA')).slice(0, 100);
   const priority = String(payload.priority || 'NORMAL').toUpperCase();
   const options = {
     body: String(payload.body || 'لديك إشعار جديد.').slice(0, 600),
@@ -17,8 +19,21 @@ self.addEventListener('push', (event) => {
     tag: String(payload.id || ''),
     renotify: false,
     requireInteraction: priority === 'CRITICAL',
-    data: { url: '/' }
+    lang: 'ar',
+    dir: isOfficialSummon ? 'rtl' : 'auto',
+    data: {
+      url: String(payload.url || '/'),
+      notificationId: String(payload.notificationId || ''),
+      notificationType
+    }
   };
+  if (isOfficialSummon) {
+    options.actions = [{
+      action: 'view-summons',
+      title: 'عرض تفاصيل الاستدعاء',
+      icon: '/blackridge-push-icon-192.png'
+    }];
+  }
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

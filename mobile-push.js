@@ -3,6 +3,7 @@
 const { normalizePushEndpoint, WebPushStore } = require('./mobile-push-store');
 
 const PRIORITIES = new Set(['NORMAL', 'HIGH', 'CRITICAL']);
+const OFFICIAL_SUMMON_TYPE = 'OFFICIAL_SUMMON';
 const BROADCAST_INTERVAL_MS = 15000;
 const lastBroadcastAt = new Map();
 const MOBILE_PUSH_HEAD_MARKUP = [
@@ -230,15 +231,20 @@ function registerMobilePushSocket(socket, context) {
       return fail(callback, 'إشعارات الهاتف غير مهيأة على الخادم بعد.');
     }
 
-    const title = clean(payload?.title, 100);
+    const notificationType = String(payload?.notificationType || 'GENERAL').trim().toUpperCase();
+    const isOfficialSummon = notificationType === OFFICIAL_SUMMON_TYPE;
+    const title = isOfficialSummon ? 'استدعاء رسمي' : clean(payload?.title, 100);
+    const subject = clean(payload?.subject, 180);
     const message = clean(payload?.message, 600);
     const requestedSector = clean(payload?.sector, 100);
     const audience = String(payload?.audience || 'SECTOR').trim().toUpperCase();
     const requestedMemberId = clean(payload?.memberId, 100);
     const priority = String(payload?.priority || 'NORMAL').trim().toUpperCase();
-    if (!title || !message || !requestedSector || !PRIORITIES.has(priority) ||
+    if (!['GENERAL', OFFICIAL_SUMMON_TYPE].includes(notificationType) ||
+        (!isOfficialSummon && !title) || (isOfficialSummon && !subject) ||
+        !message || !requestedSector || !PRIORITIES.has(priority) ||
         !['SECTOR', 'MEMBER'].includes(audience) || (audience === 'MEMBER' && !requestedMemberId)) {
-      return fail(callback, 'أدخل القطاع والعنوان والرسالة وحدد مستلماً وأولوية صالحة.');
+      return fail(callback, 'أدخل القطاع وموضوع الاستدعاء ونصه وحدد مستلماً وأولوية صالحة.');
     }
 
     const options = sectorOptions(getUnits(), context.getUsers());
@@ -268,27 +274,114 @@ function registerMobilePushSocket(socket, context) {
     } catch (_error) {
       return fail(callback, 'تعذر تحميل اشتراكات الأجهزة. لم يُرسل الإشعار.');
     }
-    if (!subscriptions.length) {
+    if (!subscriptions.length && notificationType === 'GENERAL') {
       return fail(callback, 'لم يُرسل الإشعار؛ لا يملك أي فرد في هذا القطاع اشتراكاً مفعلاً على جهازه.');
     }
 
-    const payloadForDevice = {
-      id: context.makeId('PUSH'),
-      title,
-      body: message,
-      priority,
-      sector: sector.name,
-      url: '/'
-    };
+    let createdNotifications = [];
+    let summonsNumber = '';
+    const issuedAt = new Date().toISOString();
+    const issuerName = clean(
+      actor.identity?.fullName || actor.name || actor.publicCode || 'BLACK RIDGE CIA',
+      120
+    );
+    if (isOfficialSummon) {
+      if (typeof context.persistNotifications !== 'function') {
+        return fail(callback, 'تعذر حفظ الاستدعاء في مركز الإشعارات؛ لم يُرسل أي إشعار.');
+      }
+      summonsNumber = context.makeId('SUM');
+      const records = recipients.map((recipient) => ({
+        id: context.makeId('NTF'),
+        userId: recipient.id,
+        type: OFFICIAL_SUMMON_TYPE,
+        title,
+        message,
+        priority: priority === 'NORMAL' ? 'NOTICE' : priority,
+        status: 'SENT',
+        sourceUserId: actor.id,
+        sourceCode: clean(actor.publicCode, 100),
+        relatedId: summonsNumber,
+        metadata: {
+          notificationType: OFFICIAL_SUMMON_TYPE,
+          summonsNumber,
+          issuerName,
+          issuerRank: clean(actor.rank, 80),
+          sourceName: issuerName,
+          recipientName: clean(
+            recipient.identity?.fullName || recipient.name || recipient.publicCode || 'عضو',
+            120
+          ),
+          issuerOrganization: 'BLACK RIDGE CIA',
+          sector: sector.name,
+          subject,
+          issuedAt
+        }
+      }));
+      try {
+        createdNotifications = await context.persistNotifications(records);
+      } catch (_error) {
+        return fail(callback, 'تعذر حفظ الاستدعاء في مركز الإشعارات؛ لم يُرسل أي إشعار.');
+      }
+      if (!Array.isArray(createdNotifications) || createdNotifications.length !== recipients.length) {
+        return fail(callback, 'تعذر التحقق من حفظ الاستدعاء لكل مستلم؛ لم يُرسل أي إشعار.');
+      }
+    }
+
     let delivery;
     try {
-      delivery = await sendBatched(
-        subscriptions,
-        context.transport.sendNotification,
-        payloadForDevice,
-        priority,
-        (userId, endpoint) => context.store.removeExpiredSubscription(userId, endpoint)
-      );
+      if (isOfficialSummon) {
+        const notificationByUser = new Map(createdNotifications.map((notification) => [
+          String(notification.userId),
+          notification
+        ]));
+        const subscriptionsByUser = new Map();
+        for (const subscription of subscriptions) {
+          const userId = String(subscription.userId);
+          if (!subscriptionsByUser.has(userId)) subscriptionsByUser.set(userId, []);
+          subscriptionsByUser.get(userId).push(subscription);
+        }
+        const deliveries = await Promise.all([...subscriptionsByUser.entries()].map(([userId, userSubscriptions]) => {
+          const notification = notificationByUser.get(userId);
+          if (!notification) return { accepted: 0, failed: userSubscriptions.length };
+          return sendBatched(
+            userSubscriptions,
+            context.transport.sendNotification,
+            {
+              id: notification.id,
+              notificationType: OFFICIAL_SUMMON_TYPE,
+              notificationId: notification.id,
+              title,
+              body: `BLACK RIDGE CIA · الجهة: ${issuerName} · الموضوع: ${subject} — ${message}`.slice(0, 600),
+              priority,
+              sector: sector.name,
+              summonsNumber,
+              issuedAt,
+              url: `/?notificationId=${encodeURIComponent(notification.id)}`
+            },
+            priority,
+            (expiredUserId, endpoint) => context.store.removeExpiredSubscription(expiredUserId, endpoint)
+          );
+        }));
+        delivery = deliveries.reduce((total, item) => ({
+          accepted: total.accepted + item.accepted,
+          failed: total.failed + item.failed
+        }), { accepted: 0, failed: 0 });
+      } else {
+        delivery = await sendBatched(
+          subscriptions,
+          context.transport.sendNotification,
+          {
+            id: context.makeId('PUSH'),
+            title,
+            body: message,
+            priority,
+            sector: sector.name,
+            url: '/'
+          },
+          priority,
+          (userId, endpoint) => context.store.removeExpiredSubscription(userId, endpoint)
+        );
+      }
     } catch (_error) {
       return fail(callback, 'تعذر إرسال الإشعار إلى خدمة Web Push.');
     }
@@ -296,10 +389,10 @@ function registerMobilePushSocket(socket, context) {
     if (typeof context.addAuditLog === 'function') {
       try {
         context.addAuditLog(
-          'إرسال إشعار هاتف',
+          isOfficialSummon ? 'إصدار استدعاء رسمي' : 'إرسال إشعار هاتف',
           actor,
           null,
-          `القطاع: ${sector.name}؛ المستهدف: ${audience === 'MEMBER' ? `الفرد ${targetMember.publicCode}` : 'كل أفراد القطاع'}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
+          `النوع: ${notificationType}؛ ${summonsNumber ? `الرقم: ${summonsNumber}؛ ` : ''}القطاع: ${sector.name}؛ المستهدف: ${audience === 'MEMBER' ? `الفرد ${targetMember.publicCode}` : 'كل أفراد القطاع'}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
         );
         if (typeof context.saveState === 'function') await context.saveState();
       } catch (_error) {
@@ -309,6 +402,8 @@ function registerMobilePushSocket(socket, context) {
 
     return reply(callback, {
       ok: true,
+      notificationType,
+      summonsNumber,
       sector: sector.name,
       audience,
       targetMemberName: targetMember
@@ -319,6 +414,7 @@ function registerMobilePushSocket(socket, context) {
       subscribedMembers: new Set(subscriptions.map((item) => item.userId)).size,
       noSubscriptionMembers: Math.max(0, recipients.length - new Set(subscriptions.map((item) => item.userId)).size),
       deviceCount: subscriptions.length,
+      savedNotificationCount: createdNotifications.length,
       acceptedByPushService: delivery.accepted,
       failed: delivery.failed
     });
@@ -327,6 +423,7 @@ function registerMobilePushSocket(socket, context) {
 
 module.exports = {
   PRIORITIES,
+  OFFICIAL_SUMMON_TYPE,
   BROADCAST_INTERVAL_MS,
   MOBILE_PUSH_HEAD_MARKUP,
   clean,
