@@ -356,7 +356,16 @@ function registerMobilePushSocket(socket, context) {
               sector: sector.name,
               summonsNumber,
               issuedAt,
-              url: `/?notificationId=${encodeURIComponent(notification.id)}`
+              url: `/?notificationId=${encodeURIComponent(notification.id)}`,
+              summonsCard: {
+                issuer: clean(notification.metadata?.issuerName || issuerName, 120),
+                issuerRank: clean(notification.metadata?.issuerRank || '', 80),
+                recipient: clean(notification.metadata?.recipientName || 'المستلم', 120),
+                subject: clean(notification.metadata?.subject || subject, 180),
+                message: clean(notification.message || message, 180),
+                summonsNumber: clean(notification.metadata?.summonsNumber || summonsNumber, 60),
+                issuedAt: clean(notification.metadata?.issuedAt || issuedAt, 48)
+              }
             },
             priority,
             (expiredUserId, endpoint) => context.store.removeExpiredSubscription(expiredUserId, endpoint)

@@ -382,6 +382,14 @@ test('official summons persist in the existing private inbox and push links open
   assert.match(firstPush.payload.body, /مراجعة ملف المهمة/);
   assert.equal(firstPush.payload.notificationType, OFFICIAL_SUMMON_TYPE);
   assert.match(firstPush.payload.url, /notificationId=NTF-test-/);
+  assert.equal(firstPush.payload.summonsCard.issuer, 'قائد الاختبار');
+  assert.equal(firstPush.payload.summonsCard.issuerRank, 'CIA CHIEF');
+  assert.equal(firstPush.payload.summonsCard.recipient, 'المستلم الأول');
+  assert.equal(firstPush.payload.summonsCard.subject, 'مراجعة ملف المهمة');
+  assert.equal(firstPush.payload.summonsCard.message, 'يرجى الحضور إلى مقر القيادة في الموعد المحدد.');
+  assert.equal(firstPush.payload.summonsCard.summonsNumber, result.summonsNumber);
+  assert.equal(firstPush.payload.summonsCard.issuedAt, firstInbox.rows[0].metadata.issuedAt);
+  assert.equal(secondPushes[0].payload.summonsCard.recipient, 'المستلم الثاني');
   assert.equal(secondPushes[0].payload.notificationId, secondPushes[1].payload.notificationId);
   assert.notEqual(firstPush.payload.notificationId, secondPushes[0].payload.notificationId);
 });
@@ -605,7 +613,7 @@ test('service worker displays OS notifications and opens only the same-origin ap
     },
     addEventListener(name, handler) { listeners.set(name, handler); }
   };
-  vm.runInNewContext(source, { self, URL, String, Promise });
+  vm.runInNewContext(source, { self, URL, String, Promise, Date, Intl, encodeURIComponent });
 
   let pushPromise;
   listeners.get('push')({
@@ -627,7 +635,16 @@ test('service worker displays OS notifications and opens only the same-origin ap
         title: 'استدعاء رسمي',
         body: 'الجهة: قيادة الاختبار · الموضوع: مراجعة الملف',
         priority: 'NORMAL',
-        url: '/?notificationId=NTF-summons-a'
+        url: '/?notificationId=NTF-summons-a',
+        summonsCard: {
+          issuer: 'قيادة الاختبار',
+          issuerRank: 'CIA CHIEF',
+          recipient: 'المستلم الفعلي',
+          subject: 'مراجعة <ملف> & تدقيق',
+          message: 'يرجى الحضور إلى مقر القيادة.',
+          summonsNumber: 'SUM-TEST-001',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
       })
     },
     waitUntil(value) { pushPromise = value; }
@@ -639,6 +656,14 @@ test('service worker displays OS notifications and opens only the same-origin ap
   assert.equal(shown[1].options.actions[0].title, 'عرض تفاصيل الاستدعاء');
   assert.equal(shown[1].options.data.notificationId, 'NTF-summons-a');
   assert.equal(shown[1].options.data.notificationType, OFFICIAL_SUMMON_TYPE);
+  assert.match(shown[1].options.image, /^data:image\/svg\+xml;charset=utf-8,/);
+  const summonsImageSvg = decodeURIComponent(shown[1].options.image.split(',')[1]);
+  assert.match(summonsImageSvg, /BLACK RIDGE CIA/);
+  assert.match(summonsImageSvg, /قيادة الاختبار/);
+  assert.match(summonsImageSvg, /المستلم الفعلي/);
+  assert.match(summonsImageSvg, /مراجعة &lt;ملف&gt; &amp; تدقيق/);
+  assert.match(summonsImageSvg, /عرض تفاصيل الاستدعاء/);
+  assert.doesNotMatch(summonsImageSvg, /<script|onload=/i);
 
   listeners.get('notificationclick')({
     notification: { data: shown[1].options.data, close() {} },
