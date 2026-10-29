@@ -84,6 +84,19 @@ test('counts unread security alerts separately and only for their owner', async 
   assert.equal((await store.countsForUser('chief-b')).unreadSecurity, 1);
 });
 
+test('security alert notifications remain in the existing system category and unread security counts', async () => {
+  const { store } = makeStore();
+  await store.createMany([
+    notification('security-alert-a', 'agent-alert', 'CRITICAL', 'SECURITY_ALERT'),
+    notification('disciplinary-warning-a', 'agent-alert', 'CRITICAL', 'WARNING')
+  ]);
+
+  const system = await store.listForUser({ userId: 'agent-alert', category: 'system' });
+  assert.deepEqual(system.rows.map((row) => row.type).sort(), ['SECURITY_ALERT', 'WARNING']);
+  assert.equal((await store.countsForUser('agent-alert')).system, 2);
+  assert.equal((await store.countsForUser('agent-alert')).unreadSecurity, 1);
+});
+
 test('read and acknowledge mutations cannot cross users; reading does not acknowledge critical alerts', async () => {
   const { store, getRows } = makeStore();
   await store.createMany([

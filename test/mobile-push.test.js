@@ -19,6 +19,7 @@ const { NotificationsStore } = require('../notifications-store');
 const {
   BROADCAST_INTERVAL_MS,
   OFFICIAL_SUMMON_TYPE,
+  SECURITY_ALERT_TYPE,
   createWebPushTransport,
   injectMobilePushMarkup,
   registerMobilePushSocket,
@@ -94,6 +95,9 @@ test('mobile push form offers sector-wide and single-member targeting with an em
   assert.match(source, /name="memberId"/);
   assert.match(source, /name="notificationType"/);
   assert.match(source, /value="OFFICIAL_SUMMON">استدعاء رسمي/);
+  assert.match(source, /value="SECURITY_ALERT">تحذير أمني/);
+  assert.match(source, /function handleNotificationTypeChange/);
+  assert.match(source, /مستوى التحذير/);
   assert.match(source, /name="subject"/);
   assert.match(source, /نص الاستدعاء/);
   assert.match(source, /لا توجد قطاعات مؤهلة للإرسال بعد/);
@@ -394,6 +398,138 @@ test('official summons persist in the existing private inbox and push links open
   assert.notEqual(firstPush.payload.notificationId, secondPushes[0].payload.notificationId);
 });
 
+test('security alerts use the existing private inbox and retain sector/member authorization and live push fields', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  let id = 0;
+  let storedNotifications = [];
+  const inbox = new NotificationsStore(null, {
+    getRows: () => storedNotifications,
+    setRows: (rows) => { storedNotifications = rows; }
+  });
+  const users = [
+    person('alert-chief', 'CHIEF-910', {
+      rank: 'CIA CHIEF',
+      identity: { fullName: 'قائد التنبيه' }
+    }),
+    person('alert-member-a', 'AG-911', {
+      identity: { fullName: 'المستلم المقصود' }
+    }),
+    person('alert-member-b', 'AG-912', {
+      identity: { fullName: 'عضو آخر' }
+    })
+  ];
+  const subscriptions = [
+    { userId: 'alert-member-a', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/alert-a', keys: { p256dh: 'a', auth: 'a' } } },
+    { userId: 'alert-member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/alert-b', keys: { p256dh: 'b', auth: 'b' } } }
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF' || actor.rank === 'SUPREME COMMANDER',
+    getUsers: () => users,
+    getUnits: () => [{ id: 'alert-unit', sector: 'South Ridge', status: 'ACTIVE', memberCodes: ['AG-911', 'AG-912'] }],
+    store: {
+      async listForUsers(ids) { return subscriptions.filter((item) => ids.includes(item.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      async sendNotification(subscriptionValue, payload, options) {
+        sent.push({ endpoint: subscriptionValue.endpoint, payload: JSON.parse(payload), options });
+      }
+    },
+    makeId: (prefix) => `${prefix}-alert-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records),
+    addAuditLog() {},
+    async saveState() {}
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: SECURITY_ALERT_TYPE,
+    sector: 'South Ridge',
+    audience: 'MEMBER',
+    memberId: 'alert-member-a',
+    subject: 'نشاط أمني غير معتاد',
+    message: 'تم رصد حركة غير معتادة قرب الموقع؛ يرجى التحقق والإبلاغ.',
+    priority: 'CRITICAL'
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.notificationType, SECURITY_ALERT_TYPE);
+  assert.equal(result.recipientCount, 1);
+  assert.equal(result.targetMemberName, 'المستلم المقصود');
+  assert.equal(result.savedNotificationCount, 1);
+  assert.equal(result.deviceCount, 1);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].endpoint, /alert-a$/);
+  const page = await inbox.listForUser({ userId: 'alert-member-a' });
+  assert.equal(page.rows.length, 1);
+  const row = page.rows[0];
+  assert.equal(row.type, SECURITY_ALERT_TYPE);
+  assert.equal(row.title, 'تحذير أمني');
+  assert.equal(row.priority, 'CRITICAL');
+  assert.equal(row.message, 'تم رصد حركة غير معتادة قرب الموقع؛ يرجى التحقق والإبلاغ.');
+  assert.equal(row.metadata.issuerName, 'قائد التنبيه');
+  assert.equal(row.metadata.issuerOrganization, 'BLACK RIDGE CIA');
+  assert.equal(row.metadata.recipientName, 'المستلم المقصود');
+  assert.equal(row.metadata.subject, 'نشاط أمني غير معتاد');
+  assert.equal(row.metadata.warningLevel, 'CRITICAL');
+  assert.equal(row.metadata.sector, 'South Ridge');
+  assert.ok(row.metadata.issuedAt);
+  assert.equal((await inbox.listForUser({ userId: 'alert-member-b' })).rows.length, 0);
+  assert.equal(sent[0].payload.notificationType, SECURITY_ALERT_TYPE);
+  assert.equal(sent[0].payload.notificationId, row.id);
+  assert.equal(sent[0].payload.title, 'تحذير أمني');
+  assert.equal(sent[0].payload.priority, 'CRITICAL');
+  assert.equal(sent[0].payload.securityAlertCard.issuer, 'قائد التنبيه');
+  assert.equal(sent[0].payload.securityAlertCard.recipient, 'المستلم المقصود');
+  assert.equal(sent[0].payload.securityAlertCard.subject, 'نشاط أمني غير معتاد');
+  assert.equal(sent[0].payload.securityAlertCard.priority, 'CRITICAL');
+  assert.equal(sent[0].payload.securityAlertCard.message, row.message);
+  assert.match(sent[0].payload.url, new RegExp(`notificationId=${row.id}`));
+});
+
+test('security alerts remain saved in the inbox when the selected recipient has no phone subscription', async () => {
+  const socket = mockSocket();
+  let id = 0;
+  let storedNotifications = [];
+  const inbox = new NotificationsStore(null, {
+    getRows: () => storedNotifications,
+    setRows: (rows) => { storedNotifications = rows; }
+  });
+  const users = [
+    person('alert-offline-chief', 'CHIEF-920', { rank: 'CIA CHIEF' }),
+    person('alert-offline-member', 'AG-921', { identity: { fullName: 'مستلم بلا جهاز' } })
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF',
+    getUsers: () => users,
+    getUnits: () => [{ id: 'alert-offline-unit', sector: 'West Ridge', status: 'ACTIVE', memberCodes: ['AG-921'] }],
+    store: { async listForUsers() { return []; } },
+    transport: { configured: true, async sendNotification() { assert.fail('there are no subscriptions to send to'); } },
+    makeId: (prefix) => `${prefix}-offline-alert-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records)
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: SECURITY_ALERT_TYPE,
+    sector: 'West Ridge',
+    audience: 'MEMBER',
+    memberId: 'alert-offline-member',
+    subject: 'تحقق أمني',
+    message: 'يرجى مراجعة التنبيه عند تسجيل الدخول.',
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.savedNotificationCount, 1);
+  assert.equal(result.deviceCount, 0);
+  assert.equal(result.noSubscriptionMembers, 1);
+  const page = await inbox.listForUser({ userId: 'alert-offline-member' });
+  assert.equal(page.rows[0].type, SECURITY_ALERT_TYPE);
+  assert.equal(page.rows[0].metadata.warningLevel, 'NORMAL');
+});
+
 test('mobile push can target one eligible member and only that member’s devices', async () => {
   const socket = mockSocket();
   const sent = [];
@@ -500,15 +636,17 @@ test('non-leaders cannot send a sector push even when the browser asks directly'
     transport: { configured: true, publicKey: 'A'.repeat(87), async sendNotification() { sends += 1; } },
     makeId: () => 'PUSH-test'
   });
-  const result = await socket.call('mobile-push:send-sector', {
-    sector: 'Los Santos',
-    notificationType: OFFICIAL_SUMMON_TYPE,
-    subject: 'Unauthorized',
-    message: 'Test',
-    priority: 'NORMAL'
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.message, /CIA CHIEF/);
+  for (const notificationType of [OFFICIAL_SUMMON_TYPE, SECURITY_ALERT_TYPE]) {
+    const result = await socket.call('mobile-push:send-sector', {
+      sector: 'Los Santos',
+      notificationType,
+      subject: 'Unauthorized',
+      message: 'Test',
+      priority: 'NORMAL'
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /CIA CHIEF/);
+  }
   assert.equal(sends, 0);
   const memberList = await socket.call('mobile-push:members', { sector: 'Any' });
   assert.equal(memberList.ok, false);
@@ -665,6 +803,73 @@ test('service worker displays OS notifications and opens only the same-origin ap
   assert.match(summonsImageSvg, /عرض تفاصيل الاستدعاء/);
   assert.doesNotMatch(summonsImageSvg, /<script|onload=/i);
 
+  const securityAlertId = 'NTF-security-alert-a';
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: securityAlertId,
+        notificationId: securityAlertId,
+        notificationType: SECURITY_ALERT_TYPE,
+        title: 'تحذير أمني',
+        body: 'تنبيه عاجل صادر عن القيادة.',
+        priority: 'CRITICAL',
+        url: `/?notificationId=${securityAlertId}`,
+        securityAlertCard: {
+          issuer: 'القيادة الفعلية',
+          issuerRank: 'CIA CHIEF',
+          recipient: 'المستلم الفعلي',
+          subject: 'نشاط <مريب> & متابعة',
+          message: 'تم رصد حركة غير معتادة؛ يرجى التحقق فورًا.',
+          priority: 'CRITICAL',
+          sector: 'South Ridge',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[2].title, 'تحذير أمني');
+  assert.equal(shown[2].options.dir, 'rtl');
+  assert.equal(shown[2].options.requireInteraction, true);
+  assert.equal(shown[2].options.actions[0].title, 'عرض التحذير');
+  assert.equal(shown[2].options.data.notificationId, securityAlertId);
+  assert.equal(shown[2].options.data.notificationType, SECURITY_ALERT_TYPE);
+  assert.match(shown[2].options.image, /^data:image\/svg\+xml;charset=utf-8,/);
+  const securityAlertSvg = decodeURIComponent(shown[2].options.image.split(',')[1]);
+  assert.match(securityAlertSvg, /تحذير أمني/);
+  assert.match(securityAlertSvg, /مستوى عاجل/);
+  assert.match(securityAlertSvg, /القيادة الفعلية/);
+  assert.match(securityAlertSvg, /نشاط &lt;مريب&gt; &amp; متابعة/);
+  assert.match(securityAlertSvg, /عرض التحذير/);
+  assert.doesNotMatch(securityAlertSvg, /<script|onload=/i);
+
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: 'NTF-security-alert-normal',
+        notificationId: 'NTF-security-alert-normal',
+        notificationType: SECURITY_ALERT_TYPE,
+        title: 'تحذير أمني',
+        body: 'تنبيه اعتيادي.',
+        priority: 'NORMAL',
+        securityAlertCard: {
+          issuer: 'القيادة',
+          subject: 'مراجعة دورية',
+          message: 'يرجى الاطلاع على التنبيه.',
+          priority: 'NORMAL',
+          sector: 'North Ridge',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[3].options.requireInteraction, false);
+  const normalAlertSvg = decodeURIComponent(shown[3].options.image.split(',')[1]);
+  assert.match(normalAlertSvg, /مستوى عادي/);
+
   listeners.get('notificationclick')({
     notification: { data: shown[1].options.data, close() {} },
     waitUntil(value) { clickPromise = value; }
@@ -673,12 +878,23 @@ test('service worker displays OS notifications and opens only the same-origin ap
   assert.deepEqual(opened, ['https://blackridge.example/?notificationId=NTF-summons-a']);
 
   listeners.get('notificationclick')({
+    notification: { data: shown[2].options.data, close() {} },
+    waitUntil(value) { clickPromise = value; }
+  });
+  await clickPromise;
+  assert.deepEqual(opened, [
+    'https://blackridge.example/?notificationId=NTF-summons-a',
+    `https://blackridge.example/?notificationId=${securityAlertId}`
+  ]);
+
+  listeners.get('notificationclick')({
     notification: { data: { url: 'https://attacker.example/path' }, close() {} },
     waitUntil(value) { clickPromise = value; }
   });
   await clickPromise;
   assert.deepEqual(opened, [
     'https://blackridge.example/?notificationId=NTF-summons-a',
+    `https://blackridge.example/?notificationId=${securityAlertId}`,
     'https://blackridge.example/'
   ]);
 });

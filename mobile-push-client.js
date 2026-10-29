@@ -117,7 +117,7 @@
             <h2 id="mobile-push-title">إشعارات الهاتف</h2>
             <button type="button" class="mobile-push-close" data-mobile-push-close aria-label="إغلاق">×</button>
           </header>
-          <p class="mobile-push-intro">تُرسل الاستدعاءات إلى أجهزة المستلمين المشتركين، وتُحفظ أيضًا في مركز إشعارات BLACK RIDGE CIA.</p>
+          <p class="mobile-push-intro">تُرسل الاستدعاءات والتحذيرات الأمنية إلى أجهزة المستلمين المشتركين، وتُحفظ أيضًا في مركز إشعارات BLACK RIDGE CIA.</p>
           <p id="mobile-push-status" role="status" aria-live="polite"></p>
           <div class="mobile-push-controls">
             <button type="button" class="mobile-push-button" data-mobile-push-enable>تفعيل على هذا الجهاز</button>
@@ -129,6 +129,7 @@
             <label class="mobile-push-field">نوع الإشعار
               <select name="notificationType" required>
                 <option value="OFFICIAL_SUMMON">استدعاء رسمي</option>
+                <option value="SECURITY_ALERT">تحذير أمني</option>
               </select>
             </label>
             <label class="mobile-push-field">القطاع
@@ -144,20 +145,20 @@
             <label class="mobile-push-field" id="mobile-push-member-field" hidden>الشخص
               <select name="memberId" disabled></select>
             </label>
-            <label class="mobile-push-field">موضوع الاستدعاء
+            <label class="mobile-push-field"><span data-mobile-push-caption="subject">موضوع الاستدعاء</span>
               <input name="subject" type="text" maxlength="180" required autocomplete="off">
             </label>
-            <label class="mobile-push-field">نص الاستدعاء
+            <label class="mobile-push-field"><span data-mobile-push-caption="message">نص الاستدعاء</span>
               <textarea name="message" maxlength="600" required></textarea>
             </label>
-            <label class="mobile-push-field">الأولوية
+            <label class="mobile-push-field"><span data-mobile-push-caption="priority">الأولوية</span>
               <select name="priority">
                 <option value="NORMAL">عادية</option>
                 <option value="HIGH">مرتفعة</option>
                 <option value="CRITICAL">حرجة</option>
               </select>
             </label>
-            <button class="mobile-push-button" type="submit">إصدار الاستدعاء وإرساله</button>
+            <button class="mobile-push-button" data-mobile-push-submit type="submit">إصدار الاستدعاء وإرساله</button>
           </form>
         </section>
       `;
@@ -166,6 +167,7 @@
       });
       overlay.querySelector('[data-mobile-push-enable]').addEventListener('click', enablePush);
       overlay.querySelector('[data-mobile-push-disable]').addEventListener('click', disablePush);
+      overlay.querySelector('#mobile-push-send-form [name="notificationType"]').addEventListener('change', handleNotificationTypeChange);
       overlay.querySelector('#mobile-push-send-form [name="sector"]').addEventListener('change', handleSectorChange);
       overlay.querySelector('#mobile-push-send-form [name="audience"]').addEventListener('change', handleAudienceChange);
       overlay.querySelector('#mobile-push-send-form [name="memberId"]').addEventListener('change', updateSendAvailability);
@@ -275,6 +277,22 @@
     const member = form.querySelector('[name="memberId"]');
     send.disabled = state.busy || !sector ||
       (audience === 'MEMBER' && (!member?.value || member.disabled));
+  }
+
+  function handleNotificationTypeChange(event) {
+    const isSecurityAlert = event.currentTarget.value === 'SECURITY_ALERT';
+    const form = document.getElementById('mobile-push-send-form');
+    if (!form) return;
+    const title = form.querySelector('.mobile-push-form-title');
+    const subject = form.querySelector('[data-mobile-push-caption="subject"]');
+    const message = form.querySelector('[data-mobile-push-caption="message"]');
+    const priority = form.querySelector('[data-mobile-push-caption="priority"]');
+    const submit = form.querySelector('[data-mobile-push-submit]');
+    if (title) title.textContent = isSecurityAlert ? 'إرسال تحذير أمني' : 'إصدار استدعاء رسمي';
+    if (subject) subject.textContent = isSecurityAlert ? 'موضوع التحذير' : 'موضوع الاستدعاء';
+    if (message) message.textContent = isSecurityAlert ? 'نص التنبيه' : 'نص الاستدعاء';
+    if (priority) priority.textContent = isSecurityAlert ? 'مستوى التحذير' : 'الأولوية';
+    if (submit) submit.textContent = isSecurityAlert ? 'إرسال التحذير الأمني' : 'إصدار الاستدعاء وإرساله';
   }
 
   function handleSectorChange(event) {
@@ -487,9 +505,13 @@
     const form = event.currentTarget;
     const send = form.querySelector('[type="submit"]');
     const data = new FormData(form);
+    const isSecurityAlert = data.get('notificationType') === 'SECURITY_ALERT';
+    const notificationLabel = isSecurityAlert ? 'تحذيرًا أمنيًا' : 'استدعاءً';
     state.busy = true;
     send.disabled = true;
-    setStatus('جارٍ إرسال إشعار الهاتف إلى أجهزة الأفراد المشتركين…');
+    setStatus(isSecurityAlert
+      ? 'جارٍ إرسال التحذير الأمني إلى أجهزة الأفراد المشتركين…'
+      : 'جارٍ إرسال الاستدعاء إلى أجهزة الأفراد المشتركين…');
     try {
       const result = await emit('mobile-push:send-sector', {
         notificationType: data.get('notificationType'),
@@ -502,12 +524,15 @@
       });
       const pushStatus = result.deviceCount
         ? `قبلت خدمة الهاتف ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}.`
-        : 'لا توجد أجهزة هاتف مشتركة؛ حُفظ الاستدعاء في مركز الإشعارات فقط.';
+        : `لا توجد أجهزة هاتف مشتركة؛ حُفظ ${notificationLabel} في مركز الإشعارات فقط.`;
       setStatus(
-        `تم حفظ ${result.savedNotificationCount || 0} استدعاء في مركز الإشعارات. المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
+        `تم حفظ ${result.savedNotificationCount || 0} ${notificationLabel} في مركز الإشعارات. المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
         result.failed || result.noSubscriptionMembers ? 'error' : 'success'
       );
       form.reset();
+      handleNotificationTypeChange({
+        currentTarget: form.querySelector('[name="notificationType"]')
+      });
       fillSectorOptions(state.info?.sectors);
     } catch (error) {
       setStatus(error.message, 'error');
