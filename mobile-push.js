@@ -21,6 +21,9 @@ function injectMobilePushMarkup(html) {
   if (!result.includes('href="/manifest.webmanifest"')) {
     result = result.replace(/<head(?:\s[^>]*)?>/i, (tag) => `${tag}\n  ${MOBILE_PUSH_HEAD_MARKUP}`);
   }
+  if (!result.includes('src="/mobile-push-alert-sound.js"')) {
+    result = result.replace(/<\/body>/i, '  <script src="/mobile-push-alert-sound.js" defer></script>\n</body>');
+  }
   if (!result.includes('src="/mobile-push-client.js"')) {
     result = result.replace(/<\/body>/i, '  <script src="/mobile-push-client.js" defer></script>\n</body>');
   }

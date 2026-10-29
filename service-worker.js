@@ -1,5 +1,45 @@
 'use strict';
 
+function isSameOriginWindow(client) {
+  try {
+    return new URL(client.url).origin === self.location.origin;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function requestForegroundAlarm(client, id) {
+  if (!client || typeof client.postMessage !== 'function' || typeof MessageChannel !== 'function') {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout;
+    let channel;
+    const finish = (played) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      try { channel?.port1?.close(); } catch (_error) {}
+      try { channel?.port2?.close(); } catch (_error) {}
+      resolve(played === true);
+    };
+
+    try {
+      channel = new MessageChannel();
+      channel.port1.onmessage = (messageEvent) => finish(messageEvent.data?.played === true);
+      timeout = setTimeout(() => finish(false), 800);
+      client.postMessage({
+        type: 'blackridge:mobile-push-critical-alarm',
+        id
+      }, [channel.port2]);
+    } catch (_error) {
+      finish(false);
+    }
+  });
+}
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -10,16 +50,39 @@ self.addEventListener('push', (event) => {
 
   const title = String(payload.title || 'BLACK RIDGE CIA').slice(0, 100);
   const priority = String(payload.priority || 'NORMAL').toUpperCase();
-  const options = {
-    body: String(payload.body || 'لديك إشعار جديد.').slice(0, 600),
-    icon: '/blackridge-push-icon-192.png',
-    badge: '/blackridge-push-icon-192.png',
-    tag: String(payload.id || ''),
-    renotify: false,
-    requireInteraction: priority === 'CRITICAL',
-    data: { url: '/' }
-  };
-  event.waitUntil(self.registration.showNotification(title, options));
+  const id = String(payload.id || '').slice(0, 160);
+  event.waitUntil((async () => {
+    let foregroundClient = null;
+    if (priority === 'CRITICAL') {
+      try {
+        const clients = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true
+        });
+        foregroundClient = clients.find((client) =>
+          client.visibilityState === 'visible' && isSameOriginWindow(client)
+        ) || null;
+      } catch (_error) {
+        foregroundClient = null;
+      }
+    }
+
+    const customAlarmPlayed = foregroundClient
+      ? await requestForegroundAlarm(foregroundClient, id)
+      : false;
+    const options = {
+      body: String(payload.body || 'لديك إشعار جديد.').slice(0, 600),
+      icon: '/blackridge-notification-icon-192.png',
+      badge: '/blackridge-notification-icon-192.png',
+      image: '/blackridge-notification-banner.png',
+      tag: id,
+      renotify: false,
+      requireInteraction: priority === 'CRITICAL',
+      silent: customAlarmPlayed,
+      data: { url: '/' }
+    };
+    await self.registration.showNotification(title, options);
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {

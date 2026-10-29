@@ -79,6 +79,7 @@ test('push manifest metadata is injected once without changing the underlying ap
   const injected = injectMobilePushMarkup(source);
   assert.match(injected, /rel="manifest" href="\/manifest\.webmanifest"/);
   assert.match(injected, /apple-mobile-web-app-capable/);
+  assert.match(injected, /src="\/mobile-push-alert-sound\.js"/);
   assert.match(injected, /src="\/mobile-push-client\.js"/);
   assert.equal(injectMobilePushMarkup(injected), injected);
   assert.equal(injectMobilePushMarkup('<html>incomplete</html>'), '<html>incomplete</html>');
@@ -442,21 +443,51 @@ test('expired Web Push subscriptions are removed while other failures remain reg
   assert.equal(BROADCAST_INTERVAL_MS, 15000);
 });
 
-test('service worker displays OS notifications and opens only the same-origin app on tap', async () => {
+test('service worker uses the dark-red alert artwork and foreground alarm for critical pushes', async () => {
   const source = fs.readFileSync(path.join(projectRoot, 'service-worker.js'), 'utf8');
   const listeners = new Map();
   const shown = [];
   const opened = [];
+  const foregroundMessages = [];
+  class FakePort {
+    postMessage(data) {
+      if (this.peer?.onmessage) this.peer.onmessage({ data });
+    }
+    close() {}
+  }
+  class FakeMessageChannel {
+    constructor() {
+      this.port1 = new FakePort();
+      this.port2 = new FakePort();
+      this.port1.peer = this.port2;
+      this.port2.peer = this.port1;
+    }
+  }
+  const foregroundClient = {
+    url: 'https://blackridge.example/',
+    visibilityState: 'visible',
+    postMessage(message, ports) {
+      foregroundMessages.push(message);
+      ports[0].postMessage({ played: true });
+    },
+    async focus() {}
+  };
+  let matchAllCalls = 0;
   const self = {
     location: { origin: 'https://blackridge.example' },
     registration: { showNotification: async (title, options) => shown.push({ title, options }) },
     clients: {
-      async matchAll() { return []; },
+      async matchAll() {
+        matchAllCalls += 1;
+        return matchAllCalls === 1 ? [foregroundClient] : [];
+      },
       async openWindow(url) { opened.push(url); }
     },
     addEventListener(name, handler) { listeners.set(name, handler); }
   };
-  vm.runInNewContext(source, { self, URL, String, Promise });
+  vm.runInNewContext(source, {
+    self, URL, String, Promise, MessageChannel: FakeMessageChannel, setTimeout, clearTimeout
+  });
 
   let pushPromise;
   listeners.get('push')({
@@ -466,7 +497,11 @@ test('service worker displays OS notifications and opens only the same-origin ap
   await pushPromise;
   assert.equal(shown[0].title, 'إلى جميع أفراد القطاع');
   assert.equal(shown[0].options.requireInteraction, true);
-  assert.equal(shown[0].options.icon, '/blackridge-push-icon-192.png');
+  assert.equal(shown[0].options.icon, '/blackridge-notification-icon-192.png');
+  assert.equal(shown[0].options.badge, '/blackridge-notification-icon-192.png');
+  assert.equal(shown[0].options.image, '/blackridge-notification-banner.png');
+  assert.equal(shown[0].options.silent, true);
+  assert.equal(foregroundMessages[0].type, 'blackridge:mobile-push-critical-alarm');
 
   let clickPromise;
   listeners.get('notificationclick')({
@@ -537,7 +572,14 @@ test('local app routes serve mobile metadata, root-scope worker, client, and ico
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.icons.length, 2);
 
-  for (const route of ['/mobile-push-client.js', '/blackridge-push-icon-192.png', '/blackridge-push-icon-512.png']) {
+  for (const route of [
+    '/mobile-push-client.js',
+    '/mobile-push-alert-sound.js',
+    '/blackridge-push-icon-192.png',
+    '/blackridge-push-icon-512.png',
+    '/blackridge-notification-icon-192.png',
+    '/blackridge-notification-banner.png'
+  ]) {
     const response = await fetch(`${origin}${route}`);
     assert.equal(response.status, 200, `missing ${route}`);
   }
