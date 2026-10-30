@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
-  <script src="/screen-protection.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/notifications.css" rel="stylesheet">
   <link href="/official-warnings.css" rel="stylesheet">
@@ -3293,69 +3292,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       updateServiceUI();
       updateViews();
     }
-
-    function waitForMainSessionRecovery() {
-      return new Promise((resolve) => {
-        const startedAt = Date.now();
-        const check = () => {
-          if (!currentUser) return resolve(true);
-          if (ciaSessionAuthenticated && ciaSocket && ciaSocket.connected && !authReconnectPending) {
-            return resolve(true);
-          }
-          if (Date.now() - startedAt >= 13000) return resolve(false);
-          window.setTimeout(check, 100);
-        };
-        check();
-      });
-    }
-
-    let mainScreenValidationSequence = 0;
-    window.blackRidgeValidateScreenProtectionSession = function () {
-      const validationSequence = ++mainScreenValidationSequence;
-      if (!currentUser) return Promise.resolve(true);
-      if (!ciaSocket) return Promise.resolve(false);
-
-      if (!ciaSocket.connected || authReconnectPending) {
-        if (!ciaSocket.connected && typeof ciaSocket.connect === 'function') ciaSocket.connect();
-        return waitForMainSessionRecovery();
-      }
-
-      let savedName = currentUser.name || '';
-      try {
-        savedName = localStorage.getItem('cia_last_login_name') || savedName;
-      } catch (_error) {}
-      const savedCode = currentUser.secretCode || '';
-      if (!savedName || !savedCode) {
-        completeReconnectFailure('تعذر استعادة بيانات الدخول المحفوظة؛ سجّل الدخول مجددًا.');
-        return Promise.resolve(true);
-      }
-
-      return new Promise((resolve) => {
-        ciaSocket.emit('auth:login', {
-          name: savedName,
-          code: savedCode,
-          resumeService: currentUser.activeService === true,
-          resumeSession: true
-        }, function (result) {
-          if (validationSequence !== mainScreenValidationSequence) {
-            resolve(false);
-            return;
-          }
-          if (!result || !result.ok) {
-            completeReconnectFailure((result && result.message) || 'انتهت الجلسة؛ سجّل الدخول مرة أخرى.');
-            resolve(true);
-            return;
-          }
-          ciaSessionAuthenticated = true;
-          authReconnectPending = false;
-          setSessionRecoveryVisible(false);
-          currentUser = result.user || currentUser;
-          completeLogin();
-          if (result.needsIdentity) openIdentityModal();
-          resolve(true);
-        });
-      });
-    };
 
     function getStoredData(key, defaultVal) {
       try {

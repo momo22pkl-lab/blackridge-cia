@@ -14,7 +14,7 @@
     valid: 'سجل الإصدار وسلامة النسخة مطابقان', openVerify: 'فتح سجل التحقق',
     expires: 'تنتهي صلاحية رابط المشاركة في',
     print: 'طباعة / حفظ PDF', protected: 'مشاهدة محمية',
-    screenshotNotice: 'لا يستطيع موقع ويب منع لقطات الشاشة أو التسجيل من النظام أو المتصفح. تُخفى البيانات عند انتقال الصفحة إلى الخلفية إذا أبلغ المتصفح بذلك.',
+    screenshotNotice: 'موقع الويب لا يستطيع منع التقاط لقطات الشاشة أو تسجيل الشاشة.',
     verifyOnly: 'حالة الإصدار والتحقق فقط', validStatus: 'وثيقة صحيحة', revoked: 'وثيقة ملغاة',
     expired: 'وثيقة منتهية', failed: 'تعذر التحقق من سلامة الوثيقة',
     notVerified: 'الوثيقة غير متحققة', notFound: 'الوثيقة غير موجودة',
@@ -29,7 +29,7 @@
     denied: 'Your account is not authorized to view this document.', loading: 'Loading document…',
     openVerify: 'Open verification record', print: 'Print / Save PDF', expires: 'Share link expires',
     protected: 'Protected viewing',
-    screenshotNotice: 'A website cannot prevent operating-system or browser screenshots and recordings. Data is masked when the browser reports that the page is in the background.',
+    screenshotNotice: 'A website cannot block screenshots or screen recordings.',
     verifyOnly: 'Issue and verification status only', validStatus: 'DOCUMENT VALID', revoked: 'DOCUMENT REVOKED',
     expired: 'DOCUMENT EXPIRED', failed: 'DOCUMENT INTEGRITY CHECK FAILED',
     notVerified: 'DOCUMENT NOT VERIFIED', notFound: 'DOCUMENT NOT FOUND',
@@ -110,14 +110,6 @@
     await renderDocument(data);
     return true;
   }
-
-  window.blackRidgeValidateScreenProtectionSession = async function () {
-    try {
-      return (await loadShare()) === true;
-    } catch {
-      return false;
-    }
-  };
 
   async function renderDocument(data) {
     const doc = data.document;
