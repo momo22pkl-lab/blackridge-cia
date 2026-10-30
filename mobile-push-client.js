@@ -118,7 +118,7 @@
             <h2 id="mobile-push-title">إشعارات الهاتف</h2>
             <button type="button" class="mobile-push-close" data-mobile-push-close aria-label="إغلاق">×</button>
           </header>
-          <p class="mobile-push-intro">تُرسل الاستدعاءات والتعاميم إلى أجهزة المستلمين المشتركين، وتُحفظ في مركز إشعارات BLACK RIDGE CIA.</p>
+          <p class="mobile-push-intro">تُرسل الاستدعاءات والتحذيرات والتعاميم إلى أجهزة المستلمين المشتركين، وتُحفظ في مركز إشعارات BLACK RIDGE CIA.</p>
           <p id="mobile-push-status" role="status" aria-live="polite"></p>
           <div class="mobile-push-controls">
             <button type="button" class="mobile-push-button" data-mobile-push-enable>تفعيل على هذا الجهاز</button>
@@ -130,6 +130,7 @@
             <label class="mobile-push-field">نوع الإشعار
               <select name="notificationType" required>
                 <option value="OFFICIAL_SUMMON">استدعاء رسمي</option>
+                <option value="SECURITY_ALERT">تحذير أمني</option>
                 <option value="COMMAND_CIRCULAR">تعميم قيادي</option>
               </select>
             </label>
@@ -154,7 +155,7 @@
               <span data-push-message-label>نص الاستدعاء</span>
               <textarea name="message" maxlength="600" required></textarea>
             </label>
-            <label class="mobile-push-field">الأولوية
+            <label class="mobile-push-field"><span data-push-priority-label>الأولوية</span>
               <select name="priority">
                 <option value="NORMAL">عادية</option>
                 <option value="HIGH">مرتفعة</option>
@@ -286,17 +287,29 @@
   function updateNotificationTypeFields() {
     const form = document.getElementById('mobile-push-send-form');
     if (!form) return;
-    const isCircular = form.querySelector('[name="notificationType"]')?.value === 'COMMAND_CIRCULAR';
+    const type = form.querySelector('[name="notificationType"]')?.value;
+    const isCircular = type === 'COMMAND_CIRCULAR';
+    const isSecurityAlert = type === 'SECURITY_ALERT';
     const formTitle = form.querySelector('.mobile-push-form-title');
     const subjectLabel = form.querySelector('[data-push-subject-label]');
     const messageLabel = form.querySelector('[data-push-message-label]');
+    const priorityLabel = form.querySelector('[data-push-priority-label]');
     const messageInput = form.querySelector('[name="message"]');
     const submitLabel = form.querySelector('[data-push-submit-label]');
-    if (formTitle) formTitle.textContent = isCircular ? 'إصدار تعميم قيادي' : 'إصدار استدعاء رسمي';
-    if (subjectLabel) subjectLabel.textContent = isCircular ? 'عنوان التعميم' : 'موضوع الاستدعاء';
-    if (messageLabel) messageLabel.textContent = isCircular ? 'محتوى التعميم' : 'نص الاستدعاء';
+    if (formTitle) formTitle.textContent = isCircular
+      ? 'إصدار تعميم قيادي'
+      : isSecurityAlert ? 'إرسال تحذير أمني' : 'إصدار استدعاء رسمي';
+    if (subjectLabel) subjectLabel.textContent = isCircular
+      ? 'عنوان التعميم'
+      : isSecurityAlert ? 'موضوع التحذير' : 'موضوع الاستدعاء';
+    if (messageLabel) messageLabel.textContent = isCircular
+      ? 'محتوى التعميم'
+      : isSecurityAlert ? 'نص التنبيه' : 'نص الاستدعاء';
+    if (priorityLabel) priorityLabel.textContent = isSecurityAlert ? 'مستوى التحذير' : 'الأولوية';
     if (messageInput) messageInput.maxLength = isCircular ? 3000 : 600;
-    if (submitLabel) submitLabel.textContent = isCircular ? 'إصدار التعميم وإرساله' : 'إصدار الاستدعاء وإرساله';
+    if (submitLabel) submitLabel.textContent = isCircular
+      ? 'إصدار التعميم وإرساله'
+      : isSecurityAlert ? 'إرسال التحذير الأمني' : 'إصدار الاستدعاء وإرساله';
   }
 
   function handleSectorChange(event) {
@@ -523,12 +536,18 @@
         priority: data.get('priority')
       });
       const isCircular = result.notificationType === 'COMMAND_CIRCULAR';
-      const documentType = isCircular ? 'تعميم' : 'استدعاء';
+      const isSecurityAlert = result.notificationType === 'SECURITY_ALERT';
+      const documentType = isCircular
+        ? 'التعميم'
+        : isSecurityAlert ? 'التحذير الأمني' : 'الاستدعاء';
+      const savedType = isCircular
+        ? 'تعميمًا قياديًا'
+        : isSecurityAlert ? 'تحذيرًا أمنيًا' : 'استدعاءً رسميًا';
       const pushStatus = result.deviceCount
         ? `قبلت خدمة الهاتف ${result.acceptedByPushService} جهازًا من أصل ${result.deviceCount}.`
         : `لا توجد أجهزة هاتف مشتركة؛ حُفظ ${documentType} في مركز الإشعارات فقط.`;
       setStatus(
-        `تم حفظ ${result.savedNotificationCount || 0} ${documentType} في مركز الإشعارات.${result.circularNumber ? ` رقم التعميم: ${result.circularNumber}.` : ''} المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
+        `تم حفظ ${result.savedNotificationCount || 0} ${savedType} في مركز الإشعارات.${result.circularNumber ? ` رقم التعميم: ${result.circularNumber}.` : ''} المستهدف: ${result.audience === 'MEMBER' ? `الشخص ${result.targetMemberName || ''}` : 'كل أفراد القطاع'}. ${pushStatus} الأفراد المؤهلون: ${result.recipientCount}؛ لديهم اشتراك: ${result.subscribedMembers}؛ بلا اشتراك: ${result.noSubscriptionMembers}؛ الأجهزة التي رفضتها الخدمة: ${result.failed}.`,
         result.failed || result.noSubscriptionMembers ? 'error' : 'success'
       );
       form.reset();
