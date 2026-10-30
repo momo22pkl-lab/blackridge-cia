@@ -19,6 +19,8 @@ const { NotificationsStore } = require('../notifications-store');
 const {
   BROADCAST_INTERVAL_MS,
   OFFICIAL_SUMMON_TYPE,
+  SECURITY_ALERT_TYPE,
+  COMMAND_CIRCULAR_TYPE,
   createWebPushTransport,
   injectMobilePushMarkup,
   registerMobilePushSocket,
@@ -94,6 +96,8 @@ test('mobile push form offers sector-wide and single-member targeting with an em
   assert.match(source, /name="memberId"/);
   assert.match(source, /name="notificationType"/);
   assert.match(source, /value="OFFICIAL_SUMMON">استدعاء رسمي/);
+  assert.match(source, /value="SECURITY_ALERT">تحذير أمني/);
+  assert.match(source, /value="COMMAND_CIRCULAR">تعميم قيادي/);
   assert.match(source, /name="subject"/);
   assert.match(source, /نص الاستدعاء/);
   assert.match(source, /لا توجد قطاعات مؤهلة للإرسال بعد/);
@@ -103,8 +107,17 @@ test('mobile push form offers sector-wide and single-member targeting with an em
   const inboxStyles = fs.readFileSync(path.join(projectRoot, 'notifications.css'), 'utf8');
   assert.match(inboxClient, /notification-card--summons/);
   assert.match(inboxClient, /عرض تفاصيل الاستدعاء/);
+  assert.match(inboxClient, /notification-card--security-alert/);
+  assert.match(inboxClient, /عرض التحذير/);
+  assert.match(inboxClient, /notification-card--circular/);
+  assert.match(inboxClient, /قراءة التعميم/);
+  assert.match(inboxClient, /openCommandCircular/);
   assert.match(inboxClient, /openDeepLinkedNotification/);
   assert.match(inboxStyles, /\.notification-detail-dialog/);
+  assert.match(inboxStyles, /\.notification-card--circular/);
+  assert.match(inboxStyles, /\.command-circular-detail/);
+  assert.match(inboxStyles, /\.notification-card--security-alert/);
+  assert.match(inboxStyles, /\.security-alert-detail/);
   assert.match(inboxStyles, /@media \(max-width: 700px\)/);
 });
 
@@ -394,6 +407,175 @@ test('official summons persist in the existing private inbox and push links open
   assert.notEqual(firstPush.payload.notificationId, secondPushes[0].payload.notificationId);
 });
 
+test('leadership circulars persist full content in the private inbox and push each selected recipient record', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  const audit = [];
+  let id = 0;
+  const longMessage = 'تحديثات على إجراءات القيادة والتنسيق اليومي. '.repeat(60);
+  const users = [
+    person('circular-chief', 'CHIEF-910', {
+      rank: 'CIA CHIEF',
+      identity: { fullName: 'قائد التعميم' }
+    }),
+    person('circular-member-a', 'AG-911', { identity: { fullName: 'مستلم غير مستهدف' } }),
+    person('circular-member-b', 'AG-912', { identity: { fullName: 'المستلم المقصود' } })
+  ];
+  const subscriptions = [
+    { userId: 'circular-member-a', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/circular-a', keys: { p256dh: 'a', auth: 'a' } } },
+    { userId: 'circular-member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/circular-b', keys: { p256dh: 'b', auth: 'b' } } }
+  ];
+  let storedNotifications = [];
+  const inbox = new NotificationsStore(null, {
+    getRows: () => storedNotifications,
+    setRows: (rows) => { storedNotifications = rows; }
+  });
+  const units = [{ id: 'circular-unit', sector: 'North Ridge', status: 'ACTIVE', memberCodes: ['AG-911', 'AG-912'] }];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF' || actor.rank === 'SUPREME COMMANDER',
+    getUsers: () => users,
+    getUnits: () => units,
+    store: {
+      async listForUsers(ids) { return subscriptions.filter((item) => ids.includes(item.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      async sendNotification(subscriptionValue, payload) {
+        sent.push({ endpoint: subscriptionValue.endpoint, payload: JSON.parse(payload) });
+      }
+    },
+    makeId: (prefix) => `${prefix}-test-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records),
+    addAuditLog(...entry) { audit.push(entry); },
+    async saveState() {}
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: COMMAND_CIRCULAR_TYPE,
+    sector: 'North Ridge',
+    audience: 'MEMBER',
+    memberId: 'circular-member-b',
+    subject: 'تحديث إجراءات التنسيق',
+    message: longMessage,
+    priority: 'NORMAL'
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.notificationType, COMMAND_CIRCULAR_TYPE);
+  assert.equal(result.circularNumber, 'BR-CIR-test-1');
+  assert.equal(result.audience, 'MEMBER');
+  assert.equal(result.targetMemberName, 'المستلم المقصود');
+  assert.equal(result.recipientCount, 1);
+  assert.equal(result.savedNotificationCount, 1);
+  assert.equal(result.deviceCount, 1);
+
+  const inboxPage = await inbox.listForUser({ userId: 'circular-member-b', category: 'system' });
+  const unrelatedPage = await inbox.listForUser({ userId: 'circular-member-a' });
+  assert.equal(inboxPage.rows.length, 1);
+  assert.equal(unrelatedPage.rows.length, 0);
+  assert.equal(inboxPage.rows[0].type, COMMAND_CIRCULAR_TYPE);
+  assert.equal(inboxPage.rows[0].title, 'تعميم قيادي');
+  assert.equal(inboxPage.rows[0].message, longMessage.trim());
+  assert.equal(inboxPage.rows[0].relatedId, result.circularNumber);
+  assert.equal(inboxPage.rows[0].metadata.circularNumber, result.circularNumber);
+  assert.equal(inboxPage.rows[0].metadata.circularTitle, 'تحديث إجراءات التنسيق');
+  assert.equal(inboxPage.rows[0].metadata.issuerName, 'قائد التعميم');
+  assert.equal(inboxPage.rows[0].metadata.issuerRank, 'CIA CHIEF');
+  assert.equal(inboxPage.rows[0].metadata.recipientName, 'المستلم المقصود');
+  assert.ok(inboxPage.rows[0].metadata.issuedAt);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].endpoint, 'https://fcm.googleapis.com/push/send/circular-b');
+  assert.equal(sent[0].payload.notificationType, COMMAND_CIRCULAR_TYPE);
+  assert.equal(sent[0].payload.title, 'تعميم قيادي');
+  assert.equal(sent[0].payload.circularNumber, result.circularNumber);
+  assert.equal(sent[0].payload.circularCard.issuer, 'قائد التعميم');
+  assert.equal(sent[0].payload.circularCard.title, 'تحديث إجراءات التنسيق');
+  assert.equal(sent[0].payload.circularCard.circularNumber, result.circularNumber);
+  assert.equal(sent[0].payload.circularCard.message, longMessage.trim());
+  assert.match(sent[0].payload.url, new RegExp(`notificationId=${inboxPage.rows[0].id}`));
+  assert.equal(audit[0][0], 'إصدار تعميم قيادي');
+});
+
+test('security alerts use the existing private inbox, preserve targeting, and include red push details', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  let id = 0;
+  let storedNotifications = [];
+  const inbox = new NotificationsStore(null, {
+    getRows: () => storedNotifications,
+    setRows: (rows) => { storedNotifications = rows; }
+  });
+  const users = [
+    person('alert-chief', 'CHIEF-910', {
+      rank: 'CIA CHIEF',
+      identity: { fullName: 'قائد التنبيه' }
+    }),
+    person('alert-member-a', 'AG-911', { identity: { fullName: 'المستلم المقصود' } }),
+    person('alert-member-b', 'AG-912', { identity: { fullName: 'عضو آخر' } })
+  ];
+  const subscriptions = [
+    { userId: 'alert-member-a', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/alert-a', keys: { p256dh: 'a', auth: 'a' } } },
+    { userId: 'alert-member-b', subscription: { endpoint: 'https://fcm.googleapis.com/push/send/alert-b', keys: { p256dh: 'b', auth: 'b' } } }
+  ];
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => users[0],
+    isLeadership: (actor) => actor.rank === 'CIA CHIEF' || actor.rank === 'SUPREME COMMANDER',
+    getUsers: () => users,
+    getUnits: () => [{ id: 'alert-unit', sector: 'South Ridge', status: 'ACTIVE', memberCodes: ['AG-911', 'AG-912'] }],
+    store: {
+      async listForUsers(ids) { return subscriptions.filter((item) => ids.includes(item.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      async sendNotification(subscriptionValue, payload) {
+        sent.push({ endpoint: subscriptionValue.endpoint, payload: JSON.parse(payload) });
+      }
+    },
+    makeId: (prefix) => `${prefix}-alert-${++id}`,
+    persistNotifications: (records) => inbox.createMany(records)
+  });
+
+  const result = await socket.call('mobile-push:send-sector', {
+    notificationType: SECURITY_ALERT_TYPE,
+    sector: 'South Ridge',
+    audience: 'MEMBER',
+    memberId: 'alert-member-a',
+    subject: 'نشاط أمني غير معتاد',
+    message: 'تم رصد حركة غير معتادة قرب الموقع؛ يرجى التحقق والإبلاغ.',
+    priority: 'CRITICAL'
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.notificationType, SECURITY_ALERT_TYPE);
+  assert.equal(result.recipientCount, 1);
+  assert.equal(result.targetMemberName, 'المستلم المقصود');
+  assert.equal(result.savedNotificationCount, 1);
+  assert.equal(result.deviceCount, 1);
+  const page = await inbox.listForUser({ userId: 'alert-member-a', category: 'system' });
+  assert.equal(page.rows.length, 1);
+  assert.equal(page.rows[0].type, SECURITY_ALERT_TYPE);
+  assert.equal(page.rows[0].title, 'تحذير أمني');
+  assert.equal(page.rows[0].priority, 'CRITICAL');
+  assert.equal(page.rows[0].metadata.issuerName, 'قائد التنبيه');
+  assert.equal(page.rows[0].metadata.recipientName, 'المستلم المقصود');
+  assert.equal(page.rows[0].metadata.subject, 'نشاط أمني غير معتاد');
+  assert.equal(page.rows[0].metadata.warningLevel, 'CRITICAL');
+  assert.equal(page.rows[0].metadata.sector, 'South Ridge');
+  assert.equal((await inbox.listForUser({ userId: 'alert-member-b' })).rows.length, 0);
+  assert.equal((await inbox.countsForUser('alert-member-a')).unreadSecurity, 1);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].endpoint, /alert-a$/);
+  assert.equal(sent[0].payload.notificationType, SECURITY_ALERT_TYPE);
+  assert.equal(sent[0].payload.title, 'تحذير أمني');
+  assert.equal(sent[0].payload.priority, 'CRITICAL');
+  assert.equal(sent[0].payload.securityAlertCard.issuer, 'قائد التنبيه');
+  assert.equal(sent[0].payload.securityAlertCard.subject, 'نشاط أمني غير معتاد');
+  assert.equal(sent[0].payload.securityAlertCard.priority, 'CRITICAL');
+  assert.match(sent[0].payload.url, new RegExp(`notificationId=${page.rows[0].id}`));
+});
+
 test('mobile push can target one eligible member and only that member’s devices', async () => {
   const socket = mockSocket();
   const sent = [];
@@ -500,15 +682,17 @@ test('non-leaders cannot send a sector push even when the browser asks directly'
     transport: { configured: true, publicKey: 'A'.repeat(87), async sendNotification() { sends += 1; } },
     makeId: () => 'PUSH-test'
   });
-  const result = await socket.call('mobile-push:send-sector', {
-    sector: 'Los Santos',
-    notificationType: OFFICIAL_SUMMON_TYPE,
-    subject: 'Unauthorized',
-    message: 'Test',
-    priority: 'NORMAL'
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.message, /CIA CHIEF/);
+  for (const notificationType of [OFFICIAL_SUMMON_TYPE, SECURITY_ALERT_TYPE, COMMAND_CIRCULAR_TYPE]) {
+    const result = await socket.call('mobile-push:send-sector', {
+      sector: 'Los Santos',
+      notificationType,
+      subject: 'Unauthorized',
+      message: 'Test',
+      priority: 'NORMAL'
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.message, /CIA CHIEF/);
+  }
   assert.equal(sends, 0);
   const memberList = await socket.call('mobile-push:members', { sector: 'Any' });
   assert.equal(memberList.ok, false);
@@ -672,6 +856,122 @@ test('service worker displays OS notifications and opens only the same-origin ap
   await clickPromise;
   assert.deepEqual(opened, ['https://blackridge.example/?notificationId=NTF-summons-a']);
 
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: 'NTF-circular-a',
+        notificationId: 'NTF-circular-a',
+        notificationType: COMMAND_CIRCULAR_TYPE,
+        title: 'تعميم قيادي',
+        body: 'الجهة: قيادة الاختبار · العنوان: مراجعة الخطة',
+        priority: 'NORMAL',
+        url: '/?notificationId=NTF-circular-a',
+        circularCard: {
+          issuer: 'قيادة الاختبار',
+          issuerRank: 'SUPREME COMMANDER',
+          title: 'مراجعة <الخطة> & التنسيق',
+          message: 'تحديثات على إجراءات التنسيق.',
+          circularNumber: 'BR-CIR-TEST-001',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[2].title, 'تعميم قيادي');
+  assert.equal(shown[2].options.dir, 'rtl');
+  assert.equal(shown[2].options.actions[0].title, 'قراءة التعميم');
+  assert.equal(shown[2].options.data.notificationId, 'NTF-circular-a');
+  assert.equal(shown[2].options.data.notificationType, COMMAND_CIRCULAR_TYPE);
+  assert.match(shown[2].options.image, /^data:image\/svg\+xml;charset=utf-8,/);
+  const circularImageSvg = decodeURIComponent(shown[2].options.image.split(',')[1]);
+  assert.match(circularImageSvg, /تعميم قيادي/);
+  assert.match(circularImageSvg, /#152438/);
+  assert.match(circularImageSvg, /قيادة الاختبار/);
+  assert.match(circularImageSvg, /BR-CIR-TEST-001/);
+  assert.match(circularImageSvg, /مراجعة &lt;الخطة&gt; &amp; التنسيق/);
+  assert.match(circularImageSvg, /قراءة التعميم/);
+  assert.doesNotMatch(circularImageSvg, /<script|onload=/i);
+
+  listeners.get('notificationclick')({
+    notification: { data: shown[2].options.data, close() {} },
+    waitUntil(value) { clickPromise = value; }
+  });
+  await clickPromise;
+
+  const securityAlertId = 'NTF-security-alert-a';
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: securityAlertId,
+        notificationId: securityAlertId,
+        notificationType: SECURITY_ALERT_TYPE,
+        title: 'تحذير أمني',
+        body: 'تنبيه عاجل صادر عن القيادة.',
+        priority: 'CRITICAL',
+        url: `/?notificationId=${securityAlertId}`,
+        securityAlertCard: {
+          issuer: 'القيادة الفعلية',
+          issuerRank: 'CIA CHIEF',
+          subject: 'نشاط <مريب> & متابعة',
+          message: 'تم رصد حركة غير معتادة؛ يرجى التحقق فورًا.',
+          priority: 'CRITICAL',
+          sector: 'South Ridge',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[3].title, 'تحذير أمني');
+  assert.equal(shown[3].options.dir, 'rtl');
+  assert.equal(shown[3].options.requireInteraction, true);
+  assert.equal(shown[3].options.actions[0].title, 'عرض التحذير');
+  assert.equal(shown[3].options.data.notificationId, securityAlertId);
+  assert.equal(shown[3].options.data.notificationType, SECURITY_ALERT_TYPE);
+  assert.match(shown[3].options.image, /^data:image\/svg\+xml;charset=utf-8,/);
+  const securityAlertSvg = decodeURIComponent(shown[3].options.image.split(',')[1]);
+  assert.match(securityAlertSvg, /تحذير أمني/);
+  assert.match(securityAlertSvg, /مستوى عاجل/);
+  assert.match(securityAlertSvg, /القيادة الفعلية/);
+  assert.match(securityAlertSvg, /نشاط &lt;مريب&gt; &amp; متابعة/);
+  assert.match(securityAlertSvg, /عرض التحذير/);
+  assert.doesNotMatch(securityAlertSvg, /<script|onload=/i);
+
+  listeners.get('notificationclick')({
+    notification: { data: shown[3].options.data, close() {} },
+    waitUntil(value) { clickPromise = value; }
+  });
+  await clickPromise;
+
+  listeners.get('push')({
+    data: {
+      json: () => ({
+        id: 'NTF-security-alert-normal',
+        notificationId: 'NTF-security-alert-normal',
+        notificationType: SECURITY_ALERT_TYPE,
+        title: 'تحذير أمني',
+        body: 'تنبيه اعتيادي.',
+        priority: 'NORMAL',
+        securityAlertCard: {
+          issuer: 'القيادة',
+          subject: 'مراجعة دورية',
+          message: 'يرجى الاطلاع على التنبيه.',
+          priority: 'NORMAL',
+          sector: 'North Ridge',
+          issuedAt: '2026-10-29T09:20:00.000Z'
+        }
+      })
+    },
+    waitUntil(value) { pushPromise = value; }
+  });
+  await pushPromise;
+  assert.equal(shown[4].options.requireInteraction, false);
+  const normalAlertSvg = decodeURIComponent(shown[4].options.image.split(',')[1]);
+  assert.match(normalAlertSvg, /مستوى عادي/);
+
   listeners.get('notificationclick')({
     notification: { data: { url: 'https://attacker.example/path' }, close() {} },
     waitUntil(value) { clickPromise = value; }
@@ -679,6 +979,8 @@ test('service worker displays OS notifications and opens only the same-origin ap
   await clickPromise;
   assert.deepEqual(opened, [
     'https://blackridge.example/?notificationId=NTF-summons-a',
+    'https://blackridge.example/?notificationId=NTF-circular-a',
+    `https://blackridge.example/?notificationId=${securityAlertId}`,
     'https://blackridge.example/'
   ]);
 });

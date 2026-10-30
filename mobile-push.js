@@ -4,6 +4,8 @@ const { normalizePushEndpoint, WebPushStore } = require('./mobile-push-store');
 
 const PRIORITIES = new Set(['NORMAL', 'HIGH', 'CRITICAL']);
 const OFFICIAL_SUMMON_TYPE = 'OFFICIAL_SUMMON';
+const SECURITY_ALERT_TYPE = 'SECURITY_ALERT';
+const COMMAND_CIRCULAR_TYPE = 'COMMAND_CIRCULAR';
 const BROADCAST_INTERVAL_MS = 15000;
 const lastBroadcastAt = new Map();
 const MOBILE_PUSH_HEAD_MARKUP = [
@@ -233,18 +235,28 @@ function registerMobilePushSocket(socket, context) {
 
     const notificationType = String(payload?.notificationType || 'GENERAL').trim().toUpperCase();
     const isOfficialSummon = notificationType === OFFICIAL_SUMMON_TYPE;
-    const title = isOfficialSummon ? 'استدعاء رسمي' : clean(payload?.title, 100);
+    const isSecurityAlert = notificationType === SECURITY_ALERT_TYPE;
+    const isCommandCircular = notificationType === COMMAND_CIRCULAR_TYPE;
+    const isStructuredNotification = isOfficialSummon || isSecurityAlert || isCommandCircular;
+    const title = isOfficialSummon
+      ? 'استدعاء رسمي'
+      : isSecurityAlert
+        ? 'تحذير أمني'
+        : isCommandCircular
+          ? 'تعميم قيادي'
+        : clean(payload?.title, 100);
     const subject = clean(payload?.subject, 180);
-    const message = clean(payload?.message, 600);
+    const message = clean(payload?.message, isCommandCircular ? 3000 : 600);
     const requestedSector = clean(payload?.sector, 100);
     const audience = String(payload?.audience || 'SECTOR').trim().toUpperCase();
     const requestedMemberId = clean(payload?.memberId, 100);
     const priority = String(payload?.priority || 'NORMAL').trim().toUpperCase();
-    if (!['GENERAL', OFFICIAL_SUMMON_TYPE].includes(notificationType) ||
-        (!isOfficialSummon && !title) || (isOfficialSummon && !subject) ||
+    if (!['GENERAL', OFFICIAL_SUMMON_TYPE, SECURITY_ALERT_TYPE, COMMAND_CIRCULAR_TYPE].includes(notificationType) ||
+        (!isStructuredNotification && !title) ||
+        (isStructuredNotification && !subject) ||
         !message || !requestedSector || !PRIORITIES.has(priority) ||
         !['SECTOR', 'MEMBER'].includes(audience) || (audience === 'MEMBER' && !requestedMemberId)) {
-      return fail(callback, 'أدخل القطاع وموضوع الاستدعاء ونصه وحدد مستلماً وأولوية صالحة.');
+      return fail(callback, 'أدخل القطاع والعنوان والمحتوى وحدد مستلماً وأولوية صالحة.');
     }
 
     const options = sectorOptions(getUnits(), context.getUsers());
@@ -280,30 +292,33 @@ function registerMobilePushSocket(socket, context) {
 
     let createdNotifications = [];
     let summonsNumber = '';
+    let circularNumber = '';
     const issuedAt = new Date().toISOString();
     const issuerName = clean(
       actor.identity?.fullName || actor.name || actor.publicCode || 'BLACK RIDGE CIA',
       120
     );
-    if (isOfficialSummon) {
+    if (isStructuredNotification) {
       if (typeof context.persistNotifications !== 'function') {
-        return fail(callback, 'تعذر حفظ الاستدعاء في مركز الإشعارات؛ لم يُرسل أي إشعار.');
+        return fail(callback, 'تعذر حفظ الإشعار في مركز الإشعارات؛ لم يُرسل أي إشعار.');
       }
-      summonsNumber = context.makeId('SUM');
+      summonsNumber = isOfficialSummon ? context.makeId('SUM') : '';
+      circularNumber = isCommandCircular ? context.makeId('BR-CIR') : '';
       const records = recipients.map((recipient) => ({
         id: context.makeId('NTF'),
         userId: recipient.id,
-        type: OFFICIAL_SUMMON_TYPE,
+        type: notificationType,
         title,
         message,
         priority: priority === 'NORMAL' ? 'NOTICE' : priority,
         status: 'SENT',
         sourceUserId: actor.id,
         sourceCode: clean(actor.publicCode, 100),
-        relatedId: summonsNumber,
+        relatedId: summonsNumber || circularNumber,
         metadata: {
-          notificationType: OFFICIAL_SUMMON_TYPE,
-          summonsNumber,
+          notificationType,
+          ...(isOfficialSummon ? { summonsNumber } : {}),
+          ...(isCommandCircular ? { circularNumber } : {}),
           issuerName,
           issuerRank: clean(actor.rank, 80),
           sourceName: issuerName,
@@ -314,22 +329,24 @@ function registerMobilePushSocket(socket, context) {
           issuerOrganization: 'BLACK RIDGE CIA',
           sector: sector.name,
           subject,
+          ...(isSecurityAlert ? { warningLevel: priority, severity: priority } : {}),
+          ...(isCommandCircular ? { circularTitle: subject } : {}),
           issuedAt
         }
       }));
       try {
         createdNotifications = await context.persistNotifications(records);
       } catch (_error) {
-        return fail(callback, 'تعذر حفظ الاستدعاء في مركز الإشعارات؛ لم يُرسل أي إشعار.');
+        return fail(callback, 'تعذر حفظ الإشعار في مركز الإشعارات؛ لم يُرسل أي إشعار.');
       }
       if (!Array.isArray(createdNotifications) || createdNotifications.length !== recipients.length) {
-        return fail(callback, 'تعذر التحقق من حفظ الاستدعاء لكل مستلم؛ لم يُرسل أي إشعار.');
+        return fail(callback, 'تعذر التحقق من حفظ الإشعار لكل مستلم؛ لم يُرسل أي إشعار.');
       }
     }
 
     let delivery;
     try {
-      if (isOfficialSummon) {
+      if (isStructuredNotification) {
         const notificationByUser = new Map(createdNotifications.map((notification) => [
           String(notification.userId),
           notification
@@ -343,30 +360,61 @@ function registerMobilePushSocket(socket, context) {
         const deliveries = await Promise.all([...subscriptionsByUser.entries()].map(([userId, userSubscriptions]) => {
           const notification = notificationByUser.get(userId);
           if (!notification) return { accepted: 0, failed: userSubscriptions.length };
+          const notificationPayload = {
+            id: notification.id,
+            notificationType,
+            notificationId: notification.id,
+            title,
+            body: isOfficialSummon
+              ? `BLACK RIDGE CIA · الجهة: ${issuerName} · الموضوع: ${subject} — ${message}`.slice(0, 600)
+              : isSecurityAlert
+                ? `تحذير من ${issuerName} · المستوى: ${priority === 'CRITICAL' ? 'عاجل' : priority === 'HIGH' ? 'مرتفع' : 'عادي'} · الموضوع: ${subject} — ${message}`.slice(0, 600)
+                : `BLACK RIDGE CIA · الجهة: ${issuerName} · العنوان: ${subject} — ${message}`.slice(0, 600),
+            priority,
+            sector: sector.name,
+            issuedAt,
+            url: `/?notificationId=${encodeURIComponent(notification.id)}`
+          };
+          if (isOfficialSummon) {
+            notificationPayload.summonsNumber = summonsNumber;
+            notificationPayload.summonsCard = {
+              issuer: clean(notification.metadata?.issuerName || issuerName, 120),
+              issuerRank: clean(notification.metadata?.issuerRank || '', 80),
+              recipient: clean(notification.metadata?.recipientName || 'المستلم', 120),
+              subject: clean(notification.metadata?.subject || subject, 180),
+              message: clean(notification.message || message, 180),
+              summonsNumber: clean(notification.metadata?.summonsNumber || summonsNumber, 60),
+              issuedAt: clean(notification.metadata?.issuedAt || issuedAt, 48)
+            };
+          }
+          if (isSecurityAlert) {
+            notificationPayload.warningLevel = priority;
+            notificationPayload.securityAlertCard = {
+              issuer: clean(notification.metadata?.issuerName || issuerName, 120),
+              issuerRank: clean(notification.metadata?.issuerRank || '', 80),
+              recipient: clean(notification.metadata?.recipientName || 'المستلم', 120),
+              subject: clean(notification.metadata?.subject || subject, 180),
+              message: clean(notification.message || message, 180),
+              priority,
+              sector: clean(notification.metadata?.sector || sector.name, 100),
+              issuedAt: clean(notification.metadata?.issuedAt || issuedAt, 48)
+            };
+          }
+          if (isCommandCircular) {
+            notificationPayload.circularNumber = circularNumber;
+            notificationPayload.circularCard = {
+              issuer: clean(notification.metadata?.issuerName || issuerName, 120),
+              issuerRank: clean(notification.metadata?.issuerRank || '', 80),
+              title: clean(notification.metadata?.circularTitle || subject, 180),
+              message: clean(notification.message || message, 3000),
+              circularNumber: clean(notification.metadata?.circularNumber || circularNumber, 60),
+              issuedAt: clean(notification.metadata?.issuedAt || issuedAt, 48)
+            };
+          }
           return sendBatched(
             userSubscriptions,
             context.transport.sendNotification,
-            {
-              id: notification.id,
-              notificationType: OFFICIAL_SUMMON_TYPE,
-              notificationId: notification.id,
-              title,
-              body: `BLACK RIDGE CIA · الجهة: ${issuerName} · الموضوع: ${subject} — ${message}`.slice(0, 600),
-              priority,
-              sector: sector.name,
-              summonsNumber,
-              issuedAt,
-              url: `/?notificationId=${encodeURIComponent(notification.id)}`,
-              summonsCard: {
-                issuer: clean(notification.metadata?.issuerName || issuerName, 120),
-                issuerRank: clean(notification.metadata?.issuerRank || '', 80),
-                recipient: clean(notification.metadata?.recipientName || 'المستلم', 120),
-                subject: clean(notification.metadata?.subject || subject, 180),
-                message: clean(notification.message || message, 180),
-                summonsNumber: clean(notification.metadata?.summonsNumber || summonsNumber, 60),
-                issuedAt: clean(notification.metadata?.issuedAt || issuedAt, 48)
-              }
-            },
+            notificationPayload,
             priority,
             (expiredUserId, endpoint) => context.store.removeExpiredSubscription(expiredUserId, endpoint)
           );
@@ -398,10 +446,16 @@ function registerMobilePushSocket(socket, context) {
     if (typeof context.addAuditLog === 'function') {
       try {
         context.addAuditLog(
-          isOfficialSummon ? 'إصدار استدعاء رسمي' : 'إرسال إشعار هاتف',
+          isOfficialSummon
+            ? 'إصدار استدعاء رسمي'
+            : isSecurityAlert
+              ? 'إرسال تحذير أمني'
+              : isCommandCircular
+                ? 'إصدار تعميم قيادي'
+                : 'إرسال إشعار هاتف',
           actor,
           null,
-          `النوع: ${notificationType}؛ ${summonsNumber ? `الرقم: ${summonsNumber}؛ ` : ''}القطاع: ${sector.name}؛ المستهدف: ${audience === 'MEMBER' ? `الفرد ${targetMember.publicCode}` : 'كل أفراد القطاع'}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
+          `النوع: ${notificationType}؛ ${summonsNumber || circularNumber ? `الرقم: ${summonsNumber || circularNumber}؛ ` : ''}القطاع: ${sector.name}؛ المستهدف: ${audience === 'MEMBER' ? `الفرد ${targetMember.publicCode}` : 'كل أفراد القطاع'}؛ الأولوية: ${priority}؛ الأجهزة المقبولة: ${delivery.accepted}؛ الفاشلة: ${delivery.failed}.`
         );
         if (typeof context.saveState === 'function') await context.saveState();
       } catch (_error) {
@@ -413,6 +467,7 @@ function registerMobilePushSocket(socket, context) {
       ok: true,
       notificationType,
       summonsNumber,
+      circularNumber,
       sector: sector.name,
       audience,
       targetMemberName: targetMember
@@ -433,6 +488,8 @@ function registerMobilePushSocket(socket, context) {
 module.exports = {
   PRIORITIES,
   OFFICIAL_SUMMON_TYPE,
+  SECURITY_ALERT_TYPE,
+  COMMAND_CIRCULAR_TYPE,
   BROADCAST_INTERVAL_MS,
   MOBILE_PUSH_HEAD_MARKUP,
   clean,

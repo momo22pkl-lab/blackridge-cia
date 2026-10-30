@@ -578,7 +578,7 @@ async function publishNotifications(recipients, details = {}) {
     userId: user.id,
     type: clean(details.type || 'SYSTEM', 40).toUpperCase(),
     title: clean(details.title || 'BLACK RIDGE INTELLIGENCE', 180),
-    message: clean(details.message || '', ['WARNING', 'WARNING_RESPONSE'].includes(String(details.type || '').toUpperCase()) ? 3000 : 1000),
+    message: clean(details.message || '', ['WARNING', 'WARNING_RESPONSE', 'COMMAND_CIRCULAR'].includes(String(details.type || '').toUpperCase()) ? 3000 : 1000),
     priority,
     status: (sessions.get(user.id)?.size || 0) > 0 ? 'DELIVERED' : 'SENT',
     sourceUserId: source?.id || null,
