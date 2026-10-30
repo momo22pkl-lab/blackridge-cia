@@ -106,7 +106,10 @@ function registerPages(app) {
   app.get(['/dashboard','/map','/battalions','/battalions/:id','/battalion-tree','/personnel','/personnel/:code','/deployment','/operations','/operations/:id','/command','/intelligence','/archive','/blackbox','/reports','/access-control','/settings','/translation','/ibp-login'], (req, res) => {
     const route = matchRoute(req.path);
     if (!route) return res.sendStatus(404);
-    res.type('html').send(pageHtml(route.key, req.path, route.recordId));
+    res.type('html').send(pageHtml(route.key, req.path, route.recordId).replace(
+      '</head>',
+      '<script src="/screen-protection.js"></script></head>'
+    ));
   });
 }
 module.exports = { NAV, META, matchRoute, pageHtml, registerPages };

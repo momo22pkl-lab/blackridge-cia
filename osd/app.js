@@ -375,6 +375,22 @@ function showAuth(show) {
   if (show) $('#leaderMilitaryCode').focus();
 }
 
+function applyAuthenticatedUser(user) {
+  state.user = user;
+  showAuth(false);
+  $('#userName').textContent = state.user.displayName.toUpperCase();
+  $('#userRole').textContent = state.user.role.replaceAll('_', ' ');
+  $('#clearanceLabel').textContent = `${state.user.clearance} CLEARANCE`;
+  $('#topSector').textContent = 'LOS SANTOS SECTOR';
+  $('#bootstrapAction').hidden = true;
+  [...$('#docClassification').options].forEach((option) => {
+    option.disabled = CLASSIFICATIONS.indexOf(option.value) > CLASSIFICATIONS.indexOf(state.user.clearance);
+  });
+  $$('[data-page="create"]').forEach((button) => { button.hidden = !can('CREATE_DOCUMENTS'); });
+  $$('[data-page="audit"]').forEach((button) => { button.hidden = !can('VIEW_AUDIT_TRAIL'); });
+  $$('[data-page="settings"]').forEach((button) => { button.hidden = !can('MANAGE_USERS'); });
+}
+
 function setPage(page) {
   if (state.publicMode) return;
   state.page = page;
@@ -1428,21 +1444,9 @@ async function authenticate() {
     return;
   }
   try {
-    const result = await request('/auth/me');
-    state.user = result.user;
-    showAuth(false);
-    $('#userName').textContent = state.user.displayName.toUpperCase();
-    $('#userRole').textContent = state.user.role.replaceAll('_', ' ');
-    $('#clearanceLabel').textContent = `${state.user.clearance} CLEARANCE`;
-    $('#topSector').textContent = 'LOS SANTOS SECTOR';
-    $('#bootstrapAction').hidden = true;
-    [...$('#docClassification').options].forEach((option) => {
-      option.disabled = CLASSIFICATIONS.indexOf(option.value) > CLASSIFICATIONS.indexOf(state.user.clearance);
-    });
+    const result = await request('/auth/me', { cache: 'no-store' });
+    applyAuthenticatedUser(result.user);
     await loadDocuments();
-    if (!can('CREATE_DOCUMENTS')) $$('[data-page="create"]').forEach((button) => button.hidden = true);
-    if (!can('VIEW_AUDIT_TRAIL')) $$('[data-page="audit"]').forEach((button) => button.hidden = true);
-    if (!can('MANAGE_USERS')) $$('[data-page="settings"]').forEach((button) => button.hidden = true);
     setPage('center');
   } catch (error) {
     showAuth(true);
@@ -1458,6 +1462,34 @@ async function authenticate() {
     }
   }
 }
+
+window.blackRidgeValidateScreenProtectionSession = async function () {
+  const verifyCode = new URLSearchParams(location.search).get('verify');
+  if (verifyCode) {
+    await showPublicVerification(verifyCode);
+    return true;
+  }
+
+  try {
+    const result = await request('/auth/me', { cache: 'no-store' });
+    if (state.user && state.user.id !== result.user.id) {
+      location.reload();
+      return false;
+    }
+    applyAuthenticatedUser(result.user);
+    await loadDocuments();
+    return true;
+  } catch (error) {
+    if (error.status === 401) {
+      state.user = null;
+      state.documents = [];
+      state.selectedDocument = null;
+      state.shareDocument = null;
+      location.replace('/osd/');
+    }
+    return false;
+  }
+};
 
 $('#memberLoginForm').addEventListener('submit', async (event) => {
   event.preventDefault();

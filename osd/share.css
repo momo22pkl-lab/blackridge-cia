@@ -82,8 +82,6 @@ a { color: inherit; }
 .viewer-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 15px; padding: 10px 2px; border-top: 1px solid var(--line); color: #667583; font: 600 7px ui-monospace, monospace; }
 .watermark-layer { position: fixed; z-index: 50; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(5, 1fr); overflow: hidden; pointer-events: none; }
 .watermark-layer span { display: grid; place-items: center; transform: rotate(-31deg); color: rgba(126, 34, 34, .14); text-align: center; font: 700 16px ui-monospace, monospace; letter-spacing: .1em; overflow-wrap: anywhere; }
-body.protected, body.protected * { user-select: none !important; -webkit-user-select: none !important; }
-body.protected #documentBody { user-select: none; }
 .document-paper, .document-paper * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 .document-frame:has(.status-pill[data-status="REVOKED"]) .status-pill { color: #d58a8a; border-color: rgba(213, 138, 138, .35); }
 @media (max-width: 640px) {
