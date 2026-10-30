@@ -14,7 +14,7 @@
     valid: 'سجل الإصدار وسلامة النسخة مطابقان', openVerify: 'فتح سجل التحقق',
     expires: 'تنتهي صلاحية رابط المشاركة في',
     print: 'طباعة / حفظ PDF', protected: 'مشاهدة محمية',
-    screenshotNotice: 'إخفاء أدوات الطباعة والتنزيل والنسخ يقلل النسخ غير المصرح به، لكنه لا يمنع تصوير الشاشة أو أدوات المتصفح.',
+    screenshotNotice: 'لا يستطيع موقع ويب منع لقطات الشاشة أو التسجيل من النظام أو المتصفح. تُخفى البيانات عند انتقال الصفحة إلى الخلفية إذا أبلغ المتصفح بذلك.',
     verifyOnly: 'حالة الإصدار والتحقق فقط', validStatus: 'وثيقة صحيحة', revoked: 'وثيقة ملغاة',
     expired: 'وثيقة منتهية', failed: 'تعذر التحقق من سلامة الوثيقة',
     notVerified: 'الوثيقة غير متحققة', notFound: 'الوثيقة غير موجودة',
@@ -29,7 +29,7 @@
     denied: 'Your account is not authorized to view this document.', loading: 'Loading document…',
     openVerify: 'Open verification record', print: 'Print / Save PDF', expires: 'Share link expires',
     protected: 'Protected viewing',
-    screenshotNotice: 'Hiding print, download, and copy controls reduces casual copying; it cannot prevent screenshots, photographs, or browser-level access.',
+    screenshotNotice: 'A website cannot prevent operating-system or browser screenshots and recordings. Data is masked when the browser reports that the page is in the background.',
     verifyOnly: 'Issue and verification status only', validStatus: 'DOCUMENT VALID', revoked: 'DOCUMENT REVOKED',
     expired: 'DOCUMENT EXPIRED', failed: 'DOCUMENT INTEGRITY CHECK FAILED',
     notVerified: 'DOCUMENT NOT VERIFIED', notFound: 'DOCUMENT NOT FOUND',
@@ -80,18 +80,44 @@
   }
 
   async function loadShare() {
-    if (!token || token.length > 200) return showError();
+    if (!token || token.length > 200) {
+      showError();
+      return true;
+    }
     const response = await fetch(`/api/osd/share/${encodeURIComponent(token)}`, {
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { Accept: 'application/json' }
     });
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) return showLogin();
-    if (response.status === 403 || response.status === 404) return showError(labels.denied);
-    if (response.status === 410) return showError(labels.invalid);
-    if (!response.ok || !data.document) return showError(data.error || labels.invalid);
+    if (response.status === 401) {
+      showLogin();
+      return true;
+    }
+    if (response.status === 403 || response.status === 404) {
+      showError(labels.denied);
+      return true;
+    }
+    if (response.status === 410) {
+      showError(labels.invalid);
+      return true;
+    }
+    if (!response.ok) return false;
+    if (!data.document) {
+      showError(data.error || labels.invalid);
+      return true;
+    }
     await renderDocument(data);
+    return true;
   }
+
+  window.blackRidgeValidateScreenProtectionSession = async function () {
+    try {
+      return (await loadShare()) === true;
+    } catch {
+      return false;
+    }
+  };
 
   async function renderDocument(data) {
     const doc = data.document;
@@ -211,20 +237,6 @@
   setLoginMode('member');
 
   $('#printButton').addEventListener('click', () => window.print());
-  document.addEventListener('contextmenu', (event) => {
-    if (document.body.classList.contains('protected')) event.preventDefault();
-  });
-  document.addEventListener('copy', (event) => {
-    if (document.body.classList.contains('protected')) event.preventDefault();
-  });
-  document.addEventListener('cut', (event) => {
-    if (document.body.classList.contains('protected')) event.preventDefault();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (!document.body.classList.contains('protected')) return;
-    const key = event.key.toLowerCase();
-    if ((event.ctrlKey || event.metaKey) && ['a', 'c', 'p', 's', 'u', 'x'].includes(key)) event.preventDefault();
-  });
 
   loadShare().catch(() => showError(labels.invalid));
 })();
