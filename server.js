@@ -33,6 +33,7 @@ const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
+const { registerCoverIdentitySocket } = require('./cover-identity');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const {
@@ -200,6 +201,8 @@ const publicAssets = Object.freeze({
   '/blackridge-push-icon-512.png': 'blackridge-push-icon-512.png',
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
+  '/cover-identity.css': 'cover-identity.css',
+  '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
   '/blackridge-cipher.js': 'blackridge-cipher.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
@@ -342,6 +345,7 @@ const EMPTY_STATE = {
   cia_notifications: [],
   cia_web_push_subscriptions: [],
   cia_battalions: [],
+  cia_cover_badges: [],
   ibp_deployments: [],
   ibp_operations: [],
   ibp_intelligence: [],
@@ -408,7 +412,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
     'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
-    'cia_notifications', 'cia_web_push_subscriptions', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
+    'cia_notifications', 'cia_web_push_subscriptions', 'cia_cover_badges', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
@@ -3349,6 +3353,22 @@ io.on(
           if (targetSocket) targetSocket.emit(event, payload);
         }
       }
+    });
+
+    registerCoverIdentitySocket(socket, {
+      requireSocketUser: (activeSocket) => requireSocketUser(activeSocket),
+      getState: () => state,
+      getUsers: () => state.cia_users,
+      getUnits: () => state.cia_battalions,
+      isChief,
+      isSenior,
+      isHighCommander,
+      normalizeRank,
+      makeId,
+      addAuditLog,
+      saveState,
+      ok,
+      no
     });
 
     registerMobilePushSocket(socket, {
