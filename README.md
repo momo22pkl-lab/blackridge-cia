@@ -9,6 +9,12 @@
 
 Never put DATABASE_URL in source control or paste it into chat. Configure it as an environment variable in Render. When migrating an existing service, restore or attach any old JSON state file before the first database startup; files already lost from an ephemeral filesystem cannot be recovered by the migration.
 
+## Weapon Armory
+
+The main CIA dashboard includes a sector-scoped WEAPON ARMORY. Members can see only the enabled stock for their active sector, hold at most three active weapon issues across their account, and return only weapons whose sector-specific policy permits it; the return policy is recorded with each issue. Stock decrements, issue records, returns, and audit results are committed together in PostgreSQL transactions; the server locks the member row to enforce the limit across concurrent requests. Sector commanders with the existing rank/code scope can inspect their sector's records read-only. Only CIA CHIEF and SUPREME COMMANDER can manage the catalog and sector assignments, set each sector's return policy, adjust stock with a required reason, and search issue/audit history across their existing scope. These are server-side permissions.
+
+The armory creates its own additive PostgreSQL tables at startup. It is intentionally disabled when `DATABASE_URL` is absent rather than falling back to browser storage or the local JSON state file. Sector access follows the `sector` value on active CIA battalion records; keep those assignments current when sector names change. No additional environment variables are required.
+
 ## First CIA CHIEF setup
 
 Before claiming the first CIA CHIEF, set `CIA_CHIEF_REGISTRATION_CODE` and `CIA_CHIEF_SAVE_CODE` as server-side environment variables in Render. Use different random values of at least 24 characters. Do not commit them to the repository or store them in browser storage. The server removes these fields from legacy persisted state when loading it, and new snapshots do not contain them. Existing chief accounts can continue to log in without these bootstrap variables.
