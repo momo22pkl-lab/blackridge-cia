@@ -33,8 +33,10 @@ const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
 const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-bootstrap');
 const { registerOfficialWarnings } = require('./official-warnings');
-const { registerCoverIdentitySocket } = require('./cover-identity');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
+const { WeaponArmoryStore } = require('./weapon-armory-store');
+const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
+const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const {
   accountIdentity,
@@ -143,6 +145,7 @@ let postgresPool = null;
 let stateStore = null;
 let notificationsStore = null;
 let mobilePushStore = null;
+let weaponArmoryStore = null;
 let appEntryHtml = null;
 const mobilePushTransport = createWebPushTransport();
 
@@ -201,6 +204,8 @@ const publicAssets = Object.freeze({
   '/blackridge-push-icon-512.png': 'blackridge-push-icon-512.png',
   '/official-warnings.css': 'official-warnings.css',
   '/official-warnings-client.js': 'official-warnings-client.js',
+  '/weapon-armory.css': 'weapon-armory.css',
+  '/weapon-armory-client.js': 'weapon-armory-client.js',
   '/cover-identity.css': 'cover-identity.css',
   '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
@@ -236,7 +241,9 @@ app.get(['/', '/index.html'], (req, res) => {
   }
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
-    return res.status(200).type('html').send(injectMobilePushMarkup(appEntryHtml));
+    return res.status(200).type('html').send(
+      injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))
+    );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
   }
@@ -344,8 +351,8 @@ const EMPTY_STATE = {
   cia_operations: [],
   cia_notifications: [],
   cia_web_push_subscriptions: [],
-  cia_battalions: [],
   cia_cover_badges: [],
+  cia_battalions: [],
   ibp_deployments: [],
   ibp_operations: [],
   ibp_intelligence: [],
@@ -3356,7 +3363,7 @@ io.on(
     });
 
     registerCoverIdentitySocket(socket, {
-      requireSocketUser: (activeSocket) => requireSocketUser(activeSocket),
+      requireSocketUser,
       getState: () => state,
       getUsers: () => state.cia_users,
       getUnits: () => state.cia_battalions,
@@ -11174,6 +11181,16 @@ io.on('connection', (socket) => {
   });
 });
 
+io.on('connection', (socket) => {
+  registerWeaponArmorySocket(socket, {
+    getStore: () => weaponArmoryStore,
+    getState: () => state,
+    requireUser: () => requireSocketUser(socket),
+    isLeadership,
+    rankLevel
+  });
+});
+
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
@@ -11222,15 +11239,20 @@ async function initializePersistence() {
     await notificationsStore.initialize();
     mobilePushStore = new WebPushStore(postgresPool);
     await mobilePushStore.initialize();
+    weaponArmoryStore = new WeaponArmoryStore(postgresPool, { makeId });
+    await weaponArmoryStore.initialize();
     installPersistenceEmitBarriers();
     console.log('[BLACK RIDGE] PostgreSQL state store ready.');
     console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
+    console.log('[BLACK RIDGE] PostgreSQL weapon armory store ready.');
     return;
   }
 
+  weaponArmoryStore = null;
   if (IS_RENDER_RUNTIME) {
     console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
   }
+  console.warn('[BLACK RIDGE] Weapon armory is disabled without PostgreSQL; issue, return, and stock changes fail closed.');
 
   prepareFileStorage();
   state = loadState();

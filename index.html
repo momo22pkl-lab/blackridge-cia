@@ -7,7 +7,6 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/notifications.css" rel="stylesheet">
   <link href="/official-warnings.css" rel="stylesheet">
-  <link href="/cover-identity.css" rel="stylesheet">
   <link href="/blackridge-cipher.css" rel="stylesheet">
   <style id="profanity-strike-dialog-css">
 #pr-strike-overlay{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:14px;background:rgba(0,0,0,.86);backdrop-filter:blur(5px)}
@@ -2174,7 +2173,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       <li class="nav-btn" onclick="showPane('identity-directory', this)"><i class="fa-solid fa-id-card"></i> الهويات العامة</li>
       <li class="nav-btn" onclick="openCharactersManager()"><i class="fa-solid fa-users-gear"></i> شخصياتي</li>
       <li id="chief-nav" class="nav-btn" style="display: none;" onclick="showPane('chief-panel', this)"><i class="fa-solid fa-user-gear"></i> إدارة القيادة</li>
-      <li id="cover-identity-nav" class="nav-btn" style="display: none;" onclick="showPane('cover-identity-view', this)"><i class="fa-solid fa-address-card"></i> الهويات الميدانية</li>
       <li id="official-warnings-nav" class="nav-btn" style="display: none;" onclick="showPane('official-warnings-view', this)"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red-alert);"></i> التحذيرات الرسمية</li>
       <li id="audit-nav" class="nav-btn" style="display: none;" onclick="showPane('audit-panel', this)"><i class="fa-solid fa-clock-rotate-left"></i> السجلات اليومية</li>
       <li id="security-nav" class="nav-btn" style="display: none;" onclick="showPane('security-panel', this)"><i class="fa-solid fa-shield-halved"></i> مركز الأمن</li>
@@ -11174,7 +11172,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
 </script>
   <script src="/notifications-client.js"></script>
   <script src="/official-warnings-client.js"></script>
-  <script src="/cover-identity-client.js"></script>
   <script>
   (() => {
     'use strict';

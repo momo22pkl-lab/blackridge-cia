@@ -526,6 +526,30 @@ function createCoverIdentity(ctx) {
   return { handlers, scopeFor, canView, view, sweepExpired, sweepAndPersist, startExpirySweep };
 }
 
+function injectCoverIdentityMarkup(html) {
+  let output = String(html || '');
+  if (!output.includes('href="/cover-identity.css"')) {
+    output = output.replace(
+      /<\/head>/i,
+      '  <link rel="stylesheet" href="/cover-identity.css">\n</head>'
+    );
+  }
+  if (!output.includes('id="cover-identity-nav"')) {
+    const navItem = '<li id="cover-identity-nav" class="nav-btn" style="display: none;" onclick="showPane(\'cover-identity-view\', this)"><i class="fa-solid fa-address-card"></i> الهويات الميدانية</li>';
+    output = output.replace(
+      /(<li id="chief-nav"[^>]*>[\s\S]*?<\/li>)/i,
+      (match) => match + '\n      ' + navItem
+    );
+  }
+  if (!output.includes('src="/cover-identity-client.js"')) {
+    output = output.replace(
+      /<\/body>/i,
+      '  <script src="/cover-identity-client.js"></script>\n</body>'
+    );
+  }
+  return output;
+}
+
 function registerCoverIdentitySocket(socket, ctx) {
   const api = createCoverIdentity(ctx);
   api.startExpirySweep();
@@ -563,6 +587,7 @@ module.exports = {
   BADGE_TYPES,
   LIMITS,
   createCoverIdentity,
+  injectCoverIdentityMarkup,
   registerCoverIdentitySocket,
   effectiveStatus,
   normalizeBadgeNumber,

@@ -20,6 +20,7 @@ test('the configured start command points to an existing server entry point', ()
 test('the server does not expose the whole repository as static files', () => {
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server.js'), 'utf8');
   assert.doesNotMatch(serverSource, /express\.static\(__dirname\)/);
+  assert.match(serverSource, /injectWeaponArmoryMarkup\(injectMobilePushMarkup\(appEntryHtml\)\)/);
   for (const publicPath of [
     '/notifications.css',
     '/notifications-client.js',
@@ -27,6 +28,8 @@ test('the server does not expose the whole repository as static files', () => {
     '/ibp/ibp.js',
     '/official-warnings.css',
     '/official-warnings-client.js',
+    '/weapon-armory.css',
+    '/weapon-armory-client.js',
     '/mobile-push-client.js',
     '/manifest.webmanifest',
     '/blackridge-push-icon-192.png',

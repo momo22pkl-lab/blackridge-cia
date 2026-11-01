@@ -2,10 +2,22 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { BADGE_TYPES, createCoverIdentity } = require('../cover-identity');
+const { BADGE_TYPES, createCoverIdentity, injectCoverIdentityMarkup } = require('../cover-identity');
 
 const DAY = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+test('injects the cover identity entry point without duplicating markup', () => {
+  const html = '<html><head></head><body><li id="chief-nav">Leadership</li></body></html>';
+  const injected = injectCoverIdentityMarkup(html);
+  assert.match(injected, /href="\/cover-identity\.css"/);
+  assert.match(injected, /id="cover-identity-nav"/);
+  assert.match(injected, /src="\/cover-identity-client\.js"/);
+  assert.ok(injected.indexOf('id="cover-identity-nav"') > injected.indexOf('id="chief-nav"'));
+  const twice = injectCoverIdentityMarkup(injected);
+  assert.equal((twice.match(/id="cover-identity-nav"/g) || []).length, 1);
+  assert.equal((twice.match(/cover-identity-client\.js/g) || []).length, 1);
+});
 
 function makeUser(id, name, publicCode, rank, fullName) {
   return { id, name, publicCode, rank, identity: { fullName: fullName || name } };
