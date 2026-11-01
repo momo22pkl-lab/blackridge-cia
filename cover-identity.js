@@ -26,12 +26,14 @@ const LIMITS = Object.freeze({
   ownerRenewDays: 30,
   maxPhotoChars: 350000,
   maxPageSize: 50,
-  maxActivityRows: 100
+  maxActivityRows: 100,
+  expirySweepIntervalMs: 30000
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PHOTO_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const NUMBER_PATTERN = /^[A-Z0-9][A-Z0-9-]{2,22}[A-Z0-9]$/;
+let expirySweepTimer = null;
 
 function text(value, max) {
   return String(value == null ? '' : value)
@@ -178,7 +180,15 @@ function createCoverIdentity(ctx) {
       if (badge.status === 'ACTIVE' && effectiveStatus(badge, current) === 'EXPIRED') {
         badge.status = 'EXPIRED';
         badge.updatedAt = nowIso();
+        if (!Array.isArray(badge.history)) badge.history = [];
         badge.history.push(event('EXPIRED', null, 'انتهت صلاحية البادج تلقائيًا.'));
+        const owner = badge.owner || {};
+        ctx.addAuditLog(
+          'COVER_BADGE_EXPIRED',
+          null,
+          { id: owner.userId || null, name: owner.name || '', publicCode: owner.militaryCode || '' },
+          'badge=' + badge.badgeNumber
+        );
         changed = true;
       }
     }
@@ -234,21 +244,49 @@ function createCoverIdentity(ctx) {
   }
 
   async function persist(backup, actor, action, owner, details) {
+    const state = ctx.getState();
+    const auditBackup = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : null;
     try {
       ctx.addAuditLog(action, actor, owner, details);
       await ctx.saveState();
       return null;
     } catch (error) {
-      ctx.getState().cia_cover_badges = backup;
+      state.cia_cover_badges = backup;
+      if (auditBackup) state.cia_audit_logs = auditBackup;
       return 'تعذر حفظ التغيير. أعد المحاولة.';
     }
   }
 
   const snapshotBadges = () => badges().map((badge) => ({
     ...badge,
-    owner: { ...badge.owner },
-    history: badge.history.map((item) => ({ ...item }))
+    owner: { ...(badge.owner || {}) },
+    history: Array.isArray(badge.history) ? badge.history.map((item) => ({ ...item })) : []
   }));
+
+  async function sweepAndPersist() {
+    const state = ctx.getState();
+    const badgeBackup = snapshotBadges();
+    const auditBackup = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : null;
+    if (!sweepExpired()) return false;
+    try {
+      await ctx.saveState();
+      return true;
+    } catch (_error) {
+      state.cia_cover_badges = badgeBackup;
+      if (auditBackup) state.cia_audit_logs = auditBackup;
+      return false;
+    }
+  }
+
+  function startExpirySweep() {
+    if (expirySweepTimer) return;
+    expirySweepTimer = setInterval(() => {
+      sweepAndPersist().catch((error) => {
+        console.error('[BLACK RIDGE] cover identity expiry sweep failed:', error && error.message);
+      });
+    }, LIMITS.expirySweepIntervalMs);
+    if (expirySweepTimer && typeof expirySweepTimer.unref === 'function') expirySweepTimer.unref();
+  }
 
   function find(id) {
     const wanted = text(id, 120);
@@ -424,14 +462,13 @@ function createCoverIdentity(ctx) {
     },
 
     async mine(actor) {
-      if (sweepExpired()) {
-        try { await ctx.saveState(); } catch (_error) { /* next request retries the sweep */ }
-      }
+      await sweepAndPersist();
       const rows = badges().filter((badge) => isOwner(actor, badge)).map((badge) => view(badge, actor, { withPhoto: true, withHistory: true }));
       return { ok: true, badges: rows };
     },
 
     async get(actor, payload) {
+      await sweepAndPersist();
       const badge = find(payload && payload.id);
       if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
       return { ok: true, badge: view(badge, actor, { withPhoto: true, withHistory: true }) };
@@ -440,9 +477,7 @@ function createCoverIdentity(ctx) {
     async adminList(actor, payload) {
       const scope = scopeFor(actor);
       if (scope === 'OWN' || scope === 'NONE') return { ok: false, message: 'لوحة القيادة متاحة للقيادة فقط.' };
-      if (sweepExpired()) {
-        try { await ctx.saveState(); } catch (_error) { /* next request retries the sweep */ }
-      }
+      await sweepAndPersist();
       const query = text(payload && payload.query, 80).toLowerCase();
       const type = text(payload && payload.type, 20).toUpperCase();
       const status = text(payload && payload.status, 20).toUpperCase();
@@ -468,6 +503,7 @@ function createCoverIdentity(ctx) {
     async adminActivity(actor) {
       const scope = scopeFor(actor);
       if (scope === 'OWN' || scope === 'NONE') return { ok: false, message: 'لوحة القيادة متاحة للقيادة فقط.' };
+      await sweepAndPersist();
       const feed = [];
       for (const badge of badges()) {
         if (!canView(actor, badge)) continue;
@@ -487,11 +523,12 @@ function createCoverIdentity(ctx) {
     }
   };
 
-  return { handlers, scopeFor, canView, view, sweepExpired };
+  return { handlers, scopeFor, canView, view, sweepExpired, sweepAndPersist, startExpirySweep };
 }
 
 function registerCoverIdentitySocket(socket, ctx) {
   const api = createCoverIdentity(ctx);
+  api.startExpirySweep();
   const bind = (eventName, handlerName) => {
     socket.on(eventName, async (payload, callback) => {
       const actor = ctx.requireSocketUser(socket);
