@@ -44,7 +44,7 @@ function makeCanvas() {
   };
 }
 
-test('renders six distinct fictional badge themes and visible expiry/revocation status', async () => {
+test('renders distinct badge themes without presenting an unreviewed identity as approved', async () => {
   const document = {
     readyState: 'loading',
     addEventListener() {},
@@ -69,16 +69,36 @@ test('renders six distinct fictional badge themes and visible expiry/revocation 
       sector: 'Special Projects',
       createdAt: '2026-01-01T00:00:00.000Z',
       expiresAt: '2026-01-08T23:59:00.000Z',
-      status: 'ACTIVE'
+      status: 'PENDING_REVIEW',
+      reviewStatus: 'PENDING_REVIEW',
+      isApproved: false
     });
     assert.equal(output.canvas.width, 1011);
     assert.equal(output.canvas.height, 638);
-    assert.ok(output.renderedText.some((text) => text.includes('FICTIONAL IN-GAME DOCUMENT')));
-    assert.ok(output.renderedText.some((text) => text.includes('NOT A REAL ID')));
+    assert.ok(output.renderedText.some((text) => text.includes('قيد المراجعة — غير معتمدة')));
+    assert.ok(output.renderedText.some((text) => text.includes('PENDING REVIEW · NOT APPROVED')));
+    assert.equal(output.renderedText.some((text) => text.includes('هوية معتمدة رسميًا داخل BLACKRIDGE CITY ROLEPLAY')), false);
+    assert.equal(output.renderedText.some((text) => text.includes('وثيقة خيالية خاصة')), false);
   }
 
-  const expired = makeCanvas();
-  await renderer.drawBadge(expired.canvas, {
+  const approved = makeCanvas();
+  await renderer.drawBadge(approved.canvas, {
+    type: 'MILITARY',
+    badgeNumber: 'MIL-654321',
+    alias: 'Raven',
+    title: 'Field Analyst',
+    sector: 'Special Projects',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    expiresAt: '2026-01-08T23:59:00.000Z',
+    status: 'ACTIVE',
+    reviewStatus: 'APPROVED',
+    isApproved: true
+  });
+  assert.ok(approved.renderedText.includes('هوية معتمدة رسميًا داخل BLACKRIDGE CITY ROLEPLAY، وقد تمت مراجعتها والموافقة عليها من الجهات المخوّلة.'));
+  assert.ok(approved.renderedText.includes('APPROVED IN BLACKRIDGE CITY ROLEPLAY ONLY · NOT A GOVERNMENT ID'));
+
+  const rejected = makeCanvas();
+  await renderer.drawBadge(rejected.canvas, {
     type: 'POLICE',
     badgeNumber: 'PD-123456',
     alias: 'Raven',
@@ -86,7 +106,11 @@ test('renders six distinct fictional badge themes and visible expiry/revocation 
     sector: 'Field Office',
     createdAt: '2026-01-01T00:00:00.000Z',
     expiresAt: '2026-01-08T23:59:00.000Z',
-    status: 'REVOKED'
+    status: 'REJECTED',
+    reviewStatus: 'REJECTED',
+    isApproved: false
   });
-  assert.ok(expired.renderedText.includes('ملغى'));
+  assert.ok(rejected.renderedText.includes('مرفوضة — غير معتمدة داخل النظام'));
+  assert.ok(rejected.renderedText.includes('REJECTED · NOT APPROVED'));
+  assert.equal(rejected.renderedText.some((text) => text.includes('هوية معتمدة رسميًا')), false);
 });

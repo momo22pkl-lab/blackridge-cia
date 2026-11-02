@@ -15,6 +15,8 @@
 .cvr-meta { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; gap: 8px; flex-wrap: wrap; font-size: .85rem; color: #cbd5e1; }
 .cvr-chip { padding: 2px 10px; border-radius: 999px; font-size: .75rem; font-weight: bold; border: 1px solid currentColor; }
 .cvr-chip.ACTIVE { color: #34d399; }
+.cvr-chip.PENDING_REVIEW { color: #facc15; }
+.cvr-chip.REJECTED { color: #f87171; }
 .cvr-chip.EXPIRED { color: #fbbf24; }
 .cvr-chip.DISABLED { color: #fb923c; }
 .cvr-chip.REVOKED { color: #f87171; }

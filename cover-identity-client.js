@@ -8,12 +8,20 @@
   const FONT = '"Tajawal","Segoe UI",Tahoma,Arial,sans-serif';
   const W = 1011;
   const H = 638;
-  const NOTICE_AR = 'وثيقة خيالية خاصة بـ BLACKRIDGE CITY ROLEPLAY — ليست هوية رسمية';
-  const NOTICE_EN = 'FICTIONAL IN-GAME DOCUMENT · BLACKRIDGE CITY ROLEPLAY · NOT A REAL ID';
-  const STATUS_AR = { ACTIVE: 'فعّال', EXPIRED: 'منتهي', DISABLED: 'معطّل', REVOKED: 'ملغى' };
+  const NOTICE_AR = 'هوية معتمدة رسميًا داخل BLACKRIDGE CITY ROLEPLAY، وقد تمت مراجعتها والموافقة عليها من الجهات المخوّلة.';
+  const NOTICE_EN = 'APPROVED IN BLACKRIDGE CITY ROLEPLAY ONLY · NOT A GOVERNMENT ID';
+  const STATUS_AR = {
+    ACTIVE: 'فعّال',
+    PENDING_REVIEW: 'قيد المراجعة',
+    REJECTED: 'مرفوض',
+    EXPIRED: 'منتهي',
+    DISABLED: 'معطّل',
+    REVOKED: 'ملغى'
+  };
   const ACTION_AR = {
     CREATED: 'إنشاء', UPDATED: 'تعديل', RENEWED: 'تجديد', REVOKED: 'إلغاء',
-    DISABLED: 'تعطيل', ENABLED: 'إعادة تفعيل', EXPIRED: 'انتهاء تلقائي'
+    DISABLED: 'تعطيل', ENABLED: 'إعادة تفعيل', EXPIRED: 'انتهاء تلقائي',
+    APPROVED: 'اعتماد', REJECTED: 'رفض'
   };
   const THEMES = {
     MILITARY: { bg: ['#2b3320', '#141810'], accent: '#c9b458', band: '#3a4528', text: '#f1ecd0', sub: '#c8c39a', en: 'MILITARY IDENTIFICATION', ar: 'هوية عسكرية', pattern: 'stripes' },
@@ -250,10 +258,18 @@
       put(ctx, row[1], x, 504, { size: 28, color: theme.text, dir: row[2], weight: '800', max: 214 });
     });
 
-    // footer disclaimer
+    // Only a server-approved badge receives the in-game approval statement.
     ctx.fillStyle = theme.band; ctx.globalAlpha = 0.92; ctx.fillRect(0, 548, W, 90); ctx.globalAlpha = 1;
-    put(ctx, NOTICE_AR, W / 2, 588, { size: 24, color: headText, align: 'center', weight: '700', max: W - 60 });
-    put(ctx, NOTICE_EN, W / 2, 620, { size: 15, color: headText, align: 'center', dir: 'ltr', weight: '600', max: W - 60 });
+    const approved = badge.isApproved === true;
+    const approvalStatus = badge.reviewStatus || 'PENDING_REVIEW';
+    const footerAr = approved
+      ? NOTICE_AR
+      : approvalStatus === 'REJECTED' ? 'مرفوضة — غير معتمدة داخل النظام' : 'قيد المراجعة — غير معتمدة';
+    const footerEn = approved
+      ? NOTICE_EN
+      : approvalStatus === 'REJECTED' ? 'REJECTED · NOT APPROVED' : 'PENDING REVIEW · NOT APPROVED';
+    put(ctx, footerAr, W / 2, 588, { size: 24, color: headText, align: 'center', weight: '700', max: W - 60 });
+    put(ctx, footerEn, W / 2, 620, { size: 15, color: headText, align: 'center', dir: 'ltr', weight: '600', max: W - 60 });
 
     // status stamp
     if (badge.status && badge.status !== 'ACTIVE') {
@@ -368,7 +384,8 @@
       const typeKey = editing ? editing.type : typeSelect.value;
       const sample = {
         type: typeKey, badgeNumber: inputs.number.value || 'AUTO-000000', alias: inputs.alias.value || 'الاسم المستعار',
-        title: inputs.title.value || 'الرتبة', sector: inputs.sector.value || 'الجهة', status: 'ACTIVE',
+        title: inputs.title.value || 'الرتبة', sector: inputs.sector.value || 'الجهة',
+        status: 'PENDING_REVIEW', reviewStatus: 'PENDING_REVIEW', isApproved: false,
         createdAt: editing ? editing.createdAt : new Date().toISOString(), expiresAt: inputs.expires.value ? endOfDayIso(inputs.expires.value) : new Date().toISOString(),
         photo: photoData
       };
@@ -396,7 +413,7 @@
       if (!reply.ok) return setMsg(reply.message, 'error');
       S.editing = null; S.tab = 'mine';
       await loadMine();
-      setMsg(editing ? 'تم حفظ التعديلات.' : 'تم إنشاء البادج برقم ' + reply.badge.badgeNumber + '.', 'ok');
+      setMsg(editing ? 'تم حفظ التعديلات وإرسال الهوية للمراجعة.' : 'تم إنشاء البادج برقم ' + reply.badge.badgeNumber + ' وإرساله للمراجعة.', 'ok');
       render();
     } });
     const cancel = editing ? h('button', { type: 'button', class: 'cvr-btn', text: 'إلغاء التعديل', onclick: () => { S.editing = null; S.tab = 'mine'; render(); } }) : null;
@@ -451,14 +468,19 @@
       h('td', { text: b.owner.name + ' (' + b.owner.militaryCode + ')' }),
       h('td', { text: day(b.createdAt) }), h('td', { text: day(b.expiresAt) }),
       h('td', null, h('span', { class: 'cvr-chip ' + b.status, text: STATUS_AR[b.status] || b.status }))));
-    const feed = S.activity.map((a) => h('li', { text: stamp(a.at) + ' · ' + (ACTION_AR[a.action] || a.action) + ' · ' + a.badgeNumber + ' · ' + a.ownerName + ' (' + a.ownerCode + ') · بواسطة ' + a.byName + (a.note ? ' — ' + a.note : '') }));
+    const feed = S.activity.map((a) => {
+      const reviewer = ['APPROVED', 'REJECTED'].includes(a.action)
+        ? ' · ' + [a.byCode, a.byRank, a.bySector].filter(Boolean).join(' · ')
+        : '';
+      return h('li', { text: stamp(a.at) + ' · ' + (ACTION_AR[a.action] || a.action) + ' · ' + a.badgeNumber + ' · ' + a.ownerName + ' (' + a.ownerCode + ') · بواسطة ' + a.byName + reviewer + (a.note ? ' — ' + a.note : '') });
+    });
     return h('div', null,
       h('div', { class: 'cvr-filters' }, query, type, status, h('button', { type: 'button', class: 'cvr-btn primary', text: 'بحث', onclick: run })),
-      h('div', { class: 'cvr-empty', text: 'عدد النتائج: ' + S.adminTotal + (S.meta && S.meta.scope === 'BATTALION' ? ' (أفراد كتيبتك فقط)' : '') }),
+      h('div', { class: 'cvr-empty', text: 'عدد النتائج: ' + S.adminTotal + (S.meta && S.meta.scope === 'SECTOR' ? ' (أفراد قطاعك فقط)' : '') }),
       h('div', { class: 'cvr-table-wrap' }, h('table', { class: 'cvr-table' },
         h('thead', null, h('tr', null, ['الرقم', 'النوع', 'الاسم المستعار', 'العضو الحقيقي', 'الإنشاء', 'الانتهاء', 'الحالة'].map((t) => h('th', { text: t })))),
         h('tbody', null, rows))),
-      h('h3', { text: 'آخر العمليات (إنشاء · تعديل · إلغاء)' }),
+      h('h3', { text: 'آخر العمليات (إنشاء · مراجعة · اعتماد · رفض · تعديل · إلغاء)' }),
       h('ul', { class: 'cvr-feed' }, feed));
   }
 
@@ -467,7 +489,13 @@
     if (!reply.ok) return setMsg(reply.message, 'error');
     const badge = reply.badge;
     const overlay = h('div', { class: 'cvr-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
-    const reason = h('textarea', { rows: 2, maxlength: 300, placeholder: 'السبب (مطلوب للإلغاء أو التعطيل)' });
+    const reason = h('textarea', {
+      rows: 2,
+      maxlength: 300,
+      placeholder: badge.can.reject
+        ? 'سبب الرفض (مطلوب عند الرفض)'
+        : 'سبب الإلغاء أو التعطيل (مطلوب)'
+    });
     const renewDate = h('input', { type: 'date', value: inDays(7) });
     const msg = h('div', { class: 'cvr-msg' });
     const act = (label, cls, fn) => h('button', { type: 'button', class: 'cvr-btn ' + cls, text: label, onclick: async () => {
@@ -476,6 +504,12 @@
       overlay.remove(); await refreshTab(); setMsg('تم تنفيذ العملية.', 'ok'); render();
     } });
     const actions = [h('button', { type: 'button', class: 'cvr-btn', text: 'تنزيل PNG', onclick: () => downloadBadge(badge) })];
+    if (badge.can.approve) {
+      actions.push(act('اعتماد الهوية', 'primary', () => call('cover:approve', { id })));
+    }
+    if (badge.can.reject) {
+      actions.push(act('رفض الهوية', 'danger', () => call('cover:reject', { id, reason: reason.value })));
+    }
     if (badge.can.renew) actions.push(renewDate, act('تجديد', '', () => call('cover:renew', { id, expiresAt: endOfDayIso(renewDate.value) })));
     if (badge.can.revoke) actions.push(act('إلغاء البادج', 'danger', () => call('cover:revoke', { id, reason: reason.value })));
     if (badge.can.disable) actions.push(act('تعطيل', 'danger', () => call('cover:disable', { id, reason: reason.value })));
@@ -487,10 +521,15 @@
         h('span', { class: 'cvr-chip ' + badge.status, text: STATUS_AR[badge.status] || badge.status })),
       h('div', { class: 'cvr-meta', text: 'المهمة: ' + badge.purpose }),
       badge.statusReason ? h('div', { class: 'cvr-meta', text: 'سبب الحالة: ' + badge.statusReason }) : null,
-      (badge.can.revoke || badge.can.disable) ? reason : null,
+      (badge.can.revoke || badge.can.disable || badge.can.reject) ? reason : null,
       h('div', { class: 'cvr-actions' }, actions),
       msg,
-      h('ul', { class: 'cvr-history' }, (badge.history || []).slice().reverse().map((e) => h('li', { text: stamp(e.at) + ' · ' + (ACTION_AR[e.action] || e.action) + ' · ' + e.byName + (e.note ? ' — ' + e.note : '') }))),
+      h('ul', { class: 'cvr-history' }, (badge.history || []).slice().reverse().map((e) => {
+        const reviewer = ['APPROVED', 'REJECTED'].includes(e.action)
+          ? ' · ' + [e.byCode, e.byRank, e.bySector].filter(Boolean).join(' · ')
+          : '';
+        return h('li', { text: stamp(e.at) + ' · ' + (ACTION_AR[e.action] || e.action) + ' · ' + e.byName + reviewer + (e.note ? ' — ' + e.note : '') });
+      })),
       h('div', { class: 'cvr-actions' }, h('button', { type: 'button', class: 'cvr-btn', text: 'إغلاق', onclick: () => overlay.remove() }))));
     document.body.append(overlay);
   }
