@@ -69,6 +69,12 @@
 
   const day = (iso) => String(iso || '').slice(0, 10);
   const stamp = (iso) => String(iso || '').slice(0, 16).replace('T', ' ');
+  function ownerInfo(owner) {
+    const fields = [];
+    if (owner && owner.name) fields.push('الاسم الحقيقي: ' + owner.name);
+    if (owner && owner.militaryCode) fields.push('الكود العسكري: ' + owner.militaryCode);
+    return fields.join(' · ') || '—';
+  }
   function inDays(count) {
     const d = new Date(Date.now() + count * 86400000);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -308,7 +314,12 @@
     const leftColumn = 620;
     const columnWidth = 326;
     drawIdentityCell(ctx, 'الرتبة / الصفة', badge.title, right, 250, columnWidth, theme, 'rtl');
-    drawIdentityCell(ctx, 'الكود العسكري', badge.owner && badge.owner.militaryCode, leftColumn, 250, columnWidth, theme, 'ltr');
+    const ownerName = badge.owner && badge.owner.name;
+    const ownerCode = badge.owner && badge.owner.militaryCode;
+    const ownerCardField = ownerName && !ownerCode
+      ? { label: 'الاسم الحقيقي', value: ownerName, dir: 'rtl' }
+      : { label: 'الكود العسكري', value: ownerCode, dir: 'ltr' };
+    drawIdentityCell(ctx, ownerCardField.label, ownerCardField.value, leftColumn, 250, columnWidth, theme, ownerCardField.dir);
     drawIdentityCell(ctx, 'القطاع / الجهة', badge.sector, right, 334, columnWidth, theme, 'rtl');
     drawIdentityCell(ctx, 'رقم الهوية الفريد', badge.badgeNumber, leftColumn, 334, columnWidth, theme, 'ltr');
     drawIdentityCell(ctx, 'تاريخ الإصدار', day(badge.createdAt), right, 418, columnWidth, theme, 'ltr');
@@ -523,20 +534,29 @@
     const rows = S.admin.map((b) => h('tr', null,
       h('td', null, h('button', { type: 'button', class: 'cvr-btn', text: b.badgeNumber, onclick: () => openDetail(b.id) })),
       h('td', { text: b.typeLabel }), h('td', { text: b.alias }),
-      h('td', { text: b.owner.name + ' (' + b.owner.militaryCode + ')' }),
+      h('td', { text: ownerInfo(b.owner) }),
       h('td', { text: day(b.createdAt) }), h('td', { text: day(b.expiresAt) }),
-      h('td', null, h('span', { class: 'cvr-chip ' + b.status, text: STATUS_AR[b.status] || b.status }))));
+      h('td', null, h('span', { class: 'cvr-chip ' + b.status, text: STATUS_AR[b.status] || b.status })),
+      h('td', null, b.can && b.can.approve
+        ? h('button', { type: 'button', class: 'cvr-btn primary', text: 'اعتماد الهوية', onclick: async () => {
+          const result = await call('cover:approve', { id: b.id });
+          if (!result.ok) return setMsg(result.message, 'error');
+          await loadAdmin();
+          renderBody();
+          setMsg('تم اعتماد الهوية.', 'ok');
+        } })
+        : h('span', { class: 'cvr-empty', text: '—' }))));
     const feed = S.activity.map((a) => {
       const reviewer = ['APPROVED', 'REJECTED'].includes(a.action)
         ? ' · ' + [a.byCode, a.byRank, a.bySector].filter(Boolean).join(' · ')
         : '';
-      return h('li', { text: stamp(a.at) + ' · ' + (ACTION_AR[a.action] || a.action) + ' · ' + a.badgeNumber + ' · ' + a.ownerName + ' (' + a.ownerCode + ') · بواسطة ' + a.byName + reviewer + (a.note ? ' — ' + a.note : '') });
+      return h('li', { text: stamp(a.at) + ' · ' + (ACTION_AR[a.action] || a.action) + ' · ' + a.badgeNumber + ' · ' + ownerInfo({ name: a.ownerName, militaryCode: a.ownerCode }) + ' · بواسطة ' + a.byName + reviewer + (a.note ? ' — ' + a.note : '') });
     });
     return h('div', null,
       h('div', { class: 'cvr-filters' }, query, type, status, h('button', { type: 'button', class: 'cvr-btn primary', text: 'بحث', onclick: run })),
       h('div', { class: 'cvr-empty', text: 'عدد النتائج: ' + S.adminTotal + (S.meta && S.meta.scope === 'SECTOR' ? ' (أفراد قطاعك فقط)' : '') }),
       h('div', { class: 'cvr-table-wrap' }, h('table', { class: 'cvr-table' },
-        h('thead', null, h('tr', null, ['الرقم', 'النوع', 'الاسم المستعار', 'العضو الحقيقي', 'الإنشاء', 'الانتهاء', 'الحالة'].map((t) => h('th', { text: t })))),
+        h('thead', null, h('tr', null, ['الرقم', 'النوع', 'الاسم المستعار', 'بيانات العضو', 'الإنشاء', 'الانتهاء', 'الحالة', 'الإجراء'].map((t) => h('th', { text: t })))),
         h('tbody', null, rows))),
       h('h3', { text: 'آخر العمليات (إنشاء · مراجعة · اعتماد · رفض · تعديل · إلغاء)' }),
       h('ul', { class: 'cvr-feed' }, feed));
@@ -575,7 +595,7 @@
     overlay.append(h('div', { class: 'cvr-modal' },
       badgeCanvas(badge),
       h('div', { class: 'cvr-meta' },
-        h('span', { text: 'العضو: ' + badge.owner.name + ' (' + badge.owner.militaryCode + ')' }),
+        h('span', { text: ownerInfo(badge.owner) }),
         h('span', { class: 'cvr-chip ' + badge.status, text: STATUS_AR[badge.status] || badge.status })),
       h('div', { class: 'cvr-meta', text: 'المهمة: ' + badge.purpose }),
       badge.statusReason ? h('div', { class: 'cvr-meta', text: 'سبب الحالة: ' + badge.statusReason }) : null,

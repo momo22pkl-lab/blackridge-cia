@@ -210,6 +210,32 @@ function createCoverIdentity(ctx) {
     return !!actor && !!badge && String(badge.owner.userId) === String(actor.id);
   }
 
+  function ownerVisibility(actor, badge) {
+    const mine = isOwner(actor, badge);
+    return {
+      name: mine || ctx.isChief(actor) || ctx.isHighCommander(actor),
+      militaryCode: mine || ctx.isChief(actor) || ctx.isSenior(actor),
+      rank: mine || ctx.isChief(actor)
+    };
+  }
+
+  function historyItemForViewer(item, actor, badge) {
+    const owner = ownerOf(badge);
+    const ownerCode = owner ? codeOf(owner) : text(badge.owner.militaryCode, 100).toUpperCase();
+    const authorCode = text(item && item.byCode, 100).toUpperCase();
+    const ownerName = owner ? text(owner.name, 120) : text(badge.owner.name, 120);
+    const authorName = text(item && item.byName, 120);
+    const isOwnerAction = (ownerCode && ownerCode === authorCode) ||
+      (!authorCode && ownerName && ownerName === authorName);
+    if (!isOwnerAction) return { ...item };
+    const visible = ownerVisibility(actor, badge);
+    const result = { ...item };
+    if (!visible.name) result.byName = '';
+    if (!visible.militaryCode) result.byCode = '';
+    if (!visible.rank) result.byRank = '';
+    return result;
+  }
+
   function canReview(actor, badge) {
     if (!actor || !badge) return false;
     if (ctx.isSenior(actor)) return true;
@@ -273,6 +299,7 @@ function createCoverIdentity(ctx) {
     const mine = isOwner(actor, badge);
     const review = reviewRecord(badge);
     const status = effectiveStatus(badge, nowMs());
+    const ownerAccess = ownerVisibility(actor, badge);
     const canReviewBadge = canReview(actor, badge) &&
       review.status === REVIEW_STATUS.PENDING &&
       !['REVOKED', 'DISABLED'].includes(badge.status);
@@ -297,9 +324,9 @@ function createCoverIdentity(ctx) {
       hasPhoto: !!badge.photo,
       mine,
       owner: {
-        name: badge.owner.name,
-        militaryCode: badge.owner.militaryCode,
-        rank: badge.owner.rank
+        name: ownerAccess.name ? badge.owner.name : '',
+        militaryCode: ownerAccess.militaryCode ? badge.owner.militaryCode : '',
+        rank: ownerAccess.rank ? badge.owner.rank : ''
       },
       can: {
         edit: mine && !['REVOKED', 'DISABLED'].includes(status),
@@ -314,7 +341,7 @@ function createCoverIdentity(ctx) {
     };
     if (opts.withPhoto) row.photo = badge.photo || '';
     if (opts.withHistory) {
-      row.history = (Array.isArray(badge.history) ? badge.history : []).map((item) => ({ ...item }));
+      row.history = (Array.isArray(badge.history) ? badge.history : []).map((item) => historyItemForViewer(item, actor, badge));
       row.review.decisions = review.decisions;
     } else {
       row.review.decisions = [];
@@ -684,10 +711,15 @@ function createCoverIdentity(ctx) {
         rows = rows.filter((badge) => effectiveStatus(badge, nowMs()) === status);
       }
       if (query) {
-        rows = rows.filter((badge) => [
-          badge.badgeNumber, badge.alias, badge.owner.name, badge.owner.militaryCode, badge.type,
-          BADGE_TYPES[badge.type] ? BADGE_TYPES[badge.type].labelAr : ''
-        ].some((field) => String(field || '').toLowerCase().includes(query)));
+        rows = rows.filter((badge) => {
+          const visibleOwner = ownerVisibility(actor, badge);
+          return [
+            badge.badgeNumber, badge.alias,
+            visibleOwner.name ? badge.owner.name : '',
+            visibleOwner.militaryCode ? badge.owner.militaryCode : '',
+            badge.type, BADGE_TYPES[badge.type] ? BADGE_TYPES[badge.type].labelAr : ''
+          ].some((field) => String(field || '').toLowerCase().includes(query));
+        });
       }
       const total = rows.length;
       const page = rows.slice(offset, offset + limit).map((badge) => view(badge, actor, {}));
@@ -702,13 +734,14 @@ function createCoverIdentity(ctx) {
       for (const badge of badges()) {
         if (!canView(actor, badge)) continue;
         for (const item of badge.history) {
+          const visibleOwner = ownerVisibility(actor, badge);
           feed.push({
-            ...item,
+            ...historyItemForViewer(item, actor, badge),
             badgeNumber: badge.badgeNumber,
             type: badge.type,
             alias: badge.alias,
-            ownerName: badge.owner.name,
-            ownerCode: badge.owner.militaryCode
+            ownerName: visibleOwner.name ? badge.owner.name : '',
+            ownerCode: visibleOwner.militaryCode ? badge.owner.militaryCode : ''
           });
         }
       }
