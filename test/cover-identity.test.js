@@ -81,6 +81,50 @@ function payload(now, overrides) {
   }, overrides || {});
 }
 
+
+test('limits creator identity fields by reviewer role in details, search, and activity', async () => {
+  const f = fixture();
+  const created = await f.api.handlers.create(f.users[3], payload(f.now()));
+  const id = created.badge.id;
+
+  const commander = await f.api.handlers.get(f.users[2], { id });
+  assert.equal(commander.badge.owner.name, 'Real Member Name');
+  assert.equal(commander.badge.owner.militaryCode, '');
+  assert.equal(commander.badge.owner.rank, '');
+  assert.equal(commander.badge.history[0].byName, 'Real Member Name');
+  assert.equal(commander.badge.history[0].byCode, '');
+  assert.equal(commander.badge.history[0].byRank, '');
+  assert.equal(commander.badge.can.approve, true);
+  assert.equal((await f.api.handlers.adminList(f.users[2], { query: 'Real Member Name' })).total, 1);
+  assert.equal((await f.api.handlers.adminList(f.users[2], { query: 'AG-101' })).total, 0);
+  const commanderFeed = await f.api.handlers.adminActivity(f.users[2]);
+  assert.equal(commanderFeed.activity[0].ownerName, 'Real Member Name');
+  assert.equal(commanderFeed.activity[0].ownerCode, '');
+  assert.equal(commanderFeed.activity[0].byName, 'Real Member Name');
+  assert.equal(commanderFeed.activity[0].byCode, '');
+
+  const senior = await f.api.handlers.get(f.users[1], { id });
+  assert.equal(senior.badge.owner.name, '');
+  assert.equal(senior.badge.owner.militaryCode, 'AG-101');
+  assert.equal(senior.badge.owner.rank, '');
+  assert.equal(senior.badge.history[0].byName, '');
+  assert.equal(senior.badge.history[0].byCode, 'AG-101');
+  assert.equal(senior.badge.history[0].byRank, '');
+  assert.equal(senior.badge.can.approve, true);
+  assert.equal((await f.api.handlers.adminList(f.users[1], { query: 'Real Member Name' })).total, 0);
+  assert.equal((await f.api.handlers.adminList(f.users[1], { query: 'AG-101' })).total, 1);
+  const seniorFeed = await f.api.handlers.adminActivity(f.users[1]);
+  assert.equal(seniorFeed.activity[0].ownerName, '');
+  assert.equal(seniorFeed.activity[0].ownerCode, 'AG-101');
+  assert.equal(seniorFeed.activity[0].byName, '');
+  assert.equal(seniorFeed.activity[0].byCode, 'AG-101');
+
+  const chief = await f.api.handlers.get(f.users[0], { id });
+  assert.equal(chief.badge.owner.name, 'Real Member Name');
+  assert.equal(chief.badge.owner.militaryCode, 'AG-101');
+  assert.equal(chief.badge.owner.rank, 'AGENT');
+});
+
 test('creates multiple fictional badge types as pending and stores the real owner identity', async () => {
   const f = fixture();
   assert.deepEqual(Object.keys(BADGE_TYPES), ['MILITARY', 'POLICE', 'EMS', 'MEDIA', 'JUSTICE', 'CIVILIAN']);
@@ -148,6 +192,7 @@ test('enforces sector review scope and allows either authorized reviewer to appr
   assert.equal(scoped.scope, 'SECTOR');
   assert.equal(scoped.total, 1);
   assert.equal(scoped.badges[0].id, inScope.badge.id);
+  assert.equal(scoped.badges[0].can.approve, true, 'in-sector commander should receive the approval action');
   assert.equal((await f.api.handlers.get(commander, { id: outside.badge.id })).ok, false);
   assert.equal((await f.api.handlers.disable(commander, { id: inScope.badge.id, reason: 'Review' })).ok, false);
   assert.equal((await f.api.handlers.approve(f.users[0], { id: inScope.badge.id })).ok, false, 'CIA CHIEF supervises but is not one of the two approval roles');

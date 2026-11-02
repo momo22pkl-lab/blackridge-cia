@@ -653,6 +653,7 @@ function normalizeRank(rank) {
 
   if (
     value === 'SUPREME COMMANDER' ||
+    value === 'SENIOR COMMANDER' ||
     value === 'SENIOR COMMANDER CIA'
   ) {
     return 'SUPREME COMMANDER';
