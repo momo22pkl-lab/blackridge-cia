@@ -10,6 +10,8 @@ const clientSource = fs.readFileSync(path.join(__dirname, '..', 'cover-identity-
 
 function makeCanvas() {
   const renderedText = [];
+  const drawnText = [];
+  const translations = [];
   const context2d = {
     save() {},
     restore() {},
@@ -23,11 +25,11 @@ function makeCanvas() {
     stroke() {},
     fillRect() {},
     arc() {},
-    translate() {},
+    translate(x, y) { translations.push([x, y]); },
     rotate() {},
     clip() {},
     drawImage() {},
-    fillText(text) { renderedText.push(String(text)); },
+    fillText(text, x, y) { const value = String(text); renderedText.push(value); drawnText.push({ text: value, x, y, align: context2d.textAlign }); },
     measureText(text) { return { width: String(text).length * 8 }; },
     createLinearGradient() { return { addColorStop() {} }; }
   };
@@ -40,7 +42,7 @@ function makeCanvas() {
         return context2d;
       }
     },
-    renderedText
+    renderedText, drawnText, translations
   };
 }
 
@@ -75,6 +77,13 @@ test('renders distinct badge themes without presenting an unreviewed identity as
     });
     assert.equal(output.canvas.width, 1011);
     assert.equal(output.canvas.height, 638);
+    const emblem = output.translations.find((point) => point[1] === 56);
+    assert.deepEqual(emblem, [680, 56]);
+    for (const title of [renderer.THEMES[type].ar, renderer.THEMES[type].en]) {
+      const renderedTitle = output.drawnText.find((item) => item.text === title);
+      assert.ok(renderedTitle, 'badge title should be rendered');
+      assert.ok(renderedTitle.x - title.length * 8 > emblem[0] + 29, 'type title must not overlap the emblem');
+    }
     assert.ok(output.renderedText.some((text) => text.includes('قيد المراجعة — غير معتمدة')));
     assert.ok(output.renderedText.some((text) => text.includes('PENDING REVIEW · NOT APPROVED')));
     assert.equal(output.renderedText.some((text) => text.includes('هوية معتمدة رسميًا داخل BLACKRIDGE CITY ROLEPLAY')), false);
