@@ -24,12 +24,12 @@
     APPROVED: 'اعتماد', REJECTED: 'رفض'
   };
   const THEMES = {
-    MILITARY: { bg: ['#2b3320', '#141810'], accent: '#c9b458', band: '#3a4528', text: '#f1ecd0', sub: '#c8c39a', en: 'MILITARY IDENTIFICATION', ar: 'هوية عسكرية', pattern: 'stripes' },
-    POLICE: { bg: ['#12295a', '#08122a'], accent: '#c0c8d8', band: '#1b3a7a', text: '#eef3ff', sub: '#aebbd8', en: 'POLICE IDENTIFICATION', ar: 'هوية شرطة', pattern: 'grid' },
-    EMS: { bg: ['#ffffff', '#eef2f6'], accent: '#dc2626', band: '#dc2626', text: '#111827', sub: '#4b5563', en: 'EMERGENCY MEDICAL ID', ar: 'هوية إسعاف', pattern: 'dots' },
-    MEDIA: { bg: ['#1a1a1a', '#0a0a0a'], accent: '#f97316', band: '#f97316', text: '#fafafa', sub: '#d4d4d4', en: 'PRESS / MEDIA PASS', ar: 'هوية إعلامية', pattern: 'lines' },
-    JUSTICE: { bg: ['#45101f', '#1f060d'], accent: '#d4af37', band: '#5f162b', text: '#fdf3d0', sub: '#e3cf92', en: 'DEPARTMENT OF JUSTICE ID', ar: 'هوية وزارة العدل', pattern: 'columns' },
-    CIVILIAN: { bg: ['#e8eef2', '#c9d4dc'], accent: '#0f766e', band: '#0f766e', text: '#102a2e', sub: '#3f5560', en: 'CIVILIAN IDENTIFICATION', ar: 'هوية مدنية', pattern: 'waves' }
+    MILITARY: { bg: ['#1c1b16', '#080909'], accent: '#d1b15c', band: '#15140f', text: '#f4eedc', sub: '#b6aa82', en: 'MILITARY IDENTIFICATION', ar: 'هوية عسكرية', pattern: 'mesh' },
+    POLICE: { bg: ['#111b29', '#070b11'], accent: '#4b78a5', band: '#101a29', text: '#edf3f8', sub: '#9eb1c2', en: 'POLICE ID', ar: 'هوية الشرطة', pattern: 'grid' },
+    EMS: { bg: ['#102019', '#070b09'], accent: '#37a879', band: '#10231b', text: '#e9f5ee', sub: '#a4c9b4', en: 'MEDICAL ID', ar: 'هوية طبية', pattern: 'dots' },
+    MEDIA: { bg: ['#222629', '#090b0d'], accent: '#c0c7ce', band: '#1b1f22', text: '#f4f5f6', sub: '#b0b7bd', en: 'PRESS ID', ar: 'هوية إعلامية', pattern: 'lines' },
+    JUSTICE: { bg: ['#241117', '#080809'], accent: '#c9aa5c', band: '#2b121a', text: '#f5ebdc', sub: '#c6a88f', en: 'DEPARTMENT OF JUSTICE ID', ar: 'هوية وزارة العدل', pattern: 'columns' },
+    CIVILIAN: { bg: ['#1b2224', '#090c0e'], accent: '#91a8a5', band: '#182124', text: '#edf3f2', sub: '#a8b9b7', en: 'CIVILIAN IDENTIFICATION', ar: 'هوية مدنية', pattern: 'waves' }
   };
 
   const $ = (id) => document.getElementById(id);
@@ -102,25 +102,26 @@
 
   function drawPattern(ctx, theme) {
     ctx.save();
-    ctx.globalAlpha = 0.09;
+    ctx.globalAlpha = 0.045;
     ctx.strokeStyle = theme.accent;
     ctx.fillStyle = theme.accent;
-    ctx.lineWidth = 2;
-    if (theme.pattern === 'stripes') {
-      for (let i = -H; i < W; i += 38) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(i + H, 0); ctx.stroke(); }
+    ctx.lineWidth = 1;
+    if (theme.pattern === 'mesh') {
+      for (let i = -H; i < W; i += 46) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(i + H, 0); ctx.stroke(); }
+      for (let i = 0; i < W; i += 92) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
     } else if (theme.pattern === 'grid') {
-      for (let x = 0; x < W; x += 42) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-      for (let y = 0; y < H; y += 42) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      for (let x = 0; x < W; x += 46) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y < H; y += 46) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     } else if (theme.pattern === 'dots') {
-      for (let x = 20; x < W; x += 34) for (let y = 20; y < H; y += 34) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+      for (let x = 18; x < W; x += 38) for (let y = 18; y < H; y += 38) { ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill(); }
     } else if (theme.pattern === 'lines') {
-      for (let y = 0; y < H; y += 14) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      for (let y = 0; y < H; y += 18) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     } else if (theme.pattern === 'columns') {
-      for (let x = 0; x < W; x += 60) { ctx.fillRect(x, 0, 18, H); }
+      for (let x = 0; x < W; x += 72) { ctx.fillRect(x, 0, 7, H); }
     } else {
-      for (let y = 30; y < H; y += 36) {
+      for (let y = 32; y < H; y += 42) {
         ctx.beginPath();
-        for (let x = 0; x <= W; x += 20) ctx.lineTo(x, y + Math.sin(x / 40) * 8);
+        for (let x = 0; x <= W; x += 22) ctx.lineTo(x, y + Math.sin(x / 42) * 5);
         ctx.stroke();
       }
     }
@@ -189,6 +190,49 @@
     ctx.restore();
   }
 
+  // Abstract BLACKRIDGE wordmark; this is original artwork, not a government seal.
+  function drawBrandMark(ctx, x, y, theme) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(5, 7, 9, .72)';
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, y, 58, 58, 10); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + 40); ctx.lineTo(x + 22, y + 24); ctx.lineTo(x + 29, y + 32);
+    ctx.lineTo(x + 39, y + 17); ctx.lineTo(x + 49, y + 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 10, y + 45); ctx.lineTo(x + 49, y + 45); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawReviewStamp(ctx, x, y, w, h2, status, theme) {
+    const colors = { APPROVED: '#52b486', PENDING: '#d3a74e', REJECTED: '#d46d72' };
+    const labels = { APPROVED: 'معتمدة', PENDING: 'قيد المراجعة', REJECTED: 'مرفوضة' };
+    const color = colors[status] || colors.PENDING;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5, 7, 9, .68)';
+    roundRect(ctx, x, y, w, h2, 9); ctx.fill();
+    ctx.globalAlpha = 0.12; ctx.fillStyle = color; roundRect(ctx, x, y, w, h2, 9); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.2; roundRect(ctx, x, y, w, h2, 9); ctx.stroke();
+    if (status === 'APPROVED') { ctx.lineWidth = 1; roundRect(ctx, x + 5, y + 5, w - 10, h2 - 10, 6); ctx.stroke(); }
+    put(ctx, status, x + w / 2, y + 31, { size: 23, color, align: 'center', dir: 'ltr', weight: '900' });
+    put(ctx, labels[status] || labels.PENDING, x + w / 2, y + 53, { size: 14, color: theme.text, align: 'center', weight: '700' });
+    ctx.restore();
+  }
+
+  function drawIdentityCell(ctx, label, value, right, y, width, theme, dir) {
+    const x = right - width;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5, 8, 11, .42)';
+    roundRect(ctx, x, y, width, 72, 8); ctx.fill();
+    ctx.globalAlpha = 0.32; ctx.strokeStyle = theme.accent; ctx.lineWidth = 1.2; roundRect(ctx, x, y, width, 72, 8); ctx.stroke(); ctx.globalAlpha = 1;
+    put(ctx, label, right - 12, y + 23, { size: 17, color: theme.sub, weight: '600', max: width - 26 });
+    const content = value == null || String(value).trim() === '' ? '—' : value;
+    put(ctx, content, right - 12, y + 54, { size: 27, color: theme.text, weight: '800', dir: dir || 'rtl', max: width - 26 });
+    ctx.restore();
+  }
+
   function loadImage(src) {
     if (!src) return Promise.resolve(null);
     if (imageCache.has(src)) return imageCache.get(src);
@@ -208,81 +252,95 @@
     canvas.height = H;
     const ctx = canvas.getContext('2d');
     const photo = await loadImage(badge.photo);
+    const rawReview = String(badge.reviewStatus || 'PENDING_REVIEW').toUpperCase();
+    const reviewStatus = rawReview === 'REJECTED' ? 'REJECTED' :
+      (rawReview === 'APPROVED' && badge.isApproved === true ? 'APPROVED' : 'PENDING');
 
     const grad = ctx.createLinearGradient(0, 0, W, H);
     grad.addColorStop(0, theme.bg[0]);
     grad.addColorStop(1, theme.bg[1]);
-    ctx.save(); roundRect(ctx, 0, 0, W, H, 34); ctx.clip();
+    ctx.save();
+    roundRect(ctx, 0, 0, W, H, 32); ctx.clip();
     ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
     drawPattern(ctx, theme);
 
-    // header band
-    ctx.fillStyle = theme.band; ctx.fillRect(0, 0, W, 112);
-    ctx.fillStyle = theme.accent; ctx.fillRect(0, 112, W, 6);
-    drawEmblem(ctx, badge.type, W - 78, 58, 40, theme.accent, theme.band);
-    const headText = badge.type === 'EMS' || badge.type === 'CIVILIAN' ? '#ffffff' : theme.text;
-    put(ctx, theme.ar, W - 138, 54, { size: 36, color: headText, weight: '800' });
-    put(ctx, theme.en, W - 138, 88, { size: 19, color: headText, dir: 'ltr', align: 'right', weight: '600' });
-    put(ctx, 'BLACKRIDGE CITY RP', 40, 62, { size: 20, color: headText, dir: 'ltr', align: 'left', weight: '700' });
+    // Restrained metallic header and fictional brand mark.
+    const headGrad = ctx.createLinearGradient(0, 0, W, 0);
+    headGrad.addColorStop(0, theme.band);
+    headGrad.addColorStop(0.55, theme.bg[0]);
+    headGrad.addColorStop(1, theme.band);
+    ctx.fillStyle = headGrad; ctx.fillRect(0, 0, W, 112);
+    ctx.fillStyle = theme.accent; ctx.globalAlpha = 0.82; ctx.fillRect(0, 110, W, 2); ctx.globalAlpha = 1;
+    drawBrandMark(ctx, 30, 25, theme);
+    put(ctx, 'BLACKRIDGE', 104, 49, { size: 23, color: theme.text, dir: 'ltr', align: 'left', weight: '900' });
+    put(ctx, 'CITY ROLEPLAY', 105, 73, { size: 14, color: theme.accent, dir: 'ltr', align: 'left', weight: '700' });
+    put(ctx, 'COVER IDENTITY SYSTEM', 105, 96, { size: 11, color: theme.sub, dir: 'ltr', align: 'left', weight: '600' });
+    drawReviewStamp(ctx, 386, 21, 240, 72, reviewStatus, theme);
+    drawEmblem(ctx, badge.type, 815, 56, 29, theme.accent, theme.band);
+    put(ctx, theme.ar, 974, 49, { size: 27, color: theme.text, weight: '800', max: 280 });
+    put(ctx, theme.en, 974, 80, { size: 17, color: theme.sub, dir: 'ltr', align: 'right', weight: '700', max: 310 });
 
-    // photo
+    // Portrait and metallic inset frame.
+    ctx.fillStyle = 'rgba(3, 5, 7, .58)';
+    roundRect(ctx, 27, 137, 232, 290, 16); ctx.fill();
     ctx.save();
-    roundRect(ctx, 40, 150, 240, 300, 16); ctx.clip();
-    ctx.fillStyle = 'rgba(128,128,128,.25)'; ctx.fillRect(40, 150, 240, 300);
+    roundRect(ctx, 34, 144, 218, 276, 12); ctx.clip();
+    ctx.fillStyle = 'rgba(128, 128, 128, .18)'; ctx.fillRect(34, 144, 218, 276);
     if (photo) {
-      const scale = Math.max(240 / photo.width, 300 / photo.height);
+      const scale = Math.max(218 / photo.width, 276 / photo.height);
       const dw = photo.width * scale; const dh = photo.height * scale;
-      ctx.drawImage(photo, 40 + (240 - dw) / 2, 150 + (300 - dh) / 2, dw, dh);
+      ctx.drawImage(photo, 34 + (218 - dw) / 2, 144 + (276 - dh) / 2, dw, dh);
+      ctx.fillStyle = 'rgba(4, 6, 8, .12)'; ctx.fillRect(34, 144, 218, 276);
     } else {
-      ctx.fillStyle = theme.accent; ctx.globalAlpha = 0.55;
-      ctx.beginPath(); ctx.arc(160, 265, 52, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(160, 440, 100, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = theme.accent; ctx.globalAlpha = 0.45;
+      ctx.beginPath(); ctx.arc(143, 242, 47, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(143, 420, 88, Math.PI, 0); ctx.fill();
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
-    ctx.strokeStyle = theme.accent; ctx.lineWidth = 4; roundRect(ctx, 40, 150, 240, 300, 16); ctx.stroke();
-    drawBars(ctx, badge.badgeNumber, 40, 470, 240, 54, theme.text);
+    ctx.strokeStyle = theme.accent; ctx.lineWidth = 2.5; roundRect(ctx, 27, 137, 232, 290, 16); ctx.stroke();
+    ctx.globalAlpha = 0.86; drawBars(ctx, badge.badgeNumber, 34, 438, 218, 34, theme.accent); ctx.globalAlpha = 1;
 
-    // fields
-    const right = W - 44;
-    put(ctx, 'الاسم المستعار', right, 168, { size: 20, color: theme.sub, weight: '600' });
-    put(ctx, badge.alias, right, 226, { size: 54, color: theme.text, weight: '800', max: 640 });
-    put(ctx, 'الرتبة / الصفة', right, 276, { size: 20, color: theme.sub, weight: '600' });
-    put(ctx, badge.title, right, 316, { size: 34, color: theme.accent, weight: '800', max: 640 });
-    put(ctx, 'القطاع / الجهة', right, 366, { size: 20, color: theme.sub, weight: '600' });
-    put(ctx, badge.sector, right, 406, { size: 32, color: theme.text, weight: '700', max: 640 });
+    // Identity fields use existing badge and owner data only.
+    const right = W - 34;
+    put(ctx, 'الاسم المستعار', right, 151, { size: 17, color: theme.sub, weight: '600' });
+    put(ctx, badge.alias, right, 207, { size: 48, color: theme.text, weight: '900', max: 670 });
+    const leftColumn = 620;
+    const columnWidth = 326;
+    drawIdentityCell(ctx, 'الرتبة / الصفة', badge.title, right, 250, columnWidth, theme, 'rtl');
+    drawIdentityCell(ctx, 'الكود العسكري', badge.owner && badge.owner.militaryCode, leftColumn, 250, columnWidth, theme, 'ltr');
+    drawIdentityCell(ctx, 'القطاع / الجهة', badge.sector, right, 334, columnWidth, theme, 'rtl');
+    drawIdentityCell(ctx, 'رقم الهوية الفريد', badge.badgeNumber, leftColumn, 334, columnWidth, theme, 'ltr');
+    drawIdentityCell(ctx, 'تاريخ الإصدار', day(badge.createdAt), right, 418, columnWidth, theme, 'ltr');
+    drawIdentityCell(ctx, 'صالح حتى', day(badge.expiresAt), leftColumn, 418, columnWidth, theme, 'ltr');
 
-    const rows = [['رقم البادج', badge.badgeNumber, 'ltr'], ['تاريخ الإنشاء', day(badge.createdAt), 'ltr'], ['ينتهي في', day(badge.expiresAt), 'ltr']];
-    rows.forEach((row, i) => {
-      const x = right - i * 232;
-      put(ctx, row[0], x, 466, { size: 18, color: theme.sub, weight: '600' });
-      put(ctx, row[1], x, 504, { size: 28, color: theme.text, dir: row[2], weight: '800', max: 214 });
-    });
-
-    // Only a server-approved badge receives the in-game approval statement.
-    ctx.fillStyle = theme.band; ctx.globalAlpha = 0.92; ctx.fillRect(0, 548, W, 90); ctx.globalAlpha = 1;
-    const approved = badge.isApproved === true;
-    const approvalStatus = badge.reviewStatus || 'PENDING_REVIEW';
+    // Review state is distinct from other lifecycle states such as expired or revoked.
+    ctx.fillStyle = theme.band; ctx.globalAlpha = 0.96; ctx.fillRect(0, 526, W, 112); ctx.globalAlpha = 1;
+    ctx.fillStyle = theme.accent; ctx.globalAlpha = 0.76; ctx.fillRect(0, 526, W, 2); ctx.globalAlpha = 1;
+    const approved = reviewStatus === 'APPROVED';
     const footerAr = approved
       ? NOTICE_AR
-      : approvalStatus === 'REJECTED' ? 'مرفوضة — غير معتمدة داخل النظام' : 'قيد المراجعة — غير معتمدة';
+      : reviewStatus === 'REJECTED' ? 'مرفوضة — غير معتمدة داخل النظام' : 'قيد المراجعة — غير معتمدة';
     const footerEn = approved
       ? NOTICE_EN
-      : approvalStatus === 'REJECTED' ? 'REJECTED · NOT APPROVED' : 'PENDING REVIEW · NOT APPROVED';
-    put(ctx, footerAr, W / 2, 588, { size: 24, color: headText, align: 'center', weight: '700', max: W - 60 });
-    put(ctx, footerEn, W / 2, 620, { size: 15, color: headText, align: 'center', dir: 'ltr', weight: '600', max: W - 60 });
-
-    // status stamp
-    if (badge.status && badge.status !== 'ACTIVE') {
-      ctx.save();
-      ctx.translate(W / 2, 330); ctx.rotate(-0.28);
-      ctx.globalAlpha = 0.82;
-      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 10;
-      roundRect(ctx, -260, -70, 520, 140, 18); ctx.stroke();
-      put(ctx, STATUS_AR[badge.status] || badge.status, 0, 28, { size: 90, color: '#dc2626', align: 'center', weight: '900' });
-      ctx.restore();
+      : reviewStatus === 'REJECTED' ? 'REJECTED · NOT APPROVED' : 'PENDING REVIEW · NOT APPROVED';
+    put(ctx, footerAr, W / 2, 578, { size: 20, color: theme.text, align: 'center', weight: '700', max: W - 48 });
+    put(ctx, footerEn, W / 2, 613, { size: 14, color: theme.sub, align: 'center', dir: 'ltr', weight: '700', max: W - 48 });
+    if (badge.status && !['ACTIVE', 'PENDING_REVIEW', 'REJECTED'].includes(badge.status)) {
+      ctx.fillStyle = 'rgba(5, 7, 9, .78)';
+      roundRect(ctx, W - 174, 532, 142, 25, 7); ctx.fill();
+      ctx.strokeStyle = '#c86b72'; ctx.lineWidth = 1; roundRect(ctx, W - 174, 532, 142, 25, 7); ctx.stroke();
+      put(ctx, STATUS_AR[badge.status] || badge.status, W - 103, 550, { size: 13, color: '#f0b2b6', align: 'center', weight: '700', max: 128 });
     }
     ctx.restore();
-    ctx.strokeStyle = theme.accent; ctx.lineWidth = 6; roundRect(ctx, 3, 3, W - 6, H - 6, 32); ctx.stroke();
+
+    // Double metallic edge, kept separate from the status stamp.
+    const frameGrad = ctx.createLinearGradient(0, 0, W, H);
+    frameGrad.addColorStop(0, theme.accent);
+    frameGrad.addColorStop(0.45, '#e7dfc6');
+    frameGrad.addColorStop(1, theme.accent);
+    ctx.strokeStyle = frameGrad; ctx.lineWidth = 5; roundRect(ctx, 3, 3, W - 6, H - 6, 29); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, .15)'; ctx.lineWidth = 1; roundRect(ctx, 11, 11, W - 22, H - 22, 23); ctx.stroke();
   }
 
   function downloadBadge(badge) {
