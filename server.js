@@ -36,6 +36,7 @@ const { registerOfficialWarnings } = require('./official-warnings');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { WeaponArmoryStore } = require('./weapon-armory-store');
 const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
+const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const {
   accountIdentity,
@@ -205,6 +206,8 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/weapon-armory.css': 'weapon-armory.css',
   '/weapon-armory-client.js': 'weapon-armory-client.js',
+  '/cover-identity.css': 'cover-identity.css',
+  '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
   '/blackridge-cipher.js': 'blackridge-cipher.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
@@ -238,7 +241,9 @@ app.get(['/', '/index.html'], (req, res) => {
   }
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
-    return res.status(200).type('html').send(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)));
+    return res.status(200).type('html').send(
+      injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))
+    );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
   }
@@ -346,6 +351,7 @@ const EMPTY_STATE = {
   cia_operations: [],
   cia_notifications: [],
   cia_web_push_subscriptions: [],
+  cia_cover_badges: [],
   cia_battalions: [],
   ibp_deployments: [],
   ibp_operations: [],
@@ -413,7 +419,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
     'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
-    'cia_notifications', 'cia_web_push_subscriptions', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
+    'cia_notifications', 'cia_web_push_subscriptions', 'cia_cover_badges', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
   }
@@ -3354,6 +3360,22 @@ io.on(
           if (targetSocket) targetSocket.emit(event, payload);
         }
       }
+    });
+
+    registerCoverIdentitySocket(socket, {
+      requireSocketUser,
+      getState: () => state,
+      getUsers: () => state.cia_users,
+      getUnits: () => state.cia_battalions,
+      isChief,
+      isSenior,
+      isHighCommander,
+      normalizeRank,
+      makeId,
+      addAuditLog,
+      saveState,
+      ok,
+      no
     });
 
     registerMobilePushSocket(socket, {
