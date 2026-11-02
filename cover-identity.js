@@ -20,6 +20,12 @@ const BADGE_TYPES = Object.freeze({
   CIVILIAN: { label: 'Civilian ID', labelAr: 'هوية مدنية' }
 });
 
+const REVIEW_STATUS = Object.freeze({
+  PENDING: 'PENDING_REVIEW',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED'
+});
+
 const LIMITS = Object.freeze({
   maxActivePerMember: 10,
   maxLifetimeDays: 365,
@@ -52,11 +58,24 @@ function parseDate(value) {
   return Number.isFinite(time) ? time : NaN;
 }
 
-// Stored status is ACTIVE / EXPIRED / DISABLED / REVOKED. ACTIVE past its end date reads as EXPIRED.
+function approvalStatusOf(badge) {
+  const review = badge && badge.review;
+  if (!review || !review.decidedAt || !review.decidedBy || review.decidedBy.userId == null) {
+    return REVIEW_STATUS.PENDING;
+  }
+  if ([REVIEW_STATUS.APPROVED, REVIEW_STATUS.REJECTED].includes(review.status)) return review.status;
+  return REVIEW_STATUS.PENDING;
+}
+
+// An unreviewed legacy ACTIVE badge is treated as pending, never as approved.
 function effectiveStatus(badge, nowMs) {
   if (!badge) return 'REVOKED';
   if (badge.status === 'REVOKED') return 'REVOKED';
   if (badge.status === 'DISABLED') return 'DISABLED';
+  const approvalStatus = approvalStatusOf(badge);
+  if (approvalStatus === REVIEW_STATUS.REJECTED) return 'REJECTED';
+  if (approvalStatus !== REVIEW_STATUS.APPROVED) return REVIEW_STATUS.PENDING;
+  if (badge.status === 'EXPIRED') return 'EXPIRED';
   const expires = parseDate(badge.expiresAt);
   if (!Number.isFinite(expires) || expires <= nowMs) return 'EXPIRED';
   return 'ACTIVE';
@@ -124,21 +143,22 @@ function createCoverIdentity(ctx) {
     return ctx.getUsers().find((user) => String(user.id) === String(badge.owner && badge.owner.userId)) || null;
   }
 
-  // Which badges may this actor look at?  ALL (chief, senior) / BATTALION (commanders) / OWN only
-  function scopeFor(actor) {
-    if (!actor) return 'NONE';
-    if (ctx.isChief(actor) || ctx.isSenior(actor)) return 'ALL';
-    if (ctx.isHighCommander(actor) && commandedMemberCodes(actor).size > 0) return 'BATTALION';
-    return 'OWN';
+  function commandedUnits(actor) {
+    const mine = codeOf(actor);
+    if (!mine) return [];
+    return (ctx.getUnits() || []).filter((unit) =>
+      unit &&
+      unit.status !== 'ARCHIVED' &&
+      text(unit.commanderCode, 100).toUpperCase() === mine
+    );
   }
 
+  // A sector leader's access is derived from active assignments, never the badge's user-entered sector.
   function commandedMemberCodes(actor) {
     const mine = codeOf(actor);
     const codes = new Set();
     if (!mine) return codes;
-    for (const unit of ctx.getUnits() || []) {
-      if (!unit || unit.status === 'ARCHIVED') continue;
-      if (text(unit.commanderCode, 100).toUpperCase() !== mine) continue;
+    for (const unit of commandedUnits(actor)) {
       for (const code of Array.isArray(unit.memberCodes) ? unit.memberCodes : []) {
         const normalized = text(code, 100).toUpperCase();
         if (normalized && normalized !== mine) codes.add(normalized);
@@ -147,17 +167,67 @@ function createCoverIdentity(ctx) {
     return codes;
   }
 
+  function sectorFor(actor) {
+    if (!actor) return '';
+    if (ctx.isChief(actor) || ctx.isSenior(actor)) return 'القيادة العليا';
+    const code = codeOf(actor);
+    const units = ctx.isHighCommander(actor)
+      ? commandedUnits(actor)
+      : (ctx.getUnits() || []).filter((unit) => {
+        if (!unit || unit.status === 'ARCHIVED') return false;
+        const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
+        return [unit.commanderCode, unit.deputyCode, ...members]
+          .some((memberCode) => text(memberCode, 100).toUpperCase() === code);
+      });
+    const sectors = [...new Set(units
+      .map((unit) => text(unit.sector || unit.nameAr || unit.nameEn || unit.name || unit.code, 100))
+      .filter(Boolean))];
+    return sectors.join(' / ') || '';
+  }
+
+  // Which badges may this actor look at? ALL (chief, senior) / SECTOR (assigned commander) / OWN only
+  function scopeFor(actor) {
+    if (!actor) return 'NONE';
+    if (ctx.isChief(actor) || ctx.isSenior(actor)) return 'ALL';
+    if (ctx.isHighCommander(actor) && commandedMemberCodes(actor).size > 0) return 'SECTOR';
+    return 'OWN';
+  }
+
   function canView(actor, badge) {
     if (!actor || !badge) return false;
     if (String(badge.owner.userId) === String(actor.id)) return true;
     const scope = scopeFor(actor);
     if (scope === 'ALL') return true;
-    if (scope === 'BATTALION') return commandedMemberCodes(actor).has(text(badge.owner.militaryCode, 100).toUpperCase());
+    if (scope === 'SECTOR') {
+      const owner = ownerOf(badge);
+      const ownerCode = owner ? codeOf(owner) : text(badge.owner.militaryCode, 100).toUpperCase();
+      return commandedMemberCodes(actor).has(ownerCode);
+    }
     return false;
   }
 
   function isOwner(actor, badge) {
     return !!actor && !!badge && String(badge.owner.userId) === String(actor.id);
+  }
+
+  function canReview(actor, badge) {
+    if (!actor || !badge) return false;
+    if (ctx.isSenior(actor)) return true;
+    if (!ctx.isHighCommander(actor) || isOwner(actor, badge)) return false;
+    const owner = ownerOf(badge);
+    const ownerCode = owner ? codeOf(owner) : text(badge.owner.militaryCode, 100).toUpperCase();
+    return !!ownerCode && commandedMemberCodes(actor).has(ownerCode);
+  }
+
+  function reviewRecord(badge) {
+    const review = badge && badge.review && typeof badge.review === 'object' ? badge.review : {};
+    return {
+      status: approvalStatusOf(badge),
+      reason: text(review.reason || (review.status === REVIEW_STATUS.REJECTED ? badge.statusReason : ''), 300),
+      decidedAt: text(review.decidedAt, 80),
+      decidedBy: review.decidedBy && typeof review.decidedBy === 'object' ? { ...review.decidedBy } : null,
+      decisions: Array.isArray(review.decisions) ? review.decisions.map((item) => ({ ...item })) : []
+    };
   }
 
   function event(action, actor, note) {
@@ -168,6 +238,8 @@ function createCoverIdentity(ctx) {
       byId: actor ? actor.id : null,
       byName: actor ? realNameOf(actor) : 'SYSTEM',
       byCode: actor ? codeOf(actor) : '',
+      byRank: actor ? text(ctx.normalizeRank(actor.rank), 100) : '',
+      bySector: actor ? sectorFor(actor) : '',
       note: text(note, 300)
     };
   }
@@ -177,7 +249,8 @@ function createCoverIdentity(ctx) {
     let changed = false;
     const current = nowMs();
     for (const badge of badges()) {
-      if (badge.status === 'ACTIVE' && effectiveStatus(badge, current) === 'EXPIRED') {
+      if (badge.status === 'ACTIVE' && approvalStatusOf(badge) === REVIEW_STATUS.APPROVED &&
+          effectiveStatus(badge, current) === 'EXPIRED') {
         badge.status = 'EXPIRED';
         badge.updatedAt = nowIso();
         if (!Array.isArray(badge.history)) badge.history = [];
@@ -198,6 +271,11 @@ function createCoverIdentity(ctx) {
   function view(badge, actor, options) {
     const opts = options || {};
     const mine = isOwner(actor, badge);
+    const review = reviewRecord(badge);
+    const status = effectiveStatus(badge, nowMs());
+    const canReviewBadge = canReview(actor, badge) &&
+      review.status === REVIEW_STATUS.PENDING &&
+      !['REVOKED', 'DISABLED'].includes(badge.status);
     const row = {
       id: badge.id,
       badgeNumber: badge.badgeNumber,
@@ -210,8 +288,12 @@ function createCoverIdentity(ctx) {
       createdAt: badge.createdAt,
       expiresAt: badge.expiresAt,
       updatedAt: badge.updatedAt,
-      status: effectiveStatus(badge, nowMs()),
-      statusReason: badge.statusReason || '',
+      status,
+      reviewStatus: review.status,
+      reviewReason: review.status === REVIEW_STATUS.REJECTED ? review.reason : '',
+      review,
+      isApproved: review.status === REVIEW_STATUS.APPROVED,
+      statusReason: review.status === REVIEW_STATUS.REJECTED ? review.reason : (badge.statusReason || ''),
       hasPhoto: !!badge.photo,
       mine,
       owner: {
@@ -220,15 +302,23 @@ function createCoverIdentity(ctx) {
         rank: badge.owner.rank
       },
       can: {
-        edit: mine && effectiveStatus(badge, nowMs()) !== 'REVOKED',
-        renew: (mine || ctx.isChief(actor)) && !['REVOKED', 'DISABLED'].includes(effectiveStatus(badge, nowMs())),
+        edit: mine && !['REVOKED', 'DISABLED'].includes(status),
+        renew: (mine || ctx.isChief(actor)) && review.status === REVIEW_STATUS.APPROVED && !['REVOKED', 'DISABLED', REVIEW_STATUS.PENDING, REVIEW_STATUS.REJECTED].includes(status),
         revoke: (mine || ctx.isChief(actor) || ctx.isSenior(actor)) && badge.status !== 'REVOKED',
-        disable: (ctx.isChief(actor) || ctx.isSenior(actor)) && ['ACTIVE', 'EXPIRED'].includes(badge.status),
-        enable: ctx.isChief(actor) && badge.status === 'DISABLED'
+        disable: (ctx.isChief(actor) || ctx.isSenior(actor)) && review.status === REVIEW_STATUS.APPROVED && ['ACTIVE', 'EXPIRED'].includes(status),
+        enable: ctx.isChief(actor) && review.status === REVIEW_STATUS.APPROVED && badge.status === 'DISABLED',
+        review: canReviewBadge,
+        approve: canReviewBadge && parseDate(badge.expiresAt) > nowMs(),
+        reject: canReviewBadge
       }
     };
     if (opts.withPhoto) row.photo = badge.photo || '';
-    if (opts.withHistory) row.history = badge.history.map((item) => ({ ...item }));
+    if (opts.withHistory) {
+      row.history = (Array.isArray(badge.history) ? badge.history : []).map((item) => ({ ...item }));
+      row.review.decisions = review.decisions;
+    } else {
+      row.review.decisions = [];
+    }
     return row;
   }
 
@@ -260,7 +350,14 @@ function createCoverIdentity(ctx) {
   const snapshotBadges = () => badges().map((badge) => ({
     ...badge,
     owner: { ...(badge.owner || {}) },
-    history: Array.isArray(badge.history) ? badge.history.map((item) => ({ ...item })) : []
+    history: Array.isArray(badge.history) ? badge.history.map((item) => ({ ...item })) : [],
+    review: badge.review && typeof badge.review === 'object'
+      ? {
+        ...badge.review,
+        decidedBy: badge.review.decidedBy ? { ...badge.review.decidedBy } : null,
+        decisions: Array.isArray(badge.review.decisions) ? badge.review.decisions.map((item) => ({ ...item })) : []
+      }
+      : badge.review
   }));
 
   async function sweepAndPersist() {
@@ -302,6 +399,75 @@ function createCoverIdentity(ctx) {
     return { iso: new Date(expires).toISOString() };
   }
 
+  async function decideReview(actor, payload, decision) {
+    const badge = find(payload && payload.id);
+    if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
+    if (!canReview(actor, badge)) return { ok: false, message: 'لا تملك صلاحية مراجعة هذه الهوية.' };
+    if (approvalStatusOf(badge) !== REVIEW_STATUS.PENDING) return { ok: false, message: 'هذه الهوية ليست قيد المراجعة.' };
+    if (['REVOKED', 'DISABLED'].includes(badge.status)) return { ok: false, message: 'لا يمكن مراجعة هوية ملغاة أو معطلة.' };
+
+    const reason = decision === REVIEW_STATUS.REJECTED ? text(payload && payload.reason, 300) : '';
+    if (decision === REVIEW_STATUS.REJECTED && reason.length < 3) {
+      return { ok: false, message: 'اكتب سبب الرفض (ثلاثة أحرف على الأقل).' };
+    }
+    if (decision === REVIEW_STATUS.APPROVED) {
+      const expires = parseDate(badge.expiresAt);
+      if (!Number.isFinite(expires) || expires <= nowMs()) {
+        return { ok: false, message: 'انتهت صلاحية الهوية؛ أنشئ هوية جديدة قبل طلب اعتمادها.' };
+      }
+    }
+
+    const backup = snapshotBadges();
+    const previousReview = reviewRecord(badge);
+    const stamp = nowIso();
+    const reviewer = {
+      userId: actor.id,
+      name: realNameOf(actor),
+      militaryCode: codeOf(actor),
+      rank: text(ctx.normalizeRank(actor.rank), 100),
+      sector: sectorFor(actor)
+    };
+    const entry = {
+      id: ctx.makeId('CVH'),
+      action: decision,
+      at: stamp,
+      byId: reviewer.userId,
+      byName: reviewer.name,
+      byCode: reviewer.militaryCode,
+      byRank: reviewer.rank,
+      bySector: reviewer.sector,
+      reason,
+      note: reason
+    };
+
+    badge.review = {
+      status: decision,
+      reason,
+      decidedAt: stamp,
+      decidedBy: reviewer,
+      decisions: [...previousReview.decisions, entry]
+    };
+    badge.status = decision === REVIEW_STATUS.APPROVED ? 'ACTIVE' : REVIEW_STATUS.REJECTED;
+    badge.statusReason = reason;
+    badge.updatedAt = stamp;
+    if (!Array.isArray(badge.history)) badge.history = [];
+    badge.history.push(entry);
+
+    const action = decision === REVIEW_STATUS.APPROVED ? 'COVER_BADGE_APPROVED' : 'COVER_BADGE_REJECTED';
+    const details = [
+      'badge=' + badge.badgeNumber,
+      'reviewer=' + reviewer.name,
+      'code=' + reviewer.militaryCode,
+      'rank=' + reviewer.rank,
+      'sector=' + reviewer.sector,
+      'at=' + stamp,
+      reason ? 'reason=' + reason : ''
+    ].filter(Boolean).join(' ');
+    const failure = await persist(backup, actor, action, ownerOf(badge), details);
+    if (failure) return { ok: false, message: failure };
+    return { ok: true, badge: view(badge, actor, { withPhoto: true, withHistory: true }) };
+  }
+
   const handlers = {
     meta(actor) {
       const scope = scopeFor(actor);
@@ -312,7 +478,7 @@ function createCoverIdentity(ctx) {
         canAdmin: scope !== 'OWN',
         isChief: ctx.isChief(actor),
         limits: { ...LIMITS },
-        notice: 'وثيقة خيالية خاصة بـ BLACKRIDGE CITY ROLEPLAY'
+        notice: 'وثيقة خيالية للاستخدام داخل BLACKRIDGE CITY ROLEPLAY فقط'
       };
     },
 
@@ -347,8 +513,15 @@ function createCoverIdentity(ctx) {
         createdAt: stamp,
         updatedAt: stamp,
         expiresAt: expiry.iso,
-        status: 'ACTIVE',
+        status: REVIEW_STATUS.PENDING,
         statusReason: '',
+        review: {
+          status: REVIEW_STATUS.PENDING,
+          reason: '',
+          decidedAt: '',
+          decidedBy: null,
+          decisions: []
+        },
         owner: {
           userId: actor.id,
           name: realNameOf(actor),
@@ -357,7 +530,7 @@ function createCoverIdentity(ctx) {
         },
         history: []
       };
-      badge.history.push(event('CREATED', actor, 'إنشاء بادج ' + BADGE_TYPES[badge.type].labelAr + ' برقم ' + number + '.'));
+      badge.history.push(event('CREATED', actor, 'إنشاء بادج ' + BADGE_TYPES[badge.type].labelAr + ' برقم ' + number + ' وإرساله للمراجعة.'));
 
       const backup = snapshotBadges();
       badges().unshift(badge);
@@ -371,7 +544,7 @@ function createCoverIdentity(ctx) {
       if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
       // A member can never edit another member's identity, command ranks included.
       if (!isOwner(actor, badge)) return { ok: false, message: 'لا يمكنك تعديل هوية عضو آخر.' };
-      if (effectiveStatus(badge, nowMs()) === 'REVOKED') return { ok: false, message: 'البادج ملغى ولا يمكن تعديله.' };
+      if (['REVOKED', 'DISABLED'].includes(effectiveStatus(badge, nowMs()))) return { ok: false, message: 'لا يمكن تعديل بادج ملغى أو معطل.' };
       const checked = validateBadgeFields(payload, { partial: true });
       if (checked.errors.length) return { ok: false, message: checked.errors[0] };
       const keys = Object.keys(checked.value);
@@ -379,8 +552,18 @@ function createCoverIdentity(ctx) {
 
       const backup = snapshotBadges();
       for (const key of keys) badge[key] = checked.value[key];
+      const previousReview = reviewRecord(badge);
+      badge.review = {
+        status: REVIEW_STATUS.PENDING,
+        reason: '',
+        decidedAt: '',
+        decidedBy: null,
+        decisions: previousReview.decisions
+      };
+      badge.status = REVIEW_STATUS.PENDING;
+      badge.statusReason = '';
       badge.updatedAt = nowIso();
-      badge.history.push(event('UPDATED', actor, 'تعديل: ' + keys.join(', ')));
+      badge.history.push(event('UPDATED', actor, 'تعديل: ' + keys.join(', ') + '؛ أعيدت الهوية للمراجعة.'));
       const failure = await persist(backup, actor, 'COVER_BADGE_UPDATED', actor, 'badge=' + badge.badgeNumber + ' fields=' + keys.join(','));
       if (failure) return { ok: false, message: failure };
       return { ok: true, badge: view(badge, actor, { withPhoto: true, withHistory: true }) };
@@ -391,6 +574,7 @@ function createCoverIdentity(ctx) {
       if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
       const mine = isOwner(actor, badge);
       if (!mine && !ctx.isChief(actor)) return { ok: false, message: 'التجديد متاح لصاحب البادج أو CIA CHIEF فقط.' };
+      if (approvalStatusOf(badge) !== REVIEW_STATUS.APPROVED) return { ok: false, message: 'لا يمكن تجديد هوية قبل اعتمادها.' };
       if (['REVOKED', 'DISABLED'].includes(badge.status)) return { ok: false, message: 'لا يمكن تجديد بادج ملغى أو معطل.' };
       const maxDays = ctx.isChief(actor) ? LIMITS.maxLifetimeDays : LIMITS.ownerRenewDays;
       const expiry = parseExpiry(payload && payload.expiresAt, maxDays);
@@ -431,6 +615,7 @@ function createCoverIdentity(ctx) {
       const badge = find(payload && payload.id);
       if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
       if (!ctx.isChief(actor) && !ctx.isSenior(actor)) return { ok: false, message: 'التعطيل متاح للقيادة العليا فقط.' };
+      if (approvalStatusOf(badge) !== REVIEW_STATUS.APPROVED) return { ok: false, message: 'لا يمكن تعطيل هوية قبل اعتمادها.' };
       if (!['ACTIVE', 'EXPIRED'].includes(badge.status)) return { ok: false, message: 'لا يمكن تعطيل هذا البادج في حالته الحالية.' };
       const reason = text(payload && payload.reason, 300);
       if (reason.length < 3) return { ok: false, message: 'اكتب سبب التعطيل.' };
@@ -449,6 +634,7 @@ function createCoverIdentity(ctx) {
       const badge = find(payload && payload.id);
       if (!badge || !canView(actor, badge)) return { ok: false, message: 'البادج غير موجود.' };
       if (!ctx.isChief(actor)) return { ok: false, message: 'إعادة التفعيل متاحة لـ CIA CHIEF فقط.' };
+      if (approvalStatusOf(badge) !== REVIEW_STATUS.APPROVED) return { ok: false, message: 'لا يمكن تفعيل هوية قبل اعتمادها.' };
       if (badge.status !== 'DISABLED') return { ok: false, message: 'البادج غير معطل.' };
 
       const backup = snapshotBadges();
@@ -459,6 +645,14 @@ function createCoverIdentity(ctx) {
       const failure = await persist(backup, actor, 'COVER_BADGE_ENABLED', ownerOf(badge), 'badge=' + badge.badgeNumber);
       if (failure) return { ok: false, message: failure };
       return { ok: true, badge: view(badge, actor, { withHistory: true }) };
+    },
+
+    async approve(actor, payload) {
+      return decideReview(actor, payload, REVIEW_STATUS.APPROVED);
+    },
+
+    async reject(actor, payload) {
+      return decideReview(actor, payload, REVIEW_STATUS.REJECTED);
     },
 
     async mine(actor) {
@@ -486,7 +680,7 @@ function createCoverIdentity(ctx) {
 
       let rows = badges().filter((badge) => canView(actor, badge));
       if (BADGE_TYPES[type]) rows = rows.filter((badge) => badge.type === type);
-      if (['ACTIVE', 'EXPIRED', 'DISABLED', 'REVOKED'].includes(status)) {
+      if (['ACTIVE', 'EXPIRED', 'DISABLED', 'REVOKED', REVIEW_STATUS.PENDING, REVIEW_STATUS.REJECTED].includes(status)) {
         rows = rows.filter((badge) => effectiveStatus(badge, nowMs()) === status);
       }
       if (query) {
@@ -575,6 +769,8 @@ function registerCoverIdentitySocket(socket, ctx) {
   bind('cover:get', 'get');
   bind('cover:create', 'create');
   bind('cover:update', 'update');
+  bind('cover:approve', 'approve');
+  bind('cover:reject', 'reject');
   bind('cover:renew', 'renew');
   bind('cover:revoke', 'revoke');
   bind('cover:disable', 'disable');
@@ -585,6 +781,7 @@ function registerCoverIdentitySocket(socket, ctx) {
 
 module.exports = {
   BADGE_TYPES,
+  REVIEW_STATUS,
   LIMITS,
   createCoverIdentity,
   injectCoverIdentityMarkup,
