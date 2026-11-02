@@ -276,9 +276,9 @@
     put(ctx, 'CITY ROLEPLAY', 105, 73, { size: 14, color: theme.accent, dir: 'ltr', align: 'left', weight: '700' });
     put(ctx, 'COVER IDENTITY SYSTEM', 105, 96, { size: 11, color: theme.sub, dir: 'ltr', align: 'left', weight: '600' });
     drawReviewStamp(ctx, 386, 21, 240, 72, reviewStatus, theme);
-    drawEmblem(ctx, badge.type, 815, 56, 29, theme.accent, theme.band);
-    put(ctx, theme.ar, 974, 49, { size: 27, color: theme.text, weight: '800', max: 280 });
-    put(ctx, theme.en, 974, 80, { size: 17, color: theme.sub, dir: 'ltr', align: 'right', weight: '700', max: 310 });
+    drawEmblem(ctx, badge.type, 680, 56, 29, theme.accent, theme.band);
+    put(ctx, theme.ar, 974, 49, { size: 25, color: theme.text, weight: '800', max: 244 });
+    put(ctx, theme.en, 974, 80, { size: 15, color: theme.sub, dir: 'ltr', align: 'right', weight: '700', max: 244 });
 
     // Portrait and metallic inset frame.
     ctx.fillStyle = 'rgba(3, 5, 7, .58)';
