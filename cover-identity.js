@@ -250,6 +250,12 @@ function createCoverIdentity(ctx) {
     return !!ownerCode && commandedMemberCodes(actor).has(ownerCode);
   }
 
+  function canAccessReviewQueue(actor) {
+    if (!actor) return false;
+    return ctx.isChief(actor) || ctx.isSenior(actor) ||
+      (ctx.isHighCommander(actor) && scopeFor(actor) === 'SECTOR');
+  }
+
   function reviewRecord(badge) {
     const review = badge && badge.review && typeof badge.review === 'object' ? badge.review : {};
     return {
@@ -572,7 +578,7 @@ function createCoverIdentity(ctx) {
         types: Object.entries(BADGE_TYPES).map(([key, value]) => ({ key, label: value.label, labelAr: value.labelAr })),
         scope,
         canAdmin: scope !== 'OWN',
-        canReviewQueue: ctx.isSenior(actor) || (ctx.isHighCommander(actor) && scope === 'SECTOR'),
+        canReviewQueue: canAccessReviewQueue(actor),
         isChief: ctx.isChief(actor),
         limits: { ...LIMITS }
       };
@@ -846,8 +852,8 @@ function createCoverIdentity(ctx) {
     },
 
     async reviewList(actor) {
-      if (!actor || (!ctx.isSenior(actor) && !ctx.isHighCommander(actor))) {
-        return { ok: false, message: 'قائمة المراجعة متاحة لقائد القطاع وSenior Commander فقط.' };
+      if (!canAccessReviewQueue(actor)) {
+        return { ok: false, message: 'قائمة المراجعة متاحة لقائد القطاع وSenior Commander وCIA CHIEF فقط.' };
       }
       await sweepAndPersist();
       const rows = badges()
@@ -855,7 +861,8 @@ function createCoverIdentity(ctx) {
           approvalStatusOf(badge) === REVIEW_STATUS.PENDING &&
           !['REVOKED', 'DISABLED'].includes(badge.status) &&
           !(ownerOf(badge) && ctx.isChief(ownerOf(badge))) &&
-          canReview(actor, badge)
+          !isOwner(actor, badge) &&
+          canView(actor, badge)
         )
         .map((badge) => view(badge, actor, {}));
       return { ok: true, total: rows.length, badges: rows, scope: scopeFor(actor) };
