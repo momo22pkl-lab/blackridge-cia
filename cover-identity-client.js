@@ -466,7 +466,7 @@
       const decide = async (decision) => {
         if (busy) return;
         if (decision === 'reject' && !String(reason.value || '').trim()) {
-          message.textContent = 'اكتب سبب الرفض أولًا.';
+          message.textContent = 'اكتب سبب الإلغاء أولًا.';
           message.className = 'cvr-msg error';
           return;
         }
