@@ -249,60 +249,75 @@ function findElement(node, tagName, className) {
   return null;
 }
 
-test('shows sector review actions in a dedicated queue, requires rejection reason, and removes the notice banner', async () => {
-  const client = mountReviewQueueClient();
+test('shows accept/cancel actions to an authorized reviewer and requires a cancellation reason', async () => {
+  const client = mountReviewQueueClient({ meta: { isSenior: true, scope: 'ALL' } });
   await client.nav.click();
   await new Promise((resolve) => setImmediate(resolve));
 
-  let text = client.content.textContent;
-  assert.ok(text.includes('مراجعات القطاع'));
-  assert.ok(text.includes('الهويات والبادجات المعلّقة لأعضاء قطاعك'));
-  assert.ok(text.includes('اعتماد الهوية'));
-  assert.ok(text.includes('رفض الهوية'));
+  const text = client.content.textContent;
+  assert.ok(text.includes('مراجعات الهويات'));
+  assert.ok(text.includes('الهويات والبادجات المعلّقة للمراجعة'));
+  assert.ok(text.includes('قبول البادج'));
+  assert.ok(text.includes('إلغاء البادج'));
+  assert.ok(text.includes('صلاحية قبول أو إلغاء البادج لـ CIA CHIEF وSenior Commander CIA فقط.'));
   assert.equal(text.includes('وثيقة خيالية للاستخدام داخل BLACKRIDGE CITY ROLEPLAY'), false);
   assert.equal(text.includes('لا تُستخدم شعارات أو أختام حكومية حقيقية'), false);
 
-  const reject = findButton(client.content, 'رفض الهوية');
+  const cancel = findButton(client.content, 'إلغاء البادج');
   const reason = findElement(client.content, 'textarea', 'cvr-review-reason');
-  assert.ok(reject);
+  assert.ok(cancel);
   assert.ok(reason);
-  await reject.click();
-  assert.equal(client.events.some((item) => item.event === 'cover:reject'), false, 'blank rejection reason must not be sent');
-  assert.ok(client.content.textContent.includes('اكتب سبب الرفض أولًا.'));
+  await cancel.click();
+  assert.equal(client.events.some((item) => item.event === 'cover:reject'), false, 'blank cancellation reason must not be sent');
+  assert.ok(client.content.textContent.includes('اكتب سبب الإلغاء أولًا.'));
   reason.value = 'بيانات المهمة ناقصة';
-  await reject.click();
-  const rejection = client.events.find((item) => item.event === 'cover:reject');
-  assert.equal(rejection.payload.reason, 'بيانات المهمة ناقصة');
+  await cancel.click();
+  const cancellation = client.events.find((item) => item.event === 'cover:reject');
+  assert.equal(cancellation.payload.reason, 'بيانات المهمة ناقصة');
   assert.ok(client.events.some((item) => item.event === 'cover:review:list'));
 });
 
-test('sector reviewer approval button invokes the server approval event and refreshes the queue', async () => {
-  const client = mountReviewQueueClient();
+test('Senior Commander approval button invokes the server event and refreshes the queue', async () => {
+  const client = mountReviewQueueClient({ meta: { isSenior: true, scope: 'ALL' } });
   await client.nav.click();
   await new Promise((resolve) => setImmediate(resolve));
-  const approve = findButton(client.content, 'اعتماد الهوية');
-  assert.ok(approve, 'pending review should render a visible approval button');
+  const approve = findButton(client.content, 'قبول البادج');
+  assert.ok(approve, 'authorized reviewer should see the approval button');
   await approve.click();
   assert.ok(client.events.some((item) => item.event === 'cover:approve'));
   assert.ok(client.events.filter((item) => item.event === 'cover:review:list').length >= 2);
   assert.ok(client.content.textContent.includes('لا توجد هويات بانتظار المراجعة'));
-  assert.ok(client.content.textContent.includes('تم اعتماد الهوية وأصبحت فعّالة.'));
+  assert.ok(client.content.textContent.includes('تم قبول البادج وأصبحت هوية ميدانية معتمدة رسميًا داخل النظام.'));
 });
 
-test('CIA CHIEF sees the all-sector review queue as read-only', async () => {
+test('CIA CHIEF receives review actions across all sectors', async () => {
   const client = mountReviewQueueClient({
     meta: { isChief: true, scope: 'ALL' },
-    badgeCan: { approve: false, reject: false }
+    badgeCan: { approve: true, reject: true }
   });
   await client.nav.click();
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.ok(client.content.textContent.includes('مراجعات الهويات'));
   assert.ok(client.content.textContent.includes('الهويات والبادجات المعلّقة للمراجعة'));
-  assert.ok(client.content.textContent.includes('عرض إشرافي فقط'));
+  assert.ok(client.content.textContent.includes('صلاحية قبول أو إلغاء البادج لـ CIA CHIEF وSenior Commander CIA فقط.'));
   assert.ok(findButton(client.content, 'التفاصيل'));
-  assert.equal(findButton(client.content, 'اعتماد الهوية'), null);
-  assert.equal(findButton(client.content, 'رفض الهوية'), null);
+  assert.ok(findButton(client.content, 'قبول البادج'));
+  assert.ok(findButton(client.content, 'إلغاء البادج'));
   assert.ok(client.events.some((item) => item.event === 'cover:review:list'));
   assert.equal(client.events.some((item) => item.event === 'cover:approve' || item.event === 'cover:reject'), false);
 });
+test('sector commanders do not receive the review queue or decision buttons', async () => {
+  const client = mountReviewQueueClient({
+    meta: { canReviewQueue: false, isChief: false, scope: 'SECTOR' },
+    badgeCan: { approve: false, reject: false }
+  });
+  await client.nav.click();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(findButton(client.content, 'مراجعات القطاع'), null);
+  assert.equal(findButton(client.content, 'قبول البادج'), null);
+  assert.equal(findButton(client.content, 'إلغاء البادج'), null);
+  assert.equal(client.events.some((item) => item.event === 'cover:review:list'), false);
+});
+
