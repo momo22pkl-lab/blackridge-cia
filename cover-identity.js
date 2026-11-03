@@ -261,6 +261,44 @@ function createCoverIdentity(ctx) {
     };
   }
 
+  function autoApproveChiefIdentity(badge, chief, previousDecisions) {
+    const stamp = nowIso();
+    const reason = 'اعتماد تلقائي بحكم منصب CIA CHIEF.';
+    const approver = {
+      userId: chief.id,
+      name: realNameOf(chief),
+      militaryCode: codeOf(chief),
+      rank: text(ctx.normalizeRank(chief.rank), 100),
+      sector: sectorFor(chief)
+    };
+    const decision = {
+      id: ctx.makeId('CVH'),
+      action: 'AUTO_APPROVED',
+      automatic: true,
+      at: stamp,
+      byId: approver.userId,
+      byName: approver.name,
+      byCode: approver.militaryCode,
+      byRank: approver.rank,
+      bySector: approver.sector,
+      reason,
+      note: reason
+    };
+    badge.review = {
+      status: REVIEW_STATUS.APPROVED,
+      reason,
+      decidedAt: stamp,
+      decidedBy: { ...approver, automatic: true },
+      decisions: [...(Array.isArray(previousDecisions) ? previousDecisions : []), decision]
+    };
+    badge.status = 'ACTIVE';
+    badge.statusReason = '';
+    badge.updatedAt = stamp;
+    if (!Array.isArray(badge.history)) badge.history = [];
+    badge.history.push({ ...decision });
+    return { stamp, reason, approver };
+  }
+
   function event(action, actor, note) {
     return {
       id: ctx.makeId('CVH'),
@@ -396,7 +434,33 @@ function createCoverIdentity(ctx) {
     const state = ctx.getState();
     const badgeBackup = snapshotBadges();
     const auditBackup = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : null;
-    if (!sweepExpired()) return false;
+    let changed = false;
+    for (const badge of badges()) {
+      const chief = ownerOf(badge);
+      if (
+        !chief ||
+        !ctx.isChief(chief) ||
+        approvalStatusOf(badge) !== REVIEW_STATUS.PENDING ||
+        ['REVOKED', 'DISABLED'].includes(badge.status)
+      ) continue;
+
+      const previousReview = reviewRecord(badge);
+      const automatic = autoApproveChiefIdentity(badge, chief, previousReview.decisions);
+      const details = [
+        'badge=' + badge.badgeNumber,
+        'automatic=true',
+        'reviewer=' + automatic.approver.name,
+        'code=' + automatic.approver.militaryCode,
+        'rank=' + automatic.approver.rank,
+        'sector=' + automatic.approver.sector,
+        'at=' + automatic.stamp,
+        'reason=' + automatic.reason
+      ].join(' ');
+      ctx.addAuditLog('COVER_BADGE_AUTO_APPROVED', chief, chief, details);
+      changed = true;
+    }
+    if (sweepExpired()) changed = true;
+    if (!changed) return false;
     try {
       await ctx.saveState();
       return true;
@@ -517,6 +581,7 @@ function createCoverIdentity(ctx) {
     async create(actor, payload) {
       const checked = validateBadgeFields(payload, {});
       if (checked.errors.length) return { ok: false, message: checked.errors[0] };
+      const isChief = ctx.isChief(actor);
       const mineActive = badges().filter((badge) => String(badge.owner.userId) === String(actor.id) &&
         effectiveStatus(badge, nowMs()) === 'ACTIVE').length;
       if (mineActive >= LIMITS.maxActivePerMember) {
@@ -545,10 +610,10 @@ function createCoverIdentity(ctx) {
         createdAt: stamp,
         updatedAt: stamp,
         expiresAt: expiry.iso,
-        status: REVIEW_STATUS.PENDING,
+        status: isChief ? 'ACTIVE' : REVIEW_STATUS.PENDING,
         statusReason: '',
         review: {
-          status: REVIEW_STATUS.PENDING,
+          status: isChief ? REVIEW_STATUS.APPROVED : REVIEW_STATUS.PENDING,
           reason: '',
           decidedAt: '',
           decidedBy: null,
@@ -562,11 +627,23 @@ function createCoverIdentity(ctx) {
         },
         history: []
       };
-      badge.history.push(event('CREATED', actor, 'إنشاء بادج ' + BADGE_TYPES[badge.type].labelAr + ' برقم ' + number + ' وإرساله للمراجعة.'));
+      badge.history.push(event(
+        'CREATED',
+        actor,
+        'إنشاء بادج ' + BADGE_TYPES[badge.type].labelAr + ' برقم ' + number +
+          (isChief ? '.' : ' وإرساله للمراجعة.')
+      ));
+      if (isChief) autoApproveChiefIdentity(badge, actor, []);
 
       const backup = snapshotBadges();
       badges().unshift(badge);
-      const failure = await persist(backup, actor, 'COVER_BADGE_CREATED', actor, 'badge=' + number + ' type=' + badge.type);
+      const failure = await persist(
+        backup,
+        actor,
+        'COVER_BADGE_CREATED',
+        actor,
+        'badge=' + number + ' type=' + badge.type + (isChief ? ' autoApproved=true' : '')
+      );
       if (failure) return { ok: false, message: failure };
       return { ok: true, badge: view(badge, actor, { withPhoto: true, withHistory: true }) };
     },
@@ -583,6 +660,7 @@ function createCoverIdentity(ctx) {
       if (!keys.length) return { ok: false, message: 'لا توجد تعديلات.' };
 
       const backup = snapshotBadges();
+      const isChief = ctx.isChief(actor);
       for (const key of keys) badge[key] = checked.value[key];
       const previousReview = reviewRecord(badge);
       badge.review = {
@@ -595,8 +673,21 @@ function createCoverIdentity(ctx) {
       badge.status = REVIEW_STATUS.PENDING;
       badge.statusReason = '';
       badge.updatedAt = nowIso();
-      badge.history.push(event('UPDATED', actor, 'تعديل: ' + keys.join(', ') + '؛ أعيدت الهوية للمراجعة.'));
-      const failure = await persist(backup, actor, 'COVER_BADGE_UPDATED', actor, 'badge=' + badge.badgeNumber + ' fields=' + keys.join(','));
+      badge.history.push(event(
+        'UPDATED',
+        actor,
+        'تعديل: ' + keys.join(', ') + (isChief
+          ? '؛ الاعتماد تلقائي بحكم منصب CIA CHIEF.'
+          : '؛ أعيدت الهوية للمراجعة.')
+      ));
+      if (isChief) autoApproveChiefIdentity(badge, actor, previousReview.decisions);
+      const failure = await persist(
+        backup,
+        actor,
+        'COVER_BADGE_UPDATED',
+        actor,
+        'badge=' + badge.badgeNumber + ' fields=' + keys.join(',') + (isChief ? ' autoApproved=true' : '')
+      );
       if (failure) return { ok: false, message: failure };
       return { ok: true, badge: view(badge, actor, { withPhoto: true, withHistory: true }) };
     },
@@ -763,6 +854,7 @@ function createCoverIdentity(ctx) {
         .filter((badge) =>
           approvalStatusOf(badge) === REVIEW_STATUS.PENDING &&
           !['REVOKED', 'DISABLED'].includes(badge.status) &&
+          !(ownerOf(badge) && ctx.isChief(ownerOf(badge))) &&
           canReview(actor, badge)
         )
         .map((badge) => view(badge, actor, {}));
