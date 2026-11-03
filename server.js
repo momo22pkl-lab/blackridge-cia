@@ -27,7 +27,15 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
-const { canRestoreSecurityMember, inspectMessage, normalizeMessage, parseBlockedTerms } = require('./security-moderation');
+const {
+  canRestoreSecurityMember,
+  inspectMessage,
+  isAllowedModerationException,
+  MAX_BLOCKED_TERMS,
+  normalizeMessage,
+  parseBlockedTerms,
+  updateBlockedTerms
+} = require('./security-moderation');
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
@@ -94,7 +102,7 @@ const ARABIC_PROFANITY_TERMS = Object.freeze([
 ]);
 
 const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze([...ARABIC_PROFANITY_TERMS, 'خرا']);
-const SECURITY_BLOCKED_TERM_LIMIT = 250;
+const SECURITY_BLOCKED_TERM_LIMIT = MAX_BLOCKED_TERMS;
 
 function normalizeSecurityBlockedTerms(value) {
   const terms = [];
@@ -1261,8 +1269,7 @@ function recordSecurityEvent({
   status = 'REVIEW_REQUIRED',
   relatedId = null,
   notificationCount = null,
-  profanityStrikeCount = null,
-  profanityTerm = null
+  profanityStrikeCount = null
 }) {
   const timestamp = now();
   const incident = {
@@ -1285,10 +1292,7 @@ function recordSecurityEvent({
     status: clean(status, 40).toUpperCase(),
     ...(relatedId ? { relatedId: clean(relatedId, 200) } : {}),
     ...(Number.isFinite(notificationCount) ? { notificationCount } : {}),
-    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {}),
-    ...(isProfanitySecurityIncident({ type }) && typeof profanityTerm === 'string' && clean(profanityTerm, 80)
-      ? { profanityTerm: clean(profanityTerm, 80) }
-      : {})
+    ...(Number.isFinite(profanityStrikeCount) ? { profanityStrikeCount } : {})
   };
   state.cia_security_incidents.unshift(incident);
   state.cia_security_incidents = state.cia_security_incidents.slice(0, 2000);
@@ -1330,9 +1334,6 @@ function securityEventForViewer(incident, viewer) {
     result.actorName = incident.actorName;
     result.actorCode = incident.actorCode || '';
     result.actorRank = incident.actorRank || '';
-    if (isProfanitySecurityIncident(incident) && incident.profanityTerm) {
-      result.profanityTerm = clean(incident.profanityTerm, 80);
-    }
     result.severity = incident.severity;
     if (Number.isFinite(incident.notificationCount)) result.notificationCount = incident.notificationCount;
     const suspendedMember = incident.type === 'MANUAL_REVIEW' && incident.action === 'MEMBER_SUSPENDED'
@@ -1418,8 +1419,7 @@ async function recordModerationViolation(actor, detection, channel) {
       level: separated ? 3 : 1,
       reason,
       status: separated ? 'SUSPENDED' : 'REVIEW_REQUIRED',
-      profanityStrikeCount: strike.count,
-      profanityTerm: detection.matchedTerm || null
+      profanityStrikeCount: strike.count
     });
     const leadershipMessage = separated
       ? `تم فصل #${clean(actor.publicCode || '—', 100)} بعد المخالفة ${strike.count}/3 بسبب إساءة لفظية في ${channelName}.`
@@ -1492,75 +1492,41 @@ async function recordModerationViolation(actor, detection, channel) {
   return incident;
 }
 
-const DEFAULT_ENGLISH_PROFANITY_TERMS = Object.freeze(['fuck', 'shit', 'bitch', 'asshole', 'motherfucker']);
-const PROFANITY_LEET_MAP = Object.freeze({ '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g' });
-const PROFANITY_ARABIZI_MAP = Object.freeze({ '2': 'ء', '3': 'ع', '5': 'خ', '6': 'ط', '7': 'ح', '9': 'ص' });
-
-function findMatchedProfanityTerm(value, detection) {
-  const source = detection && detection.decodedText ? detection.decodedText : String(value == null ? '' : value);
-  const normalized = normalizeMessage(source);
-  if (!normalized) return '';
-
-  const terms = [...new Set([
-    ...DEFAULT_ENGLISH_PROFANITY_TERMS,
-    ...getSecurityBlockedTerms(),
-    ...parseBlockedTerms(process.env.CIA_SECURITY_BLOCKED_TERMS || '').map((rule) => rule.term)
-  ].map((term) => normalizeMessage(term)).filter(Boolean))];
-  const candidates = new Set([normalized]);
-  const punctuationCollapsed = normalized
-    .split(/\s+/u)
-    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
-    .join(' ')
-    .trim();
-  if (punctuationCollapsed) candidates.add(punctuationCollapsed);
-
-  const addWordForms = (word) => {
-    const forms = new Set([word]);
-    const collapsed = word.replace(/(.)\1{2,}/gu, '$1');
-    forms.add(collapsed);
-    if (/[a-z]/u.test(word) && /\d/u.test(word)) {
-      forms.add(word.replace(/[01345789]/gu, (digit) => PROFANITY_LEET_MAP[digit] || digit));
-      forms.add(word.replace(/[235679]/gu, (digit) => PROFANITY_ARABIZI_MAP[digit] || digit));
-    }
-    for (const form of forms) {
-      candidates.add(form);
-      if ([...form].length >= 4) candidates.add([...form].reverse().join(''));
-    }
-  };
-  const words = normalized.match(/[\p{L}\p{N}]+/gu) || [];
-  for (const word of words) addWordForms(word);
-  let singleLetterRun = '';
-  const flushSingleLetters = () => {
-    if ([...singleLetterRun].length >= 4) addWordForms(singleLetterRun);
-    singleLetterRun = '';
-  };
-  for (const piece of normalized.split(/[^\p{L}\p{N}]+/gu).filter(Boolean)) {
-    if ([...piece].length === 1) singleLetterRun += piece;
-    else flushSingleLetters();
-  }
-  flushSingleLetters();
-
-  const wordSequence = (candidate) => normalizeMessage(candidate).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  for (const term of terms) {
-    const paddedTerm = ' ' + wordSequence(term) + ' ';
-    for (const candidate of candidates) {
-      if ((' ' + wordSequence(candidate) + ' ').includes(paddedTerm)) return term;
-    }
-  }
-  return '';
-}
-
-async function moderateOutgoingText(actor, text, channel) {
+async function moderateOutgoingText(actor, text, channel, moderationExceptionReason = '') {
   const configuredTerms = [
     getSecurityBlockedTerms().join('\n'),
     process.env.CIA_SECURITY_BLOCKED_TERMS || ''
   ].filter(Boolean).join('\n');
   const detection = inspectMessage(text, configuredTerms);
   if (!detection) return false;
-  if (isProfanityDetection(detection)) {
-    detection.matchedTerm = findMatchedProfanityTerm(text, detection);
+  const exceptionCode = String(moderationExceptionReason || '').trim().toUpperCase();
+  const channelName = clean(channel, 40).toUpperCase();
+  if (isAllowedModerationException(actor, detection, exceptionCode)) {
+    recordSecurityEvent({
+      actor,
+      target: actor,
+      action: 'MODERATION_EXCEPTION_USED',
+      type: 'MODERATION_EXCEPTION',
+      level: detection.level,
+      reason: `CODE_${exceptionCode} // MATCH_${detection.type} // CHANNEL_${channelName}`,
+      status: 'APPROVED_ONE_MESSAGE'
+    });
+    await saveState();
+    emitState();
+    return false;
   }
-  if (actor && isChief(actor) && isProfanityDetection(detection)) return false;
+  if (exceptionCode) {
+    recordSecurityEvent({
+      actor,
+      target: actor,
+      action: 'MODERATION_EXCEPTION_DENIED',
+      type: 'ACCESS_CONTROL',
+      level: 2,
+      reason: `INVALID_OR_UNAUTHORIZED_EXCEPTION // CHANNEL_${channelName}`,
+      status: 'BLOCKED'
+    });
+    await saveState();
+  }
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
     return result && result.blocked === true ? result : true;
@@ -1571,7 +1537,7 @@ async function moderateOutgoingText(actor, text, channel) {
       action: 'MESSAGE_BLOCKED',
       type: detection.type,
       level: detection.level,
-      reason: `${detection.reason} // CHANNEL_${clean(channel, 40).toUpperCase()}`,
+      reason: `${detection.reason} // CHANNEL_${channelName}`,
       status: 'REVIEW_REQUIRED'
     });
     await notifySecurityLeadership(incident);
@@ -3608,38 +3574,48 @@ io.on(
         return no(cb, 'إدارة معجم الكلمات متاحة لـ CIA CHIEF فقط.');
       }
 
-      const action = String(payload?.action || '').trim().toLowerCase();
-      const term = normalizeMessage(String(payload?.term || ''));
-      if (!['add', 'remove'].includes(action)) return no(cb, 'اختر إضافة كلمة أو إزالتها.');
-      if ([...term].length < 2 || [...term].length > 80 || !/^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term)) {
-        return no(cb, 'اكتب كلمة أو عبارة من حرفين إلى 80 حرفًا، من دون رموز.');
-      }
-
       const current = getSecurityBlockedTerms();
-      const exists = current.includes(term);
-      let updated;
-      if (action === 'add') {
-        if (exists) return ok(cb, { ok: true, action, blockedTerms: current, message: 'هذه الكلمة موجودة بالفعل في المعجم.' });
-        if (current.length >= SECURITY_BLOCKED_TERM_LIMIT) return no(cb, 'وصل المعجم إلى الحد الأقصى للكلمات.');
-        updated = [...current, term];
-      } else {
-        if (!exists) return no(cb, 'الكلمة غير موجودة في المعجم.');
-        updated = current.filter((entry) => entry !== term);
+      const result = updateBlockedTerms(current, payload?.action, payload?.term, payload?.newTerm);
+      if (!result.ok) return no(cb, result.message);
+      if (!result.changed) {
+        return ok(cb, {
+          ok: true,
+          action: result.action,
+          blockedTerms: current,
+          message: result.message
+        });
       }
 
-      state.systemConfig.securityBlockedTerms = updated;
+      const oldTerm = normalizeMessage(String(payload?.term || ''));
+      const newTerm = normalizeMessage(String(payload?.newTerm || ''));
+      const termFingerprints = [
+        `old=${crypto.createHash('sha256').update(oldTerm).digest('hex').slice(0, 16)}`
+      ];
+      if (result.action === 'update') {
+        termFingerprints.push(`new=${crypto.createHash('sha256').update(newTerm).digest('hex').slice(0, 16)}`);
+      }
+      const previousAuditLogs = state.cia_audit_logs;
+      state.systemConfig.securityBlockedTerms = result.terms;
+      addAuditLog(
+        `إدارة معجم الكلمات المحظورة — ${result.action}`,
+        actor,
+        null,
+        `ACTION_${result.action.toUpperCase()} // ${termFingerprints.join(' // ')}`
+      );
       try {
         await saveState();
       } catch (error) {
         state.systemConfig.securityBlockedTerms = current;
+        state.cia_audit_logs = previousAuditLogs;
         console.error('[BLACK RIDGE] Failed to save profanity dictionary:', error.message);
         return no(cb, 'تعذر حفظ التغيير في معجم الكلمات.');
       }
+      emitState();
       return ok(cb, {
         ok: true,
-        action,
-        blockedTerms: updated,
-        message: action === 'add' ? 'تمت إضافة الكلمة إلى المعجم.' : 'تمت إزالة الكلمة من المعجم.'
+        action: result.action,
+        blockedTerms: result.terms,
+        message: result.message
       });
     });
 
@@ -7825,7 +7801,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const source = clean(payload?.text, 500);
       if (!['encode','decode'].includes(direction)) return no(cb, 'اختر اتجاه الترجمة الصحيح.');
       if (!source) return no(cb, 'اكتب النص أو شفرة مورس أولاً.');
-      const moderation = await moderateOutgoingText(actor, source, 'MORSE');
+      const moderation = await moderateOutgoingText(actor, source, 'MORSE', payload?.moderationExceptionReason);
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر النص بواسطة مركز الأمن.');
       }
@@ -10600,7 +10576,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!radioSocketIsEligible(socket.id, channel)) return no(cb, 'يجب الانضمام إلى القناة المحددة قبل الإرسال.');
       const text = clean(payload?.text || payload?.message, 2000);
       if (!text) return no(cb, 'الرسالة فارغة.');
-      const moderation = await moderateOutgoingText(actor, text, 'RADIO');
+      const moderation = await moderateOutgoingText(actor, text, 'RADIO', payload?.moderationExceptionReason);
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر الرسالة بواسطة مركز الأمن.');
       }
@@ -10630,7 +10606,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         meaning: clean(payload?.meaning, 200)
       };
       if (!packet.code) return no(cb, 'كود الراديو غير موجود.');
-      const moderation = await moderateOutgoingText(actor, `${packet.code} ${packet.meaning}`, 'RADIO_CODE');
+      const moderation = await moderateOutgoingText(actor, `${packet.code} ${packet.meaning}`, 'RADIO_CODE', payload?.moderationExceptionReason);
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر كود الراديو بواسطة مركز الأمن.');
       }
@@ -10875,7 +10851,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const image = clean(payload?.image, 8 * 1024 * 1024);
       if (!text && !image) return no(cb, 'الرسالة فارغة.');
       const moderation = text
-        ? await moderateOutgoingText(actor, text, mode === 'private' ? 'PRIVATE_CHAT' : 'CHAT')
+        ? await moderateOutgoingText(actor, text, mode === 'private' ? 'PRIVATE_CHAT' : 'CHAT', payload?.moderationExceptionReason)
         : false;
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر الرسالة بواسطة مركز الأمن.');
@@ -10966,7 +10942,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         : clean(payload?.name || payload?.characterName || 'شخصية غير معتمدة', 120);
       const text = clean(payload?.text || payload?.message, 3000);
       if (!text) return no(cb, 'اكتب الاستفسار أولاً.');
-      const moderation = await moderateOutgoingText(actor, text, 'SUPPORT');
+      const moderation = await moderateOutgoingText(actor, text, 'SUPPORT', payload?.moderationExceptionReason);
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر الاستفسار بواسطة مركز الأمن.');
       }
@@ -11038,7 +11014,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const text = clean(payload?.text || payload?.message, 3000);
       const threadId = clean(payload?.threadId, 120);
       if (!text || !threadId) return no(cb, 'بيانات الرد غير مكتملة.');
-      const moderation = await moderateOutgoingText(actor, text, 'SUPPORT_REPLY');
+      const moderation = await moderateOutgoingText(actor, text, 'SUPPORT_REPLY', payload?.moderationExceptionReason);
       if (moderation) {
         return no(cb, moderation.message || 'تم حظر الرد بواسطة مركز الأمن.');
       }

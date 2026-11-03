@@ -33,6 +33,24 @@ const LEET_MAP = Object.freeze({
 const ARABIZI_MAP = Object.freeze({
   2: 'ء', 3: 'ع', 5: 'خ', 6: 'ط', 7: 'ح', 9: 'ص'
 });
+const ARABIC_TO_LATIN_MAP = Object.freeze({
+  'ء': '2', 'ا': 'a', 'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j',
+  'ح': '7', 'خ': '5', 'د': 'd', 'ذ': 'th', 'ر': 'r', 'ز': 'z',
+  'س': 's', 'ش': 'sh', 'ص': '9', 'ض': 'd', 'ط': '6', 'ظ': 'z',
+  'ع': '3', 'غ': 'gh', 'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l',
+  'م': 'm', 'ن': 'n', 'ه': 'h', 'و': 'w', 'ي': 'y'
+});
+const MAX_BLOCKED_TERMS = 250;
+const MODERATION_EXCEPTION_CODES = Object.freeze([
+  'SECURITY_REVIEW',
+  'OFFICIAL_QUOTE',
+  'FILTER_TEST'
+]);
+const EXCEPTABLE_PROFANITY_TYPES = new Set([
+  'PROFANITY',
+  'MORSE_PROFANITY',
+  'OBFUSCATED_PROFANITY'
+]);
 
 const DEFAULT_BLOCKED_TERMS = Object.freeze([
   { term: 'fuck', level: 1 },
@@ -76,6 +94,75 @@ function parseBlockedTerms(value) {
   return rules;
 }
 
+function isValidBlockedTerm(value) {
+  const term = normalizeMessage(value);
+  return [...term].length >= 2 &&
+    [...term].length <= 80 &&
+    /^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term);
+}
+
+function updateBlockedTerms(currentTerms, actionValue, rawTerm, rawReplacement = '') {
+  const terms = Array.isArray(currentTerms)
+    ? currentTerms.map((entry) => normalizeMessage(entry)).filter(Boolean)
+    : [];
+  const action = String(actionValue || '').trim().toLowerCase();
+  const term = normalizeMessage(rawTerm);
+  const replacement = normalizeMessage(rawReplacement);
+
+  if (!['add', 'remove', 'update'].includes(action)) {
+    return { ok: false, message: 'اختر إضافة كلمة أو تعديلها أو إزالتها.' };
+  }
+  if (!isValidBlockedTerm(term)) {
+    return { ok: false, message: 'اكتب كلمة أو عبارة من حرفين إلى 80 حرفًا، من دون رموز.' };
+  }
+
+  const index = terms.indexOf(term);
+  if (action === 'add') {
+    if (index !== -1) {
+      return { ok: true, changed: false, action, terms, message: 'هذه الكلمة موجودة بالفعل في المعجم.' };
+    }
+    if (terms.length >= MAX_BLOCKED_TERMS) {
+      return { ok: false, message: 'وصل المعجم إلى الحد الأقصى للكلمات.' };
+    }
+    return {
+      ok: true,
+      changed: true,
+      action,
+      terms: [...terms, term],
+      message: 'تمت إضافة الكلمة إلى المعجم.'
+    };
+  }
+
+  if (index === -1) {
+    return { ok: false, message: 'الكلمة غير موجودة في المعجم.' };
+  }
+  if (action === 'remove') {
+    return {
+      ok: true,
+      changed: true,
+      action,
+      terms: terms.filter((entry) => entry !== term),
+      message: 'تمت إزالة الكلمة من المعجم.'
+    };
+  }
+  if (!isValidBlockedTerm(replacement)) {
+    return { ok: false, message: 'اكتب الكلمة الجديدة من حرفين إلى 80 حرفًا، من دون رموز.' };
+  }
+  if (replacement === term) {
+    return { ok: false, message: 'الكلمة الجديدة مطابقة للكلمة الحالية.' };
+  }
+  if (terms.some((entry, entryIndex) => entryIndex !== index && entry === replacement)) {
+    return { ok: false, message: 'الكلمة الجديدة موجودة بالفعل في المعجم.' };
+  }
+  return {
+    ok: true,
+    changed: true,
+    action,
+    terms: terms.map((entry, entryIndex) => entryIndex === index ? replacement : entry),
+    message: 'تم تعديل الكلمة في المعجم.'
+  };
+}
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
@@ -108,6 +195,12 @@ function decodeMorse(value) {
   }
 }
 
+function transliterateArabic(value) {
+  return [...String(value || '')]
+    .map((character) => ARABIC_TO_LATIN_MAP[character] || character)
+    .join('');
+}
+
 function deobfuscationVariants(value) {
   const normalized = normalizeMessage(value);
   const words = normalized.match(/[\p{L}\p{N}]+/gu) || [];
@@ -124,7 +217,7 @@ function deobfuscationVariants(value) {
   add(punctuationCollapsed, 'separator-obfuscation');
 
   for (const word of words) {
-    const collapsed = word.replace(/(.)\1{2,}/gu, '$1');
+    const collapsed = word.replace(/([\p{L}\p{N}])\1+/gu, '$1');
     if (collapsed !== word) add(collapsed, 'repeated-letters');
 
     if (/[a-z]/u.test(word) && /\d/u.test(word)) {
@@ -206,6 +299,29 @@ function inspectMessage(value, configuredTerms = '') {
     }
   }
 
+  if (/\p{Script=Arabic}/u.test(scanText) && /\p{Script=Latin}/u.test(scanText)) {
+    const transliteratedCandidates = new Set([transliterateArabic(scanText)]);
+    for (const variant of deobfuscationVariants(source)) {
+      transliteratedCandidates.add(transliterateArabic(normalizeMessage(variant.value)));
+    }
+    for (const rule of rules) {
+      if (!/\p{Script=Arabic}/u.test(rule.term)) continue;
+      const transliteratedTerm = transliterateArabic(rule.term);
+      for (const candidate of transliteratedCandidates) {
+        const collapsed = candidate.replace(/([\p{L}\p{N}])\1+/gu, '$1');
+        if (containsWholeTerm(candidate, transliteratedTerm) ||
+            containsWholeTerm(collapsed, transliteratedTerm)) {
+          return {
+            type: 'OBFUSCATED_PROFANITY',
+            level: 3,
+            reason: 'MIXED_SCRIPT_BYPASS',
+            source: 'mixed-arabic-latin'
+          };
+        }
+      }
+    }
+  }
+
   if (morseDecoded) return null;
   for (const variant of deobfuscationVariants(source)) {
     const candidate = normalizeMessage(variant.value);
@@ -239,10 +355,23 @@ function canRestoreSecurityMember(user) {
   return rank === 'cia chief';
 }
 
+function isAllowedModerationException(user, detection, reasonCode) {
+  const code = String(reasonCode || '').trim().toUpperCase();
+  return canRestoreSecurityMember(user) &&
+    !!detection &&
+    EXCEPTABLE_PROFANITY_TYPES.has(String(detection.type || '').toUpperCase()) &&
+    MODERATION_EXCEPTION_CODES.includes(code);
+}
+
 module.exports = {
+  MAX_BLOCKED_TERMS,
+  MODERATION_EXCEPTION_CODES,
   canRestoreSecurityMember,
   decodeMorse,
   inspectMessage,
+  isAllowedModerationException,
+  isValidBlockedTerm,
   normalizeMessage,
-  parseBlockedTerms
+  parseBlockedTerms,
+  updateBlockedTerms
 };

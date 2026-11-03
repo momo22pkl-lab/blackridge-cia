@@ -3069,7 +3069,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     <div id="security-panel" class="view-pane">
       <div class="classified-shell" dir="rtl">
         <div class="classified-title"><i class="fa-solid fa-shield-halved"></i> مركز الأمن والمراجعة</div>
-        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. لا تُحفظ الرسائل المحظورة كاملة؛ يُسجّل اللفظ المطابق للمعجم في سجل التحذيرات ويظهر لـ CIA CHIEF فقط.</p>
+        <p style="font-size:.68rem;color:var(--text-dim);margin-top:7px;line-height:1.7;">الحماية تُفرض على الخادم قبل حفظ الرسائل أو إرسالها. يسجل النظام العضو والقناة والتوقيت ونوع المخالفة، دون حفظ نص المحاولة أو اللفظ المطابق.</p>
         <div id="security-summary" style="margin:12px 0;"></div>
         <section id="security-profanity-section" style="display:none;margin-top:12px;">
           <div class="security-line"></div>
@@ -3080,6 +3080,17 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <div class="security-line"></div>
           <div class="classified-title" style="font-size:.78rem;">معجم الكلمات المحظورة — إدارة CIA CHIEF</div>
           <p style="font-size:.68rem;color:var(--text-dim);line-height:1.6;margin:7px 0;">تُحظر الرسالة عند استخدام كلمة من المعجم. المخالفة الأولى والثانية تحذير، والثالثة تؤدي إلى الفصل من الخدمة.</p>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #524018;border-radius:5px;background:#15120b;">
+            <label for="security-moderation-exception-reason" style="font-size:.68rem;color:var(--text-dim);">استثناء إداري لمرة واحدة:</label>
+            <select id="security-moderation-exception-reason" class="input-field" style="width:auto;min-width:185px;margin:0;">
+              <option value="SECURITY_REVIEW">مراجعة أمنية</option>
+              <option value="OFFICIAL_QUOTE">اقتباس رسمي</option>
+              <option value="FILTER_TEST">اختبار محرك الحماية</option>
+            </select>
+            <button type="button" class="btn-action" onclick="armSecurityModerationException()" style="width:auto;margin:0;padding:8px 12px;">تفعيل للرسالة التالية</button>
+            <span id="security-moderation-exception-status" aria-live="polite" style="font-size:.66rem;color:var(--text-dim);">لا يوجد استثناء مفعّل.</span>
+          </div>
+          <p style="font-size:.64rem;color:var(--text-dim);line-height:1.5;margin:4px 0 9px;">يتطلب تأكيدًا صريحًا، ويُسجّل العضو والسبب والقناة والتوقيت دون نص الرسالة. لا يتجاوز تهديدًا أو حمولة ضارة، وينتهي بعد رسالة واحدة أو 60 ثانية.</p>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
             <input id="security-blocked-term-input" class="input-field" type="text" maxlength="80" autocomplete="off" placeholder="اكتب كلمة أو عبارة مسيئة" style="flex:1;min-width:170px;margin:0;">
             <button type="button" class="btn-action" onclick="manageSecurityBlockedTerm('add')" style="width:auto;margin:0;padding:10px 14px;">إضافة كلمة إلى المعجم</button>
@@ -3185,6 +3196,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let securityIncidents = [];
     let securityBlockedTerms = [];
     let securityBlockedTermsVisible = false;
+    let pendingSecurityModerationException = null;
     let unreadSecurityNotificationCount = 0;
     let attendanceLogs = [];
     let operationsList = [];
@@ -5250,8 +5262,16 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
       const terms = Array.isArray(securityBlockedTerms) ? securityBlockedTerms : [];
       list.innerHTML = terms.length
-        ? terms.map(term => '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;border:1px solid #303b49;border-radius:5px;background:#090d13;"><span>' + esc(term) + '</span><button type="button" data-security-remove-term="' + esc(term) + '" style="padding:5px 10px;background:#251014;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">إزالة</button></div>').join('')
+        ? terms.map(term => '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;border:1px solid #303b49;border-radius:5px;background:#090d13;"><span>' + esc(term) + '</span><div style="display:flex;gap:5px;"><button type="button" data-security-edit-term="' + esc(term) + '" style="padding:5px 10px;background:#111b24;color:var(--text-bright);border:1px solid #526173;border-radius:4px;cursor:pointer;">تعديل</button><button type="button" data-security-remove-term="' + esc(term) + '" style="padding:5px 10px;background:#251014;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">إزالة</button></div></div>').join('')
         : '<div class="identity-meta" style="padding:9px;">المعجم فارغ.</div>';
+      list.querySelectorAll('[data-security-edit-term]').forEach(button => {
+        button.addEventListener('click', () => {
+          const currentTerm = button.getAttribute('data-security-edit-term');
+          const replacement = prompt('اكتب الكلمة الجديدة:', currentTerm);
+          if (replacement === null) return;
+          manageSecurityBlockedTerm('update', currentTerm, replacement);
+        });
+      });
       list.querySelectorAll('[data-security-remove-term]').forEach(button => {
         button.addEventListener('click', () => manageSecurityBlockedTerm('remove', button.getAttribute('data-security-remove-term')));
       });
@@ -5263,7 +5283,31 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       renderSecurityBlockedTerms(true);
     }
 
-    function manageSecurityBlockedTerm(action, term) {
+    function armSecurityModerationException() {
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      const selector = document.getElementById('security-moderation-exception-reason');
+      const reasonCode = String(selector?.value || '').trim().toUpperCase();
+      if (!['SECURITY_REVIEW','OFFICIAL_QUOTE','FILTER_TEST'].includes(reasonCode)) return;
+      if (!confirm('سيُسمح للرسالة التالية بتجاوز فحص الألفاظ فقط، مع تسجيل الاستثناء. لن يتجاوز تهديدًا أو حمولة ضارة. هل تريد المتابعة؟')) return;
+      pendingSecurityModerationException = { reasonCode, expiresAt: Date.now() + 60000 };
+      const status = document.getElementById('security-moderation-exception-status');
+      if (status) status.textContent = 'استثناء لمرة واحدة مفعّل لمدة 60 ثانية؛ سيُستهلك مع أول رسالة.';
+    }
+
+    function consumeSecurityModerationException() {
+      const pending = pendingSecurityModerationException;
+      pendingSecurityModerationException = null;
+      const status = document.getElementById('security-moderation-exception-status');
+      if (!pending) return '';
+      if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' || Date.now() > pending.expiresAt) {
+        if (status) status.textContent = 'انتهت صلاحية الاستثناء.';
+        return '';
+      }
+      if (status) status.textContent = 'تم استهلاك الاستثناء؛ راجع سجل الأمن للتوثيق.';
+      return pending.reasonCode;
+    }
+
+    function manageSecurityBlockedTerm(action, term, replacement) {
       if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
       const input = document.getElementById('security-blocked-term-input');
       const value = String(term == null ? (input && input.value) || '' : term).trim();
@@ -5273,11 +5317,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         return;
       }
       if (action === 'remove' && !confirm('هل تريد إزالة «' + value + '» من معجم الحظر؟')) return;
+      const newTerm = action === 'update' ? String(replacement == null ? '' : replacement).trim() : '';
+      if (action === 'update' && !newTerm) return alert('اكتب الكلمة الجديدة.');
+      if (action === 'update' && !confirm('هل تريد تعديل «' + value + '» إلى «' + newTerm + '»؟')) return;
       if (!ciaSocket || !ciaSocket.connected) {
         alert('الاتصال بالخادم غير متاح الآن.');
         return;
       }
-      ciaSocket.emit('security:manageBlockedTerm', { action, term: value }, function(result) {
+      ciaSocket.emit('security:manageBlockedTerm', { action, term: value, newTerm }, function(result) {
         if (!result || !result.ok) {
           alert((result && result.message) || 'تعذر تحديث معجم الكلمات.');
           return;
@@ -5361,10 +5408,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
             const phase = count === 1 ? 'تحذير أولي' : count === 2 ? 'تحذير ثانوي' : 'فصل نهائي';
             const who = incident.userName ? `${esc(incident.userName)}${incident.publicCode ? ` — #${esc(incident.publicCode)}` : ''}` : (incident.publicCode ? `#${esc(incident.publicCode)}` : 'عضو غير محدد');
             const date = incident.timestamp ? new Date(incident.timestamp).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
-            const termDetail = incident.profanityTerm
-              ? `<div class="audit-log-details"><strong>اللفظ المسجّل:</strong> ${esc(incident.profanityTerm)}</div>`
-              : '<div class="audit-log-details">اللفظ غير متوفر في هذا السجل.</div>';
-            return `<div class="audit-log-item" style="border-right:3px solid ${count >= 3 ? '#ef4444' : '#facc15'};"><div class="audit-log-title">${who}</div><div class="audit-log-meta">${phase} بسبب استخدام ألفاظ مسيئة · ${count}/3 · ${esc(date)}</div>${termDetail}${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}<button type="button" class="btn-main" data-security-delete-profanity="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السجل من مركز الأمن</button></div>`;
+            return `<div class="audit-log-item" style="border-right:3px solid ${count >= 3 ? '#ef4444' : '#facc15'};"><div class="audit-log-title">${who}</div><div class="audit-log-meta">${phase} بسبب استخدام ألفاظ مسيئة · ${count}/3 · ${esc(date)}</div>${incident.reason ? `<div class="audit-log-details">${esc(incident.reason)}</div>` : ''}<button type="button" class="btn-main" data-security-delete-profanity="${esc(incident.id)}" style="margin-top:8px;background:#7f1d1d;">حذف السجل من مركز الأمن</button></div>`;
           }).join('')
         : '<div class="identity-meta" style="text-align:center;padding:14px;">لا توجد تحذيرات لفظية مسجلة.</div>';
       const alertsBox = document.getElementById('security-active-alerts');
@@ -5648,7 +5692,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const button = document.getElementById('morse-submit');
       if (!text) return alert('اكتب النص أو شفرة مورس أولاً.');
       if (button) button.disabled = true;
-      ciaSocket.emit('morse:translate', { direction, text }, function(result) {
+      ciaSocket.emit('morse:translate', {
+        direction,
+        text,
+        moderationExceptionReason: consumeSecurityModerationException()
+      }, function(result) {
         if (button) button.disabled = false;
         if (!result || !result.ok) return alert((result && result.message) || 'تعذرت ترجمة الشفرة.');
         const label = document.getElementById('morse-result-label');
@@ -7573,35 +7621,55 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
     }
 
+    function showRadioSubmissionError(result) {
+      const message = String((result && result.message) || 'تعذر إرسال الرسالة.');
+      setRadioActivity(message, 10000);
+      if (window.isProfanityStrikeWarning && window.isProfanityStrikeWarning(message)) {
+        const finalStrike = /تحذير\s+نهائي|المخالفات اللفظية للمرة الثالثة|3\s*\/\s*3/i.test(message);
+        if (finalStrike) return;
+        if (typeof window.showProfanityStrikeWarning === 'function') {
+          window.showProfanityStrikeWarning(message);
+          return;
+        }
+      }
+      alert(message);
+    }
+
     function sendRadioText() {
       const input = document.getElementById('radio-text-input');
-      const txt = input.value.trim();
+      const txt = input ? input.value.trim() : '';
       if (!txt || !radioPoweredOn || !currentUser) return alert('سجّل الدخول وشغّل الراديو أولاً.');
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالخادم غير متاح الآن.');
 
       const msgObj = {
         channel: radioChannel,
         text: txt,
-        userCode: currentUser ? currentUser.publicCode : '00'
+        userCode: currentUser ? currentUser.publicCode : '00',
+        moderationExceptionReason: consumeSecurityModerationException()
       };
 
-      if (ciaSocket) ciaSocket.emit('radio:text', msgObj);
-      addRadioLog({ channel: radioChannel, text: `أنت: ${txt}`, sender: 'أنت' });
-      input.value = '';
+      ciaSocket.emit('radio:text', msgObj, function(result) {
+        if (!result || !result.ok) return showRadioSubmissionError(result);
+        addRadioLog({ channel: radioChannel, text: `أنت: ${txt}`, sender: 'أنت' });
+        input.value = '';
+      });
     }
 
     function sendRadioCode(code, meaning) {
       if (!radioPoweredOn || !currentUser) return alert('سجّل الدخول وشغّل الراديو أولاً.');
-      if (ciaSocket) {
-        ciaSocket.emit('radio:code', {
-          channel: radioChannel,
-          code,
-          meaning,
-          userCode: currentUser ? currentUser.publicCode : '00',
-          userName: currentUser ? currentUser.name : 'عنصر'
-        });
-      }
-      addRadioLog({ channel: radioChannel, text: `أنت أرسلت ${code} (${meaning})`, sender: 'أنت' });
-      setRadioActivity(`تم إرسال كود ${code}`, 5000);
+      if (!ciaSocket || !ciaSocket.connected) return alert('الاتصال بالخادم غير متاح الآن.');
+      ciaSocket.emit('radio:code', {
+        channel: radioChannel,
+        code,
+        meaning,
+        userCode: currentUser ? currentUser.publicCode : '00',
+        userName: currentUser ? currentUser.name : 'عنصر',
+        moderationExceptionReason: consumeSecurityModerationException()
+      }, function(result) {
+        if (!result || !result.ok) return showRadioSubmissionError(result);
+        addRadioLog({ channel: radioChannel, text: `أنت أرسلت ${code} (${meaning})`, sender: 'أنت' });
+        setRadioActivity(`تم إرسال كود ${code}`, 5000);
+      });
     }
 
     function setRadioActivity(text, timeoutMs) {
@@ -7726,7 +7794,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         mode: activeChatMode === 'private' ? 'private' : 'global',
         targetCode: targetUserCode,
         text,
-        image: chatImageBase64 || ''
+        image: chatImageBase64 || '',
+        moderationExceptionReason: consumeSecurityModerationException()
       }, function(result) {
         if (!result || !result.ok) {
           const message = String((result && result.message) || 'تعذر إرسال الرسالة.');
@@ -7833,7 +7902,13 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const text = document.getElementById('support-text')?.value.trim();
       const name = document.getElementById('support-name')?.value.trim() || currentUser?.name || '';
       if (!text) return alert('اكتب الاستفسار أولاً.');
-      ciaSocket.emit('support:send', { name, text, threadId: lastSupportThreadId, ownerToken:lastSupportThreadToken }, function(result) {
+      ciaSocket.emit('support:send', {
+        name,
+        text,
+        threadId: lastSupportThreadId,
+        ownerToken:lastSupportThreadToken,
+        moderationExceptionReason: consumeSecurityModerationException()
+      }, function(result) {
         if (!result || !result.ok) return alert((result && result.message) || 'تعذر إرسال الاستفسار.');
         lastSupportThreadId = result.threadId;
         lastSupportThreadToken = result.ownerToken;
@@ -7853,7 +7928,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!ciaSocket || !ciaSocket.connected) return;
       const text = prompt('اكتب رد القيادة:');
       if (!text || !text.trim()) return;
-      ciaSocket.emit('support:reply', { threadId, text: text.trim() }, function(result) {
+      ciaSocket.emit('support:reply', {
+        threadId,
+        text: text.trim(),
+        moderationExceptionReason: consumeSecurityModerationException()
+      }, function(result) {
         if (!result || !result.ok) alert((result && result.message) || 'تعذر إرسال الرد.');
       });
     }
@@ -8142,7 +8221,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         name:currentUser.name || currentUser.publicCode || 'IBP operator',
         text:'SOS COMMAND CONTACT\\n'+text,
         threadId,
-        ownerToken
+        ownerToken,
+        moderationExceptionReason: consumeSecurityModerationException()
       }, function(response) {
         if(submit) submit.disabled=false;
         if(!response || !response.ok) {
