@@ -11,7 +11,7 @@
   const NOTICE_AR = 'هوية معتمدة رسميًا داخل BLACKRIDGE CITY ROLEPLAY، وقد تمت مراجعتها والموافقة عليها من الجهات المخوّلة.';
   const NOTICE_EN = 'APPROVED IN BLACKRIDGE CITY ROLEPLAY ONLY · NOT A GOVERNMENT ID';
   const STATUS_AR = {
-    ACTIVE: 'فعّال',
+    ACTIVE: 'هوية رسمية معتمدة',
     PENDING_REVIEW: 'قيد المراجعة',
     REJECTED: 'مرفوض',
     EXPIRED: 'منتهي',
@@ -445,13 +445,11 @@
     const title = S.meta && S.meta.scope === 'SECTOR'
       ? 'الهويات والبادجات المعلّقة لأعضاء قطاعك'
       : 'الهويات والبادجات المعلّقة للمراجعة';
-    const readOnlyNote = S.meta && S.meta.isChief
-      ? h('div', { class: 'cvr-review-note', text: 'عرض إشرافي فقط؛ صلاحية الاعتماد والرفض لقائد القطاع وSenior Commander.' })
-      : null;
+    const reviewNote = h('div', { class: 'cvr-review-note', text: 'صلاحية قبول أو إلغاء البادج لـ CIA CHIEF وSenior Commander CIA فقط. الاعتماد داخل BLACKRIDGE CITY ROLEPLAY وليس هوية حكومية.' });
     if (!S.reviewQueue.length) {
       return h('section', { class: 'cvr-review-panel' },
         h('h3', { text: title }),
-        readOnlyNote,
+        reviewNote,
         h('div', { class: 'cvr-empty', text: 'لا توجد هويات بانتظار المراجعة ضمن نطاق صلاحيتك.' }));
     }
 
@@ -461,14 +459,14 @@
         rows: 2,
         maxlength: 300,
         required: 'required',
-        placeholder: 'سبب الرفض (مطلوب عند الرفض)'
+        placeholder: 'سبب الإلغاء (مطلوب)'
       });
       const message = h('div', { class: 'cvr-msg' });
       let busy = false;
       const decide = async (decision) => {
         if (busy) return;
         if (decision === 'reject' && !String(reason.value || '').trim()) {
-          message.textContent = 'اكتب سبب الرفض أولًا.';
+          message.textContent = 'اكتب سبب الإلغاء أولًا.';
           message.className = 'cvr-msg error';
           return;
         }
@@ -482,7 +480,7 @@
           message.className = 'cvr-msg error';
           return;
         }
-        setMsg(decision === 'approve' ? 'تم اعتماد الهوية وأصبحت فعّالة.' : 'تم رفض الهوية وحفظ سبب الرفض.', 'ok');
+        setMsg(decision === 'approve' ? 'تم قبول البادج وأصبحت هوية ميدانية معتمدة رسميًا داخل النظام.' : 'تم إلغاء البادج ورفض طلب الاعتماد مع حفظ السبب.', 'ok');
         await loadReviewQueue();
         render();
       };
@@ -490,10 +488,10 @@
         h('button', { type: 'button', class: 'cvr-btn', text: 'التفاصيل', onclick: () => openDetail(badge.id) })
       ];
       if (badge.can && badge.can.approve) {
-        actions.push(h('button', { type: 'button', class: 'cvr-btn primary', text: 'اعتماد الهوية', onclick: () => decide('approve') }));
+        actions.push(h('button', { type: 'button', class: 'cvr-btn primary', text: 'قبول البادج', onclick: () => decide('approve') }));
       }
       if (badge.can && badge.can.reject) {
-        actions.push(h('button', { type: 'button', class: 'cvr-btn danger', text: 'رفض الهوية', onclick: () => decide('reject') }));
+        actions.push(h('button', { type: 'button', class: 'cvr-btn danger', text: 'إلغاء البادج', onclick: () => decide('reject') }));
       }
       return h('article', { class: 'cvr-review-card' },
         h('div', { class: 'cvr-review-head' },
@@ -512,7 +510,7 @@
       h('div', { class: 'cvr-review-summary' },
         h('h3', { text: title }),
         h('span', { class: 'cvr-chip PENDING_REVIEW', text: String(S.reviewQueue.length) + ' معلّق' })),
-      readOnlyNote,
+      reviewNote,
       h('div', { class: 'cvr-review-list' }, cards));
   }
 
@@ -656,7 +654,7 @@
       rows: 2,
       maxlength: 300,
       placeholder: badge.can.reject
-        ? 'سبب الرفض (مطلوب عند الرفض)'
+        ? 'سبب الإلغاء (مطلوب)'
         : 'سبب الإلغاء أو التعطيل (مطلوب)'
     });
     const renewDate = h('input', { type: 'date', value: inDays(7) });
@@ -668,13 +666,13 @@
     } });
     const actions = [h('button', { type: 'button', class: 'cvr-btn', text: 'تنزيل PNG', onclick: () => downloadBadge(badge) })];
     if (badge.can.approve) {
-      actions.push(act('اعتماد الهوية', 'primary', () => call('cover:approve', { id })));
+      actions.push(act('قبول البادج', 'primary', () => call('cover:approve', { id })));
     }
     if (badge.can.reject) {
-      actions.push(act('رفض الهوية', 'danger', () => call('cover:reject', { id, reason: reason.value })));
+      actions.push(act('إلغاء البادج', 'danger', () => call('cover:reject', { id, reason: reason.value })));
     }
     if (badge.can.renew) actions.push(renewDate, act('تجديد', '', () => call('cover:renew', { id, expiresAt: endOfDayIso(renewDate.value) })));
-    if (badge.can.revoke) actions.push(act('إلغاء البادج', 'danger', () => call('cover:revoke', { id, reason: reason.value })));
+    if (badge.can.revoke && badge.reviewStatus !== 'PENDING_REVIEW') actions.push(act('إلغاء البادج', 'danger', () => call('cover:revoke', { id, reason: reason.value })));
     if (badge.can.disable) actions.push(act('تعطيل', 'danger', () => call('cover:disable', { id, reason: reason.value })));
     if (badge.can.enable) actions.push(act('إعادة تفعيل', '', () => call('cover:enable', { id })));
     overlay.append(h('div', { class: 'cvr-modal' },

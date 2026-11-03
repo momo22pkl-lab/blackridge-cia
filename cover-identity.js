@@ -241,19 +241,12 @@ function createCoverIdentity(ctx) {
   }
 
   function canReview(actor, badge) {
-    if (!actor || !badge) return false;
-    if (isOwner(actor, badge)) return false;
-    if (ctx.isSenior(actor)) return true;
-    if (!ctx.isHighCommander(actor)) return false;
-    const owner = ownerOf(badge);
-    const ownerCode = owner ? codeOf(owner) : text(badge.owner.militaryCode, 100).toUpperCase();
-    return !!ownerCode && commandedMemberCodes(actor).has(ownerCode);
+    if (!actor || !badge || isOwner(actor, badge)) return false;
+    return ctx.isChief(actor) || ctx.isSenior(actor);
   }
 
   function canAccessReviewQueue(actor) {
-    if (!actor) return false;
-    return ctx.isChief(actor) || ctx.isSenior(actor) ||
-      (ctx.isHighCommander(actor) && scopeFor(actor) === 'SECTOR');
+    return !!actor && (ctx.isChief(actor) || ctx.isSenior(actor));
   }
 
   function reviewRecord(badge) {
@@ -853,7 +846,7 @@ function createCoverIdentity(ctx) {
 
     async reviewList(actor) {
       if (!canAccessReviewQueue(actor)) {
-        return { ok: false, message: 'قائمة المراجعة متاحة لقائد القطاع وSenior Commander وCIA CHIEF فقط.' };
+        return { ok: false, message: 'قائمة المراجعة متاحة لـ CIA CHIEF وSenior Commander CIA فقط.' };
       }
       await sweepAndPersist();
       const rows = badges()
