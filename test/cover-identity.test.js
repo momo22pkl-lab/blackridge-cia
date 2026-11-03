@@ -152,6 +152,60 @@ test('creates multiple fictional badge types as pending and stores the real owne
   assert.deepEqual(f.state.cia_audit_logs.map((row) => row.action), ['COVER_BADGE_CREATED', 'COVER_BADGE_CREATED']);
 });
 
+test('automatically approves CIA CHIEF identities on creation and edits without adding them to review queues', async () => {
+  const f = fixture();
+  const chief = f.users[0];
+  const created = await f.api.handlers.create(chief, payload(f.now()));
+  assert.equal(created.ok, true);
+  assert.equal(created.badge.status, 'ACTIVE');
+  assert.equal(created.badge.reviewStatus, REVIEW_STATUS.APPROVED);
+  assert.equal(created.badge.isApproved, true);
+  assert.equal(created.badge.review.decisions.length, 1);
+  assert.equal(created.badge.review.decisions[0].action, 'AUTO_APPROVED');
+  assert.equal(created.badge.review.decisions[0].automatic, true);
+  assert.match(f.state.cia_audit_logs[0].details, /autoApproved=true/);
+  assert.equal((await f.api.handlers.reviewList(f.users[1])).total, 0);
+  assert.equal((await f.api.handlers.reviewList(f.users[2])).total, 0);
+
+  const updated = await f.api.handlers.update(chief, { id: created.badge.id, alias: 'Chief Raven' });
+  assert.equal(updated.ok, true);
+  assert.equal(updated.badge.status, 'ACTIVE');
+  assert.equal(updated.badge.reviewStatus, REVIEW_STATUS.APPROVED);
+  assert.equal(updated.badge.review.decisions.length, 2);
+  assert.equal(updated.badge.review.decisions[1].action, 'AUTO_APPROVED');
+  assert.equal((await f.api.handlers.mine(chief)).badges[0].isApproved, true);
+
+  const meta = f.api.handlers.meta(chief);
+  assert.equal(meta.isChief, true);
+  assert.equal(meta.canAdmin, true);
+  assert.equal(meta.scope, 'ALL');
+  assert.equal(meta.canReviewQueue, false);
+  assert.equal((await f.api.handlers.adminList(chief, {})).total, 1, 'CIA CHIEF keeps system-wide supervision');
+});
+
+test('automatically approves legacy pending identities owned by the current CIA CHIEF before listing reviews', async () => {
+  const f = fixture();
+  const created = await f.api.handlers.create(f.users[3], payload(f.now()));
+  const stored = f.state.cia_cover_badges[0];
+  stored.owner = {
+    userId: f.users[0].id,
+    name: 'Chief Real Name',
+    militaryCode: 'CHIEF-1',
+    rank: 'CIA CHIEF'
+  };
+
+  const queue = await f.api.handlers.reviewList(f.users[1]);
+  assert.equal(queue.ok, true);
+  assert.equal(queue.total, 0);
+  assert.equal(stored.status, 'ACTIVE');
+  assert.equal(stored.review.status, REVIEW_STATUS.APPROVED);
+  assert.equal(stored.review.decisions[0].automatic, true);
+  assert.equal(f.state.cia_audit_logs[0].action, 'COVER_BADGE_AUTO_APPROVED');
+  assert.match(f.state.cia_audit_logs[0].details, /reviewer=Chief Real Name/);
+  assert.match(f.state.cia_audit_logs[0].details, /automatic=true/);
+  assert.equal(created.ok, true);
+});
+
 test('prevents cross-member edits and sends changed approved identities back for review', async () => {
   const f = fixture();
   const owner = f.users[3];
@@ -187,7 +241,8 @@ test('prevents cross-member edits and sends changed approved identities back for
 test('enforces sector review scope and allows either authorized reviewer to approve', async () => {
   const f = fixture();
   const inScope = await f.api.handlers.create(f.users[3], payload(f.now()));
-  const outside = await f.api.handlers.create(f.users[4], payload(f.now(), { type: 'EMS', badgeNumber: 'EMS-300003' }));
+  const outsideToReject = await f.api.handlers.create(f.users[4], payload(f.now(), { type: 'EMS', badgeNumber: 'EMS-300003' }));
+  const outsideToApprove = await f.api.handlers.create(f.users[4], payload(f.now(), { type: 'POLICE', badgeNumber: 'PD-400004' }));
   const commander = f.users[2];
   const scoped = await f.api.handlers.adminList(commander, {});
   assert.equal(scoped.ok, true);
@@ -197,18 +252,21 @@ test('enforces sector review scope and allows either authorized reviewer to appr
   assert.equal(scoped.total, 1);
   assert.equal(scoped.badges[0].id, inScope.badge.id);
   assert.equal(scoped.badges[0].can.approve, true, 'in-sector commander should receive the approval action');
-  assert.equal((await f.api.handlers.get(commander, { id: outside.badge.id })).ok, false);
+  assert.equal((await f.api.handlers.get(commander, { id: outsideToReject.badge.id })).ok, false);
   assert.equal((await f.api.handlers.disable(commander, { id: inScope.badge.id, reason: 'Review' })).ok, false);
   assert.equal((await f.api.handlers.approve(f.users[0], { id: inScope.badge.id })).ok, false, 'CIA CHIEF supervises but is not one of the two approval roles');
-  assert.equal((await f.api.handlers.approve(commander, { id: outside.badge.id })).ok, false, 'a sector leader cannot review another sector');
+  assert.equal((await f.api.handlers.approve(commander, { id: outsideToReject.badge.id })).ok, false, 'a sector leader cannot review another sector');
+  assert.equal((await f.api.handlers.reject(commander, { id: outsideToReject.badge.id, reason: 'Outside sector' })).ok, false, 'a sector leader cannot reject another sector');
+  assert.equal((await f.api.handlers.reject(f.users[1], { id: outsideToReject.badge.id, reason: 'Senior review' })).ok, true, 'Senior Commander can reject across sectors');
   assert.equal((await f.api.handlers.approve(commander, { id: inScope.badge.id })).ok, true);
   assert.equal((await f.api.handlers.approve(f.users[1], { id: inScope.badge.id })).ok, false, 'one approval is final');
-  assert.equal((await f.api.handlers.approve(f.users[1], { id: outside.badge.id })).ok, true, 'Senior Commander can review across sectors');
+  assert.equal((await f.api.handlers.approve(f.users[1], { id: outsideToReject.badge.id })).ok, false, 'a rejected identity cannot also be approved');
+  assert.equal((await f.api.handlers.approve(f.users[1], { id: outsideToApprove.badge.id })).ok, true, 'Senior Commander can approve across sectors');
 
   const chiefList = await f.api.handlers.adminList(f.users[0], {});
   const seniorList = await f.api.handlers.adminList(f.users[1], {});
-  assert.equal(chiefList.total, 2);
-  assert.equal(seniorList.total, 2);
+  assert.equal(chiefList.total, 3);
+  assert.equal(seniorList.total, 3);
   assert.equal((await f.api.handlers.disable(f.users[0], { id: inScope.badge.id, reason: 'Leadership review' })).ok, true);
   assert.equal((await f.api.handlers.enable(f.users[0], { id: inScope.badge.id })).ok, true);
 });
@@ -300,8 +358,13 @@ test('records rejection metadata and reason, then preserves it when the owner re
   assert.equal(decision.bySector, 'Special Operations');
   assert.equal(decision.at, rejected.badge.review.decidedAt);
   assert.equal(decision.reason, 'يرجى تصحيح بيانات المهمة');
+  assert.equal(f.state.cia_audit_logs[0].action, 'COVER_BADGE_REJECTED');
+  assert.match(f.state.cia_audit_logs[0].details, /reviewer=Commander Real Name/);
+  assert.match(f.state.cia_audit_logs[0].details, /code=CMD-1/);
   assert.match(f.state.cia_audit_logs[0].details, /rank=HIGH COMMANDER/);
   assert.match(f.state.cia_audit_logs[0].details, /sector=Special Operations/);
+  assert.ok(f.state.cia_audit_logs[0].details.includes('at=' + decision.at));
+  assert.match(f.state.cia_audit_logs[0].details, /reason=يرجى تصحيح بيانات المهمة/);
 
   const ownerView = (await f.api.handlers.mine(f.users[3])).badges[0];
   assert.equal(ownerView.status, REVIEW_STATUS.REJECTED);
