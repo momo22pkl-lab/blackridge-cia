@@ -158,7 +158,8 @@ class FakeElement {
   }
 }
 
-function mountReviewQueueClient() {
+function mountReviewQueueClient(config) {
+  const options = config || {};
   const body = new FakeElement('body');
   const content = new FakeElement('main');
   content.className = 'content-area';
@@ -192,7 +193,7 @@ function mountReviewQueueClient() {
     expiresAt: '2026-12-31T23:59:00.000Z',
     status: 'PENDING_REVIEW',
     owner: { name: 'Member One', militaryCode: 'AG-101' },
-    can: { approve: true, reject: true }
+    can: options.badgeCan || { approve: true, reject: true }
   };
   let queue = [pending];
   const events = [];
@@ -202,9 +203,9 @@ function mountReviewQueueClient() {
         events.push({ event, payload });
         let reply;
         if (event === 'cover:meta') {
-          reply = { ok: true, canAdmin: true, canReviewQueue: true, scope: 'SECTOR' };
+          reply = { ok: true, canAdmin: true, canReviewQueue: true, isChief: false, scope: 'SECTOR', ...(options.meta || {}) };
         } else if (event === 'cover:review:list') {
-          reply = { ok: true, scope: 'SECTOR', total: queue.length, badges: queue.slice() };
+          reply = { ok: true, scope: (options.meta && options.meta.scope) || 'SECTOR', total: queue.length, badges: queue.slice() };
         } else if (event === 'cover:approve') {
           queue = [];
           reply = { ok: true, badge: { ...pending, status: 'ACTIVE', isApproved: true } };
@@ -221,7 +222,7 @@ function mountReviewQueueClient() {
   vm.runInNewContext(clientSource, {
     document,
     window,
-    currentUser: { id: 'commander-1' },
+    currentUser: options.currentUser || { id: 'commander-1' },
     ciaSessionAuthenticated: true,
     setInterval() { return 0; },
     setTimeout,
@@ -286,4 +287,22 @@ test('sector reviewer approval button invokes the server approval event and refr
   assert.ok(client.events.filter((item) => item.event === 'cover:review:list').length >= 2);
   assert.ok(client.content.textContent.includes('لا توجد هويات بانتظار المراجعة'));
   assert.ok(client.content.textContent.includes('تم اعتماد الهوية وأصبحت فعّالة.'));
+});
+
+test('CIA CHIEF sees the all-sector review queue as read-only', async () => {
+  const client = mountReviewQueueClient({
+    meta: { isChief: true, scope: 'ALL' },
+    badgeCan: { approve: false, reject: false }
+  });
+  await client.nav.click();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(client.content.textContent.includes('مراجعات الهويات'));
+  assert.ok(client.content.textContent.includes('الهويات والبادجات المعلّقة للمراجعة'));
+  assert.ok(client.content.textContent.includes('عرض إشرافي فقط'));
+  assert.ok(findButton(client.content, 'التفاصيل'));
+  assert.equal(findButton(client.content, 'اعتماد الهوية'), null);
+  assert.equal(findButton(client.content, 'رفض الهوية'), null);
+  assert.ok(client.events.some((item) => item.event === 'cover:review:list'));
+  assert.equal(client.events.some((item) => item.event === 'cover:approve' || item.event === 'cover:reject'), false);
 });

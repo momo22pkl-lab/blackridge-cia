@@ -15,6 +15,7 @@
 .cvr-review-panel { border: 1px solid rgba(173, 146, 82, .3); border-radius: 12px; padding: 13px; background: linear-gradient(145deg, rgba(19, 23, 31, .82), rgba(10, 13, 19, .88)); }
 .cvr-review-summary, .cvr-review-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cvr-review-summary { margin-bottom: 12px; }
+.cvr-review-note { margin: 0 0 12px; color: #b9c3cf; font-size: .84rem; line-height: 1.6; }
 .cvr-review-summary h3 { margin: 0; color: #e1c77f; font-size: 1rem; }
 .cvr-review-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
 .cvr-review-card { min-width: 0; border: 1px solid rgba(173, 146, 82, .3); border-right: 3px solid #b99b56; border-radius: 10px; padding: 12px; background: linear-gradient(145deg, rgba(19, 23, 31, .98), rgba(10, 13, 19, .98)); box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }

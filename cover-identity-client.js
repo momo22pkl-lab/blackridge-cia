@@ -445,9 +445,13 @@
     const title = S.meta && S.meta.scope === 'SECTOR'
       ? 'الهويات والبادجات المعلّقة لأعضاء قطاعك'
       : 'الهويات والبادجات المعلّقة للمراجعة';
+    const readOnlyNote = S.meta && S.meta.isChief
+      ? h('div', { class: 'cvr-review-note', text: 'عرض إشرافي فقط؛ صلاحية الاعتماد والرفض لقائد القطاع وSenior Commander.' })
+      : null;
     if (!S.reviewQueue.length) {
       return h('section', { class: 'cvr-review-panel' },
         h('h3', { text: title }),
+        readOnlyNote,
         h('div', { class: 'cvr-empty', text: 'لا توجد هويات بانتظار المراجعة ضمن نطاق صلاحيتك.' }));
     }
 
@@ -508,6 +512,7 @@
       h('div', { class: 'cvr-review-summary' },
         h('h3', { text: title }),
         h('span', { class: 'cvr-chip PENDING_REVIEW', text: String(S.reviewQueue.length) + ' معلّق' })),
+      readOnlyNote,
       h('div', { class: 'cvr-review-list' }, cards));
   }
 
