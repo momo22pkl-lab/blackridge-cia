@@ -123,3 +123,167 @@ test('renders distinct badge themes without presenting an unreviewed identity as
   assert.ok(rejected.renderedText.includes('REJECTED · NOT APPROVED'));
   assert.equal(rejected.renderedText.some((text) => text.includes('هوية معتمدة رسميًا')), false);
 });
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.nodeType = 1;
+    this.children = [];
+    this.listeners = {};
+    this.attributes = {};
+    this.value = '';
+    this.style = {};
+    this._text = '';
+  }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (!node) continue;
+      this.children.push(node);
+      node.parentNode = this;
+    }
+  }
+  replaceChildren(...nodes) { this.children = []; this._text = ''; this.append(...nodes); }
+  addEventListener(type, handler) {
+    if (!this.listeners[type]) this.listeners[type] = [];
+    this.listeners[type].push(handler);
+  }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+    if (name === 'id') this.id = String(value);
+  }
+  get textContent() { return this._text + this.children.map((child) => child.textContent || '').join(''); }
+  set textContent(value) { this._text = String(value || ''); this.children = []; }
+  async click() {
+    for (const handler of this.listeners.click || []) await handler({ target: this });
+  }
+}
+
+function mountReviewQueueClient() {
+  const body = new FakeElement('body');
+  const content = new FakeElement('main');
+  content.className = 'content-area';
+  const nav = new FakeElement('button');
+  nav.id = 'cover-identity-nav';
+  body.append(nav, content);
+  const find = (node, predicate) => {
+    if (predicate(node)) return node;
+    for (const child of node.children || []) {
+      const match = find(child, predicate);
+      if (match) return match;
+    }
+    return null;
+  };
+  const document = {
+    readyState: 'complete',
+    body,
+    createElement: (tagName) => new FakeElement(tagName),
+    createTextNode: (text) => ({ nodeType: 3, textContent: String(text) }),
+    getElementById: (id) => find(body, (node) => node.id === id),
+    querySelector: (selector) => selector === '.content-area' ? content : null,
+    addEventListener() {}
+  };
+  const pending = {
+    id: 'CVR-QUEUE-1',
+    badgeNumber: 'MIL-555555',
+    type: 'MILITARY',
+    typeLabel: 'هوية عسكرية',
+    alias: 'Raven',
+    sector: 'Special Operations',
+    expiresAt: '2026-12-31T23:59:00.000Z',
+    status: 'PENDING_REVIEW',
+    owner: { name: 'Member One', militaryCode: 'AG-101' },
+    can: { approve: true, reject: true }
+  };
+  let queue = [pending];
+  const events = [];
+  const window = {
+    blackRidgeSocket: {
+      emit(event, payload, callback) {
+        events.push({ event, payload });
+        let reply;
+        if (event === 'cover:meta') {
+          reply = { ok: true, canAdmin: true, canReviewQueue: true, scope: 'SECTOR' };
+        } else if (event === 'cover:review:list') {
+          reply = { ok: true, scope: 'SECTOR', total: queue.length, badges: queue.slice() };
+        } else if (event === 'cover:approve') {
+          queue = [];
+          reply = { ok: true, badge: { ...pending, status: 'ACTIVE', isApproved: true } };
+        } else if (event === 'cover:reject') {
+          queue = [];
+          reply = { ok: true, badge: { ...pending, status: 'REJECTED', isApproved: false, statusReason: payload.reason } };
+        } else {
+          reply = { ok: false, message: 'unexpected event: ' + event };
+        }
+        callback(reply);
+      }
+    }
+  };
+  vm.runInNewContext(clientSource, {
+    document,
+    window,
+    currentUser: { id: 'commander-1' },
+    ciaSessionAuthenticated: true,
+    setInterval() { return 0; },
+    setTimeout,
+    clearTimeout
+  });
+  return { nav, content, events };
+}
+
+function findButton(node, label) {
+  if (node.tagName === 'button' && node.textContent === label) return node;
+  for (const child of node.children || []) {
+    const match = findButton(child, label);
+    if (match) return match;
+  }
+  return null;
+}
+
+function findElement(node, tagName, className) {
+  if (node.tagName === tagName && node.className === className) return node;
+  for (const child of node.children || []) {
+    const match = findElement(child, tagName, className);
+    if (match) return match;
+  }
+  return null;
+}
+
+test('shows sector review actions in a dedicated queue, requires rejection reason, and removes the notice banner', async () => {
+  const client = mountReviewQueueClient();
+  await client.nav.click();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  let text = client.content.textContent;
+  assert.ok(text.includes('مراجعات القطاع'));
+  assert.ok(text.includes('الهويات والبادجات المعلّقة لأعضاء قطاعك'));
+  assert.ok(text.includes('اعتماد الهوية'));
+  assert.ok(text.includes('رفض الهوية'));
+  assert.equal(text.includes('وثيقة خيالية للاستخدام داخل BLACKRIDGE CITY ROLEPLAY'), false);
+  assert.equal(text.includes('لا تُستخدم شعارات أو أختام حكومية حقيقية'), false);
+
+  const reject = findButton(client.content, 'رفض الهوية');
+  const reason = findElement(client.content, 'textarea', 'cvr-review-reason');
+  assert.ok(reject);
+  assert.ok(reason);
+  await reject.click();
+  assert.equal(client.events.some((item) => item.event === 'cover:reject'), false, 'blank rejection reason must not be sent');
+  assert.ok(client.content.textContent.includes('اكتب سبب الرفض أولًا.'));
+  reason.value = 'بيانات المهمة ناقصة';
+  await reject.click();
+  const rejection = client.events.find((item) => item.event === 'cover:reject');
+  assert.equal(rejection.payload.reason, 'بيانات المهمة ناقصة');
+  assert.ok(client.events.some((item) => item.event === 'cover:review:list'));
+});
+
+test('sector reviewer approval button invokes the server approval event and refreshes the queue', async () => {
+  const client = mountReviewQueueClient();
+  await client.nav.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  const approve = findButton(client.content, 'اعتماد الهوية');
+  assert.ok(approve, 'pending review should render a visible approval button');
+  await approve.click();
+  assert.ok(client.events.some((item) => item.event === 'cover:approve'));
+  assert.ok(client.events.filter((item) => item.event === 'cover:review:list').length >= 2);
+  assert.ok(client.content.textContent.includes('لا توجد هويات بانتظار المراجعة'));
+  assert.ok(client.content.textContent.includes('تم اعتماد الهوية وأصبحت فعّالة.'));
+});

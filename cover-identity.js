@@ -159,7 +159,11 @@ function createCoverIdentity(ctx) {
     const codes = new Set();
     if (!mine) return codes;
     for (const unit of commandedUnits(actor)) {
-      for (const code of Array.isArray(unit.memberCodes) ? unit.memberCodes : []) {
+      const assigned = [
+        ...(Array.isArray(unit.memberCodes) ? unit.memberCodes : []),
+        unit.deputyCode
+      ];
+      for (const code of assigned) {
         const normalized = text(code, 100).toUpperCase();
         if (normalized && normalized !== mine) codes.add(normalized);
       }
@@ -238,8 +242,9 @@ function createCoverIdentity(ctx) {
 
   function canReview(actor, badge) {
     if (!actor || !badge) return false;
+    if (isOwner(actor, badge)) return false;
     if (ctx.isSenior(actor)) return true;
-    if (!ctx.isHighCommander(actor) || isOwner(actor, badge)) return false;
+    if (!ctx.isHighCommander(actor)) return false;
     const owner = ownerOf(badge);
     const ownerCode = owner ? codeOf(owner) : text(badge.owner.militaryCode, 100).toUpperCase();
     return !!ownerCode && commandedMemberCodes(actor).has(ownerCode);
@@ -503,9 +508,9 @@ function createCoverIdentity(ctx) {
         types: Object.entries(BADGE_TYPES).map(([key, value]) => ({ key, label: value.label, labelAr: value.labelAr })),
         scope,
         canAdmin: scope !== 'OWN',
+        canReviewQueue: ctx.isSenior(actor) || (ctx.isHighCommander(actor) && scope === 'SECTOR'),
         isChief: ctx.isChief(actor),
-        limits: { ...LIMITS },
-        notice: 'وثيقة خيالية للاستخدام داخل BLACKRIDGE CITY ROLEPLAY فقط'
+        limits: { ...LIMITS }
       };
     },
 
@@ -747,6 +752,21 @@ function createCoverIdentity(ctx) {
       }
       feed.sort((a, b) => String(b.at).localeCompare(String(a.at)));
       return { ok: true, activity: feed.slice(0, LIMITS.maxActivityRows) };
+    },
+
+    async reviewList(actor) {
+      if (!actor || (!ctx.isSenior(actor) && !ctx.isHighCommander(actor))) {
+        return { ok: false, message: 'قائمة المراجعة متاحة لقائد القطاع وSenior Commander فقط.' };
+      }
+      await sweepAndPersist();
+      const rows = badges()
+        .filter((badge) =>
+          approvalStatusOf(badge) === REVIEW_STATUS.PENDING &&
+          !['REVOKED', 'DISABLED'].includes(badge.status) &&
+          canReview(actor, badge)
+        )
+        .map((badge) => view(badge, actor, {}));
+      return { ok: true, total: rows.length, badges: rows, scope: scopeFor(actor) };
     }
   };
 
@@ -810,6 +830,7 @@ function registerCoverIdentitySocket(socket, ctx) {
   bind('cover:enable', 'enable');
   bind('cover:admin:list', 'adminList');
   bind('cover:admin:activity', 'adminActivity');
+  bind('cover:review:list', 'reviewList');
 }
 
 module.exports = {

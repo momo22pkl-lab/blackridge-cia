@@ -34,7 +34,7 @@
 
   const $ = (id) => document.getElementById(id);
   const sock = () => window.blackRidgeSocket || null;
-  const S = { meta: null, tab: 'mine', mine: [], admin: [], adminTotal: 0, activity: [], editing: null, userId: '', msg: null };
+  const S = { meta: null, tab: 'mine', mine: [], admin: [], adminTotal: 0, reviewQueue: [], activity: [], editing: null, userId: '', msg: null };
   const imageCache = new Map();
 
   function h(tag, props, ...kids) {
@@ -394,10 +394,12 @@
       h('div', { class: 'cvr-head' },
         h('h2', { text: 'نظام الهويات الميدانية · COVER IDENTITY SYSTEM' }),
         h('p', { text: 'إنشاء وإدارة بادجات وهويات عمليات UNDERCOVER داخل اللعبة.' })),
-      h('div', { class: 'cvr-notice', text: S.meta ? S.meta.notice + ' — لا تُستخدم شعارات أو أختام حكومية حقيقية.' : '' }),
       h('div', { class: 'cvr-tabs' },
         tabButton('mine', 'بادجاتي'),
         tabButton('create', S.editing ? 'تعديل البادج' : 'إنشاء بادج'),
+        admin && S.meta.canReviewQueue
+          ? tabButton('review', S.meta.scope === 'SECTOR' ? 'مراجعات القطاع' : 'مراجعات الهويات')
+          : null,
         admin ? tabButton('admin', 'لوحة القيادة') : null),
       h('div', { id: 'cvr-body' }),
       h('div', { id: 'cvr-msg', class: 'cvr-msg ' + (S.msg ? S.msg.kind : ''), text: S.msg ? S.msg.text : '' })));
@@ -411,7 +413,15 @@
   function renderBody() {
     const body = $('cvr-body');
     if (!body) return;
-    body.replaceChildren(S.tab === 'create' ? formView() : S.tab === 'admin' ? adminView() : mineView());
+    body.replaceChildren(
+      S.tab === 'create'
+        ? formView()
+        : S.tab === 'review'
+          ? reviewQueueView()
+          : S.tab === 'admin'
+            ? adminView()
+            : mineView()
+    );
   }
 
   function mineView() {
@@ -429,6 +439,76 @@
         h('button', { type: 'button', class: 'cvr-btn', text: 'التفاصيل', onclick: () => openDetail(badge.id) }),
         h('button', { type: 'button', class: 'cvr-btn', text: 'تنزيل PNG', onclick: () => downloadBadge(badge) }),
         badge.can.edit ? h('button', { type: 'button', class: 'cvr-btn', text: 'تعديل', onclick: () => { S.editing = badge; S.tab = 'create'; render(); } }) : null));
+  }
+
+  function reviewQueueView() {
+    const title = S.meta && S.meta.scope === 'SECTOR'
+      ? 'الهويات والبادجات المعلّقة لأعضاء قطاعك'
+      : 'الهويات والبادجات المعلّقة للمراجعة';
+    if (!S.reviewQueue.length) {
+      return h('section', { class: 'cvr-review-panel' },
+        h('h3', { text: title }),
+        h('div', { class: 'cvr-empty', text: 'لا توجد هويات بانتظار المراجعة ضمن نطاق صلاحيتك.' }));
+    }
+
+    const cards = S.reviewQueue.map((badge) => {
+      const reason = h('textarea', {
+        class: 'cvr-review-reason',
+        rows: 2,
+        maxlength: 300,
+        required: 'required',
+        placeholder: 'سبب الرفض (مطلوب عند الرفض)'
+      });
+      const message = h('div', { class: 'cvr-msg' });
+      let busy = false;
+      const decide = async (decision) => {
+        if (busy) return;
+        if (decision === 'reject' && !String(reason.value || '').trim()) {
+          message.textContent = 'اكتب سبب الرفض أولًا.';
+          message.className = 'cvr-msg error';
+          return;
+        }
+        busy = true;
+        const reply = decision === 'approve'
+          ? await call('cover:approve', { id: badge.id })
+          : await call('cover:reject', { id: badge.id, reason: String(reason.value).trim() });
+        if (!reply.ok) {
+          busy = false;
+          message.textContent = reply.message;
+          message.className = 'cvr-msg error';
+          return;
+        }
+        setMsg(decision === 'approve' ? 'تم اعتماد الهوية وأصبحت فعّالة.' : 'تم رفض الهوية وحفظ سبب الرفض.', 'ok');
+        await loadReviewQueue();
+        render();
+      };
+      const actions = [
+        h('button', { type: 'button', class: 'cvr-btn', text: 'التفاصيل', onclick: () => openDetail(badge.id) })
+      ];
+      if (badge.can && badge.can.approve) {
+        actions.push(h('button', { type: 'button', class: 'cvr-btn primary', text: 'اعتماد الهوية', onclick: () => decide('approve') }));
+      }
+      if (badge.can && badge.can.reject) {
+        actions.push(h('button', { type: 'button', class: 'cvr-btn danger', text: 'رفض الهوية', onclick: () => decide('reject') }));
+      }
+      return h('article', { class: 'cvr-review-card' },
+        h('div', { class: 'cvr-review-head' },
+          h('strong', { text: badge.alias || badge.badgeNumber }),
+          h('span', { class: 'cvr-chip PENDING_REVIEW', text: 'قيد المراجعة' })),
+        h('div', { class: 'cvr-review-meta' },
+          h('span', { text: (badge.typeLabel || badge.type) + ' · ' + badge.badgeNumber }),
+          h('span', { text: 'العضو: ' + badge.owner.name + ' (' + badge.owner.militaryCode + ')' }),
+          h('span', { text: 'القطاع: ' + (badge.sector || 'غير محدد') }),
+          h('span', { text: 'الانتهاء: ' + day(badge.expiresAt) })),
+        badge.can && badge.can.reject ? reason : null,
+        h('div', { class: 'cvr-actions' }, actions),
+        message);
+    });
+    return h('section', { class: 'cvr-review-panel' },
+      h('div', { class: 'cvr-review-summary' },
+        h('h3', { text: title }),
+        h('span', { class: 'cvr-chip PENDING_REVIEW', text: String(S.reviewQueue.length) + ' معلّق' })),
+      h('div', { class: 'cvr-review-list' }, cards));
   }
 
   function field(label, input, wide) { return h('label', { class: wide ? 'wide' : '' }, label, input); }
@@ -613,6 +693,11 @@
   }
 
   async function loadMine() { const r = await call('cover:mine'); if (r.ok) S.mine = r.badges; else setMsg(r.message, 'error'); }
+  async function loadReviewQueue() {
+    const r = await call('cover:review:list');
+    if (r.ok) S.reviewQueue = r.badges || [];
+    else { S.reviewQueue = []; setMsg(r.message, 'error'); }
+  }
   async function loadAdmin(filters) {
     const r = await call('cover:admin:list', filters || {});
     if (r.ok) { S.admin = r.badges; S.adminTotal = r.total; } else setMsg(r.message, 'error');
@@ -621,6 +706,7 @@
   }
   async function refreshTab() {
     if (S.tab === 'mine') await loadMine();
+    if (S.tab === 'review') await loadReviewQueue();
     if (S.tab === 'admin') await loadAdmin();
     renderBody();
   }
@@ -629,6 +715,8 @@
     const meta = await call('cover:meta');
     if (!meta.ok) { S.meta = null; ensurePane(); return setMsg(meta.message, 'error'); }
     S.meta = meta;
+    if (meta.canReviewQueue && S.tab === 'mine') S.tab = 'review';
+    if (!meta.canReviewQueue && S.tab === 'review') S.tab = 'mine';
     render();
     await refreshTab();
   }
@@ -641,7 +729,7 @@
     const nav = $('cover-identity-nav');
     if (nav) nav.style.display = user && sessionOk() ? 'flex' : 'none';
     const id = user ? String(user.id || '') : '';
-    if (id !== S.userId) { S.userId = id; S.meta = null; S.mine = []; S.admin = []; S.activity = []; S.editing = null; S.tab = 'mine'; S.msg = null; }
+    if (id !== S.userId) { S.userId = id; S.meta = null; S.mine = []; S.admin = []; S.reviewQueue = []; S.activity = []; S.editing = null; S.tab = 'mine'; S.msg = null; }
   }
 
   function boot() {
