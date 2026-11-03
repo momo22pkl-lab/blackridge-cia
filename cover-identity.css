@@ -4,7 +4,6 @@
 .cvr-head { margin-bottom: 16px; }
 .cvr-head h2 { margin: 0 0 5px; color: var(--primary-gold, #d4af37); font-size: 1.28rem; letter-spacing: .02em; }
 .cvr-head p { margin: 0 0 13px; color: #a9b4c2; font-size: .88rem; line-height: 1.65; }
-.cvr-notice { border: 1px solid rgba(190, 164, 101, .34); border-right: 3px solid #a78b50; border-radius: 8px; padding: 9px 13px; color: #d2d7dd; background: linear-gradient(100deg, rgba(18, 22, 29, .92), rgba(12, 15, 21, .82)); font-size: .82rem; margin-bottom: 15px; }
 .cvr-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; }
 .cvr-tab { background: rgba(15, 19, 27, .88); border: 1px solid #303947; color: #cbd5e1; padding: 8px 14px; border-radius: 7px; cursor: pointer; font: inherit; transition: border-color .18s, background .18s, color .18s; }
 .cvr-tab:hover { border-color: #8a7545; }
@@ -13,6 +12,15 @@
 .cvr-panel.active { display: block; }
 .cvr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 15px; }
 .cvr-item { min-width: 0; background: linear-gradient(145deg, rgba(19, 23, 31, .98), rgba(10, 13, 19, .98)); border: 1px solid rgba(173, 146, 82, .3); border-radius: 12px; padding: 11px; box-shadow: 0 12px 28px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .035); }
+.cvr-review-panel { border: 1px solid rgba(173, 146, 82, .3); border-radius: 12px; padding: 13px; background: linear-gradient(145deg, rgba(19, 23, 31, .82), rgba(10, 13, 19, .88)); }
+.cvr-review-summary, .cvr-review-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cvr-review-summary { margin-bottom: 12px; }
+.cvr-review-summary h3 { margin: 0; color: #e1c77f; font-size: 1rem; }
+.cvr-review-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.cvr-review-card { min-width: 0; border: 1px solid rgba(173, 146, 82, .3); border-right: 3px solid #b99b56; border-radius: 10px; padding: 12px; background: linear-gradient(145deg, rgba(19, 23, 31, .98), rgba(10, 13, 19, .98)); box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }
+.cvr-review-head strong { color: #f3e7be; overflow-wrap: anywhere; }
+.cvr-review-meta { display: grid; gap: 5px; margin-top: 10px; color: #cbd5e1; font-size: .83rem; overflow-wrap: anywhere; }
+.cvr-review-reason { display: block; margin-top: 10px; min-height: 58px; resize: vertical; }
 .cvr-item canvas, .cvr-modal canvas { width: 100%; height: auto; border: 1px solid rgba(255, 255, 255, .09); border-radius: 9px; display: block; background: #090b0e; box-shadow: 0 8px 22px rgba(0, 0, 0, .3); }
 .cvr-meta { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; gap: 8px; flex-wrap: wrap; font-size: .86rem; color: #cbd5e1; }
 .cvr-chip { padding: 3px 10px; border-radius: 999px; font-size: .74rem; font-weight: 800; border: 1px solid currentColor; letter-spacing: .025em; background: rgba(255, 255, 255, .035); }
@@ -30,7 +38,7 @@
 .cvr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .cvr-form label { display: flex; flex-direction: column; gap: 5px; font-size: .86rem; color: #cbd5e1; }
 .cvr-form .wide { grid-column: 1 / -1; }
-.cvr-form input, .cvr-form select, .cvr-form textarea, .cvr-filters input, .cvr-filters select, .cvr-modal textarea { background: #0b0f15; border: 1px solid #303947; color: #e2e8f0; padding: 9px 10px; border-radius: 7px; font: inherit; width: 100%; box-sizing: border-box; }
+.cvr-form input, .cvr-form select, .cvr-form textarea, .cvr-filters input, .cvr-filters select, .cvr-modal textarea, .cvr-review-reason { background: #0b0f15; border: 1px solid #303947; color: #e2e8f0; padding: 9px 10px; border-radius: 7px; font: inherit; width: 100%; box-sizing: border-box; }
 .cvr-form input:focus, .cvr-form select:focus, .cvr-form textarea:focus, .cvr-filters input:focus, .cvr-filters select:focus { outline: 2px solid rgba(201, 170, 92, .35); border-color: #a78b50; }
 .cvr-preview { margin-top: 14px; max-width: 620px; width: 100%; }
 .cvr-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }

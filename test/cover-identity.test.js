@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { BADGE_TYPES, REVIEW_STATUS, createCoverIdentity, injectCoverIdentityMarkup } = require('../cover-identity');
+const { BADGE_TYPES, REVIEW_STATUS, createCoverIdentity, injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('../cover-identity');
 
 const DAY = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2026, 0, 1, 12, 0, 0);
@@ -63,6 +63,8 @@ function fixture(options) {
     api: createCoverIdentity(ctx),
     state,
     users,
+    units,
+    ctx,
     setNow: (value) => { now = value; },
     setFailSave: (value) => { failSave = value; },
     now: () => now
@@ -190,6 +192,8 @@ test('enforces sector review scope and allows either authorized reviewer to appr
   const scoped = await f.api.handlers.adminList(commander, {});
   assert.equal(scoped.ok, true);
   assert.equal(scoped.scope, 'SECTOR');
+  assert.equal(f.api.handlers.meta(commander).canReviewQueue, true);
+  assert.equal(f.api.handlers.meta(f.users[0]).canReviewQueue, false);
   assert.equal(scoped.total, 1);
   assert.equal(scoped.badges[0].id, inScope.badge.id);
   assert.equal(scoped.badges[0].can.approve, true, 'in-sector commander should receive the approval action');
@@ -207,6 +211,73 @@ test('enforces sector review scope and allows either authorized reviewer to appr
   assert.equal(seniorList.total, 2);
   assert.equal((await f.api.handlers.disable(f.users[0], { id: inScope.badge.id, reason: 'Leadership review' })).ok, true);
   assert.equal((await f.api.handlers.enable(f.users[0], { id: inScope.badge.id })).ok, true);
+});
+
+test('sector review queue includes assigned members and deputies only, and rejects self or cross-sector review', async () => {
+  const f = fixture();
+  f.units[0].memberCodes = ['CMD-1'];
+  f.units[0].deputyCode = 'AG-101';
+  const memberBadge = await f.api.handlers.create(f.users[3], payload(f.now()));
+  const outsideBadge = await f.api.handlers.create(f.users[4], payload(f.now(), {
+    type: 'POLICE', badgeNumber: 'PD-808080'
+  }));
+  const commanderBadge = await f.api.handlers.create(f.users[2], payload(f.now(), {
+    type: 'MEDIA', badgeNumber: 'MED-808080'
+  }));
+
+  const queue = await f.api.handlers.reviewList(f.users[2]);
+  assert.equal(queue.ok, true);
+  assert.equal(queue.scope, 'SECTOR');
+  assert.deepEqual(queue.badges.map((badge) => badge.id), [memberBadge.badge.id]);
+  assert.equal(queue.badges[0].can.approve, true);
+  assert.equal(queue.badges[0].can.reject, true);
+  assert.equal((await f.api.handlers.reviewList(f.users[3])).ok, false, 'ordinary members cannot query the review queue');
+  assert.equal((await f.api.handlers.approve(f.users[2], { id: commanderBadge.badge.id })).ok, false, 'a commander cannot approve their own identity');
+  assert.equal((await f.api.handlers.approve(f.users[2], { id: outsideBadge.badge.id })).ok, false, 'sector boundary is enforced by the server');
+
+  const approved = await f.api.handlers.approve(f.users[2], { id: memberBadge.badge.id });
+  assert.equal(approved.ok, true);
+  assert.equal(approved.badge.isApproved, true);
+  assert.equal(approved.badge.status, 'ACTIVE');
+  assert.equal((await f.api.handlers.reviewList(f.users[2])).total, 0);
+
+  const seniorQueue = await f.api.handlers.reviewList(f.users[1]);
+  assert.equal(seniorQueue.total, 2, 'Senior Commander can see pending identities across sectors, excluding their own');
+});
+
+test('socket review-list and approval events use the authenticated actor and persist decisions', async () => {
+  const f = fixture();
+  const created = await f.api.handlers.create(f.users[3], payload(f.now()));
+  const routes = new Map();
+  let actor = f.users[2];
+  const socket = { on: (event, handler) => routes.set(event, handler) };
+  const ctx = {
+    ...f.ctx,
+    requireSocketUser: () => actor,
+    ok: (callback, data) => callback && callback({ ok: true, ...data }),
+    no: (callback, message) => callback && callback({ ok: false, message })
+  };
+  registerCoverIdentitySocket(socket, ctx);
+
+  let queueReply;
+  await routes.get('cover:review:list')({}, (reply) => { queueReply = reply; });
+  assert.equal(queueReply.ok, true);
+  assert.equal(queueReply.badges.length, 1);
+  assert.equal(queueReply.badges[0].id, created.badge.id);
+
+  actor = f.users[5];
+  let denied;
+  await routes.get('cover:approve')({ id: created.badge.id }, (reply) => { denied = reply; });
+  assert.equal(denied.ok, false, 'a different sector leader cannot bypass the socket authorization');
+  assert.equal(f.state.cia_cover_badges[0].status, REVIEW_STATUS.PENDING);
+
+  actor = f.users[2];
+  let approved;
+  await routes.get('cover:approve')({ id: created.badge.id }, (reply) => { approved = reply; });
+  assert.equal(approved.ok, true);
+  assert.equal(approved.badge.isApproved, true);
+  assert.equal(approved.badge.status, 'ACTIVE');
+  assert.equal(f.state.cia_audit_logs[0].action, 'COVER_BADGE_APPROVED');
 });
 
 test('records rejection metadata and reason, then preserves it when the owner resubmits', async () => {
