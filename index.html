@@ -537,6 +537,25 @@
     .identity-meta { font-size: .68rem; color: var(--text-dim); line-height: 1.7; }
     .identity-private { border-right-color: var(--purple-vip); }
     .identity-modal-card { max-width: 470px; border-color: #596474; background: linear-gradient(145deg,#0c1118,#030507); }
+    .characters-modal-overlay { padding: 12px; }
+    .characters-modal-card { width: 100%; max-width: 680px; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: clamp(14px, 4vw, 24px); }
+    .characters-list-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 11px; margin-top: 10px; text-align: right; }
+    .characters-list-card { display: flex; flex-direction: column; gap: 11px; padding: 14px; border: 1px solid rgba(212,175,55,.36); border-radius: 9px; background: linear-gradient(145deg, rgba(17,26,38,.96), rgba(5,8,13,.98)); box-shadow: 0 8px 22px rgba(0,0,0,.28); }
+    .characters-list-card h3 { margin: 0; color: #f2d37c; font-size: .92rem; line-height: 1.45; }
+    .characters-list-rank { margin: 3px 0 0; color: #aab5c4; font-size: .69rem; }
+    .characters-list-status { color: #93c5fd; font-size: .65rem; white-space: nowrap; }
+    .characters-list-code { color: #9aa7b7; font-size: .66rem; }
+    .characters-list-code strong { color: var(--cyan-glow); font-family: monospace; letter-spacing: .4px; }
+    .characters-enter-btn { width: 100%; min-height: 40px; border: 1px solid var(--primary-gold); border-radius: 6px; background: linear-gradient(135deg, #152238, #0b111b); color: #f2d37c; font-weight: 800; cursor: pointer; }
+    .characters-enter-btn:hover:not(:disabled) { border-color: var(--cyan-glow); color: #b9e7ff; }
+    .characters-enter-btn:disabled { opacity: .6; cursor: wait; }
+    .characters-empty-state { padding: 18px 14px; border: 1px dashed rgba(212,175,55,.4); border-radius: 9px; background: rgba(10,15,23,.72); color: #d9dee7; text-align: center; line-height: 1.7; }
+    .characters-empty-state strong { display: block; color: #f2d37c; margin-bottom: 4px; }
+    @media(max-width:520px) {
+      .characters-modal-overlay { padding: 10px; }
+      .characters-modal-card { max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); padding: 14px; }
+      .characters-list-grid { grid-template-columns: 1fr; }
+    }
     .identity-required-banner { border: 1px solid var(--red-alert); background: rgba(127,29,29,.12); color: #fca5a5; padding: 9px; border-radius: 6px; font-size: .72rem; line-height: 1.6; margin-bottom: 9px; }
     .secret-note { font-size: .64rem; color: #7f8a9a; line-height: 1.6; margin-top: 6px; }
     .presence-online { color: var(--green-status); font-weight: 700; }
@@ -2039,7 +2058,35 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         للقائد عند التأسيس الأول: أكمل خطوات التأسيس وأدخل رمز الحفظ السري عند ظهوره.
       </p>
       <button type="button" id="login-btn" class="btn-action">تسجيل الدخول</button>
-      <button type="button" id="characters-open-btn" style="width:100%;margin-top:7px;padding:8px;background:#080c12;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;font-weight:bold;cursor:pointer;">شخصياتي</button>
+<script>
+(function () {
+  window.__openBlackridgeCharacters = function () {
+    if (typeof window.openCharactersManager === 'function') {
+      window.openCharactersManager();
+      return;
+    }
+
+    window.__blackridgeCharactersOpenPending = true;
+    let attempts = 0;
+    const showFallback = function () {
+      const modal = document.getElementById('characters-modal');
+      if (!modal) {
+        if (attempts++ < 40) window.setTimeout(showFallback, 25);
+        return;
+      }
+      modal.style.display = 'flex';
+      const body = document.getElementById('characters-manager-body');
+      const auth = document.getElementById('characters-auth-fields');
+      if (body) body.style.display = 'none';
+      if (auth) auth.style.display = 'block';
+      const message = document.getElementById('characters-auth-msg');
+      if (message) message.textContent = 'جارٍ تجهيز نافذة الشخصيات...';
+    };
+    showFallback();
+  };
+})();
+</script>
+      <button type="button" id="characters-open-btn" aria-haspopup="dialog" aria-controls="characters-modal" onclick="window.__openBlackridgeCharacters()" style="width:100%;margin-top:7px;padding:8px;background:#080c12;color:var(--cyan-glow);border:1px solid var(--cyan-glow);border-radius:5px;font-weight:bold;cursor:pointer;">شخصياتي</button>
       <button type="button" id="create-account-btn" style="width:100%;margin-top:7px;padding:8px;background:#080c12;color:var(--primary-gold);border:1px solid var(--primary-gold);border-radius:5px;font-weight:bold;cursor:pointer;">إنشاء حساب</button>
       <p id="auth-msg" style="margin-top: 8px; font-size: 0.75rem; color: var(--red-alert);"></p>
       <div class="classified-shell" style="margin-top:10px;padding:9px;text-align:right;">
@@ -2099,11 +2146,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
   </div>
 
   <!-- Characters Manager -->
-  <div id="characters-modal" class="modal-overlay" style="display:none;">
-    <div class="auth-card identity-modal-card" style="max-width:560px;">
+  <div id="characters-modal" class="modal-overlay characters-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="characters-modal-title" style="display:none;">
+    <div class="auth-card identity-modal-card characters-modal-card">
       <div class="classified-stamp"><i class="fa-solid fa-users-gear"></i> CHARACTERS // ACCESS</div>
-      <h2 style="margin-top:10px;">شخصياتي</h2>
-      <p style="font-size:.7rem;color:var(--text-dim);line-height:1.6;">«شخصياتي» مرتبطة بحسابك نفسه. ستظهر هنا كل الشخصيات المعتمدة التابعة للحساب، باستثناء أي شخصية تم فصلها. للدخول إلى أي شخصية اكتب كودها العسكري الذي منحه لك القائد.</p>
+      <h2 id="characters-modal-title" style="margin-top:10px;">شخصياتي</h2>
+      <p style="font-size:.7rem;color:var(--text-dim);line-height:1.6;">اعرض شخصيات هذا الحساب فقط. اختر بطاقة الشخصية للانتقال إليها؛ لا حاجة لإعادة إدخال كودها العسكري.</p>
       <div id="characters-auth-fields" style="display:none;">
         <div class="classified-shell" style="margin:8px 0;padding:10px;text-align:right;">
           <label style="display:block;color:var(--text-dim);font-size:.7rem;margin-bottom:4px;" for="characters-account-name">اسم الحساب</label>
@@ -2125,7 +2172,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         </div>
         <div id="characters-manager-msg" style="margin-top:8px;color:var(--red-alert);font-size:.72rem;"></div>
       </div>
-      <button type="button" onclick="closeCharactersManager()" style="width:100%;padding:8px;background:transparent;color:var(--text-dim);border:none;cursor:pointer;margin-top:5px;">إغلاق</button>
+      <button type="button" onclick="closeCharactersManager()" style="width:100%;padding:8px;background:transparent;color:var(--text-dim);border:none;cursor:pointer;margin-top:5px;">رجوع إلى تسجيل الدخول</button>
     </div>
   </div>
 
@@ -3215,8 +3262,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       setTimeout(()=>setLoginMode('agent'),0);
       const loginBtn = document.getElementById('login-btn');
       if (loginBtn) loginBtn.addEventListener('click', function(e) { e.preventDefault(); handleLogin(); });
-      const charactersOpenBtn = document.getElementById('characters-open-btn');
-      if (charactersOpenBtn) charactersOpenBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openCharactersManager(); });
       const charactersAccountLoginBtn = document.getElementById('characters-account-login-btn');
       if (charactersAccountLoginBtn) charactersAccountLoginBtn.addEventListener('click', function(e) { e.preventDefault(); authenticateCharactersAccount(); });
       const createAccountBtn = document.getElementById('create-account-btn');
@@ -3913,6 +3958,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let charactersOwnerCredentials = null;
     let charactersManagerList = [];
 
+    if (window.__blackridgeCharactersOpenPending) {
+      window.__blackridgeCharactersOpenPending = false;
+      window.setTimeout(() => openCharactersManager(), 0);
+    }
+
     function openCharactersManager() {
       if (currentUser && currentUser.serviceApproved === false) return alert('إدارة الشخصيات متاحة بعد اكتمال موافقات الخدمة.');
       const modal = document.getElementById('characters-modal');
@@ -3937,17 +3987,20 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         if (accountNameField?.value.trim()) document.getElementById('characters-account-password')?.focus();
         return;
       }
+      if (body) body.style.display = 'block';
       if (auth) auth.style.display = 'none';
       if (msg) msg.innerText = 'جاري تحميل شخصيات حسابك...';
-      if (ciaSocket && ciaSocket.connected) {
-        ciaSocket.emit('character:list', {}, function(result) {
-          if (!result || !result.ok) {
-            if (msg) msg.innerText = (result && result.message) || 'تعذر تحميل الشخصيات.';
-            return;
-          }
-          renderCharactersManager(result);
-        });
+      if (!ciaSocket || !ciaSocket.connected) {
+        if (msg) msg.innerText = 'الاتصال بالخادم غير متاح الآن. تحقق من الاتصال ثم أعد المحاولة.';
+        return;
       }
+      ciaSocket.emit('character:list', {}, function(result) {
+        if (!result || !result.ok) {
+          if (msg) msg.innerText = (result && result.message) || 'تعذر تحميل الشخصيات.';
+          return;
+        }
+        renderCharactersManager(result);
+      });
     }
 
     function authenticateCharactersAccount() {
@@ -4010,38 +4063,75 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     }
 
     function renderCharactersManager(result) {
-      charactersOwner = result.owner;
-      charactersManagerList = result.characters || [];
+      charactersOwner = result.owner || null;
+      charactersManagerList = Array.isArray(result.characters) ? result.characters : [];
       const body = document.getElementById('characters-manager-body');
       const auth = document.getElementById('characters-auth-fields');
       if (auth) auth.style.display = 'none';
       if (body) body.style.display = 'block';
       const summary = document.getElementById('characters-owner-summary');
-      if (summary) summary.innerHTML = `<strong style="color:var(--primary-gold);">شخصيات الحساب</strong><br>عدد الشخصيات المعتمدة: ${result.characters.length} / ${result.limit}`;
+      const limit = Number.isFinite(Number(result.limit)) ? Number(result.limit) : 10;
+      if (summary) summary.innerHTML = '<strong style="color:var(--primary-gold);">شخصيات الحساب</strong><br>عدد الشخصيات المعتمدة: ' + charactersManagerList.length + ' / ' + limit;
       const list = document.getElementById('characters-list');
       if (list) {
-        list.innerHTML = result.characters.length ? `
-          <select id="characters-select" class="input-field" style="margin-top:7px;">${result.characters.map(c => `<option value="${esc(c.id)}">${esc(c.name)} — #${esc(c.publicCode)}</option>`).join('')}</select>
-          <button type="button" class="btn-action" style="margin-top:7px;" onclick="loginSelectedCharacter()">دخول الشخصية المختارة</button>
-          <div style="font-size:.66rem;color:var(--text-dim);margin-top:5px;">اختر أي شخصية معتمدة من القائمة؛ لا حاجة لإعادة كتابة الكود العسكري.</div>` : '<div class="identity-meta" style="padding:12px;text-align:center;">لا توجد شخصيات معتمدة لهذا الحساب.</div>';
+        if (charactersManagerList.length) {
+          list.innerHTML = '<div class="characters-list-grid" role="list">' + charactersManagerList.map(function(character) {
+            const name = character.name || 'شخصية بدون اسم';
+            const rank = character.rankLabel || character.rank || 'AGENT';
+            const status = character.status || 'معتمدة';
+            const code = character.publicCode || '—';
+            return '<article class="characters-list-card" role="listitem">' +
+              '<div><h3>' + esc(name) + '</h3><p class="characters-list-rank">' + esc(rank) + '</p></div>' +
+              '<div class="characters-list-status">' + esc(status) + '</div>' +
+              '<div class="characters-list-code">الكود العسكري <strong dir="ltr">#' + esc(code) + '</strong></div>' +
+              '<button type="button" class="characters-enter-btn" data-character-id="' + esc(character.id) + '">الدخول إلى الشخصية</button>' +
+              '</article>';
+          }).join('') + '</div>';
+          list.querySelectorAll('.characters-enter-btn').forEach(function(button) {
+            button.addEventListener('click', function() {
+              loginSelectedCharacter(button.dataset.characterId, button);
+            });
+          });
+        } else {
+          list.innerHTML = '<div class="characters-empty-state"><strong>لا توجد شخصيات معتمدة لهذا الحساب</strong><span>يمكنك إرسال طلب إنشاء شخصية جديدة من هنا، وسيظهر بعد اعتماد القيادة.</span></div>';
+        }
       }
-      const create = document.getElementById('characters-create-area');
-      const createToggle = document.getElementById('characters-create-toggle');
+      const create = document.getElementById('characters-create-form');
       if (create) create.style.display = 'none';
-      if (createToggle) createToggle.style.display = result.characters.length >= result.limit ? 'none' : 'block';
+      const createToggle = document.getElementById('characters-create-toggle');
+      if (createToggle) createToggle.style.display = charactersManagerList.length >= limit ? 'none' : 'block';
       const msg = document.getElementById('characters-manager-msg');
       if (msg) msg.innerText = '';
     }
 
-    function loginSelectedCharacter() {
-      const sel=document.getElementById('characters-select');
-      const id=sel?.value;
-      const character=charactersManagerList.find(c=>c.id===id);
-      if(!character) return alert('اختر الشخصية أولاً.');
-      if(!currentUser || !ciaSessionAuthenticated) return alert('سجّل الدخول إلى الحساب أولاً.');
-      closeCharactersManager();
-      ciaSocket.emit('character:login',{characterId:character.id,characterName:character.name}, function(result){
-        if(!result||!result.ok) return alert((result&&result.message)||'تعذر الدخول إلى الشخصية.');
+    function loginSelectedCharacter(characterId, button) {
+      const id = characterId || document.getElementById('characters-select')?.value;
+      const character = charactersManagerList.find(function(item) { return item.id === id; });
+      if (!character) {
+        const message = document.getElementById('characters-manager-msg');
+        if (message) message.innerText = 'تعذر العثور على الشخصية المختارة.';
+        return;
+      }
+      if (!currentUser || !ciaSessionAuthenticated) {
+        const message = document.getElementById('characters-manager-msg');
+        if (message) message.innerText = 'سجّل الدخول إلى الحساب أولاً.';
+        return;
+      }
+      if (!ciaSocket || !ciaSocket.connected) {
+        const message = document.getElementById('characters-manager-msg');
+        if (message) message.innerText = 'الاتصال بالخادم غير متاح الآن.';
+        return;
+      }
+      if (button) button.disabled = true;
+      const message = document.getElementById('characters-manager-msg');
+      if (message) message.innerText = 'جارٍ فتح الشخصية...';
+      ciaSocket.emit('character:login', { characterId: character.id, characterName: character.name }, function(result) {
+        if (!result || !result.ok) {
+          if (button) button.disabled = false;
+          if (message) message.innerText = (result && result.message) || 'تعذر الدخول إلى الشخصية.';
+          return;
+        }
+        closeCharactersManager();
       });
     }
 

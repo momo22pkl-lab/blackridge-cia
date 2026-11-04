@@ -1017,6 +1017,11 @@ function publicUser(user, viewer = null) {
   const self =
     !!viewer &&
     viewer.id === user.id;
+  const sameCharacterOwner = !!viewer && (
+    (!!viewer.accountId && !!user.accountId && viewer.accountId === user.accountId) ||
+    (user.characterOwnerId || user.accountId || user.id) === (viewer.characterOwnerId || viewer.id)
+  );
+  const canSeeCharacterOwnership = self || leadership || sameCharacterOwner;
   const privateRadio = isPrivateRadioChannel(user.radioChannel);
   const canSeeRadioChannel = self || isChief(viewer) || !privateRadio;
 
@@ -1058,13 +1063,10 @@ function publicUser(user, viewer = null) {
       user.identityRequired !== false,
 
     characterOwnerId:
-      user.characterOwnerId ||
-      user.accountId ||
-      user.id,
+      canSeeCharacterOwnership ? (user.characterOwnerId || user.accountId || user.id) : null,
 
     characterType:
-      user.characterType ||
-      'main',
+      canSeeCharacterOwnership ? (user.characterType || 'main') : null,
 
     accountId:
       self || canSeeOtherNames
@@ -2815,14 +2817,14 @@ app.get(
 
 app.get(
   '/api/state',
-  (req, res) => {
-    res.json({
-      ok: true,
-      state:
-        snapshot(null)
+  (_req, res) => {
+    res.status(401).json({
+      ok: false,
+      message: 'يلزم تسجيل الدخول عبر جلسة مخولة.'
     });
   }
 );
+
 
 function parseMoney(value) {
   const amount =
