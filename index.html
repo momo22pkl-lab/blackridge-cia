@@ -5250,8 +5250,11 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       }
       const terms = Array.isArray(securityBlockedTerms) ? securityBlockedTerms : [];
       list.innerHTML = terms.length
-        ? terms.map(term => '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;border:1px solid #303b49;border-radius:5px;background:#090d13;"><span>' + esc(term) + '</span><button type="button" data-security-remove-term="' + esc(term) + '" style="padding:5px 10px;background:#251014;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">إزالة</button></div>').join('')
+        ? terms.map(term => '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 9px;border:1px solid #303b49;border-radius:5px;background:#090d13;"><span>' + esc(term) + '</span><div style="display:flex;gap:6px;"><button type="button" data-security-edit-term="' + esc(term) + '" style="padding:5px 10px;border:1px solid #526174;border-radius:4px;cursor:pointer;">تعديل</button><button type="button" data-security-remove-term="' + esc(term) + '" style="padding:5px 10px;background:#251014;color:var(--red-alert);border:1px solid var(--red-alert);border-radius:4px;cursor:pointer;">إزالة</button></div></div>').join('')
         : '<div class="identity-meta" style="padding:9px;">المعجم فارغ.</div>';
+      list.querySelectorAll('[data-security-edit-term]').forEach(button => {
+        button.addEventListener('click', () => manageSecurityBlockedTerm('edit', button.getAttribute('data-security-edit-term')));
+      });
       list.querySelectorAll('[data-security-remove-term]').forEach(button => {
         button.addEventListener('click', () => manageSecurityBlockedTerm('remove', button.getAttribute('data-security-remove-term')));
       });
@@ -5268,16 +5271,28 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       const input = document.getElementById('security-blocked-term-input');
       const value = String(term == null ? (input && input.value) || '' : term).trim();
       if (!value) {
-        alert('اكتب الكلمة التي تريد إضافتها.');
+        alert('اكتب الكلمة أو العبارة المطلوبة.');
         if (input) input.focus();
         return;
       }
       if (action === 'remove' && !confirm('هل تريد إزالة «' + value + '» من معجم الحظر؟')) return;
+      let replacementTerm;
+      if (action === 'edit') {
+        replacementTerm = prompt('اكتب اللفظ البديل لـ «' + value + '»:', value);
+        if (replacementTerm === null) return;
+        replacementTerm = replacementTerm.trim();
+        if (!replacementTerm) {
+          alert('اكتب كلمة بديلة غير فارغة.');
+          return;
+        }
+      }
       if (!ciaSocket || !ciaSocket.connected) {
         alert('الاتصال بالخادم غير متاح الآن.');
         return;
       }
-      ciaSocket.emit('security:manageBlockedTerm', { action, term: value }, function(result) {
+      const payload = { action, term: value };
+      if (replacementTerm !== undefined) payload.replacementTerm = replacementTerm;
+      ciaSocket.emit('security:manageBlockedTerm', payload, function(result) {
         if (!result || !result.ok) {
           alert((result && result.message) || 'تعذر تحديث معجم الكلمات.');
           return;

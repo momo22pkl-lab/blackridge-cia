@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const serverJs = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 function visibilityFunctions() {
   const renderStart = indexHtml.indexOf('function renderSecurityBlockedTerms(chief) {');
@@ -61,4 +62,15 @@ test('only CIA CHIEF can reveal the dictionary and the button toggles it back cl
   currentUser.rank = 'HIGH COMMANDER';
   ui.toggleSecurityBlockedTermsVisibility();
   assert.equal(elements['security-blocked-terms-list'].style.display, 'none');
+});
+
+test('the dictionary editor exposes add, edit, and remove through the authorized server handler', () => {
+  assert.match(indexHtml, /manageSecurityBlockedTerm\('add'\)/);
+  assert.match(indexHtml, /data-security-edit-term/);
+  assert.match(indexHtml, /manageSecurityBlockedTerm\('edit'/);
+  assert.match(indexHtml, /data-security-remove-term/);
+  assert.match(indexHtml, /payload\.replacementTerm = replacementTerm/);
+  assert.match(serverJs, /socket\.on\('security:manageBlockedTerm'/);
+  assert.match(serverJs, /if \(!isChief\(actor\)\)/);
+  assert.match(serverJs, /updateBlockedTerms\(/);
 });
