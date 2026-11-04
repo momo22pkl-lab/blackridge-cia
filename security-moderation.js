@@ -42,9 +42,58 @@ const DEFAULT_BLOCKED_TERMS = Object.freeze([
   { term: 'motherfucker', level: 2 },
   { term: 'كسمك', level: 1 },
   { term: 'كس امك', level: 1 },
+  { term: 'كس', level: 1 },
+  { term: 'كسختك', level: 1 },
+  { term: 'كسعيلتك', level: 1 },
+  { term: 'كس اختك', level: 1 },
+  { term: 'زب', level: 1 },
+  { term: 'مص', level: 1 },
+  { term: 'نيك', level: 1 },
+  { term: 'فشخ', level: 1 },
+  { term: 'نكح', level: 1 },
+  { term: 'اركب على زبي', level: 1 },
+  { term: 'يفضح عرضك', level: 1 },
+  { term: 'يفضح عيلتك', level: 1 },
+  { term: 'يفضح امك', level: 1 },
+  { term: 'يضفح اختك', level: 1 },
+  { term: 'امك منيوكة', level: 1 },
+  { term: 'اختك منيوكة', level: 1 },
+  { term: 'يلعن امك', level: 1 },
+  { term: 'يلعن اختك', level: 1 },
+  { term: 'يلعن شرفك', level: 1 },
   { term: 'قحبة', level: 1 },
   { term: 'شرموطة', level: 1 },
-  { term: 'منيوك', level: 1 }
+  { term: 'منيوك', level: 1 },
+  { term: 'يا ابن العرص', level: 1 },
+  { term: 'يامفتزح', level: 1 },
+  { term: 'يا مفتزح', level: 1 },
+  { term: 'يا شرموط', level: 1 },
+  { term: 'يا قحبة', level: 1 },
+  { term: 'قحب', level: 1 },
+  { term: 'شرموط', level: 1 },
+  { term: 'يا ابن النايمة', level: 1 },
+  { term: 'يفضح شرفك', level: 1 },
+  { term: 'امك تمص', level: 1 },
+  { term: 'يلعن ابو الي خلفك عرص', level: 1 },
+  { term: 'خرا', level: 1 }
+]);
+
+const BLOCKED_TERM_LIMIT = 250;
+const SECURITY_BLOCKED_TERMS_VERSION = 1;
+const LEGACY_ENGINE_BLOCKED_TERMS = Object.freeze([
+  'fuck', 'shit', 'bitch', 'asshole', 'motherfucker',
+  'كسمك', 'كس امك', 'قحبة', 'شرموطة', 'منيوك'
+]);
+const LEGACY_AMBIGUOUS_BLOCKED_TERMS = new Set([
+  'اركب عليه',
+  'يفضح',
+  'امك',
+  'ابوك',
+  'اختك',
+  'ستك',
+  'عيلتك',
+  'يا ابن',
+  'ملهى ليلي'
 ]);
 
 function normalizeMessage(value) {
@@ -74,6 +123,68 @@ function parseBlockedTerms(value) {
     if (term && term.length <= 80) rules.push({ term, level });
   }
   return rules;
+}
+
+function normalizeBlockedTerm(value) {
+  const term = normalizeMessage(String(value == null ? '' : value));
+  if ([...term].length < 2 || [...term].length > 80) return null;
+  return /^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term) ? term : null;
+}
+
+function normalizeBlockedTerms(value, limit = BLOCKED_TERM_LIMIT) {
+  const terms = [];
+  const seen = new Set();
+  const maxTerms = Math.max(1, Math.min(BLOCKED_TERM_LIMIT, Number(limit) || BLOCKED_TERM_LIMIT));
+  for (const entry of Array.isArray(value) ? value : []) {
+    const term = normalizeBlockedTerm(entry);
+    if (!term || seen.has(term)) continue;
+    seen.add(term);
+    terms.push(term);
+    if (terms.length >= maxTerms) break;
+  }
+  return terms;
+}
+
+function migrateBlockedTerms(value, version, limit = BLOCKED_TERM_LIMIT) {
+  let terms = normalizeBlockedTerms(value, limit);
+  if ((Number(version) || 0) < SECURITY_BLOCKED_TERMS_VERSION) {
+    terms = terms.filter((term) => !LEGACY_AMBIGUOUS_BLOCKED_TERMS.has(term));
+    for (const term of LEGACY_ENGINE_BLOCKED_TERMS) {
+      if (!terms.includes(term) && terms.length < limit) terms.push(term);
+    }
+    terms = normalizeBlockedTerms(terms, limit);
+  }
+  return terms;
+}
+
+function updateBlockedTerms(currentValue, actionValue, termValue, replacementValue, limit = BLOCKED_TERM_LIMIT) {
+  const terms = normalizeBlockedTerms(currentValue, limit);
+  const action = String(actionValue || '').trim().toLowerCase();
+  if (!['add', 'edit', 'remove'].includes(action)) {
+    return { ok: false, error: 'invalid-action', blockedTerms: terms };
+  }
+
+  const term = normalizeBlockedTerm(termValue);
+  if (!term) return { ok: false, error: 'invalid-term', blockedTerms: terms };
+
+  const index = terms.indexOf(term);
+  if (action === 'add') {
+    if (index >= 0) return { ok: true, action, changed: false, blockedTerms: terms };
+    if (terms.length >= limit) return { ok: false, error: 'dictionary-full', blockedTerms: terms };
+    return { ok: true, action, changed: true, blockedTerms: [...terms, term] };
+  }
+  if (index < 0) return { ok: false, error: 'term-not-found', blockedTerms: terms };
+  if (action === 'remove') {
+    return { ok: true, action, changed: true, blockedTerms: terms.filter((entry) => entry !== term) };
+  }
+
+  const replacement = normalizeBlockedTerm(replacementValue);
+  if (!replacement) return { ok: false, error: 'invalid-replacement', blockedTerms: terms };
+  if (replacement === term) return { ok: true, action, changed: false, blockedTerms: terms };
+  if (terms.includes(replacement)) return { ok: false, error: 'duplicate-term', blockedTerms: terms };
+  const updated = [...terms];
+  updated[index] = replacement;
+  return { ok: true, action, changed: true, blockedTerms: updated };
 }
 
 function escapeRegExp(value) {
@@ -162,7 +273,7 @@ function deobfuscationVariants(value) {
   return variants;
 }
 
-function inspectMessage(value, configuredTerms = '') {
+function inspectMessage(value, configuredTerms) {
   const source = String(value == null ? '' : value);
   const normalized = normalizeMessage(source);
   if (!normalized) return null;
@@ -185,7 +296,9 @@ function inspectMessage(value, configuredTerms = '') {
     return { type: 'OBFUSCATED_THREAT', level: 3, reason: 'OBFUSCATED_THREAT_PATTERN', source: 'obfuscation' };
   }
 
-  const rules = [...DEFAULT_BLOCKED_TERMS, ...parseBlockedTerms(configuredTerms)];
+  const rules = configuredTerms === undefined
+    ? [...DEFAULT_BLOCKED_TERMS]
+    : parseBlockedTerms(configuredTerms);
   for (const rule of rules) {
     if (containsWholeTerm(scanText, rule.term)) {
       if (!morseDecoded && containsTermLookalike(source, rule.term)) {
@@ -240,9 +353,15 @@ function canRestoreSecurityMember(user) {
 }
 
 module.exports = {
+  DEFAULT_BLOCKED_TERMS,
+  SECURITY_BLOCKED_TERMS_VERSION,
   canRestoreSecurityMember,
   decodeMorse,
   inspectMessage,
+  migrateBlockedTerms,
+  normalizeBlockedTerm,
+  normalizeBlockedTerms,
   normalizeMessage,
-  parseBlockedTerms
+  parseBlockedTerms,
+  updateBlockedTerms
 };

@@ -27,7 +27,17 @@ const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
 const { NotificationsStore } = require('./notifications-store');
-const { canRestoreSecurityMember, inspectMessage, normalizeMessage, parseBlockedTerms } = require('./security-moderation');
+const {
+  DEFAULT_BLOCKED_TERMS,
+  SECURITY_BLOCKED_TERMS_VERSION,
+  canRestoreSecurityMember,
+  inspectMessage,
+  migrateBlockedTerms,
+  normalizeBlockedTerms,
+  normalizeMessage,
+  parseBlockedTerms,
+  updateBlockedTerms
+} = require('./security-moderation');
 const { isProfanityDetection, normalizeProfanityStrikes, registerProfanityStrike, resetProfanityStrikes } = require('./profanity-strikes');
 const { registerPages } = require('./ibp/pages');
 const { registerIBPSocket } = require('./ibp/handlers');
@@ -49,65 +59,11 @@ const {
   findDuplicateSocialAccountOwner
 } = require('./social-accounts');
 
-const ARABIC_PROFANITY_TERMS = Object.freeze([
-  "كسمك",
-  "كس امك",
-  "كس",
-  "كسختك",
-  "كسعيلتك",
-  "كس اختك",
-  "زب",
-  "مص",
-  "نيك",
-  "فشخ",
-  "نكح",
-  "اركب عليه",
-  "اركب على زبي",
-  "يفضح",
-  "يفضح عرضك",
-  "يفضح عيلتك",
-  "يفضح امك",
-  "يضفح اختك",
-  "امك منيوكة",
-  "اختك منيوكة",
-  "يلعن امك",
-  "يلعن اختك",
-  "يلعن شرفك",
-  "امك",
-  "ابوك",
-  "اختك",
-  "ستك",
-  "عيلتك",
-  "يا ابن",
-  "يا ابن العرص",
-  "يامفتزح",
-  "يا مفتزح",
-  "يا شرموط",
-  "يا قحبة",
-  "قحب",
-  "شرموط",
-  "يا ابن النايمة",
-  "يفضح شرفك",
-  "ملهى ليلي",
-  "امك تمص",
-  "يلعن ابو الي خلفك عرص"
-]);
-
-const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze([...ARABIC_PROFANITY_TERMS, 'خرا']);
+const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze(DEFAULT_BLOCKED_TERMS.map(({ term }) => term));
 const SECURITY_BLOCKED_TERM_LIMIT = 250;
 
 function normalizeSecurityBlockedTerms(value) {
-  const terms = [];
-  const seen = new Set();
-  for (const entry of Array.isArray(value) ? value : []) {
-    const term = normalizeMessage(String(entry == null ? '' : entry));
-    if ([...term].length < 2 || [...term].length > 80 || !/^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term)) continue;
-    if (seen.has(term)) continue;
-    seen.add(term);
-    terms.push(term);
-    if (terms.length >= SECURITY_BLOCKED_TERM_LIMIT) break;
-  }
-  return terms;
+  return normalizeBlockedTerms(value, SECURITY_BLOCKED_TERM_LIMIT);
 }
 
 function getSecurityBlockedTerms() {
@@ -367,7 +323,10 @@ const EMPTY_STATE = {
       'CIA CHIEF': SYSTEM.defaultSalary
     }
   },
-  systemConfig: { securityBlockedTerms: [...DEFAULT_SECURITY_BLOCKED_TERMS] }
+  systemConfig: {
+    securityBlockedTerms: [...DEFAULT_SECURITY_BLOCKED_TERMS],
+    securityBlockedTermsVersion: SECURITY_BLOCKED_TERMS_VERSION
+  }
 };
 
 function clone(obj) {
@@ -380,6 +339,14 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     throw new Error('Persisted state at ' + source + ' is missing its required cia_users data; refusing to start with an empty state.');
   }
   const base = clone(EMPTY_STATE);
+  const storedSystemConfig = parsed.systemConfig && typeof parsed.systemConfig === 'object'
+    ? parsed.systemConfig
+    : {};
+  const securityBlockedTerms = migrateBlockedTerms(
+    storedSystemConfig.securityBlockedTerms ?? base.systemConfig.securityBlockedTerms,
+    storedSystemConfig.securityBlockedTermsVersion,
+    SECURITY_BLOCKED_TERM_LIMIT
+  );
   const loadedState = {
     ...base,
     ...parsed,
@@ -393,10 +360,9 @@ function normalizePersistedState(parsed, source = 'persisted state') {
     },
     systemConfig: withoutBootstrapCodes({
       ...base.systemConfig,
-      ...(parsed.systemConfig || {}),
-      securityBlockedTerms: normalizeSecurityBlockedTerms(
-        parsed.systemConfig?.securityBlockedTerms ?? base.systemConfig.securityBlockedTerms
-      )
+      ...storedSystemConfig,
+      securityBlockedTerms,
+      securityBlockedTermsVersion: SECURITY_BLOCKED_TERMS_VERSION
     }),
     cia_chats: {
       global: Array.isArray(parsed.cia_chats?.global) ? parsed.cia_chats.global : [],
@@ -1492,7 +1458,6 @@ async function recordModerationViolation(actor, detection, channel) {
   return incident;
 }
 
-const DEFAULT_ENGLISH_PROFANITY_TERMS = Object.freeze(['fuck', 'shit', 'bitch', 'asshole', 'motherfucker']);
 const PROFANITY_LEET_MAP = Object.freeze({ '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '9': 'g' });
 const PROFANITY_ARABIZI_MAP = Object.freeze({ '2': 'ء', '3': 'ع', '5': 'خ', '6': 'ط', '7': 'ح', '9': 'ص' });
 
@@ -1502,7 +1467,6 @@ function findMatchedProfanityTerm(value, detection) {
   if (!normalized) return '';
 
   const terms = [...new Set([
-    ...DEFAULT_ENGLISH_PROFANITY_TERMS,
     ...getSecurityBlockedTerms(),
     ...parseBlockedTerms(process.env.CIA_SECURITY_BLOCKED_TERMS || '').map((rule) => rule.term)
   ].map((term) => normalizeMessage(term)).filter(Boolean))];
@@ -3609,23 +3573,34 @@ io.on(
       }
 
       const action = String(payload?.action || '').trim().toLowerCase();
-      const term = normalizeMessage(String(payload?.term || ''));
-      if (!['add', 'remove'].includes(action)) return no(cb, 'اختر إضافة كلمة أو إزالتها.');
-      if ([...term].length < 2 || [...term].length > 80 || !/^[\p{L}\p{N}]+(?:[ '\u2019-][\p{L}\p{N}]+)*$/u.test(term)) {
-        return no(cb, 'اكتب كلمة أو عبارة من حرفين إلى 80 حرفًا، من دون رموز.');
-      }
-
       const current = getSecurityBlockedTerms();
-      const exists = current.includes(term);
-      let updated;
-      if (action === 'add') {
-        if (exists) return ok(cb, { ok: true, action, blockedTerms: current, message: 'هذه الكلمة موجودة بالفعل في المعجم.' });
-        if (current.length >= SECURITY_BLOCKED_TERM_LIMIT) return no(cb, 'وصل المعجم إلى الحد الأقصى للكلمات.');
-        updated = [...current, term];
-      } else {
-        if (!exists) return no(cb, 'الكلمة غير موجودة في المعجم.');
-        updated = current.filter((entry) => entry !== term);
+      const update = updateBlockedTerms(
+        current,
+        action,
+        payload?.term,
+        payload?.replacementTerm,
+        SECURITY_BLOCKED_TERM_LIMIT
+      );
+      if (!update.ok) {
+        const messages = {
+          'invalid-action': 'اختر إضافة كلمة أو تعديلها أو إزالتها.',
+          'invalid-term': 'اكتب كلمة أو عبارة من حرفين إلى 80 حرفًا، من دون رموز.',
+          'invalid-replacement': 'اكتب كلمة بديلة من حرفين إلى 80 حرفًا، من دون رموز.',
+          'term-not-found': 'الكلمة غير موجودة في المعجم.',
+          'duplicate-term': 'الكلمة البديلة موجودة بالفعل في المعجم.',
+          'dictionary-full': 'وصل المعجم إلى الحد الأقصى للكلمات.'
+        };
+        return no(cb, messages[update.error] || 'تعذر تحديث معجم الكلمات.');
       }
+      if (!update.changed) {
+        return ok(cb, {
+          ok: true,
+          action,
+          blockedTerms: current,
+          message: action === 'add' ? 'هذه الكلمة موجودة بالفعل في المعجم.' : 'لم يتغير اللفظ.'
+        });
+      }
+      const updated = update.blockedTerms;
 
       state.systemConfig.securityBlockedTerms = updated;
       try {
@@ -3639,7 +3614,11 @@ io.on(
         ok: true,
         action,
         blockedTerms: updated,
-        message: action === 'add' ? 'تمت إضافة الكلمة إلى المعجم.' : 'تمت إزالة الكلمة من المعجم.'
+        message: action === 'add'
+          ? 'تمت إضافة الكلمة إلى المعجم.'
+          : action === 'edit'
+            ? 'تم تعديل الكلمة في المعجم.'
+            : 'تمت إزالة الكلمة من المعجم.'
       });
     });
 
