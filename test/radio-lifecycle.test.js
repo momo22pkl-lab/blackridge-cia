@@ -33,6 +33,32 @@ test('radio lifecycle restores a saved device preference and cleans/rejoins a so
   assert.match(server, /targetSocket\.emit\('radio:service-ended'/);
 });
 
+test('speaking notices wait for an active microphone track and reuse the notification toast stack', () => {
+  const start = html.indexOf('async function startPTT(event)');
+  const stop = html.indexOf('function stopPTT(event)', start);
+  assert.ok(start >= 0 && stop > start, 'PTT lifecycle exists');
+  const handler = html.slice(start, stop);
+  const trackEnabled = handler.indexOf('track => { track.enabled = true; }');
+  const radioReady = handler.indexOf("ciaSocket.emit('radio:ptt:ready'");
+  assert.ok(trackEnabled >= 0 && radioReady > trackEnabled, 'server must be notified only after microphone audio is enabled');
+  assert.match(handler, /radio:ptt:ready/);
+  assert.match(html, /ciaSocket\.on\('radio:speaker', syncRadioSpeakerNotice\)/);
+  assert.match(html, /notification-toast-stack/);
+  assert.match(html, /radioSpeakingNotices\.has\(socketId\)/);
+  assert.match(html, /removeRadioSpeakingNotice\(socketId\)/);
+  assert.match(html, /RADIO_SPEAKER_NOTICE_CHANNELS = new Set\(\['CH-1', 'TAC-1'\]\)/);
+});
+
+test('server gates ephemeral speaking notices and encrypted-wave state by channel authorization', () => {
+  assert.match(server, /socket\.on\('radio:ptt:ready'/);
+  assert.match(server, /emitRadioSpeakerState\(channel, speaker, true\)/);
+  assert.match(server, /if \(!\['CH-1', 'TAC-1'\]\.includes\(channel\)\) return/);
+  assert.match(server, /radioSocketCanReceiveState\(socketId, channel\)/);
+  assert.match(server, /channel === 'CH-3' \|\| !RADIO_MAIN_CHANNEL_IDS\.has\(channel\)/);
+  assert.match(server, /if \(channel === 'CH-3' && !isLeadership\(actor\)\)/);
+  assert.match(server, /!isCustomRadioChannel\(channel\) \|\| radioCustomChannelAllows\(channel, user\.id\)/);
+});
+
 test('radio power explains the active-duty gate without bypassing it', () => {
   assert.match(html, /if \(currentUser\.activeService !== true\) return alert\('يجب بدء المناوبة قبل تشغيل الراديو\.'\);/);
 });

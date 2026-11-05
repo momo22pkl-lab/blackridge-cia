@@ -3177,6 +3177,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioCustomLabel = '';
     let radioVolume = 100;
     let radioLiveLog = [];
+    const RADIO_SPEAKER_NOTICE_CHANNELS = new Set(['CH-1', 'TAC-1']);
+    const radioSpeakingNotices = new Map();
     let radioPTTHeld = false;
     let radioPTTRequestPending = false;
     let radioPTTServerRequestPending = false;
@@ -3224,6 +3226,47 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     function radioChannelDisplayName(channel = radioChannel) {
       if (!isCustomRadioChannel(channel)) return String(channel || 'CH-1');
       return radioCustomLabel || String(channel).slice(RADIO_CUSTOM_CHANNEL_PREFIX.length);
+    }
+
+    function removeRadioSpeakingNotice(socketId) {
+      const key = String(socketId || '');
+      const notice = radioSpeakingNotices.get(key);
+      if (notice) notice.remove();
+      radioSpeakingNotices.delete(key);
+    }
+
+    function clearRadioSpeakingNotices() {
+      for (const notice of radioSpeakingNotices.values()) notice.remove();
+      radioSpeakingNotices.clear();
+    }
+
+    function syncRadioSpeakerNotice(data) {
+      if (!data || !data.socketId) return;
+      const socketId = String(data.socketId);
+      if (data.speaking !== true) {
+        removeRadioSpeakingNotice(socketId);
+        return;
+      }
+      const userCode = String(data.userCode || '').slice(0, 100);
+      if (!userCode || !RADIO_SPEAKER_NOTICE_CHANNELS.has(data.channel) ||
+          data.channel !== radioChannel || !radioPoweredOn ||
+          userCode === String(currentUser && currentUser.publicCode || '')) return;
+      if (radioSpeakingNotices.has(socketId)) return;
+
+      const stack = document.getElementById('notification-toast-stack');
+      if (!stack) return;
+      const toast = document.createElement('div');
+      toast.className = 'notification-toast radio-speaking-toast';
+      toast.dataset.priority = 'SYSTEM';
+      toast.setAttribute('role', 'status');
+      toast.style.cursor = 'default';
+      const title = document.createElement('strong');
+      title.textContent = 'إذاعة مباشرة';
+      const message = document.createElement('span');
+      message.textContent = `المود العسكري ${userCode} يتحدث الآن على موجة ${radioChannelDisplayName(data.channel)}`;
+      toast.append(title, message);
+      stack.prepend(toast);
+      radioSpeakingNotices.set(socketId, toast);
     }
     let bootstrapMode = false;
     let identityPendingUser = null;
@@ -3530,6 +3573,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
       });
       ciaSocket.on('radio:service-ended', function() {
+        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinPendingChannel = '';
@@ -3549,6 +3593,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         setRadioActivity('انتهت الخدمة؛ أُطفئ الراديو على هذا الحساب دون قطع اتصال الهاتف.', 7000);
       });
       ciaSocket.on('disconnect', function() {
+        clearRadioSpeakingNotices();
         radioLifecycleConnectPending = false;
         radioConnectionGeneration += 1;
         radioJoinRequestId += 1;
@@ -3842,6 +3887,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
         updateRadioVoiceStatus();
       });
+      ciaSocket.on('radio:speaker', syncRadioSpeakerNotice);
       ciaSocket.on('radio:admin:state', function(payload) {
         if (!isRadioLeadershipViewer()) {
           clearRadioLeadershipPanel();
@@ -3851,6 +3897,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
       ciaSocket.on('radio:access-revoked', function(data) {
         if (!data || data.channel !== radioChannel) return;
+        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinPendingChannel = '';
@@ -4294,6 +4341,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
       if (currentUser) saveRadioPreference(false, radioChannel);
       radioPoweredOn = false;
+      clearRadioSpeakingNotices();
       radioJoinRequestId += 1;
       radioJoinPending = false;
       radioJoinPendingChannel = '';
@@ -5816,6 +5864,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         if(!r||!r.ok)return alert((r&&r.message)||'تعذر إنهاء المباشرة.');
         currentUser = r.user || {...currentUser, activeService:false, status:'خارج الخدمة'};
         radioPoweredOn = false;
+        clearRadioSpeakingNotices();
         updateRadioPowerUI();
         updateServiceUI();
         updateViews();
@@ -6678,6 +6727,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
       if (radioPoweredOn) {
         if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
+        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinPendingChannel = '';
@@ -6704,6 +6754,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     window.addEventListener('offline', handleRadioOffline);
     window.addEventListener('blur', stopPTT);
     window.addEventListener('pointerup', handleRadioGlobalPointerUp, true);
+    window.addEventListener('blackridge:logout', clearRadioSpeakingNotices);
     document.addEventListener('visibilitychange', handleRadioVisibilityChange);
 
     function updateRadioPowerUI() {
@@ -6748,6 +6799,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function changeRadioChannel(ch, freq, label) {
       const channelChanged = radioChannel !== ch;
       if (channelChanged) {
+        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinConfirmed = false;
@@ -7646,7 +7698,17 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         console.info('[BLACK RIDGE] Radio stage: server accepted PTT and microphone track enabled.');
         playRadioBeep(1200);
         setRadioActivity('بدأ الإرسال؛ جارٍ اختبار اتصال الصوت بالمستمعين...', 0);
-        (Array.isArray(result.peers) ? result.peers : []).forEach(peerId => createRadioVoiceOffer(peerId, attempt));
+        ciaSocket.emit('radio:ptt:ready', { channel }, function(activeResult) {
+          if (attempt !== radioPTTAttempt || !radioPTTActive || !radioPTTHeld ||
+              !radioPoweredOn || channel !== radioChannel || !ciaSocket.connected) return;
+          if (!activeResult || activeResult.ok !== true) {
+            stopPTT();
+            setRadioActivity(activeResult && activeResult.message || 'تعذر تفعيل مسار الصوت على الخادم.', 5000);
+            return;
+          }
+          (Array.isArray(activeResult.peers) ? activeResult.peers : [])
+            .forEach(peerId => createRadioVoiceOffer(peerId, attempt));
+        });
       });
     }
 
