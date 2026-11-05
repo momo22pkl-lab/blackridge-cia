@@ -11,12 +11,14 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { inspectMessage } = require('../security-moderation');
+const { createHttpTextModerationMiddleware } = require('../moderation-boundaries');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.BLACKRIDGE_PERSONNEL_DATA_DIR || path.join(ROOT, 'data');
 const REPORTS_DIR = path.join(DATA_DIR, 'reports');
 const DATA_FILE = path.join(DATA_DIR, 'state.json');
 const ROLES = ['CIA CHIEF', 'SENIOR COMMANDER', 'HIGH COMMANDER', 'AGENT'];
@@ -26,6 +28,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 
 
 fs.mkdirSync(REPORTS_DIR, { recursive: true });
 app.use(express.json({ limit: '1mb' }));
+const configuredBlockedTerms = process.env.CIA_SECURITY_BLOCKED_TERMS || '';
+const personnelTextModeration = createHttpTextModerationMiddleware({
+  moderateOutgoingText: async (_actor, text) =>
+    inspectMessage(text) || (configuredBlockedTerms ? inspectMessage(text, configuredBlockedTerms) : false)
+});
+app.use(personnelTextModeration);
 
 function seededState() {
   return {
@@ -252,7 +260,7 @@ app.post('/api/dismissals/:code', requireRoles('CIA CHIEF'), (req, res) => {
   return res.status(201).json({ ok: true, code: p.code, dismissed: true });
 });
 
-app.post('/api/reports', upload.single('pdf'), (req, res) => {
+app.post('/api/reports', upload.single('pdf'), personnelTextModeration, (req, res) => {
   const role = roleOf(req);
   if (!['HIGH COMMANDER', 'SENIOR COMMANDER'].includes(role)) return fail(res, 403, 'إنشاء تقارير التحذيرات متاح للهاي كوماندر والسينيور كوماندر فقط.');
   const warning = state.warnings.find(w => w.id === String(req.body.warningId || '') && w.createdByRole === role && w.createdByActorId === actorOf(req));

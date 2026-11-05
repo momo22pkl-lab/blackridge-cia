@@ -635,3 +635,86 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
   assert.equal(alterRole.response.status, 400);
   assert.equal(pool.users.find((user) => user.military_code === 'AG-200').role, 'AGENT');
 });
+
+test('direct OSD document API blocks central-engine matches and persists clean content', async (t) => {
+  const pool = new MemoryPool();
+  pool.users.push({
+    id: 'osd-document-chief',
+    username: 'osd-document-chief',
+    display_name: 'Primary Chief',
+    role: 'ADMIN',
+    clearance: 'TOP SECRET',
+    permissions: ['VIEW_DOCUMENTS', 'CREATE_DOCUMENTS'],
+    military_code: 'CH-100',
+    personnel_id: 'person-chief',
+    is_primary_chief: true,
+    enabled: true
+  });
+  const sessionToken = 'osd-document-test-session';
+  pool.sessions.push({
+    token_hash: crypto.createHash('sha256').update(sessionToken).digest('hex'),
+    user_id: 'osd-document-chief',
+    expires_at: Date.now() + 60_000
+  });
+  pool.documents = [];
+  let counter = 0;
+  const memoryQuery = pool.query.bind(pool);
+  pool.query = async (sql, values = []) => {
+    const query = String(sql).replace(/\s+/g, ' ').trim().toLowerCase();
+    if (query.startsWith('insert into osd_counters')) return { rows: [{ value: ++counter }] };
+    if (query.startsWith('insert into osd_documents')) {
+      const [id, documentNumber, verificationCode, type, title, body, sector, classification, recipient, createdBy, expiresAt] = values;
+      pool.documents.push({
+        id, document_number: documentNumber, verification_code: verificationCode,
+        document_type: type, title, body: JSON.parse(body), sector, classification,
+        recipient, status: 'DRAFT', version: '1.0', created_by: createdBy,
+        expires_at: expiresAt, updated_at: new Date().toISOString()
+      });
+      return { rows: [] };
+    }
+    if (query.startsWith('select * from osd_documents where id=$1')) {
+      return { rows: pool.documents.filter((document) => document.id === values[0]) };
+    }
+    if (query.startsWith('select pg_advisory_xact_lock') ||
+        query.startsWith('select event_hash from osd_audit_events') ||
+        query.startsWith('insert into osd_document_versions') ||
+        query.startsWith('insert into osd_audit_events')) return { rows: [] };
+    return memoryQuery(sql, values);
+  };
+  pool.connect = async () => ({ query: pool.query.bind(pool), release() {} });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/osd', createOsdRouter({ getPool: () => pool, getPersonnel: () => personnel }));
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/osd/documents`;
+  const document = {
+    type: 'OFFICIAL MEMORANDUM',
+    title: 'That is shit.',
+    sector: 'Operations',
+    classification: 'PUBLIC',
+    body: 'A clean body.'
+  };
+  const blocked = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(document)
+  });
+  assert.equal(blocked.status, 400);
+  assert.match((await blocked.json()).error, /منع/);
+  assert.equal(pool.documents.length, 0);
+
+  const clean = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `osd_session=${sessionToken}`
+    },
+    body: JSON.stringify({ ...document, title: 'Quarterly operations memorandum' })
+  });
+  assert.equal(clean.status, 201);
+  assert.equal((await clean.json()).document.title, 'Quarterly operations memorandum');
+  assert.equal(pool.documents.length, 1);
+});

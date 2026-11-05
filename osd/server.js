@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { createHttpTextModerationMiddleware } = require('../moderation-boundaries');
 
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
 const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
@@ -736,7 +737,7 @@ async function appendAudit(client, { documentId = null, actorId = null, actorLab
   );
 }
 
-function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env } = {}) {
+function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, moderateOutgoingText } = {}) {
   const express = require('express');
   const router = express.Router();
   let schemaPromise = null;
@@ -784,6 +785,7 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env }
   }
 
   router.use(sameOrigin);
+  router.use(createHttpTextModerationMiddleware({ moderateOutgoingText }));
 
   function personnelRoster() {
     const people = typeof getPersonnel === 'function' ? getPersonnel() : [];

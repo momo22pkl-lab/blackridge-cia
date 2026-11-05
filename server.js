@@ -48,6 +48,7 @@ const { WeaponArmoryStore } = require('./weapon-armory-store');
 const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
+const { installSocketModerationBoundary } = require('./moderation-boundaries');
 const {
   accountIdentity,
   normalizeSocialContactName,
@@ -113,6 +114,13 @@ const io = new Server(httpServer, {
     credentials: true
   }
 });
+io.use((socket, next) => {
+  installSocketModerationBoundary(socket, {
+    getActor: requireSocketUser,
+    moderateOutgoingText
+  });
+  next();
+});
 
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -122,6 +130,7 @@ app.use((req, res, next) => {
 });
 const osdRouter = createOsdRouter({
   getPool: () => postgresPool,
+  moderateOutgoingText,
   getPersonnel: () => state.cia_users.map((person) => ({
     id: person.id,
     militaryCode: clean(person.publicCode, 100).toUpperCase(),
@@ -1526,7 +1535,6 @@ async function moderateOutgoingText(actor, text, channel) {
   if (isProfanityDetection(detection)) {
     detection.matchedTerm = findMatchedProfanityTerm(text, detection);
   }
-  if (actor && isChief(actor) && isProfanityDetection(detection)) return false;
   if (actor) {
     const result = await recordModerationViolation(actor, detection, channel);
     return result && result.blocked === true ? result : true;

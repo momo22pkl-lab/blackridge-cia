@@ -3444,6 +3444,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         const panel = document.getElementById('security-panel');
         if (panel && panel.classList.contains('active') && ciaSocket && ciaSocket.connected) loadSecurityCenter();
       });
+      ciaSocket.on('security:moderation:blocked', function(result) {
+        alert((result && result.message) || 'تم منع حفظ النص لأنه يحتوي على لفظ مسيء أو مخالف. عدّل النص ثم أعد المحاولة.');
+      });
       ciaSocket.on('security:restricted', function(result) {
         const message = (result && result.reason) || 'تم تقييد الحساب أمنيًا. راجع القيادة.';
         const finishRestriction = function() {
