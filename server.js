@@ -251,7 +251,7 @@ function isCustomRadioChannel(value) {
 
 function isPrivateRadioChannel(value) {
   const channel = String(value || 'CH-1');
-  return !RADIO_MAIN_CHANNEL_IDS.has(channel);
+  return channel === 'CH-3' || !RADIO_MAIN_CHANNEL_IDS.has(channel);
 }
 
 function normalizeCustomRadioChannels(value) {
@@ -1032,7 +1032,7 @@ function publicUser(user, viewer = null) {
   );
   const canSeeCharacterOwnership = self || leadership || sameCharacterOwner;
   const privateRadio = isPrivateRadioChannel(user.radioChannel);
-  const canSeeRadioChannel = self || isChief(viewer) || !privateRadio;
+  const canSeeRadioChannel = self || isLeadership(viewer) || !privateRadio;
 
   const result = {
     id: user.id,
@@ -2588,14 +2588,16 @@ function getRadioTalkers(channel, create = false) {
 function announceActiveRadioTalkers(channel, joiningSocketId) {
   const joiningSocket = io.sockets.sockets.get(joiningSocketId);
   for (const talker of getRadioTalkers(channel)?.values() || []) {
-    if (talker.socketId === joiningSocketId) continue;
+    if (talker.active !== true || talker.socketId === joiningSocketId) continue;
+    if (!radioSocketCanReceiveState(talker.socketId, channel)) continue;
     const talkerSocket = io.sockets.sockets.get(talker.socketId);
     if (talkerSocket) talkerSocket.emit('radio:voice:peer', { channel, peerId: joiningSocketId });
-    if (joiningSocket) {
+    if (joiningSocket && radioSocketCanReceiveState(joiningSocketId, channel)) {
       joiningSocket.emit('radio:state', {
         channel, userCode: talker.userCode, socketId: talker.socketId, ptt: true,
         statusHtml: 'جاري البث الصوتي...'
       });
+      emitRadioSpeakerStateToSocket(joiningSocketId, channel, talker, true);
     }
   }
 }
@@ -2612,7 +2614,47 @@ function radioSocketIsEligible(socketId, channel) {
   const targetSocket = io.sockets.sockets.get(socketId);
   const user = targetSocket ? requireSocketUser(targetSocket) : null;
   return !!user && targetSocket.radioOnline === true && targetSocket.radioChannel === channel &&
-    user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE';
+    user.activeService === true && user.suspended !== true && user.securityStatus === 'ACTIVE' &&
+    (channel !== 'CH-3' || isLeadership(user)) &&
+    (!isCustomRadioChannel(channel) || radioCustomChannelAllows(channel, user.id));
+}
+
+function radioSocketCanReceiveState(socketId, channel) {
+  if (!radioSocketIsEligible(socketId, channel)) return false;
+  const targetSocket = io.sockets.sockets.get(socketId);
+  const viewer = targetSocket ? requireSocketUser(targetSocket) : null;
+  return !!viewer &&
+    (channel !== 'CH-3' || isLeadership(viewer)) &&
+    (!isCustomRadioChannel(channel) || radioCustomChannelAllows(channel, viewer.id));
+}
+
+function emitRadioStateToChannel(channel, payload) {
+  for (const socketId of radioTargets(channel)) {
+    if (!radioSocketCanReceiveState(socketId, channel)) continue;
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (targetSocket) targetSocket.emit('radio:state', payload);
+  }
+}
+
+function emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking) {
+  if (!['CH-1', 'TAC-1'].includes(channel) || socketId === speaker.socketId) return;
+  if (!radioSocketCanReceiveState(socketId, channel)) return;
+  const targetSocket = io.sockets.sockets.get(socketId);
+  if (!targetSocket) return;
+  targetSocket.emit('radio:speaker', {
+    channel,
+    socketId: speaker.socketId,
+    userCode: clean(speaker.userCode, 100),
+    rank: clean(speaker.rank, 80),
+    speaking: speaking === true
+  });
+}
+
+function emitRadioSpeakerState(channel, speaker, speaking) {
+  if (!['CH-1', 'TAC-1'].includes(channel)) return;
+  for (const socketId of radioTargets(channel)) {
+    emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking);
+  }
 }
 
 function radioAdminMembers(channel) {
@@ -2693,9 +2735,12 @@ function releaseRadioTransmission(socketId) {
     if (!speaker) continue;
     talkers.delete(socketId);
     if (talkers.size === 0) radioTalkers.delete(channel);
-    emitRadioToChannel(channel, 'radio:state', {
-      channel, userCode: speaker.userCode || '', socketId, ptt: false, statusHtml: 'انتهى البث.'
-    });
+    if (speaker.active === true) {
+      emitRadioStateToChannel(channel, {
+        channel, userCode: speaker.userCode || '', socketId, ptt: false, statusHtml: 'انتهى البث.'
+      });
+      emitRadioSpeakerState(channel, speaker, false);
+    }
   }
 }
 
@@ -7962,6 +8007,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const resolvedChannel = resolveRadioChannel(requestedChannel);
         if (!resolvedChannel) return no(cb, 'أدخل اسم موجة صالحاً (حتى 43 حرفاً، دون محارف تحكم).');
         const channel = resolvedChannel.id;
+        if (channel === 'CH-3' && !isLeadership(actor)) {
+          return no(cb, 'هذه الموجة مشفّرة ومخصصة للقيادة فقط.');
+        }
         if (resolvedChannel.custom && !radioCustomChannelAllows(channel, actor.id)) {
           return no(cb, 'هذه الموجة مقيّدة بالأعضاء المسموح لهم فقط.');
         }
@@ -8048,6 +8096,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const resolvedChannel = resolveRadioChannel(payload?.channel);
         if (!resolvedChannel) return no(cb, 'أدخل اسم موجة صالحاً (حتى 43 حرفاً، دون محارف تحكم).');
         const channel = resolvedChannel.id;
+        if (channel === 'CH-3' && !isLeadership(actor)) {
+          return no(cb, 'هذه الموجة مشفّرة ومخصصة للقيادة فقط.');
+        }
         if (resolvedChannel.custom && !radioCustomChannelAllows(channel, actor.id)) {
           return no(cb, 'هذه الموجة مقيّدة بالأعضاء المسموح لهم فقط.');
         }
@@ -10637,11 +10688,39 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!radioSocketIsEligible(socket.id, channel)) {
         return no(cb, 'الراديو غير منضم إلى القناة المحددة. أعد تشغيل الراديو ثم حاول مجدداً.');
       }
-      getRadioTalkers(channel, true).set(socket.id, { socketId: socket.id, userCode: actor.publicCode });
-      emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, socketId: socket.id, ptt: true,
-        statusHtml: 'جاري البث الصوتي...'
-      });
+      const talkers = getRadioTalkers(channel, true);
+      if (!talkers.has(socket.id)) {
+        talkers.set(socket.id, {
+          socketId: socket.id,
+          userCode: actor.publicCode,
+          rank: rankLabel(actor.rank),
+          active: false
+        });
+      }
+      const peers = radioTargets(channel).filter((peerId) => peerId !== socket.id && radioSocketIsEligible(peerId, channel));
+      return ok(cb, { peers });
+    });
+
+    socket.on('radio:ptt:ready', (payload, cb) => {
+      const actor = requireSocketUser(socket);
+      if (!actor) return no(cb, 'يجب تسجيل الدخول.');
+      const channel = clean(payload?.channel || actor.radioChannel || 'CH-1', 50);
+      if (actor.activeService !== true || !radioSocketIsEligible(socket.id, channel)) {
+        return no(cb, 'الراديو غير مخوّل للإرسال على هذه الموجة.');
+      }
+      const talkers = getRadioTalkers(channel);
+      const speaker = talkers?.get(socket.id);
+      if (!speaker) return no(cb, 'لم يبدأ طلب إرسال صالح على هذه الموجة.');
+      if (speaker.active !== true) {
+        speaker.userCode = clean(actor.publicCode, 100);
+        speaker.rank = rankLabel(actor.rank);
+        speaker.active = true;
+        emitRadioStateToChannel(channel, {
+          channel, userCode: speaker.userCode, socketId: socket.id, ptt: true,
+          statusHtml: 'جاري البث الصوتي...'
+        });
+        emitRadioSpeakerState(channel, speaker, true);
+      }
       const peers = radioTargets(channel).filter((peerId) => peerId !== socket.id && radioSocketIsEligible(peerId, channel));
       return ok(cb, { peers });
     });
@@ -10655,10 +10734,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
       if (!speaker) return ok(cb);
       talkers.delete(socket.id);
       if (talkers.size === 0) radioTalkers.delete(channel);
-      emitRadioToChannel(channel, 'radio:state', {
-        channel, userCode: actor.publicCode, socketId: socket.id, ptt: false,
-        statusHtml: 'انتهى البث.'
-      });
+      if (speaker.active === true) {
+        emitRadioStateToChannel(channel, {
+          channel, userCode: speaker.userCode || actor.publicCode, socketId: socket.id, ptt: false,
+          statusHtml: 'انتهى البث.'
+        });
+        emitRadioSpeakerState(channel, speaker, false);
+      }
       return ok(cb);
     });
 
@@ -10673,8 +10755,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'المستمع غير موجود على القناة نفسها.');
       }
       const talkers = getRadioTalkers(channel);
-      const senderIsTalking = talkers?.has(socket.id) === true;
-      const targetIsTalking = talkers?.has(targetId) === true;
+      const senderIsTalking = talkers?.get(socket.id)?.active === true;
+      const targetIsTalking = talkers?.get(targetId)?.active === true;
       if (!senderIsTalking && !targetIsTalking) {
         return no(cb, 'إشارة الصوت لا تتبع إرسالاً نشطاً على هذه القناة.');
       }

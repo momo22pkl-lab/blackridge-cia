@@ -227,6 +227,12 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     return client;
   }
 
+  async function startRadioTransmission(client, channel) {
+    const requested = await client.emit('radio:ptt:start', { channel });
+    if (!requested || requested.ok !== true) return requested;
+    return client.emit('radio:ptt:ready', { channel });
+  }
+
   const speaker = await login('Radio Speaker', '8101');
   const listenerA = await login('Listener Alpha', '8102');
   const listenerB = await login('Listener Bravo', '8103');
@@ -237,13 +243,26 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     assert.equal(joined.ok, true);
   }
   assert.equal((await switcher.emit('radio:join', { channel: 'CH-2' })).ok, true);
+  assert.equal((await speaker.emit('radio:join', { channel: 'CH-3' })).ok, false, 'the encrypted leadership wave must reject non-leadership members');
+  assert.equal((await speaker.emit('radio:setChannel', { channel: 'CH-3' })).ok, false, 'radio:setChannel must enforce encrypted-wave access');
 
-  const started = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  const requestedStart = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  assert.equal(requestedStart.ok, true, 'same-channel speaker PTT request was not accepted');
+  const started = await speaker.emit('radio:ptt:ready', { channel: 'CH-1' });
   assert.equal(started.ok, true, 'same-channel speaker was not granted PTT: ' + JSON.stringify(started));
   assert.deepEqual(new Set(started.peers), new Set([listenerA.id, listenerB.id]));
   assert.equal(started.peers.includes(switcher.id), false, 'another channel was included in the listener list');
+  for (const listener of [listenerA, listenerB]) {
+    const notice = await listener.waitFor('radio:speaker', (event) =>
+      event.channel === 'CH-1' && event.socketId === speaker.id && event.speaking === true
+    );
+    assert.equal(notice.userCode, 'RAD-101');
+    assert.equal(notice.rank, 'Agent');
+    assert.deepEqual(Object.keys(notice).sort(), ['channel', 'rank', 'socketId', 'speaking', 'userCode']);
+  }
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === speaker.id);
   await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === speaker.id);
+  assert.equal((await speaker.emit('radio:ptt:ready', { channel: 'CH-1' })).ok, true, 'duplicate ready acknowledgement must remain idempotent');
 
   const offer = { type: 'offer', sdp: 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' };
   const candidate = { candidate: 'candidate:1 1 UDP 2122260223 192.0.2.10 50000 typ host', sdpMid: '0', sdpMLineIndex: 0 };
@@ -273,7 +292,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   })).ok, true);
   await switcher.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.type === 'offer');
 
-  const secondTalker = await listenerA.emit('radio:ptt:start', { channel: 'CH-1' });
+  const secondTalker = await startRadioTransmission(listenerA, 'CH-1');
   assert.equal(secondTalker.ok, true, 'a second same-channel participant was denied simultaneous PTT');
   assert.deepEqual(new Set(secondTalker.peers), new Set([speaker.id, listenerB.id, switcher.id]));
   await speaker.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerA.id);
@@ -296,13 +315,19 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(simultaneousAnswer.ok, true, 'a peer could not send the WebRTC answer while both participants were active');
   await listenerA.waitFor('radio:voice:signal', (event) => event.from === speaker.id && event.type === 'answer');
 
-  const thirdTalker = await listenerB.emit('radio:ptt:start', { channel: 'CH-1' });
+  const thirdTalker = await startRadioTransmission(listenerB, 'CH-1');
   assert.equal(thirdTalker.ok, true, 'a third same-channel participant was denied PTT');
   assert.deepEqual(new Set(thirdTalker.peers), new Set([speaker.id, listenerA.id, switcher.id]));
   await speaker.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerB.id);
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === listenerB.id);
 
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
+  for (const listener of [listenerA, listenerB]) {
+    const notice = await listener.waitFor('radio:speaker', (event) =>
+      event.channel === 'CH-1' && event.socketId === speaker.id && event.speaking === false
+    );
+    assert.equal(notice.userCode, 'RAD-101');
+  }
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
   await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
   const remainingTalkersSignal = await listenerA.emit('radio:voice:signal', {
@@ -320,7 +345,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   await speaker.waitFor('radio:voice:signal', (event) => event.from === listenerB.id && event.type === 'offer');
   assert.equal((await listenerB.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
 
-  const restarted = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  const restarted = await startRadioTransmission(speaker, 'CH-1');
   assert.equal(restarted.ok, true, 'speaker could not start a second transmission');
   assert.equal(restarted.peers.length, 3, 'second transmission did not include every eligible listener');
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-1' })).ok, true);
@@ -333,7 +358,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(persistedReconnected.activeService, true);
   assert.equal(persistedReconnected.radioOnline, true);
   assert.equal(persistedReconnected.radioChannel, 'CH-1');
-  const afterReconnect = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  const afterReconnect = await startRadioTransmission(speaker, 'CH-1');
   assert.equal(afterReconnect.ok, true, 'radio did not recover after a listener reconnected');
   assert.ok(afterReconnect.peers.includes(reconnected.id), 'reconnected user was not included as a same-channel listener: ' + JSON.stringify({ expected: reconnected.id, peers: afterReconnect.peers }));
   assert.equal(afterReconnect.peers.includes(listenerA.id), false, 'the disconnected phone remained in the listener list');
@@ -343,7 +368,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal((await secondDevice.emit('radio:join', { channel: 'TAC-1' })).ok, true);
   assert.equal((await secondDevice.emit('radio:text', { channel: 'CH-1', text: 'cross-channel test' })).ok, false);
   assert.equal((await secondDevice.emit('radio:code', { channel: 'CH-1', code: '10-4', meaning: 'cross-channel test' })).ok, false);
-  const separateChannelTransmission = await speaker.emit('radio:ptt:start', { channel: 'CH-1' });
+  const separateChannelTransmission = await startRadioTransmission(speaker, 'CH-1');
   assert.equal(separateChannelTransmission.ok, true);
   assert.ok(separateChannelTransmission.peers.includes(reconnected.id), 'first phone lost its independent channel membership');
   assert.equal(separateChannelTransmission.peers.includes(secondDevice.id), false, 'same account on another channel received cross-channel radio');
@@ -356,7 +381,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(afterSingleDeviceLeave.radioChannel, 'TAC-1');
 
   assert.equal((await switcher.emit('radio:setChannel', { channel: 'TAC-1' })).ok, true);
-  const secondPhoneTransmission = await switcher.emit('radio:ptt:start', { channel: 'TAC-1' });
+  const secondPhoneTransmission = await startRadioTransmission(switcher, 'TAC-1');
   assert.equal(secondPhoneTransmission.ok, true);
   assert.ok(secondPhoneTransmission.peers.includes(secondDevice.id), 'the second phone could not receive after the first phone turned its radio off');
   assert.equal(secondPhoneTransmission.peers.includes(reconnected.id), false);
@@ -368,12 +393,28 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(afterServiceEnd.activeService, false);
   assert.equal(afterServiceEnd.radioOnline, false);
   assert.equal((await secondDevice.emit('radio:leave', { channel: 'TAC-1' })).ok, true, 'ending service disconnected the other phone instead of stopping its radio');
-  const unaffectedUserTransmission = await switcher.emit('radio:ptt:start', { channel: 'TAC-1' });
+  const unaffectedUserTransmission = await startRadioTransmission(switcher, 'TAC-1');
   assert.equal(unaffectedUserTransmission.ok, true, 'ending one account service disconnected a different user on that channel');
   assert.equal(unaffectedUserTransmission.peers.includes(secondDevice.id), false, 'service-ended phone remained in the channel');
   assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
 
   const chief = await login('Radio Chief', '8401');
+  assert.equal((await chief.emit('radio:join', { channel: 'CH-1' })).ok, true);
+  await speaker.waitFor('state:update', (snapshot) =>
+    Array.isArray(snapshot.cia_users) && snapshot.cia_users.some((user) =>
+      user.id === 'radio-chief' && user.radioChannel === 'CH-1' && user.radioOnline === true
+    )
+  );
+  const encryptedLeadershipJoin = await chief.emit('radio:join', { channel: 'CH-3' });
+  assert.equal(encryptedLeadershipJoin.ok, true, 'leadership must retain access to the encrypted wave');
+  const hiddenEncryptedPresence = await speaker.waitFor('state:update', (snapshot) =>
+    Array.isArray(snapshot.cia_users) && snapshot.cia_users.some((user) => user.id === 'radio-chief')
+      && snapshot.cia_users.find((user) => user.id === 'radio-chief').radioChannel === null
+      && snapshot.cia_users.find((user) => user.id === 'radio-chief').radioOnline === false
+  );
+  const hiddenChief = hiddenEncryptedPresence.cia_users.find((user) => user.id === 'radio-chief');
+  assert.equal(hiddenChief.radioChannel, null, 'non-leadership snapshots must not reveal the encrypted wave number');
+  assert.equal(hiddenChief.radioOnline, false, 'non-leadership snapshots must not reveal encrypted-wave presence');
   const initialAdminList = await chief.emit('radio:admin:subscribe', {});
   assert.equal(initialAdminList.ok, true, 'CIA CHIEF must be able to subscribe to the radio monitor');
   assert.deepEqual(
@@ -425,7 +466,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     payload.channels.some((channel) => channel.name === '111' && channel.memberCount === 1)
   );
   assert.equal(newlyCreatedWave.channels.find((channel) => channel.name === '111').accessMode, 'open');
-  const sameWaveTransmission = await speaker.emit('radio:ptt:start', { channel: privateJoinA.channel });
+  const sameWaveTransmission = await startRadioTransmission(speaker, privateJoinA.channel);
   assert.equal(sameWaveTransmission.ok, true);
   assert.deepEqual(sameWaveTransmission.peers, [listenerB.id]);
   const customOffer = { type: 'offer', sdp: 'v=0\r\no=- 2 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' };
@@ -499,6 +540,25 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     channel: privateJoinA.channel, to: rejoinedAllowedMember.id, type: 'offer', sdp: customOffer
   })).ok, false, 'an ejected user must not signal into the restricted wave');
 
+  const allowSpeaker = await chief.emit('radio:admin:update-allowlist', {
+    channel: privateJoinA.channel, userId: 'radio-speaker', action: 'add'
+  });
+  assert.equal(allowSpeaker.ok, true);
+  assert.equal((await speaker.emit('radio:join', { channel: privateJoinA.channel })).ok, true);
+  const secretTransmission = await startRadioTransmission(speaker, privateJoinA.channel);
+  assert.equal(secretTransmission.ok, true, 'an authorized secret-wave member must be able to speak');
+  await rejoinedAllowedMember.waitFor('radio:state', (event) =>
+    event.channel === privateJoinA.channel && event.socketId === speaker.id && event.ptt === true
+  );
+  assert.equal((await speaker.emit('radio:ptt:stop', { channel: privateJoinA.channel })).ok, true);
+  await rejoinedAllowedMember.waitFor('radio:state', (event) =>
+    event.channel === privateJoinA.channel && event.socketId === speaker.id && event.ptt === false
+  );
+  assert.equal((await speaker.emit('radio:leave', { channel: privateJoinA.channel })).ok, true);
+
+  assert.equal((await chief.emit('radio:admin:update-allowlist', {
+    channel: privateJoinA.channel, userId: 'radio-speaker', action: 'remove'
+  })).ok, true, 'removing the speaker from the restricted wave must revoke their access');
   const removeAllowedMember = await chief.emit('radio:admin:update-allowlist', {
     channel: privateJoinA.channel, userId: 'radio-listener-b', action: 'remove'
   });

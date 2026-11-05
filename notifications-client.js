@@ -463,7 +463,12 @@
       else openCenter(row.priority === 'CRITICAL' ? 'critical' : 'all');
     });
     stack.prepend(toast);
-    while (stack.children.length > 3) stack.lastElementChild.remove();
+    while (stack.querySelectorAll(':scope > .notification-toast:not(.radio-speaking-toast)').length > 3) {
+      const oldestNotification = Array.from(stack.children)
+        .find((child) => !child.classList.contains('radio-speaking-toast'));
+      if (!oldestNotification) break;
+      oldestNotification.remove();
+    }
     setTimeout(() => toast.remove(), 9000);
   }
 
