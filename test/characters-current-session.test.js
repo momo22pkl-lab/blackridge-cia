@@ -152,7 +152,7 @@ function installOpenManagerHarness(actor, users) {
   return { context, document, events, get rendered() { return rendered; } };
 }
 
-test('signed-in military session loads only its own real API character list', () => {
+test('signed-in military session loads only the authenticated account fixture', () => {
   const fixture = makeMilitaryFixture('AGENT');
   const harness = installOpenManagerHarness(fixture.actor, fixture.users);
   harness.context.openCharactersManager();
