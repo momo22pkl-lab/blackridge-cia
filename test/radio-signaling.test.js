@@ -143,6 +143,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     makeUser('radio-listener-a', 'Listener Alpha', 'RAD-102', '8102'),
     makeUser('radio-listener-b', 'Listener Bravo', 'RAD-103', '8103'),
     makeUser('radio-switcher', 'Channel Switcher', 'RAD-201', '8201'),
+    makeUser('radio-observer', 'Radio Observer', 'RAD-104', '8501'),
     makeUser('radio-chief', 'Radio Chief', 'CHIEF-001', '8401', 'CIA CHIEF')
   ];
   const today = new Date().toISOString().slice(0, 10);
@@ -237,6 +238,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   const listenerA = await login('Listener Alpha', '8102');
   const listenerB = await login('Listener Bravo', '8103');
   const switcher = await login('Channel Switcher', '8201');
+  const observer = await login('Radio Observer', '8501');
 
   for (const client of [speaker, listenerA, listenerB]) {
     const joined = await client.emit('radio:join', { channel: 'CH-1' });
@@ -260,6 +262,11 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     assert.equal(notice.rank, 'Agent');
     assert.deepEqual(Object.keys(notice).sort(), ['channel', 'rank', 'socketId', 'speaking', 'userCode']);
   }
+  const unjoinedNotice = await observer.waitFor('radio:speaker', (event) =>
+    event.channel === 'CH-1' && event.socketId === speaker.id && event.speaking === true
+  );
+  assert.equal(unjoinedNotice.userCode, 'RAD-101', 'an on-duty member without an open radio still receives a public-wave notice');
+  assert.deepEqual(Object.keys(unjoinedNotice).sort(), ['channel', 'rank', 'socketId', 'speaking', 'userCode']);
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === speaker.id);
   await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === true && event.socketId === speaker.id);
   assert.equal((await speaker.emit('radio:ptt:ready', { channel: 'CH-1' })).ok, true, 'duplicate ready acknowledgement must remain idempotent');
@@ -328,6 +335,9 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
     );
     assert.equal(notice.userCode, 'RAD-101');
   }
+  await observer.waitFor('radio:speaker', (event) =>
+    event.channel === 'CH-1' && event.socketId === speaker.id && event.speaking === false
+  );
   await listenerA.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
   await listenerB.waitFor('radio:state', (event) => event.channel === 'CH-1' && event.ptt === false && event.socketId === speaker.id);
   const remainingTalkersSignal = await listenerA.emit('radio:voice:signal', {
@@ -549,6 +559,10 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(secretTransmission.ok, true, 'an authorized secret-wave member must be able to speak');
   await rejoinedAllowedMember.waitFor('radio:state', (event) =>
     event.channel === privateJoinA.channel && event.socketId === speaker.id && event.ptt === true
+  );
+  await assert.rejects(
+    rejoinedAllowedMember.waitFor('radio:speaker', (event) => event.channel === privateJoinA.channel, 200),
+    /Timed out waiting/
   );
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: privateJoinA.channel })).ok, true);
   await rejoinedAllowedMember.waitFor('radio:state', (event) =>

@@ -81,6 +81,49 @@
 .notification-toast[data-priority="CRITICAL"] { border-right-color: var(--notify-critical); }
 .notification-toast[data-priority="HIGH"] { border-right-color: var(--notify-high); }
 .notification-toast[data-priority="SYSTEM"] { border-right-color: var(--notify-system); }
+.notification-toast.radio-speaking-toast {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: center;
+  padding: 12px 14px;
+  color: #f1e9d8;
+  background: linear-gradient(112deg, rgba(105, 25, 34, .24), transparent 48%), linear-gradient(145deg, rgba(24, 18, 16, .99), rgba(5, 7, 10, .98));
+  border: 1px solid rgba(194, 151, 81, .7);
+  border-right: 4px solid #d34d57;
+  border-radius: 8px;
+  box-shadow: inset 0 0 18px rgba(202, 166, 98, .035), 0 14px 32px rgba(0, 0, 0, .52);
+  direction: rtl;
+  cursor: default;
+}
+.notification-toast.radio-speaking-toast::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+  background: #ef626b;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(239, 98, 107, .12);
+  animation: radio-speaking-pulse 1.4s ease-in-out infinite;
+}
+.notification-toast.radio-speaking-toast strong {
+  grid-column: 2;
+  color: #e8cb80;
+  letter-spacing: .08em;
+}
+.notification-toast.radio-speaking-toast span {
+  grid-column: 2;
+  margin-top: 0;
+  color: #f6f0e4;
+  font-size: .74rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+@keyframes radio-speaking-pulse {
+  50% { opacity: .72; box-shadow: 0 0 0 6px rgba(239, 98, 107, .07); }
+}
 .notification-toast strong { display: block; color: var(--primary-gold, #f59e0b); font: 800 .7rem/1.5 monospace; }
 .notification-toast span { display: block; margin-top: 3px; color: #cbd5e1; font-size: .68rem; line-height: 1.6; direction: auto; text-align: start; }
 @keyframes notification-arrive { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: translateY(0); } }
@@ -537,4 +580,5 @@
 @media (prefers-reduced-motion: reduce) {
   .notification-toast { animation: none; }
   .notification-card--security-alert.is-urgent .security-alert-level--critical { animation: none; }
+  .notification-toast.radio-speaking-toast::before { animation: none; }
 }
