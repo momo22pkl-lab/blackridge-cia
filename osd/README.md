@@ -26,6 +26,12 @@ For an existing primary chief account that has not enrolled MFA, or to restart a
 
 Members and other registered leadership accounts sign in with their military code only. OSD will reject codes that are not linked to an active, approved personnel record. Only the provisioned primary `CIA CHIEF` account receives `ADMIN` and user-management permissions; other roles and clearances are derived from the personnel record's rank. An OSD user can enable or disable access, but cannot change a rank, role, clearance, or permission through the browser.
 
+## Primary-chief handoff
+
+The current primary chief can transfer OSD leadership only from an authenticated OSD session by confirming a current TOTP code. The recipient must already have an enabled OSD account linked to an active `CIA CHIEF` personnel record, an existing scrypt password hash, and an enrolled authenticator encrypted with the existing `OSD_TOTP_ENCRYPTION_KEY`. No bootstrap code, new delegate, new secret, password reset, or MFA reset is involved.
+
+The transfer atomically changes the existing accounts' primary-chief flag and rank-derived OSD role, writes a hash-chained audit event containing the acting and receiving account IDs and event time, and revokes both accounts' sessions and pending login challenges. Password hashes, TOTP seeds, recovery-code hashes, encryption/signing keys, personnel records, and other systems are not changed. The successor must sign in again with their existing password and TOTP.
+
 Without PostgreSQL, the OSD API fails closed and does not create documents. Without `OSD_SIGNING_SECRET`, existing records can be read, but signed issue actions are disabled and verification reports that the document cannot be verified.
 
 ## Included workflow

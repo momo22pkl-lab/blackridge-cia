@@ -87,7 +87,15 @@ const COPY = {
     verificationPrivacy: 'لا تعرض صفحة التحقق العامة المحتوى أو الاسم الحقيقي للموقّع.', auditTitle: 'سجل التدقيق',
     noAudit: 'لا توجد أحداث متاحة', auditHint: 'يتطلب عرض هذا السجل صلاحية تدقيق مناسبة.',
     usersTitle: 'مستخدمو النظام والصلاحيات', addUser: 'إضافة مستخدم', refreshUsers: 'تحديث الحسابات',
-    usersCopy: 'يُستمد الدور والتصريح من سجل الأفراد؛ لا يمكن إنشاؤهما أو تغييره من هذه الصفحة.',
+    usersCopy: 'يُستمد الدور والتصريح من سجل الأفراد؛ نقل قيادة OSD لا يغيّر سجل الأفراد أو الأنظمة الأخرى.',
+    primaryChiefHandoffTitle: 'تسليم قيادة OSD',
+    primaryChiefHandoffIntro: 'انقل صفة Primary Chief إلى حساب CIA CHIEF نشط موجود، بكلمة مرور وTOTP مفعّلين بالفعل.',
+    primaryChiefHandoffTarget: 'حساب القائد البديل', primaryChiefHandoffChoose: 'اختر حساب CIA CHIEF مؤهلًا',
+    primaryChiefHandoffNoCandidates: 'لا يوجد حساب مؤهل حاليًا', primaryChiefHandoffTotp: 'رمز TOTP الحالي للقائد',
+    primaryChiefHandoffAction: 'تسليم قيادة OSD', primaryChiefHandoffWarning: 'بعد النقل تُلغى جلسات الطرفين؛ على القائد الجديد تسجيل الدخول بكلمة مروره وTOTP الحاليين. لا يغيّر هذا أنظمة أخرى.',
+    primaryChiefHandoffConfirm: 'سيتم نقل قيادة OSD وإبطال جلسات الطرفين. تأكد من هوية البديل وأدخل رمز TOTP الحالي للمتابعة.',
+    primaryChiefHandoffSuccess: 'تم النقل. أُبطلت الجلسات، وعلى القائد الجديد تسجيل الدخول بكلمة مروره وTOTP الحاليين.',
+    primaryChiefHandoffChooseError: 'اختر حسابًا بديلًا مؤهلًا أولًا.', primaryChiefHandoffTotpError: 'أدخل رمز TOTP حاليًا صالحًا من 6 أرقام.',
     privacyTitle: 'خصوصية هوية الموقّع', privacyCopy: 'تُخزن هوية الموقّع في سجل الإصدار، لكن الاستجابات تخفي الاسم الحقيقي ما لم يملك المستخدم صلاحية VIEW_SIGNER_IDENTITY.',
     signatureModel: 'نموذج التوقيع', recordModel: 'سجل النسخ', auditModel: 'سجل التدقيق',
     signatureDialogTitle: 'التوقيع الرسمي بخط اليد', signatureDialogHint: 'ارسم توقيعك بنفسك بإصبعك أو القلم أو الفأرة. سيُضمّن الرسم في النسخة الصادرة ويُربط ببصمتها.',
@@ -185,7 +193,15 @@ const COPY = {
     verificationPrivacy: 'The public verification page does not expose content or the signer’s real name.',
     auditTitle: 'Audit Trail', noAudit: 'No events available', auditHint: 'Viewing this register requires audit permission.',
     usersTitle: 'System Users & Permissions', addUser: 'Add User', refreshUsers: 'Refresh Accounts',
-    usersCopy: 'Roles and clearance come from personnel records; they cannot be created or changed here.',
+    usersCopy: 'Roles and clearance come from personnel records; OSD leadership transfer does not change personnel records or other systems.',
+    primaryChiefHandoffTitle: 'Transfer OSD Leadership',
+    primaryChiefHandoffIntro: 'Transfer Primary Chief status to an existing active CIA CHIEF account that already has a password and TOTP enabled.',
+    primaryChiefHandoffTarget: 'Successor account', primaryChiefHandoffChoose: 'Choose an eligible CIA CHIEF',
+    primaryChiefHandoffNoCandidates: 'No eligible account is available', primaryChiefHandoffTotp: 'Current chief TOTP code',
+    primaryChiefHandoffAction: 'Transfer OSD leadership', primaryChiefHandoffWarning: 'Both accounts’ sessions are revoked. The new chief must sign in with their existing password and TOTP. Other systems are unchanged.',
+    primaryChiefHandoffConfirm: 'This transfers OSD leadership and revokes both accounts’ sessions. Confirm the successor’s identity and enter the current TOTP code to continue.',
+    primaryChiefHandoffSuccess: 'Transfer complete. Sessions were revoked; the new chief must sign in with their existing password and TOTP.',
+    primaryChiefHandoffChooseError: 'Choose an eligible successor account first.', primaryChiefHandoffTotpError: 'Enter a current, valid 6-digit TOTP code.',
     privacyTitle: 'Signer Identity Privacy',
     privacyCopy: 'Signer identity is kept in the issue record, but responses conceal the real name unless the viewer has VIEW_SIGNER_IDENTITY.',
     signatureModel: 'Signature Model', recordModel: 'Version Record', auditModel: 'Audit Record',
@@ -1276,19 +1292,31 @@ async function loadUsers() {
   if (!can('MANAGE_USERS')) {
     $('#userList').innerHTML = `<div class="empty-state visible"><b>${escapeHtml(t('noPermission'))}</b></div>`;
     $('#refreshUsersButton').hidden = true;
+    $('#primaryChiefHandoffPanel').hidden = true;
     return;
   }
   $('#refreshUsersButton').hidden = false;
   try {
     const result = await request('/users');
-    $('#userList').innerHTML = (result.users || []).map((user) => `<div class="user-row">
+    const users = result.users || [];
+    $('#userList').innerHTML = users.map((user) => `<div class="user-row">
       <span><strong>${escapeHtml(user.display_name || user.military_code || '—')}</strong><small>${escapeHtml(user.military_code || 'UNLINKED')} · ${escapeHtml(user.rank || '—')}</small></span>
       <span class="user-role">${escapeHtml(user.role)}</span>
       <span class="user-clearance">${escapeHtml(user.clearance)}</span>
       <button class="row-action" data-action="toggleUser" data-id="${escapeHtml(user.id)}" data-enabled="${user.enabled}" aria-label="Toggle access">${user.enabled ? '●' : '○'}</button>
     </div>`).join('') || `<div class="empty-state visible"><b>${escapeHtml(t('noUsers'))}</b></div>`;
+    const candidates = users.filter((user) => user.canReceivePrimaryChief === true);
+    const select = $('#primaryChiefHandoffTarget');
+    const options = candidates.map((user) => {
+      const label = `${user.display_name || user.military_code || '—'} · ${user.military_code || ''}`;
+      return `<option value="${escapeHtml(user.id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    select.innerHTML = `<option value="">${escapeHtml(t(candidates.length ? 'primaryChiefHandoffChoose' : 'primaryChiefHandoffNoCandidates'))}</option>${options}`;
+    $('#primaryChiefHandoffPanel').hidden = false;
+    $('#primaryChiefHandoffButton').disabled = candidates.length === 0;
   } catch (error) {
     $('#userList').innerHTML = `<div class="empty-state visible"><b>${escapeHtml(error.message)}</b></div>`;
+    $('#primaryChiefHandoffPanel').hidden = true;
   }
 }
 
@@ -1298,6 +1326,39 @@ async function userAction(target, value) {
     await loadUsers();
     toast(t('save'));
   } catch (error) { toast(error.message, 'error'); }
+}
+
+async function handoffPrimaryChief() {
+  const targetUserId = $('#primaryChiefHandoffTarget').value;
+  const totpInput = $('#primaryChiefHandoffTotp');
+  const totpCode = totpInput.value.trim();
+  if (!targetUserId) { toast(t('primaryChiefHandoffChooseError'), 'error'); return; }
+  if (!/^\d{6}$/.test(totpCode)) {
+    totpInput.value = '';
+    toast(t('primaryChiefHandoffTotpError'), 'error');
+    return;
+  }
+  const successorLabel = $('#primaryChiefHandoffTarget').selectedOptions[0]?.textContent || '';
+  if (!window.confirm(`${t('primaryChiefHandoffConfirm')}\n\n${successorLabel}`)) {
+    totpInput.value = '';
+    return;
+  }
+  totpInput.value = '';
+  const button = $('#primaryChiefHandoffButton');
+  button.disabled = true;
+  try {
+    await request('/leadership/handoff', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, totpCode })
+    });
+    window.alert(t('primaryChiefHandoffSuccess'));
+    location.reload();
+  } catch (error) {
+    toast(error.message, 'error');
+    await loadUsers();
+  } finally {
+    if (state.user) button.disabled = false;
+  }
 }
 
 function useTemplate(type) {
@@ -1686,6 +1747,7 @@ document.addEventListener('click', async (event) => {
       renderPreview();
       toast(t('previewDraft'));
     } else if (action === 'toggleUser') await userAction(id, target.dataset.enabled);
+    else if (action === 'handoffPrimaryChief') await handoffPrimaryChief();
     else if (action === 'verifyShared') {
       $('#documentModal').hidden = true;
       state.publicMode = false;
