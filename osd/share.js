@@ -8,7 +8,7 @@
   const labels = arabic ? {
     lang: 'ar', direction: 'rtl', access: 'رابط وثيقة آمن', loginTitle: 'سجّل الدخول لمشاهدة الوثيقة الداخلية',
     loginDescription: 'تتطلب هذه الوثيقة كوداً عسكرياً مسجلاً وتصريحاً مناسباً.', code: 'الكود العسكري',
-    memberLogin: 'دخول الأفراد', leaderLogin: 'دخول القائد', password: 'كلمة السر الرئيسية',
+    memberLogin: 'دخول الأفراد', leaderLogin: 'دخول القائد', chiefAccessCode: 'كود دخول القائد',
     signIn: 'تسجيل الدخول', invalid: 'رابط المشاركة غير صالح أو انتهت صلاحيته أو تم إلغاؤه.',
     denied: 'لا تملك صلاحية مشاهدة هذه الوثيقة.', loading: 'جارٍ تحميل الوثيقة…',
     valid: 'سجل الإصدار وسلامة النسخة مطابقان', openVerify: 'فتح سجل التحقق',
@@ -24,7 +24,7 @@
     loginTitle: 'Sign in to view this internal document',
     loginDescription: 'This document requires a registered military code with sufficient clearance.',
     code: 'Military Code', memberLogin: 'Personnel Login', leaderLogin: 'Leader Login',
-    password: 'Master Password', signIn: 'Sign in',
+    chiefAccessCode: 'Chief Access Code', signIn: 'Sign in',
     invalid: 'The share link is invalid, expired, revoked, or the document is unavailable.',
     denied: 'Your account is not authorized to view this document.', loading: 'Loading document…',
     openVerify: 'Open verification record', print: 'Print / Save PDF', expires: 'Share link expires',
@@ -42,7 +42,7 @@
   $('#loginTitle').textContent = labels.loginTitle;
   $('#loginDescription').textContent = labels.loginDescription;
   $('#militaryCodeLabel').textContent = labels.code;
-  $('#passwordLabel').textContent = labels.password;
+  $('#chiefAccessCodeLabel').textContent = labels.chiefAccessCode;
   $('#memberLoginTab').textContent = labels.memberLogin;
   $('#chiefLoginTab').textContent = labels.leaderLogin;
   $('#loginButton').textContent = labels.signIn;
@@ -73,9 +73,9 @@
     $('#chiefLoginTab').classList.toggle('active', leader);
     $('#memberLoginTab').setAttribute('aria-pressed', String(!leader));
     $('#chiefLoginTab').setAttribute('aria-pressed', String(leader));
-    $('#leaderPasswordField').hidden = !leader;
-    $('#loginPassword').required = leader;
-    $('#loginPassword').value = '';
+    $('#chiefAccessCodeField').hidden = !leader;
+    $('#loginChiefAccessCode').required = leader;
+    $('#loginChiefAccessCode').value = '';
     $('#loginError').textContent = '';
   }
 
@@ -206,20 +206,19 @@
         body: JSON.stringify({
           mode: loginMode,
           militaryCode: $('#loginMilitaryCode').value,
-          ...(loginMode === 'leader' ? { password: $('#loginPassword').value } : {})
+          ...(loginMode === 'leader' ? { chiefAccessCode: $('#loginChiefAccessCode').value } : {})
         })
       });
-      $('#loginPassword').value = '';
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         $('#loginError').textContent = data.error || labels.loginFailed;
         return;
       }
-      $('#loginPassword').value = '';
       await loadShare();
     } catch {
       $('#loginError').textContent = labels.loginFailed;
     } finally {
+      $('#loginChiefAccessCode').value = '';
       $('#loginButton').disabled = false;
     }
   });
