@@ -3249,7 +3249,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       }
       const userCode = String(data.userCode || '').slice(0, 100);
       if (!userCode || !RADIO_SPEAKER_NOTICE_CHANNELS.has(data.channel) ||
-          data.channel !== radioChannel || !radioPoweredOn ||
           userCode === String(currentUser && currentUser.publicCode || '')) return;
       if (radioSpeakingNotices.has(socketId)) return;
 
@@ -3259,11 +3258,13 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       toast.className = 'notification-toast radio-speaking-toast';
       toast.dataset.priority = 'SYSTEM';
       toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.setAttribute('aria-atomic', 'true');
       toast.style.cursor = 'default';
       const title = document.createElement('strong');
       title.textContent = 'إذاعة مباشرة';
       const message = document.createElement('span');
-      message.textContent = `المود العسكري ${userCode} يتحدث الآن على موجة ${radioChannelDisplayName(data.channel)}`;
+      message.textContent = `الكود العسكري ${userCode} يتحدث الآن على موجة ${data.channel}`;
       toast.append(title, message);
       stack.prepend(toast);
       radioSpeakingNotices.set(socketId, toast);
@@ -3897,7 +3898,6 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
       ciaSocket.on('radio:access-revoked', function(data) {
         if (!data || data.channel !== radioChannel) return;
-        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinPendingChannel = '';
@@ -6727,7 +6727,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!currentUser) return alert('يلزم تسجيل الدخول أولاً.');
       if (radioPoweredOn) {
         if (radioPTTHeld || radioPTTRequestPending || radioPTTActive) stopPTT();
-        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinPendingChannel = '';
@@ -6799,7 +6798,6 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
     function changeRadioChannel(ch, freq, label) {
       const channelChanged = radioChannel !== ch;
       if (channelChanged) {
-        clearRadioSpeakingNotices();
         radioJoinRequestId += 1;
         radioJoinPending = false;
         radioJoinConfirmed = false;

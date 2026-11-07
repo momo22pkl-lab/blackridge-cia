@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const notificationsCss = fs.readFileSync(path.join(__dirname, '..', 'notifications.css'), 'utf8');
 
 test('PTT is bound to touch-friendly pointer release, cancellation, focus loss, and keyboard release', () => {
   const button = html.match(/<button[^>]*class="ptt-btn"[^>]*>/);
@@ -47,6 +48,13 @@ test('speaking notices wait for an active microphone track and reuse the notific
   assert.match(html, /radioSpeakingNotices\.has\(socketId\)/);
   assert.match(html, /removeRadioSpeakingNotice\(socketId\)/);
   assert.match(html, /RADIO_SPEAKER_NOTICE_CHANNELS = new Set\(\['CH-1', 'TAC-1'\]\)/);
+  const noticeStart = html.indexOf('function syncRadioSpeakerNotice(data)');
+  const noticeEnd = html.indexOf('    let bootstrapMode', noticeStart);
+  assert.ok(noticeStart >= 0 && noticeEnd > noticeStart, 'speaking notice handler exists');
+  const noticeHandler = html.slice(noticeStart, noticeEnd);
+  assert.doesNotMatch(noticeHandler, /data\.channel !== radioChannel|!radioPoweredOn/);
+  assert.ok(noticeHandler.includes('الكود العسكري ${userCode} يتحدث الآن على موجة ${data.channel}'));
+  assert.ok(notificationsCss.includes('.notification-toast.radio-speaking-toast'));
 });
 
 test('server gates ephemeral speaking notices and encrypted-wave state by channel authorization', () => {
@@ -54,6 +62,13 @@ test('server gates ephemeral speaking notices and encrypted-wave state by channe
   assert.match(server, /emitRadioSpeakerState\(channel, speaker, true\)/);
   assert.match(server, /if \(!\['CH-1', 'TAC-1'\]\.includes\(channel\)\) return/);
   assert.match(server, /radioSocketCanReceiveState\(socketId, channel\)/);
+  const noticeGateStart = server.indexOf('function radioSocketCanReceiveSpeakerNotice(socketId, channel)');
+  const noticeGateEnd = server.indexOf('\n}', noticeGateStart) + 2;
+  assert.ok(noticeGateStart >= 0 && noticeGateEnd > noticeGateStart, 'speaker notice authorization gate exists');
+  const noticeGate = server.slice(noticeGateStart, noticeGateEnd);
+  assert.match(noticeGate, /activeService === true/);
+  assert.doesNotMatch(noticeGate, /radioSocketIsEligible|radioSocketCanReceiveState/);
+  assert.match(server, /for \(const socketIds of sessions\.values\(\)\)/);
   assert.match(server, /channel === 'CH-3' \|\| !RADIO_MAIN_CHANNEL_IDS\.has\(channel\)/);
   assert.match(server, /if \(channel === 'CH-3' && !isLeadership\(actor\)\)/);
   assert.match(server, /!isCustomRadioChannel\(channel\) \|\| radioCustomChannelAllows\(channel, user\.id\)/);

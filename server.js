@@ -2127,6 +2127,7 @@ function markLogin(socket, user, options = {}) {
 
   saveState();
   emitState();
+  announceActiveRadioTalkersToSocket(socket.id);
 }
 
 function markLogout(socket) {
@@ -2602,6 +2603,18 @@ function announceActiveRadioTalkers(channel, joiningSocketId) {
   }
 }
 
+function announceActiveRadioTalkersToSocket(socketId) {
+  for (const [channel, talkers] of radioTalkers.entries()) {
+    if (!['CH-1', 'TAC-1'].includes(channel)) continue;
+    if (!radioSocketCanReceiveSpeakerNotice(socketId, channel)) continue;
+    for (const talker of talkers.values()) {
+      if (talker.active !== true || talker.socketId === socketId) continue;
+      if (!radioSocketIsEligible(talker.socketId, channel)) continue;
+      emitRadioSpeakerStateToSocket(socketId, channel, talker, true);
+    }
+  }
+}
+
 function emitRadioToChannel(channel, event, payload) {
   for (const socketId of radioTargets(channel)) {
     const targetSocket = io.sockets.sockets.get(socketId);
@@ -2636,9 +2649,16 @@ function emitRadioStateToChannel(channel, payload) {
   }
 }
 
+function radioSocketCanReceiveSpeakerNotice(socketId, channel) {
+  if (!['CH-1', 'TAC-1'].includes(channel)) return false;
+  const targetSocket = io.sockets.sockets.get(socketId);
+  const viewer = targetSocket ? requireSocketUser(targetSocket) : null;
+  return !!viewer && viewer.activeService === true;
+}
+
 function emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking) {
   if (!['CH-1', 'TAC-1'].includes(channel) || socketId === speaker.socketId) return;
-  if (!radioSocketCanReceiveState(socketId, channel)) return;
+  if (!radioSocketCanReceiveSpeakerNotice(socketId, channel)) return;
   const targetSocket = io.sockets.sockets.get(socketId);
   if (!targetSocket) return;
   targetSocket.emit('radio:speaker', {
@@ -2652,8 +2672,10 @@ function emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking) {
 
 function emitRadioSpeakerState(channel, speaker, speaking) {
   if (!['CH-1', 'TAC-1'].includes(channel)) return;
-  for (const socketId of radioTargets(channel)) {
-    emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking);
+  for (const socketIds of sessions.values()) {
+    for (const socketId of socketIds) {
+      emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking);
+    }
   }
 }
 
@@ -10861,6 +10883,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         return no(cb, 'لم يصدر الكود العسكري بعد؛ اطلب من CIA CHIEF إكمال اعتماد دخول الخدمة.');
       }
       if (actor.activeService === true) {
+        announceActiveRadioTalkersToSocket(socket.id);
         return ok(cb, { attendance: null, user: publicUser(actor, actor) });
       }
       const dayKey = now().slice(0, 10);
@@ -10873,6 +10896,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         actor.status = 'في الخدمة';
         saveState();
         emitState();
+        announceActiveRadioTalkersToSocket(socket.id);
         return ok(cb, { attendance: current, user: publicUser(actor, actor) });
       }
       const attendance = {
@@ -10891,6 +10915,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       actor.status = 'في الخدمة';
       saveState();
       emitState();
+      announceActiveRadioTalkersToSocket(socket.id);
       return ok(cb, { attendance, user: publicUser(actor, actor) });
     });
 
