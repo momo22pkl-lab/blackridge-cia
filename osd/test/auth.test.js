@@ -17,8 +17,22 @@ const personnel = [
   { id: 'person-chief', militaryCode: 'CH-100', displayName: 'Primary Chief', rank: 'CIA CHIEF', active: true },
   { id: 'person-agent', militaryCode: 'AG-200', displayName: 'Field Agent', rank: 'AGENT', active: true },
   { id: 'person-commander', militaryCode: 'CMD-300', displayName: 'High Command', rank: 'SUPREME COMMANDER', active: true },
-  { id: 'person-suspended', militaryCode: 'SUS-400', displayName: 'Suspended Agent', rank: 'AGENT', active: false }
+  { id: 'person-suspended', militaryCode: 'SUS-400', displayName: 'Suspended Agent', rank: 'AGENT', active: false },
+  { id: 'person-successor', militaryCode: 'CH-101', displayName: 'Successor Chief', rank: 'CIA CHIEF', active: true },
+  { id: 'person-unconfigured-chief', militaryCode: 'CH-102', displayName: 'Unconfigured Chief', rank: 'CIA CHIEF', active: true }
 ];
+
+function scryptHashForTest(password, salt) {
+  return crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+}
+
+function encryptTotpForTest(secret, encryptionKey) {
+  const key = crypto.createHash('sha256').update(encryptionKey, 'utf8').digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+  return `v1.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${ciphertext.toString('base64url')}`;
+}
 
 function totpForTest(secret, time = Date.now()) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -74,6 +88,7 @@ class MemoryPool {
     this.sessions = [];
     this.challenges = [];
     this.enrollments = [];
+    this.auditEvents = [];
   }
 
   async query(sql, values = []) {
@@ -237,6 +252,47 @@ class MemoryPool {
     if (query.startsWith('delete from osd_sessions where user_id=')) {
       this.sessions = this.sessions.filter((item) => item.user_id !== values[0]);
       return { rows: [] };
+    }
+    if (query.startsWith('select * from osd_users where id in ($1,$2)')) {
+      const [actorId, targetId] = values;
+      return { rows: this.users.filter((user) => user.id === actorId || user.id === targetId).sort((a, b) => a.id.localeCompare(b.id)) };
+    }
+    if (query.startsWith('update osd_users set is_primary_chief=false')) {
+      const [id, role, clearance, permissions] = values;
+      const user = this.users.find((item) => item.id === id && item.is_primary_chief === true);
+      if (!user) return { rows: [] };
+      Object.assign(user, { is_primary_chief: false, role, clearance, permissions: JSON.parse(permissions) });
+      return { rows: [{ id: user.id }] };
+    }
+    if (query.startsWith('update osd_users set is_primary_chief=true')) {
+      const [id, role, clearance, permissions] = values;
+      const user = this.users.find((item) => item.id === id && item.is_primary_chief === false && item.enabled === true);
+      if (!user) return { rows: [] };
+      Object.assign(user, { is_primary_chief: true, role, clearance, permissions: JSON.parse(permissions) });
+      return { rows: [{ id: user.id }] };
+    }
+    if (query.startsWith('delete from osd_sessions where user_id in ($1,$2)')) {
+      const ids = new Set(values);
+      this.sessions = this.sessions.filter((item) => !ids.has(item.user_id));
+      return { rows: [] };
+    }
+    if (query.startsWith('delete from osd_login_challenges where user_id in ($1,$2)')) {
+      const ids = new Set(values);
+      this.challenges = this.challenges.filter((item) => !ids.has(item.user_id));
+      return { rows: [] };
+    }
+    if (query.startsWith('select event_hash from osd_audit_events')) {
+      const last = this.auditEvents.at(-1);
+      return { rows: last ? [{ event_hash: last.event_hash }] : [] };
+    }
+    if (query.startsWith('insert into osd_audit_events')) {
+      const [documentId, actorId, actorLabel, action, version, metadata, previousHash, eventHash, createdAt] = values;
+      this.auditEvents.push({ document_id: documentId, actor_id: actorId, actor_label: actorLabel, action, version, metadata, previous_hash: previousHash, event_hash: eventHash, created_at: createdAt });
+      return { rows: [] };
+    }
+    if (query.startsWith('select token_hash from osd_sessions where token_hash=$1 and user_id=$2')) {
+      const session = this.sessions.find((item) => item.token_hash === values[0] && item.user_id === values[1] && item.expires_at > Date.now());
+      return { rows: session ? [{ token_hash: session.token_hash }] : [] };
     }
     if (query.startsWith('select u.id, u.username, u.display_name')) {
       const session = this.sessions.find((item) => item.token_hash === values[0] && item.expires_at > Date.now());
@@ -520,6 +576,32 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
   assert.equal(leaderSession.response.status, 200);
   assert.equal(leaderSession.data.user.role, 'ADMIN');
 
+  const handoffEncryptionKey = 'test-only-key-with-at-least-32-characters';
+  const successorPassword = 'a-different-existing-test-password';
+  const successorSalt = crypto.randomBytes(16).toString('hex');
+  const successorTotpSecret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  const successorRecoveryHashes = [crypto.createHash('sha256').update('unused-successor-recovery-code').digest('hex')];
+  const successorPerson = personnel.find((person) => person.id === 'person-successor');
+  const successorProfile = roleProfileForPersonnel(successorPerson, false);
+  const successorAccount = {
+    id: 'osd-successor-account', username: 'cia-successor', display_name: 'Successor Chief',
+    password_salt: successorSalt, password_hash: scryptHashForTest(successorPassword, successorSalt),
+    role: successorProfile.role, clearance: successorProfile.clearance, permissions: successorProfile.permissions,
+    military_code: 'CH-101', personnel_id: 'person-successor', is_primary_chief: false, enabled: true,
+    totp_secret_enc: encryptTotpForTest(successorTotpSecret, handoffEncryptionKey),
+    recovery_code_hashes: successorRecoveryHashes.slice(), mfa_enabled_at: new Date().toISOString(),
+    created_at: new Date().toISOString()
+  };
+  pool.users.push(successorAccount);
+  const unconfiguredChiefProfile = roleProfileForPersonnel(personnel.find((person) => person.id === 'person-unconfigured-chief'), false);
+  pool.users.push({
+    id: 'osd-unconfigured-chief', username: 'cia-unconfigured-chief', display_name: 'Unconfigured Chief',
+    password_salt: null, password_hash: null, role: unconfiguredChiefProfile.role,
+    clearance: unconfiguredChiefProfile.clearance, permissions: unconfiguredChiefProfile.permissions,
+    military_code: 'CH-102', personnel_id: 'person-unconfigured-chief', is_primary_chief: false, enabled: true,
+    totp_secret_enc: null, recovery_code_hashes: [], mfa_enabled_at: null, created_at: new Date().toISOString()
+  });
+
   const resetAttempt = await call('/auth/mfa/enroll/start', {
     method: 'POST',
     body: {
@@ -634,6 +716,94 @@ test('OSD routes enforce one-time chief setup, military-code personnel access, a
   });
   assert.equal(alterRole.response.status, 400);
   assert.equal(pool.users.find((user) => user.military_code === 'AG-200').role, 'AGENT');
+
+  const unauthenticatedHandoff = await call('/leadership/handoff', {
+    method: 'POST', body: { targetUserId: successorAccount.id, totpCode: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(unauthenticatedHandoff.response.status, 401);
+
+  const memberCannotHandoff = await call('/leadership/handoff', {
+    method: 'POST', cookie: memberLogin.cookie,
+    body: { targetUserId: successorAccount.id, totpCode: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(memberCannotHandoff.response.status, 403);
+  assert.equal(primaryChief.is_primary_chief, true);
+
+  const usersBeforeHandoff = await call('/users', { cookie: leaderLogin.cookie });
+  assert.equal(usersBeforeHandoff.response.status, 200);
+  assert.equal(usersBeforeHandoff.data.users.find((user) => user.id === successorAccount.id).canReceivePrimaryChief, true);
+  assert.equal(usersBeforeHandoff.data.users.find((user) => user.id === 'osd-unconfigured-chief').canReceivePrimaryChief, false);
+
+  const wrongHandoffTotp = await call('/leadership/handoff', {
+    method: 'POST', cookie: leaderLogin.cookie,
+    body: { targetUserId: successorAccount.id, totpCode: invalidTotpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(wrongHandoffTotp.response.status, 401);
+  assert.equal(primaryChief.is_primary_chief, true);
+  assert.equal(successorAccount.is_primary_chief, false);
+
+  const ineligibleHandoff = await call('/leadership/handoff', {
+    method: 'POST', cookie: leaderLogin.cookie,
+    body: { targetUserId: 'osd-unconfigured-chief', totpCode: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(ineligibleHandoff.response.status, 409);
+  assert.equal(primaryChief.is_primary_chief, true);
+
+  const primaryCredentialsBeforeHandoff = {
+    password_salt: primaryChief.password_salt, password_hash: primaryChief.password_hash,
+    totp_secret_enc: primaryChief.totp_secret_enc, mfa_enabled_at: primaryChief.mfa_enabled_at,
+    recovery_code_hashes: JSON.stringify(primaryChief.recovery_code_hashes) 
+  };
+  const successorCredentialsBeforeHandoff = {
+    password_salt: successorAccount.password_salt, password_hash: successorAccount.password_hash,
+    totp_secret_enc: successorAccount.totp_secret_enc, mfa_enabled_at: successorAccount.mfa_enabled_at,
+    recovery_code_hashes: JSON.stringify(successorAccount.recovery_code_hashes) 
+  };
+  pool.sessions.push({ token_hash: 'stale-successor-session', user_id: successorAccount.id, expires_at: Date.now() + 60_000 });
+  pool.challenges.push({ challenge_hash: 'stale-successor-challenge', user_id: successorAccount.id, expires_at: Date.now() + 60_000 });
+  const accountCountBeforeHandoff = pool.users.length;
+  const handoff = await call('/leadership/handoff', {
+    method: 'POST', cookie: leaderLogin.cookie,
+    body: { targetUserId: successorAccount.id, totpCode: totpForTest(mfaEnrollment.secret) }
+  });
+  assert.equal(handoff.response.status, 200);
+  assert.deepEqual(handoff.data, { transferred: true, previousPrimaryChiefId: primaryChief.id, primaryChiefId: successorAccount.id });
+  assert.equal(primaryChief.is_primary_chief, false);
+  assert.equal(primaryChief.role, 'COMMANDER');
+  assert.equal(successorAccount.is_primary_chief, true);
+  assert.equal(successorAccount.role, 'ADMIN');
+  assert.deepEqual({ password_salt: primaryChief.password_salt, password_hash: primaryChief.password_hash, totp_secret_enc: primaryChief.totp_secret_enc, mfa_enabled_at: primaryChief.mfa_enabled_at, recovery_code_hashes: JSON.stringify(primaryChief.recovery_code_hashes) }, primaryCredentialsBeforeHandoff);
+  assert.deepEqual({ password_salt: successorAccount.password_salt, password_hash: successorAccount.password_hash, totp_secret_enc: successorAccount.totp_secret_enc, mfa_enabled_at: successorAccount.mfa_enabled_at, recovery_code_hashes: JSON.stringify(successorAccount.recovery_code_hashes) }, successorCredentialsBeforeHandoff);
+  assert.equal(pool.users.length, accountCountBeforeHandoff);
+  assert.equal(pool.sessions.some((session) => session.user_id === primaryChief.id || session.user_id === successorAccount.id), false);
+  assert.equal(pool.challenges.some((challenge) => challenge.user_id === primaryChief.id || challenge.user_id === successorAccount.id), false);
+  const revokedLeaderSession = await call('/auth/me', { cookie: leaderLogin.cookie });
+  assert.equal(revokedLeaderSession.response.status, 401);
+
+  const handoffAudit = pool.auditEvents.at(-1);
+  assert.equal(handoffAudit.actor_id, primaryChief.id);
+  assert.equal(handoffAudit.actor_label, 'ADMIN');
+  assert.equal(handoffAudit.action, 'OSD PRIMARY CHIEF TRANSFERRED');
+  assert.ok(Number.isFinite(Date.parse(handoffAudit.created_at)));
+  assert.deepEqual(JSON.parse(handoffAudit.metadata), { fromUserId: primaryChief.id, toUserId: successorAccount.id });
+  assert.doesNotMatch(handoffAudit.metadata, /totp|password|secret|recovery/i);
+
+  const formerChiefLeaderLogin = await call('/auth/login', {
+    method: 'POST', body: { mode: 'leader', militaryCode: 'CH-100', password: 'a-long-test-password' }
+  });
+  assert.equal(formerChiefLeaderLogin.response.status, 401);
+
+  const successorPasswordStep = await call('/auth/login', {
+    method: 'POST', body: { mode: 'leader', militaryCode: 'CH-101', password: successorPassword }
+  });
+  assert.equal(successorPasswordStep.response.status, 202);
+  const successorLogin = await call('/auth/mfa/verify', {
+    method: 'POST', cookie: successorPasswordStep.challengeCookie, body: { code: totpForTest(successorTotpSecret) }
+  });
+  assert.equal(successorLogin.response.status, 200);
+  assert.equal(successorLogin.data.user.role, 'ADMIN');
+  assert.ok(successorLogin.data.user.permissions.includes('MANAGE_USERS'));
+  assert.equal(pool.users.filter((user) => user.is_primary_chief === true).length, 1);
 });
 
 test('direct OSD document API blocks central-engine matches and persists clean content', async (t) => {

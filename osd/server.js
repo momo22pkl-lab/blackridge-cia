@@ -817,6 +817,22 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
     };
   }
 
+  function accountLinkedToPersonnel(account, person) {
+    const personnelCode = normalizeMilitaryCode(person?.militaryCode || person?.publicCode || person?.code);
+    return Boolean(person && isEligiblePersonnel(person) && account?.personnel_id &&
+      String(account.personnel_id) === String(person.id || '') &&
+      personnelCode && normalizeMilitaryCode(account.military_code) === personnelCode);
+  }
+
+  function primaryChiefTransferEligible(account, person) {
+    return Boolean(accountLinkedToPersonnel(account, person) &&
+      cleanText(person.rank, 100).toUpperCase() === 'CIA CHIEF' &&
+      account.enabled === true && account.is_primary_chief === false &&
+      typeof account.password_salt === 'string' && /^[a-f0-9]{32}$/i.test(account.password_salt) &&
+      typeof account.password_hash === 'string' && /^[a-f0-9]{128}$/i.test(account.password_hash) &&
+      Boolean(account.mfa_enabled_at) && typeof account.totp_secret_enc === 'string' && account.totp_secret_enc.length > 0);
+  }
+
   async function findAccountForPersonnel(client, person) {
     const personnelId = String(person.id || '');
     const militaryCode = normalizeMilitaryCode(person.militaryCode || person.publicCode || person.code);
@@ -2045,7 +2061,8 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
   router.get('/users', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
     const result = await req.osdPool.query(
       `SELECT id,username,display_name,role,clearance,permissions,enabled,created_at,
-              military_code,personnel_id,is_primary_chief
+              military_code,personnel_id,is_primary_chief,password_salt,password_hash,
+              totp_secret_enc,mfa_enabled_at
        FROM osd_users ORDER BY created_at`
     );
     const users = result.rows.map((account) => {
@@ -2058,7 +2075,9 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
           role: 'UNLINKED',
           clearance: '—',
           enabled: account.enabled === true,
-          rank: 'UNLINKED'
+          rank: 'UNLINKED',
+          isPrimaryChief: account.is_primary_chief === true,
+          canReceivePrimaryChief: false
         };
       }
       const user = publicUser(account, person);
@@ -2069,12 +2088,101 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
         role: user.role,
         clearance: user.clearance,
         enabled: user.enabled,
-        rank: user.rank
+        rank: user.rank,
+        isPrimaryChief: account.is_primary_chief === true,
+        canReceivePrimaryChief: primaryChiefTransferEligible(account, person)
       };
     });
     res.json({ users });
   }));
 
+  router.post('/leadership/handoff', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
+    if (!hasTotpEncryptionKey(env.OSD_TOTP_ENCRYPTION_KEY)) {
+      return res.status(503).json({ error: 'Authenticator verification is unavailable. No leadership transfer was made.' });
+    }
+    const targetUserId = cleanText(req.body?.targetUserId, 100);
+    const totpCode = typeof req.body?.totpCode === 'string' ? req.body.totpCode.slice(0, 100) : '';
+    if (!targetUserId || targetUserId === req.osdUser.id) {
+      return res.status(400).json({ error: 'Select a different, existing CIA CHIEF account.' });
+    }
+
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query("SELECT * FROM osd_users WHERE id IN ($1,$2) ORDER BY id FOR UPDATE", [req.osdUser.id, targetUserId]);
+      const actor = locked.rows.find((account) => account.id === req.osdUser.id);
+      const target = locked.rows.find((account) => account.id === targetUserId);
+      const actorPerson = actor && personnelForAccount(actor);
+      const targetPerson = target && personnelForAccount(target);
+      const actorProfile = actorPerson && roleProfileForPersonnel(actorPerson, actor.is_primary_chief === true);
+      if (!actor || actor.enabled !== true || actor.is_primary_chief !== true ||
+          !accountLinkedToPersonnel(actor, actorPerson) ||
+          cleanText(actorPerson.rank, 100).toUpperCase() !== 'CIA CHIEF' ||
+          !actorProfile?.permissions.includes('MANAGE_USERS') ||
+          !actor.mfa_enabled_at || !actor.totp_secret_enc) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the active primary CIA CHIEF can transfer OSD leadership.' });
+      }
+      const sessionToken = requestCookie(req, 'osd_session');
+      if (!sessionToken || sessionToken.length > 200) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'The authenticated primary chief session is unavailable.' });
+      }
+      const activeSession = await client.query("SELECT token_hash FROM osd_sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>NOW() FOR UPDATE", [sha256(sessionToken), actor.id]);
+      if (!activeSession.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'The authenticated primary chief session is no longer active.' });
+      }
+      if (!target || !primaryChiefTransferEligible(target, targetPerson)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'The selected account is not an eligible, MFA-protected CIA CHIEF account.' });
+      }
+
+      let actorSecret;
+      try {
+        actorSecret = decryptTotpSecret(actor.totp_secret_enc, env.OSD_TOTP_ENCRYPTION_KEY);
+        decodeBase32(actorSecret);
+        const targetSecret = decryptTotpSecret(target.totp_secret_enc, env.OSD_TOTP_ENCRYPTION_KEY);
+        decodeBase32(targetSecret);
+      } catch {
+        await client.query('ROLLBACK');
+        return res.status(503).json({ error: 'An enrolled authenticator cannot be verified with the current OSD key. No transfer was made.' });
+      }
+      if (!verifyTotp(actorSecret, totpCode)) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'The current primary chief TOTP code is incorrect or expired.' });
+      }
+
+      const outgoingProfile = roleProfileForPersonnel(actorPerson, false);
+      const incomingProfile = roleProfileForPersonnel(targetPerson, true);
+      const demoted = await client.query("UPDATE osd_users SET is_primary_chief=FALSE,role=$2,clearance=$3,permissions=$4::jsonb,updated_at=NOW() WHERE id=$1 AND is_primary_chief=TRUE RETURNING id", [actor.id, outgoingProfile.role, outgoingProfile.clearance, JSON.stringify(outgoingProfile.permissions)]);
+      if (!demoted.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'The current primary chief changed. No leadership transfer was made.' });
+      }
+      const promoted = await client.query("UPDATE osd_users SET is_primary_chief=TRUE,role=$2,clearance=$3,permissions=$4::jsonb,updated_at=NOW() WHERE id=$1 AND enabled=TRUE AND is_primary_chief=FALSE RETURNING id", [target.id, incomingProfile.role, incomingProfile.clearance, JSON.stringify(incomingProfile.permissions)]);
+      if (!promoted.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'The selected successor is no longer eligible. No leadership transfer was made.' });
+      }
+      await client.query('DELETE FROM osd_sessions WHERE user_id IN ($1,$2)', [actor.id, target.id]);
+      await client.query('DELETE FROM osd_login_challenges WHERE user_id IN ($1,$2)', [actor.id, target.id]);
+      await appendAudit(client, {
+        actorId: actor.id, actorLabel: 'ADMIN', action: 'OSD PRIMARY CHIEF TRANSFERRED',
+        metadata: { fromUserId: actor.id, toUserId: target.id }
+      });
+      await client.query('COMMIT');
+      loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
+      res.setHeader('Set-Cookie', clearSessionCookie(req));
+      return res.json({ transferred: true, previousPrimaryChiefId: actor.id, primaryChiefId: target.id });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
   router.post('/users', currentUser, requirePermission('MANAGE_USERS'), asyncRoute(async (req, res) => {
     return res.status(403).json({ error: 'OSD accounts are created only from verified active military codes; roles and permissions come from the personnel record.' });
   }));
