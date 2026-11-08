@@ -116,12 +116,12 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   const seedState = {
     cia_users: [
       makeUser('chief-1', 'Chief Test', 'CIA CHIEF', 'CHIEF-001', '1101'),
-      makeUser('alpha-1', 'Alpha Member', 'AGENT', 'AG-101', '1102', { bank: { balance: 70, militaryCodeLinked: true }, bankAccount: 'AG-101' }),
+      makeUser('alpha-1', 'Alpha Member', 'AGENT', 'AG-101', '1102', { bank: { balance: 70, militaryCodeLinked: true }, bankAccount: 'AG-101', profilePhotoUrl: 'https://images.example.test/alpha.jpg' }),
       makeUser('alpha-2', 'Second Alpha', 'AGENT', 'AG-102', '1103', { bank: { balance: 25, militaryCodeLinked: true }, bankAccount: 'AG-102' }),
       makeUser('bravo-1', 'Bravo Member', 'AGENT', 'AG-201', '1104')
     ],
     cia_battalions: [
-      { id: 'unit-alpha', code: 'ALPHA', nameAr: 'Alpha Battalion', nameEn: 'Alpha Battalion', status: 'ACTIVE', commanderCode: 'AG-101', memberCodes: ['AG-101', 'AG-102'] },
+      { id: 'unit-alpha', code: 'ALPHA', nameAr: 'Alpha Battalion', nameEn: 'Alpha Battalion', sector: 'WEST', status: 'ACTIVE', commanderCode: 'AG-101', memberCodes: ['AG-101', 'AG-102'] },
       { id: 'unit-bravo', code: 'BRAVO', nameAr: 'Bravo Battalion', nameEn: 'Bravo Battalion', status: 'ACTIVE', commanderCode: 'AG-201', memberCodes: ['AG-201'] },
       { id: 'unit-archive', code: 'ARCHIVE', nameAr: 'Archived Alpha', status: 'ARCHIVED', memberCodes: ['AG-102'] }
     ],
@@ -183,6 +183,9 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(leaderList.ok, true);
   assert.equal(leaderList.people.length, 4);
   assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').name, 'Alpha Member');
+  assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').battalion.sector, 'WEST');
+  assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').position, 'قائد الكتيبة');
+  assert.equal(leaderList.people.find((person) => person.publicCode === 'AG-101').portraitUrl, 'https://images.example.test/alpha.jpg');
   assert.equal(leaderList.viewer.name, 'Chief Test');
   assert.equal(leaderList.permissions.canAdd, true);
   assert.deepEqual(leaderList.rankOptions, ['AGENT', 'HIGH COMMANDER', 'SUPREME COMMANDER']);
@@ -212,6 +215,7 @@ test('personnel directory enforces server scope, persists create/edit, and keeps
   assert.equal(memberList.ok, true);
   assert.deepEqual(memberList.people.map((person) => person.publicCode).sort(), ['AG-101', 'AG-102', createResponse.person.publicCode].sort());
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-102').name, '');
+  assert.equal(memberList.people.find((person) => person.publicCode === 'AG-101').portraitUrl, '');
   assert.equal(memberList.viewer.name, '', 'non-leaders must not receive a name in viewer metadata');
   assert.equal(memberList.people.find((person) => person.publicCode === 'AG-101').name, '', 'a member must not see their own name in the personnel directory');
   const selfDetail = await member.emit('ibp:directory:detail', { id: 'alpha-1' });
