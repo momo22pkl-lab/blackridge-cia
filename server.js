@@ -45,7 +45,9 @@ const { readChiefBootstrapConfig, withoutBootstrapCodes } = require('./chief-boo
 const { registerOfficialWarnings } = require('./official-warnings');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { WeaponArmoryStore } = require('./weapon-armory-store');
+const { WantedPersonsStore } = require('./wanted-persons-store');
 const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
+const { injectWantedPersonsMarkup, registerWantedPersonsSocket } = require('./wanted-persons-server');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const { installSocketModerationBoundary } = require('./moderation-boundaries');
@@ -103,6 +105,7 @@ let stateStore = null;
 let notificationsStore = null;
 let mobilePushStore = null;
 let weaponArmoryStore = null;
+let wantedPersonsStore = null;
 let appEntryHtml = null;
 const mobilePushTransport = createWebPushTransport();
 
@@ -171,6 +174,8 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/weapon-armory.css': 'weapon-armory.css',
   '/weapon-armory-client.js': 'weapon-armory-client.js',
+  '/wanted-persons.css': 'wanted-persons.css',
+  '/wanted-persons-client.js': 'wanted-persons-client.js',
   '/cover-identity.css': 'cover-identity.css',
   '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
@@ -207,7 +212,7 @@ app.get(['/', '/index.html'], (req, res) => {
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
     return res.status(200).type('html').send(
-      injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))
+      injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml))))
     );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
@@ -11296,6 +11301,15 @@ io.on('connection', (socket) => {
   });
 });
 
+io.on('connection', (socket) => {
+  registerWantedPersonsSocket(socket, {
+    getStore: () => wantedPersonsStore,
+    getState: () => state,
+    requireUser: () => requireSocketUser(socket),
+    isLeadership
+  });
+});
+
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
@@ -11346,14 +11360,18 @@ async function initializePersistence() {
     await mobilePushStore.initialize();
     weaponArmoryStore = new WeaponArmoryStore(postgresPool, { makeId });
     await weaponArmoryStore.initialize();
+    wantedPersonsStore = new WantedPersonsStore(postgresPool, { makeId });
+    await wantedPersonsStore.initialize();
     installPersistenceEmitBarriers();
     console.log('[BLACK RIDGE] PostgreSQL state store ready.');
     console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
     console.log('[BLACK RIDGE] PostgreSQL weapon armory store ready.');
+    console.log('[BLACK RIDGE] PostgreSQL wanted persons store ready.');
     return;
   }
 
   weaponArmoryStore = null;
+  wantedPersonsStore = null;
   if (IS_RENDER_RUNTIME) {
     console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
   }
