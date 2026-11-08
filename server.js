@@ -226,9 +226,17 @@ const makeId = (prefix = 'ID') => `${prefix}-${Date.now()}-${crypto.randomBytes(
 const RADIO_MAIN_CHANNELS = Object.freeze([
   { id: 'CH-1', name: 'القناة العامة', frequency: '104.50' },
   { id: 'TAC-1', name: 'قناة المطاردات', frequency: '108.20' },
-  { id: 'CH-3', name: 'القيادة المشفرة', frequency: '112.90' }
+  { id: 'CH-3', name: 'القيادة المشفرة', frequency: '112.90' },
+  { id: 'CH-4', name: 'موجة 4', frequency: '114.50' },
+  { id: 'CH-5', name: 'موجة 5', frequency: '116.50' },
+  { id: 'CH-6', name: 'موجة 6', frequency: '118.50' },
+  { id: 'CH-7', name: 'موجة 7', frequency: '120.50' },
+  { id: 'CH-8', name: 'موجة 8', frequency: '122.50' },
+  { id: 'CH-9', name: 'موجة 9', frequency: '124.50' },
+  { id: 'CH-10', name: 'موجة 10', frequency: '126.50' }
 ]);
 const RADIO_MAIN_CHANNEL_IDS = new Set(RADIO_MAIN_CHANNELS.map((channel) => channel.id));
+const RADIO_PUBLIC_CHANNEL_IDS = new Set(RADIO_MAIN_CHANNELS.filter((channel) => channel.id !== 'CH-3').map((channel) => channel.id));
 const RADIO_CUSTOM_CHANNEL_PREFIX = 'CUSTOM:';
 const RADIO_CUSTOM_CHANNEL_LIMIT = 500;
 
@@ -2605,7 +2613,7 @@ function announceActiveRadioTalkers(channel, joiningSocketId) {
 
 function announceActiveRadioTalkersToSocket(socketId) {
   for (const [channel, talkers] of radioTalkers.entries()) {
-    if (!['CH-1', 'TAC-1'].includes(channel)) continue;
+    if (!RADIO_PUBLIC_CHANNEL_IDS.has(channel)) continue;
     if (!radioSocketCanReceiveSpeakerNotice(socketId, channel)) continue;
     for (const talker of talkers.values()) {
       if (talker.active !== true || talker.socketId === socketId) continue;
@@ -2650,14 +2658,14 @@ function emitRadioStateToChannel(channel, payload) {
 }
 
 function radioSocketCanReceiveSpeakerNotice(socketId, channel) {
-  if (!['CH-1', 'TAC-1'].includes(channel)) return false;
+  if (!RADIO_PUBLIC_CHANNEL_IDS.has(channel)) return false;
   const targetSocket = io.sockets.sockets.get(socketId);
   const viewer = targetSocket ? requireSocketUser(targetSocket) : null;
   return !!viewer && viewer.activeService === true;
 }
 
 function emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking) {
-  if (!['CH-1', 'TAC-1'].includes(channel) || socketId === speaker.socketId) return;
+  if (!RADIO_PUBLIC_CHANNEL_IDS.has(channel) || socketId === speaker.socketId) return;
   if (!radioSocketCanReceiveSpeakerNotice(socketId, channel)) return;
   const targetSocket = io.sockets.sockets.get(socketId);
   if (!targetSocket) return;
@@ -2671,7 +2679,7 @@ function emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking) {
 }
 
 function emitRadioSpeakerState(channel, speaker, speaking) {
-  if (!['CH-1', 'TAC-1'].includes(channel)) return;
+  if (!RADIO_PUBLIC_CHANNEL_IDS.has(channel)) return;
   for (const socketIds of sessions.values()) {
     for (const socketId of socketIds) {
       emitRadioSpeakerStateToSocket(socketId, channel, speaker, speaking);

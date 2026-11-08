@@ -47,7 +47,7 @@ test('speaking notices wait for an active microphone track and reuse the notific
   assert.match(html, /notification-toast-stack/);
   assert.match(html, /radioSpeakingNotices\.has\(socketId\)/);
   assert.match(html, /removeRadioSpeakingNotice\(socketId\)/);
-  assert.match(html, /RADIO_SPEAKER_NOTICE_CHANNELS = new Set\(\['CH-1', 'TAC-1'\]\)/);
+  assert.match(html, /RADIO_SPEAKER_NOTICE_CHANNELS = new Set\(RADIO_CHANNEL_OPTIONS\.filter\(channel => channel\.id !== 'CH-3'\)\.map\(channel => channel\.id\)\)/);
   const noticeStart = html.indexOf('function syncRadioSpeakerNotice(data)');
   const noticeEnd = html.indexOf('    let bootstrapMode', noticeStart);
   assert.ok(noticeStart >= 0 && noticeEnd > noticeStart, 'speaking notice handler exists');
@@ -60,7 +60,7 @@ test('speaking notices wait for an active microphone track and reuse the notific
 test('server gates ephemeral speaking notices and encrypted-wave state by channel authorization', () => {
   assert.match(server, /socket\.on\('radio:ptt:ready'/);
   assert.match(server, /emitRadioSpeakerState\(channel, speaker, true\)/);
-  assert.match(server, /if \(!\['CH-1', 'TAC-1'\]\.includes\(channel\)\) return/);
+  assert.match(server, /if \(!RADIO_PUBLIC_CHANNEL_IDS\.has\(channel\)\) return false/);
   assert.match(server, /radioSocketCanReceiveState\(socketId, channel\)/);
   const noticeGateStart = server.indexOf('function radioSocketCanReceiveSpeakerNotice(socketId, channel)');
   const noticeGateEnd = server.indexOf('\n}', noticeGateStart) + 2;
@@ -128,7 +128,7 @@ test('custom radio entry stays outside the main-channel list and preserves the e
   assert.match(html, /function joinCustomRadioChannel\(\)/);
   assert.match(html, /function normalizeCustomRadioLabel\(value\)/);
   assert.match(html, /isValidCustomRadioChannelKey\(saved\.channel\)/);
-  for (const channel of ['CH-1', 'TAC-1', 'CH-3']) {
+  for (const channel of ['CH-1', 'TAC-1', 'CH-3', 'CH-4', 'CH-5', 'CH-6', 'CH-7', 'CH-8', 'CH-9', 'CH-10']) {
     assert.match(html, new RegExp(`data-channel="${channel}"`));
   }
   assert.match(html, /هذه موجة افتراضية داخل الموقع وليست تردداً فعلياً/);
