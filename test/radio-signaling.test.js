@@ -218,6 +218,9 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
       const offDutyJoin = await client.emit('radio:join', { channel: 'CH-1' });
       assert.equal(offDutyJoin.ok, false, 'radio join must remain blocked before duty starts');
       assert.match(offDutyJoin.message, /يجب بدء المناوبة قبل تشغيل الراديو/);
+      const offDutyNewWave = await client.emit('radio:join', { channel: 'CH-4' });
+      assert.equal(offDutyNewWave.ok, false, 'new main waves must remain blocked before duty starts');
+      assert.match(offDutyNewWave.message, /يجب بدء المناوبة قبل تشغيل الراديو/);
       const offDutyPtt = await client.emit('radio:ptt:start', { channel: 'CH-1' });
       assert.equal(offDutyPtt.ok, false, 'PTT must remain blocked before duty starts');
       assert.match(offDutyPtt.message, /يجب بدء المناوبة قبل إرسال الصوت/);
@@ -590,4 +593,20 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(reopenWave.ok, true);
   assert.equal(reopenWave.accessMode, 'open');
   assert.equal((await speaker.emit('radio:join', { channel: privateJoinA.channel })).ok, true, 'an open wave must accept members again');
+
+  assert.equal((await listenerA.emit('radio:join', { channel: 'CH-4' })).ok, true, 'an active-duty member must be able to join a new public main wave');
+  assert.equal((await speaker.emit('radio:join', { channel: 'CH-4' })).ok, true);
+  const newMainWaveTransmission = await startRadioTransmission(speaker, 'CH-4');
+  assert.equal(newMainWaveTransmission.ok, true, 'a new main wave must carry radio audio');
+  assert.deepEqual(new Set(newMainWaveTransmission.peers), new Set([listenerA.id]));
+  await listenerA.waitFor('radio:state', (event) =>
+    event.channel === 'CH-4' && event.socketId === speaker.id && event.ptt === true
+  );
+  await observer.waitFor('radio:speaker', (event) =>
+    event.channel === 'CH-4' && event.socketId === speaker.id && event.speaking === true
+  );
+  assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-4' })).ok, true);
+  await listenerA.waitFor('radio:state', (event) =>
+    event.channel === 'CH-4' && event.socketId === speaker.id && event.ptt === false
+  );
 });

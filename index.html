@@ -441,19 +441,94 @@
       align-items: center;
       gap: 6px;
     }
-    .radio-channel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-    .radio-channel-btn {
-      padding: 9px 6px;
-      background: #0c1117 !important;
-      border: 1px solid #3b4655 !important;
-      border-radius: 5px;
-      color: var(--text-bright);
-      cursor: pointer;
-      text-align: center;
+    .radio-channel-grid {
+      position: relative;
+      width: min(100%, 318px);
+      aspect-ratio: 1;
+      margin: 8px auto 12px;
+      isolation: isolate;
+      user-select: none;
     }
-    .radio-channel-btn strong { display: block; color: var(--cyan-glow); font-family: monospace; font-size: .9rem; }
-    .radio-channel-btn span { font-size: .63rem; color: var(--text-dim); }
-    .radio-channel-btn.active { border-color: var(--primary-gold) !important; background: #17150f !important; }
+    .radio-channel-grid::before,
+    .radio-channel-grid::after {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .radio-channel-grid::before {
+      inset: 9%;
+      border: 1px solid rgba(68, 153, 218, .38);
+      box-shadow: 0 0 0 1px rgba(196, 157, 83, .11), inset 0 0 20px rgba(50, 135, 200, .07);
+      background: radial-gradient(circle, transparent 68%, rgba(37, 99, 150, .08) 69%, transparent 70%);
+    }
+    .radio-channel-grid::after {
+      inset: 27%;
+      border: 1px solid rgba(193, 154, 82, .20);
+      box-shadow: inset 0 0 18px rgba(66, 155, 225, .08);
+    }
+    .radio-wheel-center {
+      position: absolute;
+      z-index: 1;
+      inset: 32%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 5px;
+      border: 1px solid rgba(92, 164, 217, .36);
+      border-radius: 50%;
+      color: #eef3f8;
+      text-align: center;
+      background: radial-gradient(circle at 34% 28%, #1a2633 0, #0b1016 72%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 10px 24px rgba(0,0,0,.35), 0 0 18px rgba(40,127,196,.13);
+      pointer-events: none;
+    }
+    .radio-wheel-current-label { color: #aab5c2; font-size: .56rem; line-height: 1.2; }
+    .radio-wheel-number { color: #58b5ff; font: 700 1.85rem/1 monospace; text-shadow: 0 0 13px rgba(54, 160, 247, .38); }
+    .radio-wheel-name { max-width: 100%; overflow-wrap: anywhere; color: #e4eaf0; font-size: .62rem; line-height: 1.2; }
+    .radio-channel-btn {
+      position: absolute;
+      z-index: 2;
+      left: var(--wave-x);
+      top: var(--wave-y);
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(145, 157, 174, .52) !important;
+      border-radius: 50%;
+      color: #dce3eb !important;
+      background: linear-gradient(145deg, #1b232d, #080c11) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 5px 12px rgba(0,0,0,.36);
+      font: 700 .88rem/1 monospace;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease, color .16s ease;
+    }
+    .radio-channel-btn:hover { border-color: rgba(94, 176, 230, .78) !important; transform: translate(-50%, -50%) scale(1.04); }
+    .radio-channel-btn.active {
+      border-color: #4bb5ff !important;
+      color: #f7fbff !important;
+      background: radial-gradient(circle at 34% 26%, #25445f, #0b1722 74%) !important;
+      box-shadow: 0 0 0 3px rgba(58, 160, 238, .12), 0 0 15px rgba(34, 143, 230, .44), inset 0 0 10px rgba(75, 174, 255, .22);
+      transform: translate(-50%, -50%) scale(1.06);
+    }
+    .radio-channel-btn:focus-visible { outline: 2px solid #d2ae68; outline-offset: 3px; }
+    @media (max-width: 480px) {
+      .radio-channel-grid { width: min(100%, 76vw, 260px); margin-top: 5px; }
+      .radio-channel-btn { width: 42px; height: 42px; }
+      .radio-wheel-center { inset: 32.5%; gap: 3px; }
+      .radio-wheel-number { font-size: 1.65rem; }
+      .radio-wheel-name { font-size: .58rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .radio-channel-btn { transition: none; }
+    }
 
     .radio-talk-row { display: flex; justify-content: center; align-items: center; gap: 15px; padding: 3px 0; }
     .ptt-btn {
@@ -2546,10 +2621,22 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
         <div id="radio-interactive" class="radio-interactive" style="display:none;">
           <div class="radio-section-title"><i class="fa-solid fa-layer-group"></i> اختيار الموجة</div>
-          <div class="radio-channel-grid">
-            <button type="button" class="radio-channel-btn active" data-channel="CH-1" onclick="changeRadioChannel('CH-1','104.50','القناة العامة')"><strong>CH-1</strong><span>القناة العامة</span></button>
-            <button type="button" class="radio-channel-btn" data-channel="TAC-1" onclick="changeRadioChannel('TAC-1','108.20','قناة المطاردات')"><strong>TAC-1</strong><span>المطاردات</span></button>
-            <button type="button" class="radio-channel-btn" data-channel="CH-3" onclick="changeRadioChannel('CH-3','112.90','القيادة المشفرة')"><strong>CH-3</strong><span>القيادة المشفرة</span></button>
+          <div class="radio-channel-grid" role="group" aria-label="اختيار الموجة">
+            <div class="radio-wheel-center" aria-live="polite" aria-atomic="true">
+              <span class="radio-wheel-current-label">الموجة الحالية</span>
+              <span id="radio-wheel-number" class="radio-wheel-number">1</span>
+              <span id="radio-wheel-name" class="radio-wheel-name">القناة العامة</span>
+            </div>
+            <button type="button" class="radio-channel-btn active" data-channel="CH-1" data-wave-number="1" aria-label="الموجة 1: القناة العامة" aria-pressed="true" style="--wave-x:50%;--wave-y:9%" onclick="changeRadioChannel('CH-1','104.50','القناة العامة')">1</button>
+            <button type="button" class="radio-channel-btn" data-channel="TAC-1" data-wave-number="2" aria-label="الموجة 2: قناة المطاردات" aria-pressed="false" style="--wave-x:74%;--wave-y:16%" onclick="changeRadioChannel('TAC-1','108.20','قناة المطاردات')">2</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-3" data-wave-number="3" aria-label="الموجة 3: القيادة المشفرة" aria-pressed="false" style="--wave-x:91%;--wave-y:37%" onclick="changeRadioChannel('CH-3','112.90','القيادة المشفرة')">3</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-4" data-wave-number="4" aria-label="الموجة 4: موجة 4" aria-pressed="false" style="--wave-x:91%;--wave-y:63%" onclick="changeRadioChannel('CH-4','114.50','موجة 4')">4</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-5" data-wave-number="5" aria-label="الموجة 5: موجة 5" aria-pressed="false" style="--wave-x:74%;--wave-y:84%" onclick="changeRadioChannel('CH-5','116.50','موجة 5')">5</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-6" data-wave-number="6" aria-label="الموجة 6: موجة 6" aria-pressed="false" style="--wave-x:50%;--wave-y:91%" onclick="changeRadioChannel('CH-6','118.50','موجة 6')">6</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-7" data-wave-number="7" aria-label="الموجة 7: موجة 7" aria-pressed="false" style="--wave-x:26%;--wave-y:84%" onclick="changeRadioChannel('CH-7','120.50','موجة 7')">7</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-8" data-wave-number="8" aria-label="الموجة 8: موجة 8" aria-pressed="false" style="--wave-x:9%;--wave-y:63%" onclick="changeRadioChannel('CH-8','122.50','موجة 8')">8</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-9" data-wave-number="9" aria-label="الموجة 9: موجة 9" aria-pressed="false" style="--wave-x:9%;--wave-y:37%" onclick="changeRadioChannel('CH-9','124.50','موجة 9')">9</button>
+            <button type="button" class="radio-channel-btn" data-channel="CH-10" data-wave-number="10" aria-label="الموجة 10: موجة 10" aria-pressed="false" style="--wave-x:26%;--wave-y:16%" onclick="changeRadioChannel('CH-10','126.50','موجة 10')">10</button>
           </div>
 
           <div class="radio-section-title"><i class="fa-solid fa-bullhorn"></i> التحدث</div>
@@ -3177,7 +3264,19 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioCustomLabel = '';
     let radioVolume = 100;
     let radioLiveLog = [];
-    const RADIO_SPEAKER_NOTICE_CHANNELS = new Set(['CH-1', 'TAC-1']);
+    const RADIO_CHANNEL_OPTIONS = Object.freeze([
+      { number: 1, id: 'CH-1', name: 'القناة العامة', frequency: '104.50' },
+      { number: 2, id: 'TAC-1', name: 'قناة المطاردات', frequency: '108.20' },
+      { number: 3, id: 'CH-3', name: 'القيادة المشفرة', frequency: '112.90' },
+      { number: 4, id: 'CH-4', name: 'موجة 4', frequency: '114.50' },
+      { number: 5, id: 'CH-5', name: 'موجة 5', frequency: '116.50' },
+      { number: 6, id: 'CH-6', name: 'موجة 6', frequency: '118.50' },
+      { number: 7, id: 'CH-7', name: 'موجة 7', frequency: '120.50' },
+      { number: 8, id: 'CH-8', name: 'موجة 8', frequency: '122.50' },
+      { number: 9, id: 'CH-9', name: 'موجة 9', frequency: '124.50' },
+      { number: 10, id: 'CH-10', name: 'موجة 10', frequency: '126.50' }
+    ]);
+    const RADIO_SPEAKER_NOTICE_CHANNELS = new Set(RADIO_CHANNEL_OPTIONS.filter(channel => channel.id !== 'CH-3').map(channel => channel.id));
     const radioSpeakingNotices = new Map();
     let radioPTTHeld = false;
     let radioPTTRequestPending = false;
@@ -3189,7 +3288,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let radioLocalStream = null;
     let radioConnectionGeneration = 0;
     let radioLifecycleConnectPending = false;
-    const RADIO_ALLOWED_CHANNELS = new Set(['CH-1', 'TAC-1', 'CH-3']);
+    const RADIO_ALLOWED_CHANNELS = new Set(RADIO_CHANNEL_OPTIONS.map(channel => channel.id));
     const RADIO_CUSTOM_CHANNEL_PREFIX = 'CUSTOM:';
     const RADIO_CUSTOM_LABEL_MAX_LENGTH = 43;
     const RADIO_PREFERENCE_PREFIX = 'blackridge:radio-preference:';
@@ -3226,6 +3325,19 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     function radioChannelDisplayName(channel = radioChannel) {
       if (!isCustomRadioChannel(channel)) return String(channel || 'CH-1');
       return radioCustomLabel || String(channel).slice(RADIO_CUSTOM_CHANNEL_PREFIX.length);
+    }
+
+    function syncRadioChannelWheel(channel = radioChannel) {
+      const option = RADIO_CHANNEL_OPTIONS.find(item => item.id === channel);
+      const number = document.getElementById('radio-wheel-number');
+      const name = document.getElementById('radio-wheel-name');
+      if (number) number.innerText = option ? String(option.number) : '—';
+      if (name) name.innerText = option ? option.name : radioChannelDisplayName(channel);
+      document.querySelectorAll('.radio-channel-btn').forEach(button => {
+        const selected = button.getAttribute('data-channel') === channel;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
     }
 
     function removeRadioSpeakingNotice(socketId) {
@@ -6820,9 +6932,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (freqDisplay) freqDisplay.innerText = isCustomRadioChannel(ch) ? displayName : freq;
       if (chShort) chShort.innerText = displayName;
 
-      document.querySelectorAll('.radio-channel-btn').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-channel') === ch);
-      });
+      syncRadioChannelWheel(ch);
       updateRadioPowerUI();
 
       if (radioPoweredOn && (channelChanged || !radioJoinConfirmed)) {
@@ -6867,11 +6977,8 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         syncRadioLeadershipPanel();
         return;
       }
-      let freq = '104.50';
-      let label = 'القناة العامة';
-      if (radioChannel === 'TAC-1') { freq = '108.20'; label = 'قناة المطاردات'; }
-      if (radioChannel === 'CH-3') { freq = '112.90'; label = 'القيادة المشفرة'; }
-      changeRadioChannel(radioChannel, freq, label);
+      const option = RADIO_CHANNEL_OPTIONS.find(item => item.id === radioChannel);
+      changeRadioChannel(radioChannel, option ? option.frequency : radioChannel, option ? option.name : radioChannel);
       syncRadioLeadershipPanel();
     }
 
