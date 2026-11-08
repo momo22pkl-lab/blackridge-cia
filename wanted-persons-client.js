@@ -127,8 +127,8 @@
     };
   }
 
-  async function load(keepStatus) {
-    if (state.busy) return;
+  async function load(keepStatus, force) {
+    if (state.busy && !force) return;
     try {
       const result = await request('wanted-persons:list', currentFilters());
       if (!result.ok) {
@@ -160,7 +160,7 @@
       const result = await request('wanted-persons:detail', { id });
       if (!result.ok) {
         setStatus(result.message || 'تعذر تحميل الملف.', 'error');
-        return;
+        return false;
       }
       const person = result.person;
       state.activeId = person.id;
@@ -185,8 +185,10 @@
       byId('wp-edit-button').hidden = !result.permissions?.canManage;
       showOnly('detail');
       setStatus('', '');
+      return true;
     } catch (error) {
       setStatus(error.message, 'error');
+      return false;
     }
   }
 
@@ -213,6 +215,7 @@
 
   function openEditor(person) {
     if (!state.lastList?.permissions?.canManage) return;
+    state.activeId = person?.id || '';
     const form = byId('wp-person-form');
     form.reset();
     byId('wp-editor-title').textContent = person ? 'تعديل الملف التحقيقي' : 'إنشاء ملف تحقيق';
@@ -264,11 +267,18 @@
         return;
       }
       const savedId = result.person?.id;
-      setStatus('تم حفظ الملف في قاعدة البيانات.', 'success');
       showOnly('list');
-      await load(true);
-      if (savedId) await openDetail(savedId);
-      setStatus('تم حفظ الملف في قاعدة البيانات.', 'success');
+      const refreshed = await load(true, true);
+      if (!refreshed?.ok) {
+        setStatus('تم الحفظ، لكن تعذر تحديث سجل المطلوبين.', 'error');
+        return;
+      }
+      if (savedId) {
+        const opened = await openDetail(savedId);
+        if (opened) setStatus('تم حفظ الملف في قاعدة البيانات.', 'success');
+      } else {
+        setStatus('تم حفظ الملف في قاعدة البيانات.', 'success');
+      }
     } catch (error) {
       setStatus(error.message, 'error');
     } finally {

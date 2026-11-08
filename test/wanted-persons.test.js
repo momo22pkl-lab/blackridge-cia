@@ -267,6 +267,8 @@ test('frontend uses text nodes and server events rather than browser storage', (
   assert.match(client, /wanted-persons:detail/);
   assert.match(client, /wanted-persons:save/);
   assert.match(client, /textContent/);
+  assert.match(client, /await load\(true, true\)/);
+  assert.match(client, /state\.activeId = person\?\.id/);
   assert.doesNotMatch(client, /innerHTML|localStorage|sessionStorage/);
 });
 
