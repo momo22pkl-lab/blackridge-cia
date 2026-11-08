@@ -46,6 +46,7 @@ const { registerOfficialWarnings } = require('./official-warnings');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { WeaponArmoryStore } = require('./weapon-armory-store');
 const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
+const { injectMilitaryPersonnelDossierMarkup } = require('./military-personnel-dossier-server');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const { installSocketModerationBoundary } = require('./moderation-boundaries');
@@ -171,6 +172,8 @@ const publicAssets = Object.freeze({
   '/official-warnings-client.js': 'official-warnings-client.js',
   '/weapon-armory.css': 'weapon-armory.css',
   '/weapon-armory-client.js': 'weapon-armory-client.js',
+  '/military-personnel-dossier.css': 'military-personnel-dossier.css',
+  '/military-personnel-dossier-client.js': 'military-personnel-dossier-client.js',
   '/cover-identity.css': 'cover-identity.css',
   '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
@@ -207,7 +210,9 @@ app.get(['/', '/index.html'], (req, res) => {
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
     return res.status(200).type('html').send(
-      injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))
+      injectMilitaryPersonnelDossierMarkup(
+        injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))
+      )
     );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
@@ -1723,13 +1728,36 @@ function ibpPersonnelBattalionFor(person) {
     if (!unit || unit.status === 'ARCHIVED') return false;
     const members = Array.isArray(unit.memberCodes) ? unit.memberCodes : [];
     return members.some((code) => clean(code, 100).toUpperCase() === wanted) ||
-      [unit.commanderCode, unit.deputyCode].some((code) => clean(code, 100).toUpperCase() === wanted);
+      [unit.commanderCode, unit.deputyCode, unit.seniorCommanderCode].some((code) => clean(code, 100).toUpperCase() === wanted);
   });
   return match ? {
     id: clean(match.id, 120),
     code: clean(match.code || match.id, 32),
-    name: clean(match.nameAr || match.nameEn || match.name || match.code, 100)
+    name: clean(match.nameAr || match.nameEn || match.name || match.code, 100),
+    sector: clean(match.sector, 100),
+    position:
+      clean(person.position || person.jobTitle || person.title || person.assignmentTitle, 100) ||
+      (clean(match.commanderCode, 100).toUpperCase() === wanted
+        ? 'قائد الكتيبة'
+        : clean(match.deputyCode, 100).toUpperCase() === wanted
+          ? 'نائب قائد الكتيبة'
+          : clean(match.seniorCommanderCode, 100).toUpperCase() === wanted
+            ? 'قائد القطاع'
+            : '')
   } : null;
+}
+function ibpPersonnelPortraitUrl(person, viewer) {
+  if (!isChief(viewer)) return '';
+  const value = clean(person?.profilePhotoUrl || person?.identity?.profilePhotoUrl || person?.identity?.portraitUrl, 1200);
+  if (!value) return '';
+  if (value.startsWith('/') && !value.startsWith('//')) return value;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    return url.href;
+  } catch (_error) {
+    return '';
+  }
 }
 function ibpPersonnelInScope(actor, target) {
   if (!actor || !target) return false;
@@ -1775,7 +1803,9 @@ function ibpPersonnelRecordForViewer(person, viewer) {
     rank: normalizeRank(person.rank),
     rankLabel: rankLabel(person.rank),
     name: canSeeName ? clean(person.identity?.fullName || person.name, 120) : '',
+    portraitUrl: ibpPersonnelPortraitUrl(person, viewer),
     battalion: unit,
+    position: unit?.position || clean(person.position || person.jobTitle || person.title || person.assignmentTitle, 100),
     statusLabel: ibpPersonnelStatus(person),
     online: person.online === true,
     activeService: person.activeService === true,
