@@ -419,3 +419,57 @@ test('the current dashboard receives the wanted persons section through the root
   assert.equal((injected.match(/id="wanted-persons-nav"/g) || []).length, 1);
   assert.equal((injected.match(/id="wanted-persons"/g) || []).length, 1);
 });
+
+test('write failures are logged by operation and code without exposing raw database messages', async () => {
+  const { socket, handlers } = makeSocket();
+  const store = {
+    list: async () => {
+      const error = new Error('private database connection detail');
+      error.code = 'ECONNREFUSED';
+      throw error;
+    }
+  };
+  registerWantedPersonsSocket(socket, {
+    getStore: () => store,
+    getState: () => ({ cia_cases: [] }),
+    requireUser: () => ({ id: 'leader-1' }),
+    isLeadership: (user) => user?.id === 'leader-1'
+  });
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args.join(' '));
+  let response;
+  try {
+    await handlers.get('wanted-persons:list')({}, (result) => { response = result; });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(response.ok, false);
+  assert.match(response.message, /قاعدة البيانات/);
+  assert.match(logs.join('\n'), /WANTED PERSONS.*list failed.*ECONNREFUSED/);
+  assert.doesNotMatch(logs.join('\n'), /private database connection detail/);
+});
+
+test('the unavailable store response identifies the PostgreSQL configuration without falling back locally', async () => {
+  const { socket, handlers } = makeSocket();
+  registerWantedPersonsSocket(socket, {
+    getStore: () => null,
+    getState: () => ({ cia_cases: [] }),
+    requireUser: () => ({ id: 'leader-1' }),
+    isLeadership: (user) => user?.id === 'leader-1'
+  });
+  let response;
+  await handlers.get('wanted-persons:list')({}, (result) => { response = result; });
+  assert.equal(response.ok, false);
+  assert.match(response.message, /DATABASE_URL/);
+  assert.match(response.message, /لا يوجد حفظ محلي بديل/);
+});
+
+test('investigation writes prevent duplicate submissions and report refresh failures', () => {
+  const client = fs.readFileSync(path.join(__dirname, '..', 'wanted-persons-client.js'), 'utf8');
+  assert.match(client, /function lockSubmission\(form\)/);
+  assert.match(client, /if \(state\.busy\) return null/);
+  assert.match(client, /function confirmRefreshAfterWrite\(successMessage\)/);
+  assert.match(client, /تم حفظ التغيير، لكن تعذر تحديث العرض/);
+  assert.ok((client.match(/confirmRefreshAfterWrite\(/g) || []).length >= 7);
+});

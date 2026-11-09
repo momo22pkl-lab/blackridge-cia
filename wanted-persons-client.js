@@ -44,6 +44,26 @@
     node.className = 'wp-status' + (type ? ' wp-status-' + type : '');
   }
 
+  function lockSubmission(form) {
+    if (state.busy) return null;
+    state.busy = true;
+    const submit = form?.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    return () => {
+      state.busy = false;
+      if (submit) submit.disabled = false;
+    };
+  }
+
+  async function confirmRefreshAfterWrite(successMessage) {
+    if (!await loadInvestigation(state.activeId)) {
+      setStatus('تم حفظ التغيير، لكن تعذر تحديث العرض. أعد فتح الملف للتحقق من البيانات المحفوظة.', 'error');
+      return false;
+    }
+    setStatus(successMessage, 'success');
+    return true;
+  }
+
   function severityBadge(value) {
     const key = String(value || '').toUpperCase();
     return make('span', 'wp-badge wp-severity-' + key.toLowerCase(), 'الخطورة: ' + (severityLabels[key] || 'غير محددة'));
@@ -642,8 +662,14 @@
 
   async function saveEvidenceForm(event) {
     event.preventDefault();
+    const unlock = lockSubmission(byId('wp-evidence-form'));
+    if (!unlock) return;
     const file = byId('wp-evidence-file').files[0];
-    if (file && file.size > 2 * 1024 * 1024) return setStatus('الحد الأقصى لملف الدليل 2 ميغابايت.', 'error');
+    if (file && file.size > 2 * 1024 * 1024) {
+      setStatus('الحد الأقصى لملف الدليل 2 ميغابايت.', 'error');
+      unlock();
+      return;
+    }
     try {
       const payload = {
         id: byId('wp-evidence-id').value || undefined,
@@ -664,22 +690,26 @@
       const result = await request('wanted-persons:evidence:save', { personId: state.activeId, evidence: payload });
       if (!result.ok) throw new Error(result.message || 'تعذر حفظ الدليل.');
       hideInlineEditors();
-      await loadInvestigation(state.activeId);
-      setStatus('تم حفظ الدليل وتوثيق العملية.', 'success');
+      await confirmRefreshAfterWrite('تم حفظ الدليل وتوثيق العملية.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
   async function deleteEvidence(item) {
     if (!window.confirm('سيُحذف الملف المرفق نهائيًا من قاعدة البيانات، وسيبقى سجل التدقيق. هل تريد المتابعة؟')) return;
+    const unlock = lockSubmission();
+    if (!unlock) return;
     try {
       const result = await request('wanted-persons:evidence:delete', { personId: state.activeId, evidenceId: item.id });
       if (!result.ok) throw new Error(result.message || 'تعذر حذف الدليل.');
-      await loadInvestigation(state.activeId);
-      setStatus('تم حذف الدليل وتسجيل العملية.', 'success');
+      await confirmRefreshAfterWrite('تم حذف الدليل وتسجيل العملية.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
@@ -742,6 +772,8 @@
 
   async function saveNoteForm(event) {
     event.preventDefault();
+    const unlock = lockSubmission(byId('wp-note-form'));
+    if (!unlock) return;
     try {
       const result = await request('wanted-persons:note:save', {
         personId: state.activeId,
@@ -754,27 +786,33 @@
       });
       if (!result.ok) throw new Error(result.message || 'تعذر حفظ الملاحظة.');
       hideInlineEditors();
-      await loadInvestigation(state.activeId);
-      setStatus('تم حفظ الملاحظة وتسجيل العملية.', 'success');
+      await confirmRefreshAfterWrite('تم حفظ الملاحظة وتسجيل العملية.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
   async function deleteNote(item) {
     if (!window.confirm('سيتم حذف الملاحظة نهائيًا مع الاحتفاظ بسجل التدقيق. هل تريد المتابعة؟')) return;
+    const unlock = lockSubmission();
+    if (!unlock) return;
     try {
       const result = await request('wanted-persons:note:delete', { personId: state.activeId, noteId: item.id });
       if (!result.ok) throw new Error(result.message || 'تعذر حذف الملاحظة.');
-      await loadInvestigation(state.activeId);
-      setStatus('تم حذف الملاحظة وتسجيل العملية.', 'success');
+      await confirmRefreshAfterWrite('تم حذف الملاحظة وتسجيل العملية.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
   async function saveTimelineForm(event) {
     event.preventDefault();
+    const unlock = lockSubmission(byId('wp-timeline-form'));
+    if (!unlock) return;
     try {
       const result = await request('wanted-persons:timeline:add', {
         personId: state.activeId,
@@ -788,10 +826,11 @@
       if (!result.ok) throw new Error(result.message || 'تعذر إضافة الحدث.');
       byId('wp-timeline-form').reset();
       hideInlineEditors();
-      await loadInvestigation(state.activeId);
-      setStatus('تمت إضافة الحدث إلى السجل الزمني.', 'success');
+      await confirmRefreshAfterWrite('تمت إضافة الحدث إلى السجل الزمني.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
@@ -808,6 +847,8 @@
 
   async function saveCaseForm(event) {
     event.preventDefault();
+    const unlock = lockSubmission(byId('wp-case-form'));
+    if (!unlock) return;
     try {
       const result = await request('case:update', {
         id: byId('wp-case-id').value,
@@ -818,10 +859,11 @@
         finalDecision: byId('wp-case-decision').value
       });
       if (!result.ok) throw new Error(result.message || 'تعذر تحديث القضية.');
-      await loadInvestigation(state.activeId);
-      setStatus('تم تحديث القضية وتسجيلها في سجل CIA.', 'success');
+      await confirmRefreshAfterWrite('تم تحديث القضية وتسجيلها في سجل CIA.');
     } catch (error) {
       setStatus(error.message, 'error');
+    } finally {
+      unlock();
     }
   }
 
