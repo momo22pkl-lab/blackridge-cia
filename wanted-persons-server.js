@@ -121,6 +121,14 @@ function clean(value, maxLength = 200) {
   return String(value == null ? '' : value).trim().slice(0, maxLength);
 }
 
+function logStoreFailure(operation, error) {
+  const rawCode = String(error?.code || 'UNKNOWN');
+  const code = /^[A-Z0-9_-]{1,40}$/i.test(rawCode) ? rawCode : 'UNKNOWN';
+  const rawName = String(error?.name || 'Error');
+  const name = /^[A-Z0-9_$]{1,80}$/i.test(rawName) ? rawName : 'Error';
+  console.error(`[WANTED PERSONS] ${operation} failed (${name}; code=${code}).`);
+}
+
 function summarizeCase(record) {
   if (!record || typeof record !== 'object') return null;
   const id = clean(record.id, 120);
@@ -177,7 +185,11 @@ function registerWantedPersonsSocket(socket, context = {}) {
   const reply = (callback, result) => {
     if (typeof callback === 'function') callback(result);
   };
-  const unavailable = () => ({ ok: false, available: false, message: 'قسم المطلوبين يحتاج اتصال قاعدة PostgreSQL الحالية؛ لم يتم عرض أو حفظ بيانات محلية بديلة.' });
+  const unavailable = () => ({
+    ok: false,
+    available: false,
+    message: 'قسم المطلوبين غير متاح لأن مخزن PostgreSQL غير مهيأ. تحقق من إعداد DATABASE_URL وسجل تشغيل الخادم؛ لا يوجد حفظ محلي بديل.'
+  });
   const denied = () => ({ ok: false, message: 'يتطلب هذا القسم صلاحية القيادة.' });
   const access = () => {
     const actor = requireUser();
@@ -212,7 +224,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         availableCases: availableCases(getState()),
         permissions: { canManage: true }
       });
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('list', error);
       return reply(callback, { ok: false, message: 'تعذر تحميل سجل المطلوبين من قاعدة البيانات.' });
     }
   });
@@ -228,7 +241,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
       const person = await store.get(id);
       if (!person) return reply(callback, { ok: false, message: 'ملف المطلوب غير موجود.' });
       return reply(callback, { ok: true, person, relatedCases: casesForPerson(person.caseIds, getState()), permissions: { canManage: true } });
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('detail', error);
       return reply(callback, { ok: false, message: 'تعذر تحميل الملف التحقيقي.' });
     }
   });
@@ -266,7 +280,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         return { ...entry, actorName: clean(user?.identity?.fullName || user?.name || user?.publicCode || entry.actorUserId, 120) };
       });
       return reply(callback, { ok: true, ...board, availableCases: caseRows, permissions: { canManage: true } });
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('investigation', error);
       return reply(callback, { ok: false, message: 'تعذر تحميل لوحة التحقيق.' });
     }
   });
@@ -302,7 +317,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
       const result = await store.save({ person, actor: auth.actor });
       if (!result.ok) return reply(callback, result);
       return reply(callback, { ...result, relatedCases: casesForPerson(result.person.caseIds, getState()) });
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('save', error);
       return reply(callback, { ok: false, message: 'تعذر حفظ التغييرات في قاعدة البيانات.' });
     }
   });
@@ -322,7 +338,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
     try {
       const result = await store.saveEvidence({ personId, evidence: { ...evidence, caseIds }, actor: auth.actor });
       return reply(callback, result);
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('evidence-save', error);
       return reply(callback, { ok: false, message: 'تعذر حفظ الدليل في قاعدة البيانات.' });
     }
   });
@@ -339,7 +356,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         actor: auth.actor
       });
       return reply(callback, result);
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('evidence-delete', error);
       return reply(callback, { ok: false, message: 'تعذر حذف الدليل من قاعدة البيانات.' });
     }
   });
@@ -355,7 +373,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         evidenceId: clean(payload?.evidenceId, 120)
       });
       return reply(callback, file ? { ok: true, file } : { ok: false, message: 'المرفق غير موجود في هذا الملف.' });
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('evidence-file', error);
       return reply(callback, { ok: false, message: 'تعذر استرجاع المرفق الآمن.' });
     }
   });
@@ -374,7 +393,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         note: source.note,
         actor: auth.actor
       }));
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('note-save', error);
       return reply(callback, { ok: false, message: 'تعذر حفظ ملاحظة المحقق.' });
     }
   });
@@ -390,7 +410,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         noteId: clean(payload?.noteId, 120),
         actor: auth.actor
       }));
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('note-delete', error);
       return reply(callback, { ok: false, message: 'تعذر حذف ملاحظة المحقق.' });
     }
   });
@@ -409,7 +430,8 @@ function registerWantedPersonsSocket(socket, context = {}) {
         event: source.event,
         actor: auth.actor
       }));
-    } catch (_error) {
+    } catch (error) {
+      logStoreFailure('timeline-add', error);
       return reply(callback, { ok: false, message: 'تعذر إضافة الحدث إلى السجل الزمني.' });
     }
   });

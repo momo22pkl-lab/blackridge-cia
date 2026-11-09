@@ -47,6 +47,14 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     actor: { id: 'test-investigator-1' }
   });
   assert.equal(savedPerson.ok, true);
+  const reopenedPerson = await store.get(savedPerson.person.id);
+  assert.equal(reopenedPerson.fullName, 'شخصية خيالية للاختبار');
+  const updatedPerson = await store.save({
+    person: { ...reopenedPerson, fullName: 'شخصية خيالية معدلة للاختبار' },
+    actor: { id: 'test-investigator-2' }
+  });
+  assert.equal(updatedPerson.ok, true);
+  assert.equal((await store.get(savedPerson.person.id)).fullName, 'شخصية خيالية معدلة للاختبار');
 
   const fileBytes = Buffer.from('%PDF-1.4\nFictional RP test evidence\n%%EOF\n');
   const addedEvidence = await store.saveEvidence({
