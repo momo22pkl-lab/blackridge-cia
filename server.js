@@ -3928,6 +3928,13 @@ io.on(
               continue;
             }
 
+            if (key === 'cia_cases') {
+              if (!isLeadership(actor) || (Array.isArray(state.cia_cases) && state.cia_cases.length > 0)) continue;
+              if (Array.isArray(safe) && safe.length) {
+                addAuditLog('استيراد أرشيف القضايا', actor, null, `تم استيراد ${safe.length} قضية قديمة إلى سجل CIA.`);
+              }
+            }
+
             state[key] =
               key ===
               'cia_map_locations'
@@ -3966,6 +3973,10 @@ io.on(
               payload?.key,
               100
             );
+
+          if (key === 'cia_cases') {
+            return no(cb, 'تعديل القضايا عبر التخزين المشترك غير مسموح؛ استخدم عمليات CIA المعتمدة.');
+          }
 
           const safe =
             sanitizeShared(
@@ -9337,6 +9348,10 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
+        if (payload?.finalDecision && !isLeadership(actor)) {
+          return no(cb, 'تسجيل القرار النهائي متاح للقيادة فقط.');
+        }
+
         const title =
           clean(
             payload?.title ||
@@ -9352,16 +9367,42 @@ socket.on('member:saveIdentity', (payload, cb) => {
             10000
           );
 
+        const mediaInput = clean(payload?.media, 700);
+        let media = '';
+        if (mediaInput) {
+          try {
+            const parsedMedia = new URL(mediaInput);
+            if (parsedMedia.protocol !== 'https:') return no(cb, 'رابط ملف القضية يجب أن يستخدم HTTPS.');
+            media = parsedMedia.toString();
+          } catch (_error) {
+            return no(cb, 'رابط ملف القضية غير صالح.');
+          }
+        }
+
+        const caseNumberPrefix = `CASE-${Date.now()}`;
+        let caseNumber = caseNumberPrefix;
+        let caseNumberSuffix = 1;
+        while ((Array.isArray(state.cia_cases) ? state.cia_cases : []).some((item) => String(item?.caseNumber || '') === caseNumber)) {
+          caseNumber = `${caseNumberPrefix}-${caseNumberSuffix}`;
+          caseNumberSuffix += 1;
+        }
+
         const caseItem = {
           id:
             makeId('CASE'),
 
           caseNumber:
-            `CASE-${Date.now()}`,
+            caseNumber,
 
           title,
 
           description,
+          details: description,
+          siad: clean(payload?.siad, 200),
+          media,
+          author: clean(actor.name, 120),
+          code: clean(actor.publicCode, 100),
+          date: now(),
 
           status:
             clean(
@@ -9375,6 +9416,12 @@ socket.on('member:saveIdentity', (payload, cb) => {
               payload?.classification ||
               'CONFIDENTIAL',
               100
+            ),
+
+          finalDecision:
+            clean(
+              payload?.finalDecision || '',
+              2000
             ),
 
           assignedCode:
@@ -9399,6 +9446,8 @@ socket.on('member:saveIdentity', (payload, cb) => {
             now()
         };
 
+        const previousCases = Array.isArray(state.cia_cases) ? state.cia_cases.slice() : [];
+        const previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
         state.cia_cases.unshift(
           caseItem
         );
@@ -9416,7 +9465,13 @@ socket.on('member:saveIdentity', (payload, cb) => {
           `تم فتح القضية ${caseItem.caseNumber}.`
         );
 
-        saveState();
+        try {
+          await saveState();
+        } catch (_error) {
+          state.cia_cases = previousCases;
+          state.cia_audit_logs = previousAuditLogs;
+          return no(cb, 'تعذر حفظ القضية في قاعدة البيانات. لم يتم اعتماد التغيير.');
+        }
 
         await publishNotifications(state.cia_users, {
           type: 'CASE',
@@ -9483,8 +9538,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (
           !(
             isLeadership(actor) ||
-            caseItem.createdByCode ===
-              actor.publicCode
+            (caseItem.createdByCode || caseItem.code) === actor.publicCode
           )
         ) {
           return no(
@@ -9493,10 +9547,23 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
+        if (payload?.finalDecision !== undefined && !isLeadership(actor)) {
+          return no(cb, 'تسجيل القرار النهائي متاح للقيادة فقط.');
+        }
+
+        const previousCase = JSON.parse(JSON.stringify(caseItem));
+        const previousAuditLogs = Array.isArray(state.cia_audit_logs) ? state.cia_audit_logs.slice() : [];
+        const changedCaseFields = [];
+        if (!caseItem.caseNumber) {
+          caseItem.caseNumber = `CASE-${clean(caseItem.id, 100)}`;
+          changedCaseFields.push('caseNumber');
+        }
+
         if (
           payload?.title !==
           undefined
         ) {
+          if (caseItem.title !== clean(payload.title, 200)) changedCaseFields.push('title');
           caseItem.title =
             clean(
               payload.title,
@@ -9508,17 +9575,22 @@ socket.on('member:saveIdentity', (payload, cb) => {
           payload?.description !==
           undefined
         ) {
+          if (caseItem.description !== clean(payload.description, 10000)) changedCaseFields.push('description');
           caseItem.description =
             clean(
               payload.description,
               10000
             );
+          if (Object.prototype.hasOwnProperty.call(caseItem, 'details')) {
+            caseItem.details = caseItem.description;
+          }
         }
 
         if (
           payload?.status !==
           undefined
         ) {
+          if (caseItem.status !== clean(payload.status, 100)) changedCaseFields.push('status');
           caseItem.status =
             clean(
               payload.status,
@@ -9530,6 +9602,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
           payload?.classification !==
           undefined
         ) {
+          if (caseItem.classification !== clean(payload.classification, 100)) changedCaseFields.push('classification');
           caseItem.classification =
             clean(
               payload.classification,
@@ -9541,10 +9614,20 @@ socket.on('member:saveIdentity', (payload, cb) => {
           payload?.assignedCode !==
           undefined
         ) {
+          if (caseItem.assignedCode !== clean(payload.assignedCode, 100)) changedCaseFields.push('assignedCode');
           caseItem.assignedCode =
             clean(
               payload.assignedCode,
               100
+            );
+        }
+
+        if (payload?.finalDecision !== undefined) {
+          if (caseItem.finalDecision !== clean(payload.finalDecision, 2000)) changedCaseFields.push('finalDecision');
+          caseItem.finalDecision =
+            clean(
+              payload.finalDecision,
+              2000
             );
         }
 
@@ -9555,10 +9638,16 @@ socket.on('member:saveIdentity', (payload, cb) => {
           'تحديث قضية',
           actor,
           null,
-          `تم تحديث القضية ${caseItem.caseNumber}.`
+          `تم تحديث القضية ${caseItem.caseNumber}. الحقول المعدلة: ${changedCaseFields.join('، ') || 'لا تغييرات'}.`
         );
 
-        saveState();
+        try {
+          await saveState();
+        } catch (_error) {
+          Object.assign(caseItem, previousCase);
+          state.cia_audit_logs = previousAuditLogs;
+          return no(cb, 'تعذر حفظ القضية في قاعدة البيانات. لم يتم اعتماد التغيير.');
+        }
 
         await publishNotifications(state.cia_users, {
           type: 'CASE',

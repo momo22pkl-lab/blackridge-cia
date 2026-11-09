@@ -56,9 +56,10 @@ const NON_CONTENT_KEYS = new Set([
   'actorcode', 'membercode', 'password', 'passwordconfirmation', 'secret', 'secretcode',
   'token', 'accesstoken', 'refreshtoken', 'recoverycode', 'otp', 'totp', 'mfa',
   'signatureimage', 'image', 'imageurl', 'avatar', 'avatarurl', 'photo', 'file', 'pdf',
+  'filedata', 'thumbnaildata', 'filename', 'contenttype', 'filesize', 'sha256',
   'icon', 'color', 'createdat', 'updatedat', 'expiresat',
   'issuedat', 'signedat', 'timestamp', 'latitude', 'longitude', 'coordinates',
-  'enabled', 'verified', 'quantity', 'amount', 'bytes', 'filename', 'mimetype'
+  'enabled', 'verified', 'quantity', 'amount', 'bytes', 'mimetype'
 ]);
 
 const WRITE_ACTIONS = new Set([

@@ -3565,6 +3565,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           try { localStorage.setItem('cia_chats', JSON.stringify(chatMessages)); } catch(e) {}
         }
         if (Array.isArray(state.cia_reports)) { reportsList = state.cia_reports; try { localStorage.setItem('cia_reports', JSON.stringify(reportsList)); } catch(e) {} renderReportsList(); }
+        if (Array.isArray(state.cia_cases)) { casesList = state.cia_cases; try { localStorage.setItem('cia_cases', JSON.stringify(casesList)); } catch(e) {} renderCasesList(); }
         if (Array.isArray(state.cia_sos)) {
           sosAlerts = state.cia_sos;
           renderSOSAlerts();
@@ -6627,29 +6628,34 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         return;
       }
 
-      const newCase = {
-        id: Date.now(),
+      if (!currentUser || !ciaSocket || !ciaSocket.connected) {
+        alert('سجّل الدخول واتصل بالخادم لحفظ القضية.');
+        return;
+      }
+
+      ciaSocket.emit('case:create', {
         title,
+        description: details,
         siad,
-        details,
         media,
-        author: currentUser ? currentUser.name : 'مجهول',
-        code: currentUser ? currentUser.publicCode : '00',
-        date: new Date().toLocaleString('ar-EG')
-      };
-
-      casesList.unshift(newCase);
-      setStoredData('cia_cases', casesList);
-
-      document.getElementById('case-title').value = '';
-      document.getElementById('case-siad-num').value = '';
-      document.getElementById('case-details').value = '';
-      document.getElementById('case-media-url').value = '';
-
-      renderCasesList();
-      renderBank();
-      renderTacticalOperations();
-      alert('تم حفظ القضية بالأرشيف بنجاح.');
+        status: 'OPEN',
+        classification: 'CONFIDENTIAL'
+      }, result => {
+        if (!result || result.ok !== true || !result.case) {
+          alert((result && result.message) || 'تعذر حفظ القضية في قاعدة البيانات.');
+          return;
+        }
+        casesList = [result.case, ...(casesList || []).filter(item => String(item.id) !== String(result.case.id))];
+        try { localStorage.setItem('cia_cases', JSON.stringify(casesList)); } catch (e) {}
+        document.getElementById('case-title').value = '';
+        document.getElementById('case-siad-num').value = '';
+        document.getElementById('case-details').value = '';
+        document.getElementById('case-media-url').value = '';
+        renderCasesList();
+        renderBank();
+        renderTacticalOperations();
+        alert('تم حفظ القضية ' + (result.case.caseNumber || '') + ' في قاعدة البيانات.');
+      });
     }
 
     function renderCasesList() {
@@ -6664,11 +6670,12 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       box.innerHTML = casesList.map(c => `
         <div class="card" style="margin-bottom:8px; border-color:var(--border);">
           <div style="display:flex; justify-content:space-between; color:var(--primary-gold); font-weight:bold; font-size:0.85rem;">
-            <span>${esc(c.title)}</span>
+            <span>${esc(c.caseNumber || ('CASE-' + c.id))} · ${esc(c.title)}</span>
             <span style="color:var(--text-dim); font-size:0.7rem;">${esc(c.date)}</span>
           </div>
-          <div style="font-size:0.75rem; color:var(--cyan-glow); margin:3px 0;">المحقق: #${esc(c.code)} (${esc(c.author)}) | المركبة/السناد: ${esc(c.siad || 'غير محدد')}</div>
-          <p style="font-size:0.8rem; color:var(--text-bright); line-height:1.5; margin-top:5px; white-space:pre-wrap;">${esc(c.details)}</p>
+          <div style="font-size:0.75rem; color:var(--cyan-glow); margin:3px 0;">الحالة: ${esc(c.status || 'OPEN')} · التصنيف: ${esc(c.classification || 'CONFIDENTIAL')} · المحقق: #${esc(c.code)} (${esc(c.author)}) | المركبة/السناد: ${esc(c.siad || 'غير محدد')}</div>
+          <p style="font-size:0.8rem; color:var(--text-bright); line-height:1.5; margin-top:5px; white-space:pre-wrap;">${esc(c.description || c.details)}</p>
+          ${c.finalDecision ? `<p style="font-size:0.78rem; color:var(--primary-gold); line-height:1.5; margin-top:5px; white-space:pre-wrap;">القرار النهائي: ${esc(c.finalDecision)}</p>` : ''}
           ${c.media ? `<a href="${esc(c.media)}" target="_blank" style="display:inline-block; margin-top:5px; font-size:0.75rem; color:var(--cyan-glow); text-decoration:underline;">🔗 عرض الدليل المرفق</a>` : ''}
         </div>
       `).join('');

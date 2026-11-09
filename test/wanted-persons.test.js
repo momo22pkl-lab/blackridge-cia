@@ -8,11 +8,13 @@ const {
   SCHEMA_SQL,
   WantedPersonsStore,
   buildListFilters,
+  matchesMimeSignature,
   safeImageUrl
 } = require('../wanted-persons-store');
 const {
   casesForPerson,
   injectWantedPersonsMarkup,
+  investigationCases,
   registerWantedPersonsSocket
 } = require('../wanted-persons-server');
 const { getSocketTextInputs } = require('../moderation-boundaries');
@@ -45,7 +47,7 @@ class FakePostgres {
       this.backup = null;
       return { rows: [], rowCount: 0 };
     }
-    if (/^(create|alter)\s/i.test(lower)) return { rows: [], rowCount: 0 };
+    if (/^(create|alter|do)\s/i.test(lower)) return { rows: [], rowCount: 0 };
     if (lower.startsWith('select id from blackridge_wanted_persons where id = $1 for update')) {
       return { rows: this.rows.has(params[0]) ? [{ id: params[0] }] : [], rowCount: this.rows.has(params[0]) ? 1 : 0 };
     }
@@ -182,6 +184,28 @@ test('image URLs permit HTTPS and safe local paths only', () => {
   assert.equal(safeImageUrl('javascript:alert(1)'), '');
 });
 
+test('evidence uploads accept only bounded files with matching image and document signatures', async () => {
+  assert.equal(matchesMimeSignature(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), 'image/jpeg'), true);
+  assert.equal(matchesMimeSignature(Buffer.from('%PDF-1.4\n'), 'application/pdf'), true);
+  assert.equal(matchesMimeSignature(Buffer.from('<svg onload=alert(1)>'), 'image/svg+xml'), false);
+  const store = new WantedPersonsStore(new FakePostgres(), { makeId: (prefix) => prefix + '-test' });
+  const rejected = await store.saveEvidence({
+    personId: 'WANTED-TEST',
+    actor: { id: 'leader-test' },
+    evidence: {
+      category: 'IMAGE',
+      title: 'Invalid image',
+      caseIds: [],
+      recordedAt: '2026-11-08T10:00:00.000Z',
+      contentType: 'image/png',
+      fileName: 'bad.png',
+      fileData: Buffer.from('<script>alert(1)</script>').toString('base64')
+    }
+  });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.message, /لا يطابق/);
+});
+
 test('wanted persons markup adds one independent nav item, page and assets', () => {
   const html = '<html><head></head><body><ul class="nav-list"><li id="ibp-nav">IBP</li><li id="weapon-armory-nav">Armory</li></ul><div id="dashboard" class="view-pane active"></div></body></html>';
   const injected = injectWantedPersonsMarkup(html);
@@ -189,6 +213,9 @@ test('wanted persons markup adds one independent nav item, page and assets', () 
   assert.match(injected, /id="wanted-persons"/);
   assert.match(injected, /href="\/wanted-persons\.css"/);
   assert.match(injected, /src="\/wanted-persons-client\.js"/);
+  assert.match(injected, /id="wp-investigation-board"/);
+  assert.match(injected, /id="wp-evidence-form"/);
+  assert.match(injected, /id="wp-audit-list"/);
   const again = injectWantedPersonsMarkup(injected);
   for (const id of ['wanted-persons-nav', 'wanted-persons']) assert.equal((again.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
   assert.equal((again.match(/src="\/wanted-persons-client\.js"/g) || []).length, 1);
@@ -250,6 +277,99 @@ test('socket handlers restrict all reads and writes to leadership and accept onl
   assert.equal(calls.find((call) => call[0] === 'save')[1].actor.id, 'leader-1');
 });
 
+test('phase two investigation reads, file delivery, evidence, notes and timeline are leadership-only', async () => {
+  const { socket, handlers } = makeSocket();
+  const calls = [];
+  let actor = { id: 'member-1' };
+  const state = {
+    cia_cases: [{
+      id: 'case-1', caseNumber: 'CASE-RP-001', title: 'قضية خيالية', description: 'تفاصيل تمثيلية',
+      status: 'OPEN', classification: 'CONFIDENTIAL', finalDecision: 'قرار تمثيلي'
+    }],
+    cia_users: [{ id: 'leader-1', name: 'قائد اختبار' }]
+  };
+  const store = {
+    board: async (id) => { calls.push(['board', id]); return { evidence: [], notes: [], timeline: [], audit: [] }; },
+    evidenceFile: async (args) => { calls.push(['file', args]); return { contentType: 'text/plain', fileName: 'rp-test.txt', data: 'UlA=' }; },
+    saveEvidence: async (args) => { calls.push(['evidence', args]); return { ok: true }; },
+    deleteEvidence: async (args) => { calls.push(['delete-evidence', args]); return { ok: true }; },
+    saveNote: async (args) => { calls.push(['note', args]); return { ok: true }; },
+    deleteNote: async (args) => { calls.push(['delete-note', args]); return { ok: true }; },
+    addTimelineEvent: async (args) => { calls.push(['timeline', args]); return { ok: true }; }
+  };
+  registerWantedPersonsSocket(socket, {
+    getStore: () => store,
+    getState: () => state,
+    requireUser: () => actor,
+    isLeadership: (user) => user?.id === 'leader-1'
+  });
+
+  const protectedEvents = [
+    ['wanted-persons:investigation', { personId: 'WANTED-1' }],
+    ['wanted-persons:evidence:file', { personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }],
+    ['wanted-persons:evidence:save', { personId: 'WANTED-1', evidence: { caseIds: [] } }],
+    ['wanted-persons:evidence:delete', { personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }],
+    ['wanted-persons:note:save', { personId: 'WANTED-1', note: { title: 'ملاحظة', body: 'نص', caseId: '' } }],
+    ['wanted-persons:note:delete', { personId: 'WANTED-1', noteId: 'NOTE-1' }],
+    ['wanted-persons:timeline:add', { personId: 'WANTED-1', event: { title: 'حدث', caseId: '' } }]
+  ];
+  for (const [event, payload] of protectedEvents) {
+    let response;
+    await handlers.get(event)(payload, (result) => { response = result; });
+    assert.equal(response.ok, false, event + ' must reject non-leadership');
+  }
+  assert.equal(calls.length, 0, 'authorization must happen before the store is touched');
+
+  actor = { id: 'leader-1' };
+  let response;
+  await handlers.get('wanted-persons:investigation')({ personId: 'WANTED-1' }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(response.availableCases[0].description, 'تفاصيل تمثيلية');
+  assert.equal(response.availableCases[0].finalDecision, 'قرار تمثيلي');
+  assert.equal(response.permissions.canManage, true);
+
+  await handlers.get('wanted-persons:evidence:file')({ personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  await handlers.get('wanted-persons:evidence:save')({ personId: 'WANTED-1', evidence: { caseIds: ['missing'] } }, (result) => { response = result; });
+  assert.equal(response.ok, false);
+  assert.match(response.message, /قضايا موجودة فقط/);
+  assert.equal(calls.some((call) => call[0] === 'evidence'), false);
+
+  await handlers.get('wanted-persons:evidence:save')({ personId: 'WANTED-1', evidence: { caseIds: ['case-1'] } }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(calls.find((call) => call[0] === 'evidence')[1].actor.id, 'leader-1');
+  await handlers.get('wanted-persons:note:save')({ personId: 'WANTED-1', note: { title: 'ملاحظة', body: 'نص', caseId: 'case-1' } }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  await handlers.get('wanted-persons:timeline:add')({ personId: 'WANTED-1', event: { title: 'حدث', caseId: 'case-1' } }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(calls.some((call) => call[0] === 'timeline'), true);
+});
+
+test('case summaries preserve the phase one limited payload while the board reads existing case details', () => {
+  const cases = [{
+    id: 'case-1', caseNumber: 'CASE-RP-001', title: 'قضية خيالية', description: 'تفاصيل سرية',
+    status: 'CLOSED', classification: 'CONFIDENTIAL', finalDecision: 'قرار نهائي'
+  }];
+  assert.equal(Object.hasOwn(casesForPerson(['case-1'], { cia_cases: cases })[0], 'description'), false);
+  const detailed = investigationCases({ cia_cases: cases })[0];
+  assert.equal(detailed.description, 'تفاصيل سرية');
+  assert.equal(detailed.finalDecision, 'قرار نهائي');
+  const legacy = investigationCases({ cia_cases: [{ id: 'legacy-rp-01', title: 'قضية قديمة', details: 'تفاصيل قديمة' }] })[0];
+  assert.equal(legacy.caseNumber, 'CASE-legacy-rp-01');
+});
+
+test('the existing Cases Vault writes numbered cases through server CIA events', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(page, /ciaSocket\.emit\('case:create'/);
+  assert.match(page, /status:\s*'OPEN'/);
+  assert.match(page, /classification:\s*'CONFIDENTIAL'/);
+  assert.match(page, /state\.cia_cases\)\) \{ casesList = state\.cia_cases/);
+  assert.match(server, /caseNumberPrefix = `CASE-\$\{Date\.now\(\)\}`/);
+  assert.match(server, /key === 'cia_cases'.*تعديل القضايا عبر التخزين المشترك غير مسموح/s);
+  assert.match(server, /payload\?\.finalDecision !== undefined && !isLeadership\(actor\)/);
+});
+
 test('save event is automatically scanned by the existing text moderation boundary', () => {
   const values = getSocketTextInputs('wanted-persons:save', {
     fullName: 'Name', aliases: ['Alias'], notes: 'investigative note', details: 'record detail', imageUrl: 'https://example.test/img.jpg', id: 'WANTED-1'
@@ -259,6 +379,21 @@ test('save event is automatically scanned by the existing text moderation bounda
   assert.ok(values.includes('record detail'));
   assert.equal(values.includes('https://example.test/img.jpg'), false);
   assert.equal(values.includes('WANTED-1'), false);
+  const evidenceValues = getSocketTextInputs('wanted-persons:evidence:save', {
+    evidence: {
+      title: 'Fictional evidence',
+      source: 'RP test archive',
+      description: 'A documented fictional clue.',
+      fileName: 'evidence.pdf',
+      contentType: 'application/pdf',
+      fileData: 'base64-binary-content',
+      thumbnailData: 'base64-thumbnail'
+    }
+  });
+  assert.ok(evidenceValues.includes('A documented fictional clue.'));
+  assert.equal(evidenceValues.includes('base64-binary-content'), false);
+  assert.equal(evidenceValues.includes('base64-thumbnail'), false);
+  assert.equal(evidenceValues.includes('evidence.pdf'), false);
 });
 
 test('frontend uses text nodes and server events rather than browser storage', () => {
