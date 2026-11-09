@@ -58,7 +58,7 @@ const NON_CONTENT_KEYS = new Set([
   'signatureimage', 'image', 'imageurl', 'avatar', 'avatarurl', 'photo', 'file', 'pdf',
   'icon', 'color', 'createdat', 'updatedat', 'expiresat',
   'issuedat', 'signedat', 'timestamp', 'latitude', 'longitude', 'coordinates',
-  'enabled', 'verified', 'quantity', 'amount'
+  'enabled', 'verified', 'quantity', 'amount', 'bytes', 'filename', 'mimetype'
 ]);
 
 const WRITE_ACTIONS = new Set([

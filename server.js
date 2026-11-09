@@ -46,9 +46,11 @@ const { registerOfficialWarnings } = require('./official-warnings');
 const { WebPushStore, createWebPushTransport, injectMobilePushMarkup, registerMobilePushSocket } = require('./mobile-push');
 const { WeaponArmoryStore } = require('./weapon-armory-store');
 const { WantedPersonsStore } = require('./wanted-persons-store');
+const { MilitaryPersonnelDossierStore } = require('./military-personnel-dossier-store');
 const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weapon-armory-server');
 const { injectWantedPersonsMarkup, registerWantedPersonsSocket } = require('./wanted-persons-server');
 const { injectMilitaryPersonnelDossierMarkup } = require('./military-personnel-dossier-server');
+const { registerMilitaryPersonnelDossierSocket } = require('./military-personnel-dossier-socket');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const { installSocketModerationBoundary } = require('./moderation-boundaries');
@@ -107,12 +109,14 @@ let notificationsStore = null;
 let mobilePushStore = null;
 let weaponArmoryStore = null;
 let wantedPersonsStore = null;
+let militaryPersonnelDossierStore = null;
 let appEntryHtml = null;
 const mobilePushTransport = createWebPushTransport();
 
 const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
+  maxHttpBufferSize: 6 * 1024 * 1024,
   cors: {
     origin: true,
     credentials: true
@@ -11338,6 +11342,17 @@ io.on('connection', (socket) => {
   });
 });
 
+io.on('connection', (socket) => {
+  registerMilitaryPersonnelDossierSocket(socket, {
+    getStore: () => militaryPersonnelDossierStore,
+    getState: () => state,
+    requireUser: () => requireSocketUser(socket),
+    canViewPersonnel: (actor, target) => ibpPersonnelInScope(actor, target),
+    canSeeNames: isChief,
+    isLeadership
+  });
+});
+
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
@@ -11390,16 +11405,20 @@ async function initializePersistence() {
     await weaponArmoryStore.initialize();
     wantedPersonsStore = new WantedPersonsStore(postgresPool, { makeId });
     await wantedPersonsStore.initialize();
+    militaryPersonnelDossierStore = new MilitaryPersonnelDossierStore(postgresPool, { makeId });
+    await militaryPersonnelDossierStore.initialize();
     installPersistenceEmitBarriers();
     console.log('[BLACK RIDGE] PostgreSQL state store ready.');
     console.log('[BLACK RIDGE] PostgreSQL notification store ready.');
     console.log('[BLACK RIDGE] PostgreSQL weapon armory store ready.');
     console.log('[BLACK RIDGE] PostgreSQL wanted persons store ready.');
+    console.log('[BLACK RIDGE] PostgreSQL military personnel dossier store ready.');
     return;
   }
 
   weaponArmoryStore = null;
   wantedPersonsStore = null;
+  militaryPersonnelDossierStore = null;
   if (IS_RENDER_RUNTIME) {
     console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
   }

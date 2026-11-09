@@ -29,7 +29,7 @@ test('the military dossier is injected once into the existing CIA navigation and
   }
 });
 
-test('the dossier reads only the existing scoped directory API and keeps its four tabs empty', () => {
+test('the dossier reads the existing scoped directory API and connects its four record tabs', () => {
   const client = fs.readFileSync(path.join(projectRoot, 'military-personnel-dossier-client.js'), 'utf8');
   const markup = fs.readFileSync(path.join(projectRoot, 'military-personnel-dossier-server.js'), 'utf8');
   const stylesheet = fs.readFileSync(path.join(projectRoot, 'military-personnel-dossier.css'), 'utf8');
@@ -41,7 +41,12 @@ test('the dossier reads only the existing scoped directory API and keeps its fou
   for (const label of ['الملاحظات', 'القضايا', 'السجل الزمني', 'المرفقات']) {
     assert.ok(client.includes(label), `expected the ${label} tab`);
   }
-  assert.match(client, /لا توجد سجلات بعد/);
+  assert.match(client, /mpd:dossier:get/);
+  assert.match(client, /mpd:note:create/);
+  assert.match(client, /mpd:case:create/);
+  assert.match(client, /mpd:timeline:create/);
+  assert.match(client, /mpd:attachment:upload/);
+  assert.match(client, /mpd:attachment:download/);
   assert.doesNotMatch(client, /ibp:directory:(?:create|save|delete)/);
   assert.doesNotMatch(client, /localStorage|sessionStorage/);
   assert.match(stylesheet, /@media\(max-width:900px\)/);

@@ -30,7 +30,7 @@ const DOSSIER_PANE_MARKUP = `<div id="military-personnel-dossier" class="view-pa
         <div class="mpd-empty mpd-profile-empty"><i class="fa-solid fa-folder-open" aria-hidden="true"></i><strong>اختر سجلًا لعرض الملف</strong><span>تظهر هنا البيانات التي تسمح بها صلاحيات حسابك.</span></div>
       </section>
     </div>
-    <footer class="mpd-footer"><span>BLACKRIDGE CIA</span><span>واجهة المرحلة الأولى · الملاحظات والقضايا والسجل الزمني والمرفقات غير مفعّلة بعد</span></footer>
+    <footer class="mpd-footer"><span>BLACKRIDGE CIA</span><span>سجلات عسكرية مقيدة · جميع الإضافات محفوظة في قاعدة البيانات مع سجل تدقيق</span></footer>
   </main>
 </div>`;
 
