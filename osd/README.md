@@ -4,25 +4,17 @@ OSD is a separate document workspace served at `/osd/` with its own API at `/api
 
 ## Server configuration
 
-OSD requires the PostgreSQL `DATABASE_URL` already used by this application, plus server-side secrets:
+OSD uses the PostgreSQL `DATABASE_URL` already used by this application and the existing server-side settings:
 
-- `OSD_BOOTSTRAP_CODE`: a one-time first-account setup code, at least 24 random characters.
-- `OSD_SIGNING_SECRET`: a stable signing key with at least 32 random bytes. Keep the same value to verify previously issued documents.
-- `OSD_TOTP_ENCRYPTION_KEY`: a stable, independent key with at least 32 random bytes. OSD uses it to encrypt the leader's authenticator seed at rest; keep it unchanged while MFA is enabled.
-- `OSD_CHIEF_TOTP_ENROLLMENT_CODE`: a separate code, at least 24 random characters and distinct from `OSD_BOOTSTRAP_CODE`, used to start or restart enrollment for a chief account that has not yet enabled MFA. Configure it before the initial bootstrap as well, in case setup is interrupted.
+- `OSD_SIGNING_SECRET`: the stable signing key for issued documents. Keep its current value so existing signatures continue to verify.
+- `OSD_TOTP_ENCRYPTION_KEY`: leave its current value unchanged; existing encrypted authenticator data is retained.
+- `OSD_CHIEF_TOTP_ENROLLMENT_CODE`: the existing server-side chief access code, at least 24 characters. The server compares the submitted code to this value; it is never returned to the browser or written to application logs.
 
-Generate the values locally (do not commit them):
+No new environment variable is required. `OSD_BOOTSTRAP_CODE`, if already configured, is not used for this login flow and is not changed by it. Do not put secret values in source control, browser code, or support messages.
 
-```sh
-openssl rand -hex 24
-openssl rand -hex 32
-openssl rand -hex 32
-openssl rand -hex 24
-```
+Chief sign-in requires the military code to resolve to the existing, enabled primary `CIA CHIEF` OSD account linked to the active personnel record, plus the exact `OSD_CHIEF_TOTP_ENROLLMENT_CODE`. The code check is server-side and rate-limited. On success, OSD creates the existing type of expiring `HttpOnly`, `SameSite=Strict` session and derives the account's role and permissions from the server-side personnel record.
 
-Add the generated values as deployment secrets/environment variables. Do not put them in source control, browser code, or a support message. Configure all four secrets before bootstrap; the bootstrap page remains unavailable unless the bootstrap code, separate enrollment code, and encryption key are valid. Visit `/osd/` and use **First-time Leader Setup** once with the military code of the registered, active `CIA CHIEF` and a new master password (12–200 characters). The bootstrap code is not stored in the database. The password is stored as a salted scrypt hash. The first-time setup then requires the chief to enroll a TOTP authenticator and confirm a live code before any leader session can be created. The provisioning secret and ten recovery codes are shown once; store the recovery codes securely.
-
-For an existing primary chief account that has not enrolled MFA, or to restart an interrupted first-time enrollment, a valid password alone is deliberately insufficient. The enrollment screen also requires the separate `OSD_CHIEF_TOTP_ENROLLMENT_CODE` server code. The account must confirm a live authenticator code before sign-in is allowed. OSD clears existing primary-chief sessions during schema initialization and again on successful MFA enrollment, so sessions issued before MFA enforcement cannot bypass it. There is no browser route to disable or reset MFA, and the enrollment route refuses an account that is already enrolled. TOTP seeds are encrypted using `OSD_TOTP_ENCRYPTION_KEY`; recovery codes are stored only as hashes and each can be used once. A successful leader sign-in requires the password plus a current TOTP or unused recovery code. Password-only sign-in never creates a session.
+The chief access code is a long-lived shared secret, not a rotating TOTP factor. Anyone who obtains it and the chief's military code could sign in as the primary chief; protect it as a credential. The former bootstrap, password-based leader login, TOTP enrollment, and TOTP challenge routes are retired. This change does not create or reset accounts, alter password/MFA fields, change any secret values, or modify OSD documents, signatures, audit rows, or permissions.
 
 Members and other registered leadership accounts sign in with their military code only. OSD will reject codes that are not linked to an active, approved personnel record. Only the provisioned primary `CIA CHIEF` account receives `ADMIN` and user-management permissions; other roles and clearances are derived from the personnel record's rank. An OSD user can enable or disable access, but cannot change a rank, role, clearance, or permission through the browser.
 
@@ -30,7 +22,7 @@ Without PostgreSQL, the OSD API fails closed and does not create documents. With
 
 ## Included workflow
 
-- Separate OSD document storage, personnel-linked identities, rank-derived clearance and server-enforced permissions, a hashed primary-chief password, encrypted TOTP secret, one-time recovery codes, expiring HttpOnly sessions and MFA challenges, same-origin writes, and login throttling.
+- Separate OSD document storage, personnel-linked identities, rank-derived clearance and server-enforced permissions, expiring HttpOnly sessions, same-origin writes, and login throttling.
 - Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, expiring and revocable share links, and public verification.
 - Dedicated share viewer links that open the document directly. Anonymous links are restricted to `PUBLIC` documents; internal links require an active OSD session, `VIEW_DOCUMENTS`, and sufficient server-checked clearance.
 - Protected viewing hides print/download controls, suppresses ordinary copy/selection actions, and can display a recipient watermark. These browser-side measures reduce casual copying but cannot prevent screenshots, photographs, or browser-level access.
@@ -52,4 +44,4 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 
 ## Checks
 
-Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, one-time chief setup, hashed master-password storage, leader password-plus-TOTP login, rejection before MFA, encrypted authenticator storage, invalid/expired codes, one-time recovery codes, protected setup and no-reset behavior, unchanged personnel login, role escalation rejection, public/internal share policy, expiry and revocation decisions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Authentication routes are exercised against a database test double; production PostgreSQL contents and live browser rendering require separate live-environment checks.
+Run `npm test` for the repository's Node test suite. OSD tests cover primary-chief code login, rejection of wrong codes and non-chief accounts, retired authentication routes, session security, preservation of the existing account fields, unchanged personnel login, role-escalation rejection, document/share permissions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Authentication routes are exercised against a database test double; production PostgreSQL contents and live browser rendering require separate live-environment checks.
