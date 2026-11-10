@@ -25,6 +25,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
+const { isPrimaryChief, restorePrimaryChiefInState } = require('./primary-chief-protection');
 const { createOsdRouter } = require('./osd/server');
 const { createOsdSsoTicketStore } = require('./osd/sso-tickets');
 const { NotificationsStore } = require('./notifications-store');
@@ -483,9 +484,9 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveState(options = {}) {
   if (stateStore) {
-    const pendingWrite = stateStore.save(state);
+    const pendingWrite = stateStore.save(state, options);
     pendingWrite.catch((error) => {
       console.error('[BLACK RIDGE] Failed to persist state to PostgreSQL:', error.message);
     });
@@ -941,6 +942,7 @@ function normalizeAllUsers(targetState) {
   for (const user of targetState.cia_users || []) {
     normalizeUser(user);
   }
+  restorePrimaryChiefInState(targetState);
 }
 
 function makePublicCode(rank) {
@@ -1420,10 +1422,16 @@ function endRestrictedSessions(user, reason) {
 
 async function recordModerationViolation(actor, detection, channel) {
   if (isProfanityDetection(detection)) {
-    const strike = registerProfanityStrike(actor);
-    const separated = strike.separated;
+    const protectedChief = isPrimaryChief(actor);
+    const strike = protectedChief
+      ? { count: normalizeProfanityStrikes(actor.profanityStrikes) + 1, separated: false }
+      : registerProfanityStrike(actor);
+    if (protectedChief) actor.profanityStrikes = strike.count;
+    const separated = !protectedChief && strike.separated;
     const channelName = clean(channel, 40).toUpperCase();
-    const memberMessage = strike.count === 1
+    const memberMessage = protectedChief
+      ? `تحذير رسمي: تم حظر الرسالة وتسجيل المخالفة ${strike.count}. لا يؤدي نظام المخالفات إلى إيقاف حساب CIA CHIEF.`
+      : strike.count === 1
       ? 'تحذير أولي رسمي من القيادة بسبب استخدام ألفاظ مسيئة. تم حظر رسالتك. المخالفة 1/3.'
       : strike.count === 2
         ? 'تحذير ثانوي رسمي من القيادة بسبب تكرار استخدام ألفاظ مسيئة. تم حظر رسالتك. المخالفة 2/3، والتكرار التالي يؤدي إلى فصلك من الخدمة.'
@@ -1487,8 +1495,9 @@ async function recordModerationViolation(actor, detection, channel) {
   actor.securityViolationCount = (Number(actor.securityViolationCount) || 0) + 1;
   let level = detection.level;
   if (level < 2 && actor.securityViolationCount >= 2) level = 2;
+  const protectedChief = isPrimaryChief(actor);
   const status = level >= 3 ? 'SUSPENDED' : level === 2 ? 'SECURITY_RESTRICTED' : 'REVIEW_REQUIRED';
-  if (level >= 2) {
+  if (level >= 2 && !protectedChief) {
     actor.securityStatus = status;
     actor.suspended = level >= 3;
     actor.activeService = false;
@@ -1503,9 +1512,9 @@ async function recordModerationViolation(actor, detection, channel) {
     type: detection.type,
     level,
     reason: `${detection.reason} // CHANNEL_${clean(channel, 40).toUpperCase()}`,
-    status: level >= 2 ? status : 'REVIEW_REQUIRED'
+    status: level >= 2 && !protectedChief ? status : 'REVIEW_REQUIRED'
   });
-  if (level >= 2) endRestrictedSessions(actor, 'تم تقييد الحساب أمنيًا. راجع القيادة.');
+  if (level >= 2 && !protectedChief) endRestrictedSessions(actor, 'تم تقييد الحساب أمنيًا. راجع القيادة.');
   await notifySecurityLeadership(incident);
   saveState();
   emitState();
@@ -3803,6 +3812,7 @@ io.on(
       const target = getUserById(clean(payload?.userId, 120));
       const reason = redactSecurityReason(payload?.reason);
       if (!target || target.id === actor.id) return no(cb, 'اختر عضوًا آخر لإيقافه.');
+      if (isPrimaryChief(target)) return no(cb, 'لا يمكن إيقاف حساب Primary Chief أو تقييده.');
       if (!reason) return no(cb, 'سبب الإيقاف مطلوب.');
       if (target.securityStatus !== 'ACTIVE') return no(cb, 'العضو مقيّد أو موقوف بالفعل.');
 
@@ -5252,6 +5262,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             const rejecting =
               action === 'reject_identity' ||
               action === 'deny_identity';
+            if (rejecting && isPrimaryChief(target)) return no(cb, 'لا يمكن رفض هوية أو تعطيل حساب Primary Chief.');
 
             if (rejecting) {
               target.identityApprovalPending = false;
@@ -5317,6 +5328,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
             }
             if (target.serviceApproved === true) return no(cb, 'تم اعتماد دخول هذه الشخصية للخدمة بالفعل.');
             if (target.serviceApprovalPending !== true) return no(cb, 'لا يوجد طلب دخول خدمة معلق لهذه الشخصية.');
+            if (action === 'reject_service' && isPrimaryChief(target)) return no(cb, 'لا يمكن تعطيل دخول Primary Chief إلى الخدمة.');
 
             const rejecting = action === 'reject_service';
             target.serviceApprovalPending = false;
@@ -5703,6 +5715,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 'الشخصية المستهدفة غير موجودة.'
               );
             }
+            if (isPrimaryChief(target)) return no(cb, 'لا يمكن تغيير رتبة أو صلاحيات حساب Primary Chief عبر إجراء الإدارة.');
 
             const desiredRank =
               normalizeRank(
@@ -5790,6 +5803,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 'الشخصية غير موجودة.'
               );
             }
+            if (isPrimaryChief(target)) return no(cb, 'لا يمكن تغيير كود دخول حساب Primary Chief عبر إجراء الإدارة.');
 
             if (
               !canChangeSecret(
@@ -5868,6 +5882,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
                 'الشخصية غير موجودة.'
               );
             }
+            if (isPrimaryChief(target)) return no(cb, 'لا يمكن إيقاف أو حظر حساب Primary Chief.');
             if (!suspensionReason) {
               return no(cb, 'سبب الفصل إلزامي.');
             }
@@ -6303,7 +6318,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         target.bank.salary = defaultSalaryForRank('CIA CHIEF');
         actor.bank.salary = defaultSalaryForRank('SUPREME COMMANDER');
         addAuditLog('تسليم القيادة', actor, target, `تم نقل منصب CIA CHIEF إلى ${target.name}.`);
-        saveState();
+        saveState({ primaryChiefHandoverFrom: actor.id });
         emitState();
 
         const result = ok(cb, {
@@ -6886,6 +6901,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
         if (!request) return no(cb, 'طلب الشخصية غير موجود.');
         const target = getUserById(request.characterId);
         if (!target) return no(cb, 'الشخصية المطلوبة غير موجودة.');
+        if (isPrimaryChief(target)) return no(cb, 'لا يمكن تعديل حساب Primary Chief عبر إدارة طلبات الشخصيات.');
 
         if (action === 'reject' || action === 'deny') {
           target.activeService = false;
@@ -9885,6 +9901,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const id = clean(payload?.id, 120);
       const target = (state.cia_users || []).find((person) => String(person.id) === id);
       if (!target || !canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تعديل سجل هذا الفرد.');
+      if (isPrimaryChief(target)) return no(cb, 'لا يمكن تعديل سجل Primary Chief عبر إدارة الأفراد.');
       const backup = personnelStateBackup(target);
       const rejectUpdate = (message) => {
         restorePersonnelState(backup, target);
@@ -10674,6 +10691,9 @@ socket.on('member:saveIdentity', (payload, cb) => {
         const target = getUserById(clean(payload?.memberId || payload?.userId, 120));
         if (!target) return no(cb, 'الشخصية غير موجودة.');
         if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية تعديل هذه الشخصية.');
+        if (isPrimaryChief(target) && (payload?.rank !== undefined || payload?.secretCode !== undefined || payload?.publicCode !== undefined)) {
+          return no(cb, 'لا يمكن تغيير رتبة أو أكواد حساب Primary Chief.');
+        }
 
         let action = 'code';
         if (payload?.rank !== undefined) {
@@ -10761,6 +10781,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const reason = redactSecurityReason(payload?.reason);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
+      if (isPrimaryChief(target)) return no(cb, 'لا يمكن فصل أو حظر حساب Primary Chief.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
@@ -10799,6 +10820,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const reason = redactSecurityReason(payload?.reason);
       if (!actor) return no(cb, 'يجب تسجيل الدخول إلى الحساب أولاً.');
       if (!target) return no(cb, 'الشخصية غير موجودة.');
+      if (isPrimaryChief(target)) return no(cb, 'لا يمكن فصل أو حظر حساب Primary Chief.');
       if (!canManageMember(actor, target)) return no(cb, 'لا تملك صلاحية فصل هذه الشخصية.');
       if (!reason) return no(cb, 'سبب الفصل إلزامي.');
       target.activeService = false;
