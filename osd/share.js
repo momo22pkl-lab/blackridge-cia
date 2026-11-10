@@ -8,7 +8,7 @@
   const labels = arabic ? {
     lang: 'ar', direction: 'rtl', access: 'رابط وثيقة آمن', loginTitle: 'سجّل الدخول لمشاهدة الوثيقة الداخلية',
     loginDescription: 'تتطلب هذه الوثيقة كوداً عسكرياً مسجلاً وتصريحاً مناسباً.', code: 'الكود العسكري',
-    memberLogin: 'دخول الأفراد', leaderLogin: 'دخول القائد', password: 'كلمة السر الرئيسية',
+    memberLogin: 'دخول الأفراد', leaderLogin: 'دخول عبر CIA', ssoAction: 'المتابعة عبر بوابة CIA',
     signIn: 'تسجيل الدخول', invalid: 'رابط المشاركة غير صالح أو انتهت صلاحيته أو تم إلغاؤه.',
     denied: 'لا تملك صلاحية مشاهدة هذه الوثيقة.', loading: 'جارٍ تحميل الوثيقة…',
     valid: 'سجل الإصدار وسلامة النسخة مطابقان', openVerify: 'فتح سجل التحقق',
@@ -18,13 +18,14 @@
     verifyOnly: 'حالة الإصدار والتحقق فقط', validStatus: 'وثيقة صحيحة', revoked: 'وثيقة ملغاة',
     expired: 'وثيقة منتهية', failed: 'تعذر التحقق من سلامة الوثيقة',
     notVerified: 'الوثيقة غير متحققة', notFound: 'الوثيقة غير موجودة',
-    loginFailed: 'تعذر تسجيل الدخول. تحقق من بيانات الحساب.'
+    loginFailed: 'تعذر تسجيل الدخول. تحقق من بيانات الحساب.',
+    ssoFailed: 'تعذر التحقق عبر CIA. سجّل الدخول مجددًا وحاول مرة أخرى.'
   } : {
     lang: 'en', direction: 'ltr', access: 'SECURE DOCUMENT LINK',
     loginTitle: 'Sign in to view this internal document',
     loginDescription: 'This document requires a registered military code with sufficient clearance.',
-    code: 'Military Code', memberLogin: 'Personnel Login', leaderLogin: 'Leader Login',
-    password: 'Master Password', signIn: 'Sign in',
+    code: 'Military Code', memberLogin: 'Personnel Login', leaderLogin: 'Leader via CIA',
+    ssoAction: 'Continue through CIA', signIn: 'Sign in',
     invalid: 'The share link is invalid, expired, revoked, or the document is unavailable.',
     denied: 'Your account is not authorized to view this document.', loading: 'Loading document…',
     openVerify: 'Open verification record', print: 'Print / Save PDF', expires: 'Share link expires',
@@ -33,7 +34,8 @@
     verifyOnly: 'Issue and verification status only', validStatus: 'DOCUMENT VALID', revoked: 'DOCUMENT REVOKED',
     expired: 'DOCUMENT EXPIRED', failed: 'DOCUMENT INTEGRITY CHECK FAILED',
     notVerified: 'DOCUMENT NOT VERIFIED', notFound: 'DOCUMENT NOT FOUND',
-    loginFailed: 'Sign-in failed. Check your OSD account details.'
+    loginFailed: 'Sign-in failed. Check your OSD account details.',
+    ssoFailed: 'CIA verification failed. Sign in again and retry.'
   };
   document.documentElement.lang = labels.lang;
   document.documentElement.dir = labels.direction;
@@ -42,10 +44,10 @@
   $('#loginTitle').textContent = labels.loginTitle;
   $('#loginDescription').textContent = labels.loginDescription;
   $('#militaryCodeLabel').textContent = labels.code;
-  $('#passwordLabel').textContent = labels.password;
   $('#memberLoginTab').textContent = labels.memberLogin;
   $('#chiefLoginTab').textContent = labels.leaderLogin;
   $('#loginButton').textContent = labels.signIn;
+  $('#chiefSsoButton').textContent = labels.ssoAction;
   $('#protectedNotice').querySelector('b').textContent = labels.protected;
   $('#protectedNotice').querySelector('span').textContent = labels.screenshotNotice;
   $('#verifyButton').textContent = labels.verifyOnly;
@@ -63,7 +65,8 @@
     $('#loginPanel').hidden = false;
     $('#errorPanel').hidden = true;
     $('#documentFrame').hidden = true;
-    $('#loginMilitaryCode').focus();
+    if (loginMode === 'leader') $('#chiefSsoButton').focus();
+    else $('#loginMilitaryCode').focus();
   }
 
   function setLoginMode(mode) {
@@ -73,9 +76,8 @@
     $('#chiefLoginTab').classList.toggle('active', leader);
     $('#memberLoginTab').setAttribute('aria-pressed', String(!leader));
     $('#chiefLoginTab').setAttribute('aria-pressed', String(leader));
-    $('#leaderPasswordField').hidden = !leader;
-    $('#loginPassword').required = leader;
-    $('#loginPassword').value = '';
+    $('#loginForm').hidden = leader;
+    $('#chiefSsoButton').hidden = !leader;
     $('#loginError').textContent = '';
   }
 
@@ -204,18 +206,15 @@
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: loginMode,
-          militaryCode: $('#loginMilitaryCode').value,
-          ...(loginMode === 'leader' ? { password: $('#loginPassword').value } : {})
+          mode: 'member',
+          militaryCode: $('#loginMilitaryCode').value
         })
       });
-      $('#loginPassword').value = '';
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         $('#loginError').textContent = data.error || labels.loginFailed;
         return;
       }
-      $('#loginPassword').value = '';
       await loadShare();
     } catch {
       $('#loginError').textContent = labels.loginFailed;
@@ -226,9 +225,44 @@
 
   $('#memberLoginTab').addEventListener('click', () => setLoginMode('member'));
   $('#chiefLoginTab').addEventListener('click', () => setLoginMode('leader'));
+  $('#chiefSsoButton').addEventListener('click', () => {
+    try {
+      sessionStorage.setItem('osd_sso_return', `${location.pathname}${location.search}`);
+    } catch {
+      $('#loginError').textContent = labels.ssoFailed;
+      return;
+    }
+    location.assign('/?osdSso=1');
+  });
   setLoginMode('member');
 
   $('#printButton').addEventListener('click', () => window.print());
 
-  loadShare().catch(() => showError(labels.invalid));
+  (async () => {
+    let ticket = '';
+    try { ticket = sessionStorage.getItem('osd_sso_ticket') || ''; } catch {}
+    if (ticket) {
+      try {
+        const response = await fetch('/api/osd/auth/sso', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticket })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || labels.ssoFailed);
+        sessionStorage.removeItem('osd_sso_ticket');
+        sessionStorage.removeItem('osd_sso_return');
+      } catch (error) {
+        try {
+          sessionStorage.removeItem('osd_sso_ticket');
+          sessionStorage.removeItem('osd_sso_return');
+        } catch {}
+        showLogin();
+        $('#loginError').textContent = error.message || labels.ssoFailed;
+        return;
+      }
+    }
+    await loadShare();
+  })().catch(() => showError(labels.invalid));
 })();

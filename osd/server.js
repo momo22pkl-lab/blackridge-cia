@@ -737,7 +737,13 @@ async function appendAudit(client, { documentId = null, actorId = null, actorLab
   );
 }
 
-function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, moderateOutgoingText } = {}) {
+function createOsdRouter({
+  getPool,
+  getPersonnel = () => [],
+  env = process.env,
+  moderateOutgoingText,
+  consumeMilitarySsoTicket
+} = {}) {
   const express = require('express');
   const router = express.Router();
   let schemaPromise = null;
@@ -786,6 +792,16 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
 
   router.use(sameOrigin);
   router.use(createHttpTextModerationMiddleware({ moderateOutgoingText }));
+
+  const retiredAuthResponse = (_req, res) => res.status(410).json({
+    error: 'OSD leader setup and password sign-in have been retired. Sign in through the authenticated CIA portal.'
+  });
+  router.get('/bootstrap/status', retiredAuthResponse);
+  router.post('/bootstrap', retiredAuthResponse);
+  router.post('/auth/mfa/enroll/start', retiredAuthResponse);
+  router.post('/auth/mfa/enroll/confirm', retiredAuthResponse);
+  router.post('/auth/mfa/verify', retiredAuthResponse);
+  router.post('/auth/mfa/cancel', retiredAuthResponse);
 
   function personnelRoster() {
     const people = typeof getPersonnel === 'function' ? getPersonnel() : [];
@@ -862,7 +878,8 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
       }
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`osd-personnel:${personnelId}`]);
       const account = await findAccountForPersonnel(client, person);
-      const isPrimaryChief = options.initializeChief === true || account?.is_primary_chief === true;
+      const initializeChief = options.initializeChief === true && account?.enabled !== false;
+      const isPrimaryChief = initializeChief || account?.is_primary_chief === true;
       const profile = roleProfileForPersonnel(person, isPrimaryChief);
       let saved;
       if (account) {
@@ -870,13 +887,13 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
           `UPDATE osd_users SET military_code=$2,personnel_id=$3,display_name=$4,role=$5,
            clearance=$6,permissions=$7::jsonb,is_primary_chief=$8,
            password_salt=COALESCE($9,password_salt),password_hash=COALESCE($10,password_hash),
-           enabled=CASE WHEN $11 THEN TRUE ELSE enabled END,updated_at=NOW()
+           updated_at=NOW()
            WHERE id=$1 RETURNING *`,
           [
-            account.id, militaryCode, personnelId,
+             account.id, militaryCode, personnelId,
             cleanText(person.displayName || person.name || account.display_name, 120),
             profile.role, profile.clearance, JSON.stringify(profile.permissions), isPrimaryChief,
-            options.passwordSalt || null, options.passwordHash || null, options.initializeChief === true
+             options.passwordSalt || null, options.passwordHash || null
           ]
         );
         saved = result.rows[0];
@@ -890,20 +907,20 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,TRUE) RETURNING *`,
           [
             id, username, cleanText(person.displayName || person.name || militaryCode, 120),
-            options.passwordSalt || null, options.passwordHash || null, profile.role,
-            profile.clearance, JSON.stringify(profile.permissions), militaryCode, personnelId, isPrimaryChief
+             options.passwordSalt || null, options.passwordHash || null, profile.role,
+             profile.clearance, JSON.stringify(profile.permissions), militaryCode, personnelId, isPrimaryChief
           ]
         );
         saved = result.rows[0];
         await appendAudit(client, {
           actorId: id,
           actorLabel: profile.role,
-          action: options.initializeChief ? 'OSD PRIMARY CHIEF ACCOUNT INITIALIZED' : 'OSD PERSONNEL ACCOUNT LINKED',
+           action: initializeChief ? 'OSD PRIMARY CHIEF ACCOUNT INITIALIZED' : 'OSD PERSONNEL ACCOUNT LINKED',
           metadata: { militaryCode, rank: cleanText(person.rank, 100).toUpperCase() }
         });
       }
       if (!saved) throw new Error('The OSD personnel account could not be saved.');
-      if (options.initializeChief && account) {
+      if (initializeChief && account) {
         await appendAudit(client, {
           actorId: saved.id,
           actorLabel: 'ADMIN',
@@ -1079,6 +1096,64 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
     if (!pool) return;
     await pool.query('SELECT 1');
     res.json({ status: 'online', storage: 'postgresql', system: 'OSD' });
+  }));
+
+  router.post('/auth/sso', asyncRoute(async (req, res) => {
+    const pool = await poolOr503(res);
+    if (!pool) return;
+    if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
+
+    const origin = req.get('origin');
+    const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol;
+    if (!origin || origin !== `${protocol}://${req.get('host')}`) {
+      return res.status(403).json({ error: 'Cross-origin request blocked.' });
+    }
+
+    const ticket = typeof req.body?.ticket === 'string' ? req.body.ticket : '';
+    if (!ticket || ticket.length > 200 || typeof consumeMilitarySsoTicket !== 'function') {
+      return res.status(401).json({ error: 'Sign in through the authenticated CIA portal to continue.' });
+    }
+
+    const identity = consumeMilitarySsoTicket(ticket);
+    const personnelId = cleanText(identity?.personnelId, 100);
+    const militaryCode = normalizeMilitaryCode(identity?.militaryCode);
+    const person = findPersonnelByCode(personnelRoster(), militaryCode);
+    if (!person || String(person.id || '') !== personnelId ||
+        cleanText(person.rank, 100).toUpperCase() !== 'CIA CHIEF' ||
+        !isEligiblePersonnel(person)) {
+      return res.status(401).json({ error: 'An active, authenticated CIA CHIEF account is required.' });
+    }
+
+    const activeChiefs = personnelRoster().filter((candidate) =>
+      isEligiblePersonnel(candidate) && cleanText(candidate.rank, 100).toUpperCase() === 'CIA CHIEF'
+    );
+    let initializeChief = false;
+    if (activeChiefs.length === 1 && String(activeChiefs[0].id || '') === personnelId) {
+      const existingPrimary = await pool.query('SELECT id FROM osd_users WHERE is_primary_chief = TRUE LIMIT 1');
+      initializeChief = existingPrimary.rows.length === 0;
+    }
+
+    let account;
+    try {
+      account = await linkPersonnelAccount(pool, person, { initializeChief });
+    } catch (error) {
+      if (!initializeChief || error.message !== 'The primary chief account has already been initialized.') throw error;
+      account = await linkPersonnelAccount(pool, person);
+    }
+    if (!account || account.enabled !== true) {
+      return res.status(403).json({ error: 'This OSD account is disabled. Contact the current OSD administrator.' });
+    }
+
+    const sessionToken = crypto.randomBytes(32).toString('base64url');
+    await pool.query('DELETE FROM osd_sessions WHERE expires_at < NOW()');
+    await pool.query(
+      `INSERT INTO osd_sessions (token_hash,user_id,expires_at) VALUES ($1,$2,NOW() + INTERVAL '${SESSION_HOURS} hours')`,
+      [sha256(sessionToken), account.id]
+    );
+    loginAttempts.delete(String(req.ip || req.socket?.remoteAddress || 'unknown'));
+    res.setHeader('Set-Cookie', [sessionCookie(sessionToken, req), clearMfaChallengeCookie(req)]);
+    res.json({ user: publicUser(account, person), sso: true });
   }));
 
   router.get('/bootstrap/status', asyncRoute(async (req, res) => {
@@ -1305,7 +1380,8 @@ function createOsdRouter({ getPool, getPersonnel = () => [], env = process.env, 
     if (!pool) return;
     if (loginRateLimited(req)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes and try again.' });
     const mode = cleanText(req.body?.mode, 20).toLowerCase();
-    if (!['leader', 'member'].includes(mode)) return res.status(400).json({ error: 'اختر نوع الدخول.' });
+    if (mode === 'leader') return res.status(410).json({ error: 'Leader password sign-in has been retired. Use the authenticated CIA portal.' });
+    if (mode !== 'member') return res.status(400).json({ error: 'اختر نوع الدخول.' });
     const militaryCode = normalizeMilitaryCode(req.body?.militaryCode);
     const person = findPersonnelByCode(personnelRoster(), militaryCode);
     const password = typeof req.body?.password === 'string' ? req.body.password.slice(0, 201) : '';
