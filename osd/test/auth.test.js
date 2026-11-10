@@ -115,7 +115,7 @@ class MemoryPool {
       return { rows: [user] };
     }
     if (query.startsWith('update osd_users set military_code=')) {
-      const [id, militaryCode, personnelId, displayName, role, clearance, permissions, primary, salt, hash, enable] = values;
+      const [id, militaryCode, personnelId, displayName, role, clearance, permissions, primary, salt, hash] = values;
       const user = this.users.find((item) => item.id === id);
       if (!user) return { rows: [] };
       Object.assign(user, {
@@ -127,8 +127,7 @@ class MemoryPool {
         permissions: JSON.parse(permissions),
         is_primary_chief: primary,
         password_salt: salt || user.password_salt,
-        password_hash: hash || user.password_hash,
-        enabled: enable ? true : user.enabled
+        password_hash: hash || user.password_hash
       });
       return { rows: [user] };
     }
@@ -296,7 +295,7 @@ test('personnel ranks derive server roles; only the primary chief receives user-
   assert.equal(roleProfileForPersonnel(personnel[1]).role, 'AGENT');
 });
 
-test('OSD routes enforce one-time chief setup, military-code personnel access, and server-derived roles', async (t) => {
+test.skip('legacy OSD bootstrap/password/MFA route flow, replaced by CIA SSO', async (t) => {
   const pool = new MemoryPool();
   const app = express();
   app.set('trust proxy', true);
@@ -717,4 +716,95 @@ test('direct OSD document API blocks central-engine matches and persists clean c
   assert.equal(clean.status, 201);
   assert.equal((await clean.json()).document.title, 'Quarterly operations memorandum');
   assert.equal(pool.documents.length, 1);
+});
+
+test('OSD provisions the sole active CIA chief through one-time SSO and retires old leader setup routes', async (t) => {
+  const pool = new MemoryPool();
+  const identities = new Map([
+    ['chief-ticket', { personnelId: 'person-chief', militaryCode: 'CH-100' }],
+    ['agent-ticket', { personnelId: 'person-agent', militaryCode: 'AG-200' }]
+  ]);
+  const app = express();
+  app.set('trust proxy', true);
+  app.use(express.json());
+  app.use('/api/osd', createOsdRouter({
+    getPool: () => pool,
+    getPersonnel: () => personnel,
+    consumeMilitarySsoTicket: (ticket) => {
+      const identity = identities.get(ticket) || null;
+      identities.delete(ticket);
+      return identity;
+    },
+    env: { NODE_ENV: 'test' }
+  }));
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    res.status(500).json({ error: error.message });
+  });
+  const server = app.listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await new Promise((resolve) => server.once('listening', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  let requestNumber = 0;
+
+  async function call(path, { method = 'GET', body, cookie } = {}) {
+    const response = await fetch(`${origin}/api/osd${path}`, {
+      method,
+      headers: {
+        ...(body ? { 'content-type': 'application/json', origin } : {}),
+        'x-forwarded-for': `198.51.100.${++requestNumber}`,
+        ...(cookie ? { cookie } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    const data = await response.json();
+    return {
+      response,
+      data,
+      cookie: (response.headers.get('set-cookie') || '').match(/osd_session=[^;]+/)?.[0] || ''
+    };
+  }
+
+  assert.equal((await call('/bootstrap/status')).response.status, 410);
+  assert.equal((await call('/auth/mfa/verify', { method: 'POST', body: { code: '123456' } })).response.status, 410);
+  assert.equal((await call('/auth/login', { method: 'POST', body: {
+    mode: 'leader', militaryCode: 'CH-100', password: 'legacy-password'
+  } })).response.status, 410);
+
+  const forgedChief = await call('/auth/sso', {
+    method: 'POST',
+    body: { ticket: 'agent-ticket', rank: 'CIA CHIEF', role: 'ADMIN' }
+  });
+  assert.equal(forgedChief.response.status, 401);
+  assert.equal(pool.users.length, 0);
+
+  const chief = await call('/auth/sso', {
+    method: 'POST',
+    body: { ticket: 'chief-ticket', role: 'VIEWER', permissions: [] }
+  });
+  assert.equal(chief.response.status, 200);
+  assert.equal(chief.data.user.role, 'ADMIN');
+  assert.ok(chief.data.user.permissions.includes('MANAGE_USERS'));
+  assert.equal(chief.data.sso, true);
+  assert.ok(chief.cookie);
+  assert.equal(pool.users.length, 1);
+  assert.equal(pool.users[0].password_salt, null);
+  assert.equal(pool.users[0].password_hash, null);
+  assert.equal(pool.users[0].is_primary_chief, true);
+
+  const current = await call('/auth/me', { cookie: chief.cookie });
+  assert.equal(current.response.status, 200);
+  assert.equal(current.data.user.role, 'ADMIN');
+
+  const reused = await call('/auth/sso', { method: 'POST', body: { ticket: 'chief-ticket' } });
+  assert.equal(reused.response.status, 401);
+  assert.equal(pool.users.length, 1);
+
+  pool.users[0].enabled = false;
+  identities.set('disabled-chief-ticket', { personnelId: 'person-chief', militaryCode: 'CH-100' });
+  const disabled = await call('/auth/sso', {
+    method: 'POST', body: { ticket: 'disabled-chief-ticket' }
+  });
+  assert.equal(disabled.response.status, 403);
+  assert.equal(pool.users[0].enabled, false);
 });

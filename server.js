@@ -26,6 +26,7 @@ const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { PostgresStateStore } = require('./state-store');
 const { createOsdRouter } = require('./osd/server');
+const { createOsdSsoTicketStore } = require('./osd/sso-tickets');
 const { NotificationsStore } = require('./notifications-store');
 const {
   DEFAULT_BLOCKED_TERMS,
@@ -67,9 +68,16 @@ const {
 
 const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze(DEFAULT_BLOCKED_TERMS.map(({ term }) => term));
 const SECURITY_BLOCKED_TERM_LIMIT = 250;
+const osdSsoTickets = createOsdSsoTicketStore();
 
 function normalizeSecurityBlockedTerms(value) {
   return normalizeBlockedTerms(value, SECURITY_BLOCKED_TERM_LIMIT);
+}
+
+function injectOsdSsoMarkup(html) {
+  if (typeof html !== 'string' || html.includes('data-osd-sso-client')) return html;
+  const script = '<script src="/osd/sso-client.js" data-osd-sso-client defer></script>';
+  return html.includes('</body>') ? html.replace('</body>', `${script}</body>`) : `${html}${script}`;
 }
 
 function getSecurityBlockedTerms() {
@@ -139,6 +147,21 @@ app.use((req, res, next) => {
 const osdRouter = createOsdRouter({
   getPool: () => postgresPool,
   moderateOutgoingText,
+  consumeMilitarySsoTicket: (ticket) => {
+    const issued = osdSsoTickets.consume(ticket);
+    if (!issued) return null;
+    const person = getUserById(issued.userId);
+    if (!person ||
+        normalizeRank(person.rank) !== 'CIA CHIEF' ||
+        person.approved === false ||
+        person.serviceApproved === false ||
+        person.suspended === true ||
+        person.securityStatus !== 'ACTIVE') return null;
+    return {
+      personnelId: String(person.id || ''),
+      militaryCode: clean(person.publicCode, 100).toUpperCase()
+    };
+  },
   getPersonnel: () => state.cia_users.map((person) => ({
     id: person.id,
     militaryCode: clean(person.publicCode, 100).toUpperCase(),
@@ -152,7 +175,7 @@ const osdRouter = createOsdRouter({
 });
 const osdPublicFiles = new Set([
   '/', '/index.html', '/styles.css', '/app.js', '/qr-code.js',
-  '/share.html', '/share.css', '/share.js'
+  '/share.html', '/share.css', '/share.js', '/sso-client.js'
 ]);
 const osdStatic = express.static(path.join(__dirname, 'osd'), { index: 'index.html' });
 app.use('/osd', (req, res, next) => {
@@ -219,7 +242,7 @@ app.get(['/', '/index.html'], (req, res) => {
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
     return res.status(200).type('html').send(
-      injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))))
+      injectOsdSsoMarkup(injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml))))))
     );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
@@ -2251,6 +2274,23 @@ function requireAuthenticatedUser(socket) {
   if (!user || user.suspended || user.securityStatus !== 'ACTIVE' || user.approved === false) return null;
   return user;
 }
+
+io.on('connection', (socket) => {
+  socket.on('osd:sso:issue', (payload, callback) => {
+    if (typeof callback !== 'function') return;
+    const actor = requireAuthenticatedUser(socket);
+    if (!actor ||
+        normalizeRank(actor.rank) !== 'CIA CHIEF' ||
+        actor.serviceApproved === false) {
+      return callback({ ok: false, message: 'سجّل الدخول بحساب CIA CHIEF نشط عبر بوابة CIA أولاً.' });
+    }
+    try {
+      return callback({ ok: true, ticket: osdSsoTickets.issue(actor.id) });
+    } catch (error) {
+      return callback({ ok: false, message: error.message || 'تعذر بدء دخول OSD الآمن.' });
+    }
+  });
+});
 
 function serviceError(cb, user) {
   if (!user) {
