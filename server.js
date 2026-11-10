@@ -11467,7 +11467,9 @@ io.on('connection', (socket) => {
     getStore: () => wantedPersonsStore,
     getState: () => state,
     requireUser: () => requireSocketUser(socket),
-    isLeadership
+    isLeadership,
+    isPrimaryChief: isChief,
+    rankLabel
   });
 });
 
