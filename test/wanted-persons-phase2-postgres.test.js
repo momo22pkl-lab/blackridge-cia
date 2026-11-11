@@ -27,6 +27,7 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
   });
 
   const store = new WantedPersonsStore(pool, { makeId: (prefix) => prefix + '-' + crypto.randomUUID() });
+  const refreshedStore = new WantedPersonsStore(pool);
   await store.initialize();
   await store.initialize();
   const before = await pool.query('SELECT COUNT(*)::int AS total FROM blackridge_wanted_persons');
@@ -47,14 +48,26 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     actor: { id: 'test-investigator-1' }
   });
   assert.equal(savedPerson.ok, true);
-  const reopenedPerson = await store.get(savedPerson.person.id);
+  const reopenedPerson = await refreshedStore.get(savedPerson.person.id);
   assert.equal(reopenedPerson.fullName, 'شخصية خيالية للاختبار');
+  assert.equal(reopenedPerson.createdByUserId, 'test-investigator-1');
   const updatedPerson = await store.save({
-    person: { ...reopenedPerson, fullName: 'شخصية خيالية معدلة للاختبار' },
+    person: { ...reopenedPerson, fullName: 'تعديل غير مصرح' },
     actor: { id: 'test-investigator-2' }
   });
-  assert.equal(updatedPerson.ok, true);
-  assert.equal((await store.get(savedPerson.person.id)).fullName, 'شخصية خيالية معدلة للاختبار');
+  assert.equal(updatedPerson.ok, false);
+  assert.equal((await refreshedStore.get(savedPerson.person.id)).fullName, 'شخصية خيالية للاختبار');
+  const ownerUpdatedPerson = await store.save({
+    person: { ...reopenedPerson, fullName: 'تعديل صاحب الملف' },
+    actor: { id: 'test-investigator-1' }
+  });
+  assert.equal(ownerUpdatedPerson.ok, true);
+  const chiefUpdatedPerson = await store.save({
+    person: { ...ownerUpdatedPerson.person, fullName: 'شخصية خيالية معدلة للاختبار' },
+    actor: { id: 'test-primary-chief', canManageAll: true }
+  });
+  assert.equal(chiefUpdatedPerson.ok, true);
+  assert.equal((await refreshedStore.get(savedPerson.person.id)).fullName, 'شخصية خيالية معدلة للاختبار');
 
   const fileBytes = Buffer.from('%PDF-1.4\nFictional RP test evidence\n%%EOF\n');
   const addedEvidence = await store.saveEvidence({
@@ -93,8 +106,26 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     }
   });
   assert.equal(portrait.ok, true);
-  const imageBoard = await store.board(savedPerson.person.id);
+  const imageBoard = await refreshedStore.board(savedPerson.person.id);
   assert.equal(imageBoard.evidence.find((item) => item.id === portrait.evidence.id).thumbnailData, 'data:image/jpeg;base64,' + portraitBytes.toString('base64'));
+  assert.equal(imageBoard.evidence.find((item) => item.id === portrait.evidence.id).createdByUserId, 'test-investigator-1');
+  const deniedEvidenceEdit = await store.saveEvidence({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-investigator-2' },
+    evidence: { ...addedEvidence.evidence, id: addedEvidence.evidence.id, title: 'تعديل غير مصرح' }
+  });
+  assert.equal(deniedEvidenceEdit.ok, false);
+  const chiefEvidenceEdit = await store.saveEvidence({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-primary-chief', canManageAll: true },
+    evidence: { ...addedEvidence.evidence, id: addedEvidence.evidence.id, title: 'دليل بعد مراجعة القائد' }
+  });
+  assert.equal(chiefEvidenceEdit.ok, true);
+  const deniedEvidenceDelete = await store.deleteEvidence({
+    personId: savedPerson.person.id, evidenceId: addedEvidence.evidence.id,
+    actor: { id: 'test-investigator-2' }
+  });
+  assert.equal(deniedEvidenceDelete.ok, false);
 
   const loadedFile = await store.evidenceFile({ personId: savedPerson.person.id, evidenceId: addedEvidence.evidence.id });
   assert.equal(Buffer.from(loadedFile.data, 'base64').toString(), fileBytes.toString());
@@ -106,12 +137,37 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     note: { title: 'ملاحظة تمثيلية', body: 'نص ملاحظة للاختبار فقط.', caseId: 'CASE-RP-TEST-01' }
   });
   assert.equal(addedNote.ok, true);
+  assert.equal(addedNote.note.createdByUserId, 'test-investigator-2');
+  const deniedNoteEdit = await store.saveNote({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-investigator-1' },
+    note: { ...addedNote.note, title: 'تعديل غير مصرح' }
+  });
+  assert.equal(deniedNoteEdit.ok, false);
   const editedNote = await store.saveNote({
     personId: savedPerson.person.id,
     actor: { id: 'test-investigator-2' },
     note: { ...addedNote.note, title: 'ملاحظة معدلة', body: 'تم التعديل في قاعدة الاختبار.' }
   });
   assert.equal(editedNote.ok, true);
+  const chiefEditedNote = await store.saveNote({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-primary-chief', canManageAll: true },
+    note: { ...editedNote.note, title: 'ملاحظة راجعها القائد' }
+  });
+  assert.equal(chiefEditedNote.ok, true);
+  const chiefTestNote = await store.saveNote({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-investigator-1' },
+    note: { title: 'ملاحظة للحذف بواسطة القائد', body: 'اختبار صلاحية القائد الرئيس.', caseId: '' }
+  });
+  assert.equal(chiefTestNote.ok, true);
+  const chiefNoteDelete = await store.deleteNote({
+    personId: savedPerson.person.id,
+    noteId: chiefTestNote.note.id,
+    actor: { id: 'test-primary-chief', canManageAll: true }
+  });
+  assert.equal(chiefNoteDelete.ok, true);
 
   const addedEvent = await store.addTimelineEvent({
     personId: savedPerson.person.id,
@@ -124,8 +180,27 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     }
   });
   assert.equal(addedEvent.ok, true);
+  assert.equal(addedEvent.event.actorUserId, 'test-investigator-1');
+  assert.ok(addedEvent.event.createdAt);
+  const deniedTimelineEdit = await store.saveTimelineEvent({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-investigator-2' },
+    event: { ...addedEvent.event, title: 'تعديل غير مصرح' }
+  });
+  assert.equal(deniedTimelineEdit.ok, false);
+  const chiefTimelineEdit = await store.saveTimelineEvent({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-primary-chief', canManageAll: true },
+    event: { ...addedEvent.event, title: 'حدث بعد مراجعة القائد' }
+  });
+  assert.equal(chiefTimelineEdit.ok, true);
+  const deniedTimelineDelete = await store.deleteTimelineEvent({
+    personId: savedPerson.person.id, eventId: addedEvent.event.id,
+    actor: { id: 'test-investigator-2' }
+  });
+  assert.equal(deniedTimelineDelete.ok, false);
 
-  const linkedBoard = await store.board(savedPerson.person.id);
+  const linkedBoard = await refreshedStore.board(savedPerson.person.id);
   assert.equal(linkedBoard.evidence.length, 2);
   assert.equal(linkedBoard.notes.length, 1);
   assert.equal(linkedBoard.timeline.length, 1);
@@ -136,13 +211,13 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
 
   const unlinkedEvidence = await store.saveEvidence({
     personId: savedPerson.person.id,
-    actor: { id: 'test-investigator-2' },
+    actor: { id: 'test-investigator-1' },
     evidence: { ...addedEvidence.evidence, caseIds: [] }
   });
   assert.equal(unlinkedEvidence.ok, true);
   assert.deepEqual(unlinkedEvidence.evidence.caseIds, []);
-  const unlinkedBoard = await store.board(savedPerson.person.id);
-  assert.ok(unlinkedBoard.audit.some((item) => item.action === 'EVIDENCE_UNLINKED' && item.actorUserId === 'test-investigator-2'));
+  const unlinkedBoard = await refreshedStore.board(savedPerson.person.id);
+  assert.ok(unlinkedBoard.audit.some((item) => item.action === 'EVIDENCE_UNLINKED' && item.actorUserId === 'test-investigator-1'));
 
   const deleted = await store.deleteEvidence({
     personId: savedPerson.person.id,
@@ -151,27 +226,39 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
   });
   assert.equal(deleted.ok, true);
   assert.equal(await store.evidenceFile({ personId: savedPerson.person.id, evidenceId: addedEvidence.evidence.id }), null);
-  const deletedBoard = await store.board(savedPerson.person.id);
+  const deletedBoard = await refreshedStore.board(savedPerson.person.id);
   assert.equal(deletedBoard.evidence.length, 1);
   assert.ok(deletedBoard.audit.some((item) => item.action === 'EVIDENCE_DELETED'));
 
-  const noteDelete = await store.deleteNote({
+  const deniedNoteDelete = await store.deleteNote({
     personId: savedPerson.person.id,
     noteId: addedNote.note.id,
     actor: { id: 'test-investigator-1' }
   });
+  assert.equal(deniedNoteDelete.ok, false);
+  const noteDelete = await store.deleteNote({
+    personId: savedPerson.person.id,
+    noteId: addedNote.note.id,
+    actor: { id: 'test-investigator-2' }
+  });
   assert.equal(noteDelete.ok, true);
-  const finalBoard = await store.board(savedPerson.person.id);
+  const finalBoard = await refreshedStore.board(savedPerson.person.id);
   assert.equal(finalBoard.notes.length, 0);
   assert.ok(finalBoard.audit.some((item) => item.action === 'NOTE_DELETED'));
 
   const deletedPortrait = await store.deleteEvidence({
     personId: savedPerson.person.id,
     evidenceId: portrait.evidence.id,
-    actor: { id: 'test-investigator-1' }
+    actor: { id: 'test-primary-chief', canManageAll: true }
   });
   assert.equal(deletedPortrait.ok, true);
-  assert.equal((await store.board(savedPerson.person.id)).evidence.length, 0);
+  assert.equal((await refreshedStore.board(savedPerson.person.id)).evidence.length, 0);
+  const deletedTimeline = await store.deleteTimelineEvent({
+    personId: savedPerson.person.id,
+    eventId: addedEvent.event.id,
+    actor: { id: 'test-primary-chief', canManageAll: true }
+  });
+  assert.equal(deletedTimeline.ok, true);
 
   const stateStore = new PostgresStateStore(pool);
   const initialState = {
@@ -192,4 +279,19 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
   assert.equal(restoredState.cia_cases[0].caseNumber, 'CASE-RP-TEST-01');
   assert.equal(restoredState.cia_cases[0].status, 'CLOSED');
   assert.equal(restoredState.cia_cases[0].finalDecision, 'قرار إغلاق تمثيلي');
+
+  const deletedReport = await store.deletePerson({
+    personId: savedPerson.person.id,
+    actor: { id: 'test-primary-chief', canManageAll: true }
+  });
+  assert.equal(deletedReport.ok, true);
+  assert.equal(await refreshedStore.get(savedPerson.person.id), null);
+  assert.equal(await refreshedStore.board(savedPerson.person.id), null);
+  for (const table of [
+    'blackridge_wanted_evidence', 'blackridge_wanted_notes',
+    'blackridge_wanted_timeline', 'blackridge_wanted_persons_audit'
+  ]) {
+    const result = await pool.query('SELECT COUNT(*)::int AS total FROM ' + table + ' WHERE person_id = $1', [savedPerson.person.id]);
+    assert.equal(result.rows[0].total, 0, table + ' should be removed with its report');
+  }
 });

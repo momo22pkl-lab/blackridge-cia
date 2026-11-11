@@ -17,13 +17,16 @@ const SCHEMA_SQL = [
   'ALTER TABLE blackridge_wanted_persons_audit ADD COLUMN IF NOT EXISTS entity_type TEXT NOT NULL DEFAULT \'PERSON\'',
   'ALTER TABLE blackridge_wanted_persons_audit ADD COLUMN IF NOT EXISTS entity_id TEXT NOT NULL DEFAULT \'\'',
   "ALTER TABLE blackridge_wanted_persons_audit ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb",
-  "DO $$ DECLARE current_definition TEXT; BEGIN LOCK TABLE blackridge_wanted_persons_audit IN SHARE ROW EXCLUSIVE MODE; SELECT pg_get_constraintdef(oid) INTO current_definition FROM pg_constraint WHERE conrelid = 'blackridge_wanted_persons_audit'::regclass AND conname = 'blackridge_wanted_persons_audit_action_check'; IF current_definition IS NULL THEN ALTER TABLE blackridge_wanted_persons_audit ADD CONSTRAINT blackridge_wanted_persons_audit_action_check CHECK (action IN ('CREATED', 'UPDATED', 'EVIDENCE_CREATED', 'EVIDENCE_UPDATED', 'EVIDENCE_DELETED', 'EVIDENCE_LINKED', 'EVIDENCE_UNLINKED', 'NOTE_CREATED', 'NOTE_UPDATED', 'NOTE_DELETED', 'TIMELINE_CREATED')); ELSIF POSITION('EVIDENCE_CREATED' IN current_definition) = 0 THEN ALTER TABLE blackridge_wanted_persons_audit DROP CONSTRAINT blackridge_wanted_persons_audit_action_check; ALTER TABLE blackridge_wanted_persons_audit ADD CONSTRAINT blackridge_wanted_persons_audit_action_check CHECK (action IN ('CREATED', 'UPDATED', 'EVIDENCE_CREATED', 'EVIDENCE_UPDATED', 'EVIDENCE_DELETED', 'EVIDENCE_LINKED', 'EVIDENCE_UNLINKED', 'NOTE_CREATED', 'NOTE_UPDATED', 'NOTE_DELETED', 'TIMELINE_CREATED')); END IF; END $$",
+  "DO $$ DECLARE current_definition TEXT; BEGIN LOCK TABLE blackridge_wanted_persons_audit IN SHARE ROW EXCLUSIVE MODE; SELECT pg_get_constraintdef(oid) INTO current_definition FROM pg_constraint WHERE conrelid = 'blackridge_wanted_persons_audit'::regclass AND conname = 'blackridge_wanted_persons_audit_action_check'; IF current_definition IS NULL THEN ALTER TABLE blackridge_wanted_persons_audit ADD CONSTRAINT blackridge_wanted_persons_audit_action_check CHECK (action IN ('CREATED', 'UPDATED', 'EVIDENCE_CREATED', 'EVIDENCE_UPDATED', 'EVIDENCE_DELETED', 'EVIDENCE_LINKED', 'EVIDENCE_UNLINKED', 'NOTE_CREATED', 'NOTE_UPDATED', 'NOTE_DELETED', 'TIMELINE_CREATED', 'TIMELINE_UPDATED', 'TIMELINE_DELETED')); ELSIF POSITION('TIMELINE_UPDATED' IN current_definition) = 0 THEN ALTER TABLE blackridge_wanted_persons_audit DROP CONSTRAINT blackridge_wanted_persons_audit_action_check; ALTER TABLE blackridge_wanted_persons_audit ADD CONSTRAINT blackridge_wanted_persons_audit_action_check CHECK (action IN ('CREATED', 'UPDATED', 'EVIDENCE_CREATED', 'EVIDENCE_UPDATED', 'EVIDENCE_DELETED', 'EVIDENCE_LINKED', 'EVIDENCE_UNLINKED', 'NOTE_CREATED', 'NOTE_UPDATED', 'NOTE_DELETED', 'TIMELINE_CREATED', 'TIMELINE_UPDATED', 'TIMELINE_DELETED')); END IF; END $$",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_persons_audit_person_created ON blackridge_wanted_persons_audit (person_id, created_at DESC)',
   "CREATE TABLE IF NOT EXISTS blackridge_wanted_evidence (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, category TEXT NOT NULL CHECK (category IN ('IMAGE', 'VEHICLE', 'LOCATION', 'PERSON', 'DOCUMENT', 'OTHER')), title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', recorded_at TIMESTAMPTZ NOT NULL, case_ids TEXT[] NOT NULL DEFAULT '{}'::text[], content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain')), file_name TEXT NOT NULL, file_size INTEGER NOT NULL CHECK (file_size > 0 AND file_size <= 2097152), file_sha256 TEXT NOT NULL, file_data BYTEA NOT NULL, thumbnail_data BYTEA, created_by_user_id TEXT NOT NULL, updated_by_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_evidence_person_created ON blackridge_wanted_evidence (person_id, created_at DESC)',
   "CREATE TABLE IF NOT EXISTS blackridge_wanted_notes (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, case_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, body TEXT NOT NULL, created_by_user_id TEXT NOT NULL, updated_by_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_notes_person_created ON blackridge_wanted_notes (person_id, created_at DESC)',
-  "CREATE TABLE IF NOT EXISTS blackridge_wanted_timeline (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, case_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', occurred_at TIMESTAMPTZ NOT NULL, actor_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  "CREATE TABLE IF NOT EXISTS blackridge_wanted_timeline (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, case_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', occurred_at TIMESTAMPTZ NOT NULL, actor_user_id TEXT NOT NULL, updated_by_user_id TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  "ALTER TABLE blackridge_wanted_timeline ADD COLUMN IF NOT EXISTS updated_by_user_id TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE blackridge_wanted_timeline ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+  "UPDATE blackridge_wanted_timeline SET updated_by_user_id = actor_user_id WHERE updated_by_user_id = ''",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_timeline_person_occurred ON blackridge_wanted_timeline (person_id, occurred_at DESC)'
 ];
 
@@ -67,6 +70,8 @@ function normalizeRow(row) {
     caseIds: Array.isArray(row.case_ids) ? row.case_ids : parseArray(row.case_ids),
     notes: row.notes || '',
     details: row.details || '',
+    createdByUserId: row.created_by_user_id,
+    updatedByUserId: row.updated_by_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -142,7 +147,9 @@ function normalizeTimelineEvent(row) {
     body: row.body || '',
     occurredAt: row.occurred_at,
     actorUserId: row.actor_user_id,
-    createdAt: row.created_at
+    updatedByUserId: row.updated_by_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -170,7 +177,7 @@ async function insertAudit(client, { makeId, personId, actorId, action, entityTy
 
 const EVIDENCE_SELECT = 'id, person_id, category, title, description, source, recorded_at, case_ids, content_type, file_name, file_size, file_sha256, thumbnail_data, created_by_user_id, updated_by_user_id, created_at, updated_at';
 const NOTE_SELECT = 'id, person_id, case_id, title, body, created_by_user_id, updated_by_user_id, created_at, updated_at';
-const TIMELINE_SELECT = 'id, person_id, case_id, title, body, occurred_at, actor_user_id, created_at';
+const TIMELINE_SELECT = 'id, person_id, case_id, title, body, occurred_at, actor_user_id, updated_by_user_id, created_at, updated_at';
 const AUDIT_SELECT = 'id, person_id, actor_user_id, action, entity_type, entity_id, changed_fields, metadata, created_at';
 
 function buildListFilters(filters = {}) {
@@ -296,8 +303,11 @@ class WantedPersonsStore {
         let action = 'CREATED';
         let result;
         if (id) {
-          const existing = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [id]);
+          const existing = await client.query('SELECT id, created_by_user_id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [id]);
           if (!existing.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+          if (existing.rows[0].created_by_user_id !== actorId && actor.canManageAll !== true) {
+            return { ok: false, message: 'يمكن تعديل هذا الملف لمنشئه أو للقائد الرئيس فقط.' };
+          }
           action = 'UPDATED';
           result = await client.query(
             'UPDATE blackridge_wanted_persons SET file_number = $2, full_name = $3, aliases = $4::jsonb, image_url = $5, severity = $6, status = $7, case_ids = $8::text[], notes = $9, details = $10, updated_by_user_id = $11, updated_at = NOW() WHERE id = $1 RETURNING ' + SELECT_COLUMNS,
@@ -319,6 +329,29 @@ class WantedPersonsStore {
       if (error && error.code === '23505') return { ok: false, message: 'رقم الملف مستخدم بالفعل.' };
       throw error;
     }
+  }
+
+  async deletePerson({ personId, actor = {} } = {}) {
+    const id = clean(personId, 120);
+    const actorId = clean(actor.id, 120);
+    if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
+    if (!id || !/^[A-Za-z0-9._:-]{1,120}$/.test(id)) return { ok: false, message: 'معرّف الملف غير صالح.' };
+    return this.withTransaction(async (client) => {
+      const existing = await client.query(
+        'SELECT id, created_by_user_id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE',
+        [id]
+      );
+      if (!existing.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+      if (existing.rows[0].created_by_user_id !== actorId && actor.canManageAll !== true) {
+        return { ok: false, message: 'يمكن حذف هذا الملف لمنشئه أو للقائد الرئيس فقط.' };
+      }
+      await client.query('DELETE FROM blackridge_wanted_evidence WHERE person_id = $1', [id]);
+      await client.query('DELETE FROM blackridge_wanted_notes WHERE person_id = $1', [id]);
+      await client.query('DELETE FROM blackridge_wanted_timeline WHERE person_id = $1', [id]);
+      await client.query('DELETE FROM blackridge_wanted_persons_audit WHERE person_id = $1', [id]);
+      await client.query('DELETE FROM blackridge_wanted_persons WHERE id = $1', [id]);
+      return { ok: true, id };
+    });
   }
 
   async board(personId) {
@@ -400,11 +433,14 @@ class WantedPersonsStore {
         let previous = null;
         if (id) {
           const existing = await client.query(
-            'SELECT id, category, title, description, source, recorded_at, case_ids, content_type, file_name, file_size, file_sha256, thumbnail_data FROM blackridge_wanted_evidence WHERE id = $1 AND person_id = $2 FOR UPDATE',
+            'SELECT id, created_by_user_id, category, title, description, source, recorded_at, case_ids, content_type, file_name, file_size, file_sha256, thumbnail_data FROM blackridge_wanted_evidence WHERE id = $1 AND person_id = $2 FOR UPDATE',
             [id, personKey]
           );
           previous = existing.rows?.[0] || null;
           if (!previous) return { ok: false, message: 'الدليل غير موجود في هذا الملف.' };
+          if (previous.created_by_user_id !== actorId && actor.canManageAll !== true) {
+            return { ok: false, message: 'يمكن تعديل هذا الدليل لمنشئه أو للقائد الرئيس فقط.' };
+          }
         }
 
         const digest = fileData ? crypto.createHash('sha256').update(fileData).digest('hex') : '';
@@ -471,10 +507,13 @@ class WantedPersonsStore {
     if (!personKey || !id) return { ok: false, message: 'معرّف الدليل غير صالح.' };
     return this.withTransaction(async (client) => {
       const existing = await client.query(
-        'SELECT id, case_ids FROM blackridge_wanted_evidence WHERE id = $1 AND person_id = $2 FOR UPDATE',
+        'SELECT id, case_ids, created_by_user_id FROM blackridge_wanted_evidence WHERE id = $1 AND person_id = $2 FOR UPDATE',
         [id, personKey]
       );
       if (!existing.rows?.length) return { ok: false, message: 'الدليل غير موجود في هذا الملف.' };
+      if (existing.rows[0].created_by_user_id !== actorId && actor.canManageAll !== true) {
+        return { ok: false, message: 'يمكن حذف هذا الدليل لمنشئه أو للقائد الرئيس فقط.' };
+      }
       const caseIds = Array.isArray(existing.rows[0].case_ids) ? existing.rows[0].case_ids : parseArray(existing.rows[0].case_ids);
       await client.query('DELETE FROM blackridge_wanted_evidence WHERE id = $1 AND person_id = $2', [id, personKey]);
       await insertAudit(client, {
@@ -506,9 +545,12 @@ class WantedPersonsStore {
       let result;
       let changedFields = ['title', 'body', 'caseId'];
       if (id) {
-        const existing = await client.query('SELECT id, case_id, title, body FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
+        const existing = await client.query('SELECT id, created_by_user_id, case_id, title, body FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
         if (!existing.rows?.length) return { ok: false, message: 'الملاحظة غير موجودة في هذا الملف.' };
         const old = existing.rows[0];
+        if (old.created_by_user_id !== actorId && actor.canManageAll !== true) {
+          return { ok: false, message: 'يمكن تعديل هذه الملاحظة لمنشئها أو للقائد الرئيس فقط.' };
+        }
         changedFields = [];
         if (old.title !== title) changedFields.push('title');
         if (old.body !== body) changedFields.push('body');
@@ -538,8 +580,11 @@ class WantedPersonsStore {
     if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
     if (!personKey || !id) return { ok: false, message: 'معرّف الملاحظة غير صالح.' };
     return this.withTransaction(async (client) => {
-      const existing = await client.query('SELECT id FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
+      const existing = await client.query('SELECT id, created_by_user_id FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
       if (!existing.rows?.length) return { ok: false, message: 'الملاحظة غير موجودة في هذا الملف.' };
+      if (existing.rows[0].created_by_user_id !== actorId && actor.canManageAll !== true) {
+        return { ok: false, message: 'يمكن حذف هذه الملاحظة لمنشئها أو للقائد الرئيس فقط.' };
+      }
       await client.query('DELETE FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2', [id, personKey]);
       await insertAudit(client, {
         makeId: this.makeId, personId: personKey, actorId, action: 'NOTE_DELETED',
@@ -550,29 +595,81 @@ class WantedPersonsStore {
   }
 
   async addTimelineEvent({ personId, event = {}, actor = {} } = {}) {
+    return this.saveTimelineEvent({ personId, event, actor });
+  }
+
+  async saveTimelineEvent({ personId, event = {}, actor = {} } = {}) {
     const personKey = clean(personId, 120);
     const actorId = clean(actor.id, 120);
+    const id = clean(event.id, 120);
     const caseId = clean(event.caseId, 120);
     const title = clean(event.title, 200);
     const body = clean(event.body, 4000);
     const occurred = event.occurredAt ? new Date(event.occurredAt) : new Date();
     const occurredAt = Number.isNaN(occurred.getTime()) ? '' : occurred.toISOString();
     if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
-    if (!personKey || title.length < 2 || String(event.title || '').length > 200 || String(event.body || '').length > 4000) return { ok: false, message: 'تحقق من عنوان الحدث وتفاصيله.' };
+    if (!personKey || (id && !/^[A-Za-z0-9._:-]{1,120}$/.test(id)) || title.length < 2 || String(event.title || '').length > 200 || String(event.body || '').length > 4000) return { ok: false, message: 'تحقق من عنوان الحدث وتفاصيله.' };
     if (!occurredAt) return { ok: false, message: 'تاريخ الحدث غير صالح.' };
-    const id = this.makeId('WTIME');
+    const recordId = id || this.makeId('WTIME');
     return this.withTransaction(async (client) => {
       const owner = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
       if (!owner.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
-      const result = await client.query(
-        'INSERT INTO blackridge_wanted_timeline (id, person_id, case_id, title, body, occurred_at, actor_user_id) VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7) RETURNING ' + TIMELINE_SELECT,
-        [id, personKey, caseId, title, body, occurredAt, actorId]
-      );
+      let result;
+      let changedFields = ['title', 'body', 'caseId', 'occurredAt'];
+      if (id) {
+        const existing = await client.query(
+          'SELECT id, actor_user_id, case_id, title, body, occurred_at FROM blackridge_wanted_timeline WHERE id = $1 AND person_id = $2 FOR UPDATE',
+          [id, personKey]
+        );
+        if (!existing.rows?.length) return { ok: false, message: 'الحدث غير موجود في هذا الملف.' };
+        const old = existing.rows[0];
+        if (old.actor_user_id !== actorId && actor.canManageAll !== true) {
+          return { ok: false, message: 'يمكن تعديل هذا الحدث لمنشئه أو للقائد الرئيس فقط.' };
+        }
+        changedFields = [];
+        if (old.title !== title) changedFields.push('title');
+        if (old.body !== body) changedFields.push('body');
+        if (old.case_id !== caseId) changedFields.push('caseId');
+        if (new Date(old.occurred_at).toISOString() !== occurredAt) changedFields.push('occurredAt');
+        result = await client.query(
+          'UPDATE blackridge_wanted_timeline SET case_id = $3, title = $4, body = $5, occurred_at = $6::timestamptz, updated_by_user_id = $7, updated_at = NOW() WHERE id = $1 AND person_id = $2 RETURNING ' + TIMELINE_SELECT,
+          [id, personKey, caseId, title, body, occurredAt, actorId]
+        );
+      } else {
+        result = await client.query(
+          'INSERT INTO blackridge_wanted_timeline (id, person_id, case_id, title, body, occurred_at, actor_user_id, updated_by_user_id) VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7, $7) RETURNING ' + TIMELINE_SELECT,
+          [recordId, personKey, caseId, title, body, occurredAt, actorId]
+        );
+      }
       await insertAudit(client, {
-        makeId: this.makeId, personId: personKey, actorId, action: 'TIMELINE_CREATED',
-        entityType: 'TIMELINE', entityId: id, changedFields: ['title', 'body', 'caseId', 'occurredAt']
+        makeId: this.makeId, personId: personKey, actorId, action: id ? 'TIMELINE_UPDATED' : 'TIMELINE_CREATED',
+        entityType: 'TIMELINE', entityId: recordId, changedFields
       });
       return { ok: true, event: normalizeTimelineEvent(result.rows?.[0]) };
+    });
+  }
+
+  async deleteTimelineEvent({ personId, eventId, actor = {} } = {}) {
+    const personKey = clean(personId, 120);
+    const id = clean(eventId, 120);
+    const actorId = clean(actor.id, 120);
+    if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
+    if (!personKey || !id) return { ok: false, message: 'معرّف الحدث غير صالح.' };
+    return this.withTransaction(async (client) => {
+      const existing = await client.query(
+        'SELECT id, actor_user_id FROM blackridge_wanted_timeline WHERE id = $1 AND person_id = $2 FOR UPDATE',
+        [id, personKey]
+      );
+      if (!existing.rows?.length) return { ok: false, message: 'الحدث غير موجود في هذا الملف.' };
+      if (existing.rows[0].actor_user_id !== actorId && actor.canManageAll !== true) {
+        return { ok: false, message: 'يمكن حذف هذا الحدث لمنشئه أو للقائد الرئيس فقط.' };
+      }
+      await client.query('DELETE FROM blackridge_wanted_timeline WHERE id = $1 AND person_id = $2', [id, personKey]);
+      await insertAudit(client, {
+        makeId: this.makeId, personId: personKey, actorId, action: 'TIMELINE_DELETED',
+        entityType: 'TIMELINE', entityId: id, changedFields: ['record']
+      });
+      return { ok: true, id };
     });
   }
 }

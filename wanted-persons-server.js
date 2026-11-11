@@ -8,7 +8,7 @@ const WANTED_PANE_MARKUP = [
   '<div id="wanted-persons" class="view-pane wanted-persons-page" aria-label="المجرمون المطلوبون">',
   '  <main class="wp-shell" dir="rtl">',
   '    <header class="wp-header">',
-  '      <div><p class="wp-eyebrow">BLACKRIDGE // INTELLIGENCE DIRECTORATE</p><h1>المجرمون المطلوبون</h1><p class="wp-subtitle">فهرس الملفات التحقيقية المصنفة · الوصول مقيد للقيادة · شخصيات BLACKRIDGE CITY RP فقط</p></div>',
+  '      <div><p class="wp-eyebrow">BLACKRIDGE // INTELLIGENCE DIRECTORATE</p><h1>المجرمون المطلوبون</h1><p class="wp-subtitle">ملفات BLACKRIDGE CITY RP · جميع الرتب تشارك بالأدلة والملاحظات · تعديل الملف لمنشئه أو للقائد الرئيس</p></div>',
   '      <div class="wp-header-mark" aria-hidden="true"><span>BR</span><i class="fa-solid fa-user-secret"></i></div>',
   '    </header>',
   '    <div id="wp-status" class="wp-status" role="status" aria-live="polite" hidden></div>',
@@ -25,10 +25,10 @@ const WANTED_PANE_MARKUP = [
   '      <div id="wp-person-grid" class="wp-person-grid"><div class="wp-empty">سجّل الدخول ثم حمّل السجلات.</div></div>',
   '    </section>',
   '    <section id="wp-detail" class="wp-detail" aria-labelledby="wp-detail-title" hidden>',
-  '      <div class="wp-detail-toolbar"><button id="wp-back-button" class="wp-button wp-button-muted" type="button"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> العودة إلى السجل</button><button id="wp-edit-button" class="wp-button wp-button-primary" type="button" hidden>تعديل الملف</button></div>',
+  '      <div class="wp-detail-toolbar"><button id="wp-back-button" class="wp-button wp-button-muted" type="button"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> العودة إلى السجل</button><button id="wp-edit-button" class="wp-button wp-button-primary" type="button" hidden>تعديل الملف</button><button id="wp-delete-button" class="wp-button wp-button-danger" type="button" hidden>حذف الملف</button></div>',
   '      <article class="wp-dossier">',
   '        <div id="wp-profile-photo" class="wp-profile-photo"></div>',
-  '        <div class="wp-profile-main"><p class="wp-kicker">INVESTIGATIVE DOSSIER</p><h2 id="wp-detail-title"></h2><p id="wp-detail-file" class="wp-file-number"></p><div id="wp-detail-badges" class="wp-badges"></div><div class="wp-profile-block"><h3>الأسماء المستعارة</h3><ul id="wp-detail-aliases" class="wp-aliases"></ul></div></div>',
+  '        <div class="wp-profile-main"><p class="wp-kicker">INVESTIGATIVE DOSSIER</p><h2 id="wp-detail-title"></h2><p id="wp-detail-file" class="wp-file-number"></p><div id="wp-detail-badges" class="wp-badges"></div><p id="wp-detail-author" class="wp-record-meta"></p><div class="wp-profile-block"><h3>الأسماء المستعارة</h3><ul id="wp-detail-aliases" class="wp-aliases"></ul></div></div>',
   '      </article>',
   '      <div class="wp-detail-grid">',
   '        <section class="wp-detail-card"><p class="wp-kicker">LINKED CASES</p><h3>القضايا المرتبطة</h3><div id="wp-detail-cases" class="wp-linked-cases"></div></section>',
@@ -41,9 +41,9 @@ const WANTED_PANE_MARKUP = [
   '        </div>',
   '        <div id="wp-board-viewport" class="wp-board-viewport" tabindex="0" aria-label="مساحة لوحة التحقيق التفاعلية">',
   '          <div id="wp-board-world" class="wp-board-world"><svg id="wp-board-edges" class="wp-board-edges" aria-hidden="true"></svg><div id="wp-board-nodes" class="wp-board-nodes"></div></div>',
-  '          <div class="wp-board-hint">اسحب للتحريك · عجلة/قرصان للتكبير · اضغط عنصرًا لعرضه</div>',
+  '          <div id="wp-board-hint" class="wp-board-hint">اسحب للتحريك · عجلة/قرصان للتكبير · اضغط عنصرًا لعرضه</div>',
   '        </div>',
-  '        <div id="wp-board-empty" class="wp-empty" hidden>لا توجد أدلة أو قضايا مرتبطة بعد. أضف سجلات موثقة فقط.</div>',
+  '        <div id="wp-board-empty" class="wp-empty" hidden>لا توجد أدلة أو ملاحظات أو أحداث أو قضايا مرتبطة بهذا الملف بعد.</div>',
   '        <div id="wp-board-selection" class="wp-board-selection" aria-live="polite"><p class="wp-muted">اختر دليلًا أو قضية لعرض التفاصيل.</p></div>',
   '      </section>',
   '      <section id="wp-evidence-editor" class="wp-inline-editor" hidden><form id="wp-evidence-form" class="wp-editor-card">',
@@ -59,15 +59,16 @@ const WANTED_PANE_MARKUP = [
   '        <div class="wp-form-grid"><label>العنوان<input id="wp-note-title" maxlength="200" required></label><label>القضية<select id="wp-note-case"></select></label><label class="wp-form-wide">الملاحظة<textarea id="wp-note-body" maxlength="10000" rows="4" required></textarea></label></div>',
   '        <div class="wp-form-actions"><button class="wp-button wp-button-primary" type="submit">حفظ الملاحظة</button><button id="wp-note-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div>',
   '      </form></section>',
-  '      <section id="wp-timeline-editor" class="wp-inline-editor" hidden><form id="wp-timeline-form" class="wp-editor-card"><p class="wp-kicker">TIMELINE ENTRY</p><h3>إضافة حدث زمني</h3>',
+  '      <section id="wp-timeline-editor" class="wp-inline-editor" hidden><form id="wp-timeline-form" class="wp-editor-card"><p class="wp-kicker">TIMELINE ENTRY</p><h3 id="wp-event-editor-title">إضافة حدث زمني</h3><input id="wp-event-id" type="hidden">',
   '        <div class="wp-form-grid"><label>عنوان الحدث<input id="wp-event-title" maxlength="200" required></label><label>القضية<select id="wp-event-case"></select></label><label>وقت الحدث<input id="wp-event-date" type="datetime-local" required></label><label class="wp-form-wide">التفاصيل<textarea id="wp-event-body" maxlength="4000" rows="3"></textarea></label></div>',
-  '        <div class="wp-form-actions"><button class="wp-button wp-button-primary" type="submit">إضافة إلى الخط الزمني</button><button id="wp-event-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div>',
+  '        <div class="wp-form-actions"><button id="wp-event-submit" class="wp-button wp-button-primary" type="submit">إضافة إلى الخط الزمني</button><button id="wp-event-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div>',
   '      </form></section>',
   '      <section id="wp-case-editor" class="wp-inline-editor" hidden><form id="wp-case-form" class="wp-editor-card"><p class="wp-kicker">CIA CASE RECORD</p><h3>تحديث القضية المرتبطة</h3><input id="wp-case-id" type="hidden">',
   '        <div class="wp-form-grid"><label>عنوان القضية<input id="wp-case-title" maxlength="200" required></label><label>الحالة<input id="wp-case-status" maxlength="100" required></label><label>التصنيف<input id="wp-case-classification" maxlength="100"></label><label class="wp-form-wide">التفاصيل<textarea id="wp-case-description" maxlength="10000" rows="4"></textarea></label><label class="wp-form-wide">القرار النهائي<textarea id="wp-case-decision" maxlength="2000" rows="3" placeholder="يُترك فارغًا ما دامت القضية مفتوحة"></textarea></label></div>',
   '        <div class="wp-form-actions"><button class="wp-button wp-button-primary" type="submit">حفظ القضية</button><button id="wp-case-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div>',
   '      </form></section>',
   '      <div class="wp-detail-grid wp-board-records">',
+  '        <section class="wp-detail-card"><p class="wp-kicker">EVIDENCE</p><h3>الأدلة</h3><div id="wp-evidence-list" class="wp-record-list"></div></section>',
   '        <section class="wp-detail-card"><p class="wp-kicker">INVESTIGATOR NOTES</p><h3>ملاحظات المحققين</h3><div id="wp-notes-list" class="wp-record-list"></div></section>',
   '        <section class="wp-detail-card"><p class="wp-kicker">CHRONOLOGY</p><h3>السجل الزمني</h3><div id="wp-timeline-list" class="wp-record-list"></div></section>',
   '        <section class="wp-detail-card wp-detail-wide"><p class="wp-kicker">AUDIT TRAIL</p><h3>سجل التدقيق</h3><div id="wp-audit-list" class="wp-record-list"></div></section>',
@@ -182,6 +183,7 @@ function registerWantedPersonsSocket(socket, context = {}) {
   const getState = () => typeof context.getState === 'function' ? context.getState() : {};
   const requireUser = () => typeof context.requireUser === 'function' ? context.requireUser(socket) : null;
   const isLeadership = (user) => typeof context.isLeadership === 'function' && context.isLeadership(user) === true;
+  const isPrimaryChief = (user) => typeof context.isPrimaryChief === 'function' && context.isPrimaryChief(user) === true;
   const reply = (callback, result) => {
     if (typeof callback === 'function') callback(result);
   };
@@ -190,12 +192,26 @@ function registerWantedPersonsSocket(socket, context = {}) {
     available: false,
     message: 'قسم المطلوبين غير متاح لأن مخزن PostgreSQL غير مهيأ. تحقق من إعداد DATABASE_URL وسجل تشغيل الخادم؛ لا يوجد حفظ محلي بديل.'
   });
-  const denied = () => ({ ok: false, message: 'يتطلب هذا القسم صلاحية القيادة.' });
+  const recordPermissions = (record, user, primaryChief) => {
+    const canManage = primaryChief || String(record?.createdByUserId || '') === String(user?.id || '');
+    return { canEdit: canManage, canDelete: canManage, canContribute: true, canManageAll: primaryChief };
+  };
+  const profileFor = (userId) => {
+    const state = getState();
+    const users = Array.isArray(state?.cia_users) ? state.cia_users : [];
+    const user = users.find((item) => String(item.id) === String(userId));
+    const rank = clean(typeof context.rankLabel === 'function' ? context.rankLabel(user?.rank) : user?.rank, 100);
+    return {
+      name: clean(user?.identity?.fullName || user?.name || user?.fullName || '', 120) || 'غير معروف',
+      code: clean(user?.publicCode || '', 100) || 'غير متاح',
+      rank: rank || 'غير محددة'
+    };
+  };
+  const storeActor = (user, primaryChief) => ({ ...user, canManageAll: primaryChief });
   const access = () => {
     const actor = requireUser();
     if (!actor) return { error: { ok: false, message: 'يلزم تسجيل الدخول بصلاحية فعالة.' } };
-    if (!isLeadership(actor)) return { actor, error: denied() };
-    return { actor, error: null };
+    return { actor, isPrimaryChief: isPrimaryChief(actor), isLeadership: isLeadership(actor), error: null };
   };
 
   socket.on('wanted-persons:list', async (payload, callback) => {
@@ -220,9 +236,19 @@ function registerWantedPersonsSocket(socket, context = {}) {
         total: result.total,
         limit: result.limit,
         offset: result.offset,
-        items: (result.items || []).map(cardPerson),
+        items: (result.items || []).map((person) => {
+          const author = profileFor(person.createdByUserId);
+          return {
+            ...cardPerson(person),
+            createdByName: author.name,
+            createdByCode: author.code,
+            createdByRank: author.rank,
+            createdAt: person.createdAt,
+            permissions: recordPermissions(person, auth.actor, auth.isPrimaryChief)
+          };
+        }),
         availableCases: availableCases(getState()),
-        permissions: { canManage: true }
+        permissions: { canCreate: auth.isLeadership, canContribute: true, canManageAll: auth.isPrimaryChief }
       });
     } catch (error) {
       logStoreFailure('list', error);
@@ -240,7 +266,24 @@ function registerWantedPersonsSocket(socket, context = {}) {
     try {
       const person = await store.get(id);
       if (!person) return reply(callback, { ok: false, message: 'ملف المطلوب غير موجود.' });
-      return reply(callback, { ok: true, person, relatedCases: casesForPerson(person.caseIds, getState()), permissions: { canManage: true } });
+      const author = profileFor(person.createdByUserId);
+      const safePerson = { ...person };
+      delete safePerson.createdByUserId;
+      delete safePerson.updatedByUserId;
+      return reply(callback, {
+        ok: true,
+        person: {
+          ...safePerson,
+          createdByName: author.name,
+          createdByCode: author.code,
+          createdByRank: author.rank
+        },
+        relatedCases: casesForPerson(person.caseIds, getState()),
+        permissions: {
+          ...recordPermissions(person, auth.actor, auth.isPrimaryChief),
+          canCreate: auth.isLeadership
+        }
+      });
     } catch (error) {
       logStoreFailure('detail', error);
       return reply(callback, { ok: false, message: 'تعذر تحميل الملف التحقيقي.' });
@@ -259,27 +302,73 @@ function registerWantedPersonsSocket(socket, context = {}) {
       if (!board) return reply(callback, { ok: false, message: 'ملف المطلوب غير موجود.' });
       const caseRows = investigationCases(getState());
       const byCase = new Map(caseRows.map((item) => [item.id, item]));
-      const users = Array.isArray(getState()?.cia_users) ? getState().cia_users : [];
-      const byUser = new Map(users.map((user) => [String(user.id), user]));
+      const person = await store.get(personId);
+      if (!person) return reply(callback, { ok: false, message: 'ملف المطلوب غير موجود.' });
+      const permissions = recordPermissions(person, auth.actor, auth.isPrimaryChief);
       const decorate = (row) => ({
         ...row,
         relatedCases: (row.caseIds || (row.caseId ? [row.caseId] : [])).map((id) => byCase.get(id)).filter(Boolean)
       });
-      board.evidence = (board.evidence || []).map(decorate);
-      board.notes = (board.notes || []).map((row) => ({
-        ...decorate(row),
-        createdByName: clean(byUser.get(String(row.createdByUserId))?.identity?.fullName || byUser.get(String(row.createdByUserId))?.name || row.createdByUserId, 120),
-        updatedByName: clean(byUser.get(String(row.updatedByUserId))?.identity?.fullName || byUser.get(String(row.updatedByUserId))?.name || row.updatedByUserId, 120)
-      }));
-      board.timeline = (board.timeline || []).map((row) => ({
-        ...decorate(row),
-        actorName: clean(byUser.get(String(row.actorUserId))?.identity?.fullName || byUser.get(String(row.actorUserId))?.name || row.actorUserId, 120)
-      }));
-      board.audit = (board.audit || []).map((entry) => {
-        const user = byUser.get(String(entry.actorUserId));
-        return { ...entry, actorName: clean(user?.identity?.fullName || user?.name || user?.publicCode || entry.actorUserId, 120) };
+      board.evidence = (board.evidence || []).map((row) => {
+        const author = profileFor(row.createdByUserId);
+        const canManage = auth.isPrimaryChief || String(row.createdByUserId || '') === String(auth.actor.id);
+        const visible = { ...row };
+        delete visible.createdByUserId;
+        delete visible.updatedByUserId;
+        return {
+          ...decorate(visible),
+          createdByName: author.name,
+          createdByCode: author.code,
+          createdByRank: author.rank,
+          permissions: { canEdit: canManage, canDelete: canManage }
+        };
       });
-      return reply(callback, { ok: true, ...board, availableCases: caseRows, permissions: { canManage: true } });
+      board.notes = (board.notes || []).map((row) => {
+        const author = profileFor(row.createdByUserId);
+        const editor = profileFor(row.updatedByUserId);
+        const canManage = auth.isPrimaryChief || String(row.createdByUserId || '') === String(auth.actor.id);
+        const visible = { ...row };
+        delete visible.createdByUserId;
+        delete visible.updatedByUserId;
+        return {
+          ...decorate(visible),
+          createdByName: author.name,
+          createdByCode: author.code,
+          createdByRank: author.rank,
+          updatedByName: editor.name,
+          updatedByCode: editor.code,
+          updatedByRank: editor.rank,
+          permissions: { canEdit: canManage, canDelete: canManage }
+        };
+      });
+      board.timeline = (board.timeline || []).map((row) => {
+        const author = profileFor(row.actorUserId);
+        const editor = profileFor(row.updatedByUserId || row.actorUserId);
+        const canManage = auth.isPrimaryChief || String(row.actorUserId || '') === String(auth.actor.id);
+        const visible = { ...row };
+        delete visible.actorUserId;
+        delete visible.updatedByUserId;
+        return {
+          ...decorate(visible),
+          actorName: author.name,
+          actorCode: author.code,
+          actorRank: author.rank,
+          updatedByName: editor.name,
+          updatedByCode: editor.code,
+          updatedByRank: editor.rank,
+          permissions: { canEdit: canManage, canDelete: canManage }
+        };
+      });
+      board.audit = (board.audit || []).map((entry) => {
+        const author = profileFor(entry.actorUserId);
+        const visible = { ...entry };
+        delete visible.actorUserId;
+        return { ...visible, actorName: author.name, actorCode: author.code, actorRank: author.rank };
+      });
+      return reply(callback, {
+        ok: true, ...board, availableCases: caseRows,
+        permissions: { ...permissions, canManage: auth.isPrimaryChief, canContribute: true }
+      });
     } catch (error) {
       logStoreFailure('investigation', error);
       return reply(callback, { ok: false, message: 'تعذر تحميل لوحة التحقيق.' });
@@ -307,6 +396,9 @@ function registerWantedPersonsSocket(socket, context = {}) {
       notes: typeof source.notes === 'string' ? source.notes : '',
       details: typeof source.details === 'string' ? source.details : ''
     };
+    if (!person.id && !auth.isLeadership) {
+      return reply(callback, { ok: false, message: 'إنشاء ملفات المطلوبين متاح للقيادة فقط.' });
+    }
     if (imageUrl && !safeImageUrl(imageUrl)) return reply(callback, { ok: false, message: 'رابط الصورة يجب أن يكون HTTPS أو مسارًا محليًا آمنًا.' });
     if (!person.fullName || !person.fileNumber || !aliases || !caseIds) return reply(callback, { ok: false, message: 'أكمل الاسم ورقم الملف والقوائم المطلوبة.' });
     if (caseIds.length) {
@@ -314,12 +406,35 @@ function registerWantedPersonsSocket(socket, context = {}) {
       if (caseIds.some((caseId) => !validIds.has(caseId))) return reply(callback, { ok: false, message: 'يمكن ربط الملف بقضايا موجودة فقط.' });
     }
     try {
-      const result = await store.save({ person, actor: auth.actor });
+      if (person.id) {
+        const existing = await store.get(person.id);
+        if (!existing) return reply(callback, { ok: false, message: 'ملف المطلوب غير موجود.' });
+        if (!auth.isPrimaryChief && String(existing.createdByUserId || '') !== String(auth.actor.id)) {
+          return reply(callback, { ok: false, message: 'يمكن تعديل هذا الملف لمنشئه أو للقائد الرئيس فقط.' });
+        }
+      }
+      const result = await store.save({ person, actor: storeActor(auth.actor, auth.isPrimaryChief) });
       if (!result.ok) return reply(callback, result);
       return reply(callback, { ...result, relatedCases: casesForPerson(result.person.caseIds, getState()) });
     } catch (error) {
       logStoreFailure('save', error);
       return reply(callback, { ok: false, message: 'تعذر حفظ التغييرات في قاعدة البيانات.' });
+    }
+  });
+
+  socket.on('wanted-persons:delete', async (payload, callback) => {
+    const auth = access();
+    if (auth.error) return reply(callback, auth.error);
+    const store = getStore();
+    if (!store || typeof store.deletePerson !== 'function') return reply(callback, unavailable());
+    try {
+      return reply(callback, await store.deletePerson({
+        personId: clean(payload?.id, 120),
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
+      }));
+    } catch (error) {
+      logStoreFailure('delete', error);
+      return reply(callback, { ok: false, message: 'تعذر حذف الملف التحقيقي من قاعدة البيانات.' });
     }
   });
 
@@ -336,7 +451,7 @@ function registerWantedPersonsSocket(socket, context = {}) {
     const validIds = new Set(availableCases(getState()).map((item) => item.id));
     if (caseIds.some((caseId) => !validIds.has(caseId))) return reply(callback, { ok: false, message: 'يمكن ربط الدليل بقضايا موجودة فقط.' });
     try {
-      const result = await store.saveEvidence({ personId, evidence: { ...evidence, caseIds }, actor: auth.actor });
+      const result = await store.saveEvidence({ personId, evidence: { ...evidence, caseIds }, actor: storeActor(auth.actor, auth.isPrimaryChief) });
       return reply(callback, result);
     } catch (error) {
       logStoreFailure('evidence-save', error);
@@ -353,7 +468,7 @@ function registerWantedPersonsSocket(socket, context = {}) {
       const result = await store.deleteEvidence({
         personId: clean(payload?.personId, 120),
         evidenceId: clean(payload?.evidenceId, 120),
-        actor: auth.actor
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
       });
       return reply(callback, result);
     } catch (error) {
@@ -391,7 +506,7 @@ function registerWantedPersonsSocket(socket, context = {}) {
       return reply(callback, await store.saveNote({
         personId: clean(source.personId, 120),
         note: source.note,
-        actor: auth.actor
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
       }));
     } catch (error) {
       logStoreFailure('note-save', error);
@@ -408,7 +523,7 @@ function registerWantedPersonsSocket(socket, context = {}) {
       return reply(callback, await store.deleteNote({
         personId: clean(payload?.personId, 120),
         noteId: clean(payload?.noteId, 120),
-        actor: auth.actor
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
       }));
     } catch (error) {
       logStoreFailure('note-delete', error);
@@ -420,19 +535,39 @@ function registerWantedPersonsSocket(socket, context = {}) {
     const auth = access();
     if (auth.error) return reply(callback, auth.error);
     const store = getStore();
-    if (!store || typeof store.addTimelineEvent !== 'function') return reply(callback, unavailable());
+    if (!store || (typeof store.saveTimelineEvent !== 'function' && typeof store.addTimelineEvent !== 'function')) return reply(callback, unavailable());
     const source = payload && typeof payload === 'object' ? payload : {};
     const caseId = clean(source.event?.caseId, 120);
     if (caseId && !availableCases(getState()).some((item) => item.id === caseId)) return reply(callback, { ok: false, message: 'اختر قضية موجودة أو اترك الحقل فارغًا.' });
     try {
-      return reply(callback, await store.addTimelineEvent({
+      const saveEvent = typeof store.saveTimelineEvent === 'function'
+        ? store.saveTimelineEvent.bind(store)
+        : store.addTimelineEvent.bind(store);
+      return reply(callback, await saveEvent({
         personId: clean(source.personId, 120),
         event: source.event,
-        actor: auth.actor
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
       }));
     } catch (error) {
       logStoreFailure('timeline-add', error);
       return reply(callback, { ok: false, message: 'تعذر إضافة الحدث إلى السجل الزمني.' });
+    }
+  });
+
+  socket.on('wanted-persons:timeline:delete', async (payload, callback) => {
+    const auth = access();
+    if (auth.error) return reply(callback, auth.error);
+    const store = getStore();
+    if (!store || typeof store.deleteTimelineEvent !== 'function') return reply(callback, unavailable());
+    try {
+      return reply(callback, await store.deleteTimelineEvent({
+        personId: clean(payload?.personId, 120),
+        eventId: clean(payload?.eventId, 120),
+        actor: storeActor(auth.actor, auth.isPrimaryChief)
+      }));
+    } catch (error) {
+      logStoreFailure('timeline-delete', error);
+      return reply(callback, { ok: false, message: 'تعذر حذف الحدث من السجل الزمني.' });
     }
   });
 }

@@ -27,6 +27,7 @@ class FakePostgres {
   constructor() {
     this.rows = new Map();
     this.audit = [];
+    this.deletedTables = [];
     this.backup = null;
     this.sequence = 0;
   }
@@ -48,6 +49,16 @@ class FakePostgres {
       return { rows: [], rowCount: 0 };
     }
     if (/^(create|alter|do)\s/i.test(lower)) return { rows: [], rowCount: 0 };
+    if (lower.startsWith('update blackridge_wanted_timeline set updated_by_user_id')) return { rows: [], rowCount: 0 };
+    if (lower.startsWith('select id, created_by_user_id from blackridge_wanted_persons')) {
+      const row = this.rows.get(params[0]);
+      return { rows: row ? [{ id: row.id, created_by_user_id: row.created_by_user_id }] : [], rowCount: row ? 1 : 0 };
+    }
+    if (lower.startsWith('delete from blackridge_wanted_')) {
+      this.deletedTables.push(lower.split(' ')[2]);
+      if (lower.startsWith('delete from blackridge_wanted_persons where id')) this.rows.delete(params[0]);
+      return { rows: [], rowCount: 1 };
+    }
     if (lower.startsWith('select id from blackridge_wanted_persons where id = $1 for update')) {
       return { rows: this.rows.has(params[0]) ? [{ id: params[0] }] : [], rowCount: this.rows.has(params[0]) ? 1 : 0 };
     }
@@ -149,19 +160,44 @@ test('save persists create and edit atomically, links existing case ids, and aud
   assert.deepEqual(pool.audit[0].changed_fields, ['fileNumber', 'fullName', 'aliases', 'imageUrl', 'severity', 'status', 'caseIds', 'notes', 'details']);
   assert.doesNotMatch(JSON.stringify(pool.audit), /ملاحظة اختبار|تفاصيل اختبار/);
 
-  const updated = await store.save({ person: person({ id: created.person.id, status: 'UNDER_INVESTIGATION', notes: 'ملاحظة محدثة' }), actor: { id: 'leader-2' } });
-  assert.equal(updated.ok, true);
-  assert.equal(updated.person.status, 'UNDER_INVESTIGATION');
-  assert.equal(updated.person.notes, 'ملاحظة محدثة');
-  assert.equal(pool.audit[1].action, 'UPDATED');
+  const deniedUpdate = await store.save({ person: person({ id: created.person.id, status: 'UNDER_INVESTIGATION' }), actor: { id: 'leader-2' } });
+  assert.equal(deniedUpdate.ok, false);
+  const ownerUpdate = await store.save({ person: person({ id: created.person.id, status: 'UNDER_INVESTIGATION', notes: 'ملاحظة محدثة' }), actor: { id: 'leader-1' } });
+  assert.equal(ownerUpdate.ok, true);
+  const chiefUpdate = await store.save({ person: person({ id: created.person.id, status: 'UNDER_INVESTIGATION', notes: 'ملاحظة محدثة' }), actor: { id: 'leader-2', canManageAll: true } });
+  assert.equal(chiefUpdate.ok, true);
+  assert.equal(chiefUpdate.person.status, 'UNDER_INVESTIGATION');
+  assert.equal(chiefUpdate.person.notes, 'ملاحظة محدثة');
+  assert.equal(pool.audit[2].action, 'UPDATED');
   assert.equal(pool.rows.size, 1);
 
   const detail = await store.get(created.person.id);
   assert.equal(detail.fullName, 'شخص للاختبار');
-  assert.equal(detail.createdByUserId, undefined);
+  assert.equal(detail.createdByUserId, 'leader-1');
   const listing = await store.list({ limit: 100, offset: 0 });
   assert.equal(listing.total, 1);
   assert.equal(listing.items.length, 1);
+});
+
+test('only the report creator or Primary Chief can delete a report and its dependent records', async () => {
+  const pool = new FakePostgres();
+  let nextId = 0;
+  const store = new WantedPersonsStore(pool, { makeId: (prefix) => prefix + '-delete-' + (++nextId) });
+  await store.initialize();
+  const created = await store.save({ person: person(), actor: { id: 'author-1' } });
+  const denied = await store.deletePerson({ personId: created.person.id, actor: { id: 'other-1' } });
+  assert.equal(denied.ok, false);
+  assert.ok(pool.rows.has(created.person.id));
+  const ownerDeleted = await store.deletePerson({ personId: created.person.id, actor: { id: 'author-1' } });
+  assert.equal(ownerDeleted.ok, true);
+  const chiefCreated = await store.save({ person: person({ fileNumber: 'BR-TEST-02' }), actor: { id: 'author-2' } });
+  const chiefDeleted = await store.deletePerson({ personId: chiefCreated.person.id, actor: { id: 'chief-1', canManageAll: true } });
+  assert.equal(chiefDeleted.ok, true);
+  assert.equal(pool.rows.has(chiefCreated.person.id), false);
+  assert.deepEqual(pool.deletedTables.slice(-5), [
+    'blackridge_wanted_evidence', 'blackridge_wanted_notes', 'blackridge_wanted_timeline',
+    'blackridge_wanted_persons_audit', 'blackridge_wanted_persons'
+  ]);
 });
 
 test('invalid records and duplicate file numbers fail closed', async () => {
@@ -215,42 +251,79 @@ test('wanted persons markup adds one independent nav item, page and assets', () 
   assert.match(injected, /src="\/wanted-persons-client\.js"/);
   assert.match(injected, /id="wp-investigation-board"/);
   assert.match(injected, /id="wp-evidence-form"/);
+  assert.match(injected, /id="wp-evidence-list"/);
   assert.match(injected, /id="wp-audit-list"/);
+  assert.match(injected, /id="wp-delete-button"/);
+  assert.match(injected, /id="wp-event-id"/);
   const again = injectWantedPersonsMarkup(injected);
   for (const id of ['wanted-persons-nav', 'wanted-persons']) assert.equal((again.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
   assert.equal((again.match(/src="\/wanted-persons-client\.js"/g) || []).length, 1);
   assert.equal(injectWantedPersonsMarkup('<main>incomplete'), '<main>incomplete');
 });
 
-test('socket handlers restrict all reads and writes to leadership and accept only existing linked cases', async () => {
+test('authenticated ranks can read; report edits/deletes are creator-only except Primary Chief', async () => {
   const { socket, handlers } = makeSocket();
   const calls = [];
-  const record = { id: 'WANTED-1', fileNumber: 'BR-1', fullName: 'فرد', aliases: [], imageUrl: '', severity: 'MEDIUM', status: 'WANTED', caseIds: ['case-1'], notes: 'secret note', details: 'secret detail' };
+  const record = {
+    id: 'WANTED-1', fileNumber: 'BR-1', fullName: 'فرد', aliases: [], imageUrl: '',
+    severity: 'MEDIUM', status: 'WANTED', caseIds: ['case-1'], notes: 'secret note',
+    details: 'secret detail', createdByUserId: 'owner-1', createdAt: '2026-11-09T10:00:00.000Z'
+  };
   const store = {
     list: async (filters) => { calls.push(['list', filters]); return { items: [record], total: 1, limit: 100, offset: 0 }; },
     get: async (id) => { calls.push(['get', id]); return id === record.id ? record : null; },
-    save: async (input) => { calls.push(['save', input]); return { ok: true, action: 'CREATED', person: { ...record, ...input.person, id: record.id } }; }
+    save: async (input) => { calls.push(['save', input]); return { ok: true, action: input.person.id ? 'UPDATED' : 'CREATED', person: { ...record, ...input.person, id: record.id } }; },
+    deletePerson: async (input) => { calls.push(['delete', input]); return { ok: true }; }
   };
   let actor = null;
   const state = { cia_cases: [
     { id: 'case-1', caseNumber: 'CASE-001', title: 'قضية قائمة', status: 'OPEN', classification: 'CONFIDENTIAL', description: 'do not leak' },
     { id: 'case-2', caseNumber: 'CASE-002', title: 'قضية ثانية', status: 'OPEN' }
+  ], cia_users: [
+    { id: 'owner-1', name: 'صاحب الملف', publicCode: 'CIA-101', rank: 'AGENT' }
   ] };
   registerWantedPersonsSocket(socket, {
     getStore: () => store,
     getState: () => state,
     requireUser: () => actor,
-    isLeadership: (user) => user?.id === 'leader-1'
+    isLeadership: (user) => ['leader-1', 'chief-1'].includes(user?.id),
+    isPrimaryChief: (user) => user?.id === 'chief-1',
+    rankLabel: (rank) => rank || 'غير محددة'
   });
 
   let response;
   await handlers.get('wanted-persons:list')({}, (result) => { response = result; });
   assert.equal(response.ok, false);
   assert.equal(calls.length, 0);
-  actor = { id: 'member-1' };
+  actor = { id: 'owner-1', rank: 'AGENT' };
+  await handlers.get('wanted-persons:list')({}, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(response.permissions.canCreate, false);
+  assert.equal(response.items[0].createdByName, 'صاحب الملف');
+  assert.equal(response.items[0].createdByCode, 'CIA-101');
+  assert.equal(response.items[0].createdByRank, 'AGENT');
+  assert.equal(response.items[0].permissions.canEdit, true);
+
+  actor = { id: 'member-1', rank: 'AGENT' };
   await handlers.get('wanted-persons:detail')({ id: record.id }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(response.permissions.canEdit, false);
+  assert.equal(response.permissions.canDelete, false);
+  assert.equal(response.permissions.canContribute, true);
+  assert.equal(response.person.createdByName, 'صاحب الملف');
+  assert.equal(Object.hasOwn(response.person, 'createdByUserId'), false);
+
+  const payload = { ...person(), id: record.id, fullName: 'فرد محدث', fileNumber: 'BR-1', caseIds: ['case-2'] };
+  await handlers.get('wanted-persons:save')(payload, (result) => { response = result; });
   assert.equal(response.ok, false);
-  assert.equal(calls.length, 0);
+  assert.match(response.message, /منشئه أو للقائد الرئيس/);
+  assert.equal(calls.some((call) => call[0] === 'save'), false);
+
+  actor = { id: 'owner-1', rank: 'AGENT' };
+  await handlers.get('wanted-persons:save')(payload, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(calls.find((call) => call[0] === 'save')[1].actor.canManageAll, false);
+
   actor = { id: 'leader-1' };
   await handlers.get('wanted-persons:list')({ name: 'فرد', fileNumber: 'BR-1' }, (result) => { response = result; });
   assert.equal(response.ok, true);
@@ -259,74 +332,102 @@ test('socket handlers restrict all reads and writes to leadership and accept onl
   assert.equal(response.availableCases[0].title, 'قضية قائمة');
   assert.equal(Object.hasOwn(response.availableCases[0], 'description'), false);
 
-  await handlers.get('wanted-persons:detail')({ id: record.id }, (result) => { response = result; });
-  assert.equal(response.ok, true);
   assert.deepEqual(casesForPerson(record.caseIds, state).map((item) => item.caseNumber), ['CASE-001']);
-  assert.equal(Object.hasOwn(response.relatedCases[0], 'description'), false);
 
-  const payload = { ...person(), fullName: 'فرد', fileNumber: 'BR-2', caseIds: ['missing-case'] };
-  await handlers.get('wanted-persons:save')(payload, (result) => { response = result; });
+  const badLink = { ...person(), fullName: 'فرد', fileNumber: 'BR-2', caseIds: ['missing-case'] };
+  await handlers.get('wanted-persons:save')(badLink, (result) => { response = result; });
   assert.equal(response.ok, false);
   assert.match(response.message, /قضايا موجودة فقط/);
-  assert.equal(calls.some((call) => call[0] === 'save'), false);
+  assert.equal(calls.filter((call) => call[0] === 'save').length, 1);
 
-  payload.caseIds = ['case-2'];
+  const createPayload = { ...person(), fullName: 'فرد جديد', fileNumber: 'BR-2', caseIds: ['case-2'] };
+  await handlers.get('wanted-persons:save')(createPayload, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(calls.filter((call) => call[0] === 'save').length, 2);
+  actor = { id: 'leader-1', rank: 'SUPREME COMMANDER' };
+  await handlers.get('wanted-persons:save')(payload, (result) => { response = result; });
+  assert.equal(response.ok, false);
+  assert.equal(calls.filter((call) => call[0] === 'save').length, 2);
+  actor = { id: 'chief-1', rank: 'CIA CHIEF' };
   await handlers.get('wanted-persons:save')(payload, (result) => { response = result; });
   assert.equal(response.ok, true);
-  assert.equal(calls.filter((call) => call[0] === 'save').length, 1);
-  assert.equal(calls.find((call) => call[0] === 'save')[1].actor.id, 'leader-1');
+  assert.equal(calls.filter((call) => call[0] === 'save').at(-1)[1].actor.canManageAll, true);
+  await handlers.get('wanted-persons:delete')({ id: record.id }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.equal(calls.find((call) => call[0] === 'delete')[1].actor.canManageAll, true);
 });
 
-test('phase two investigation reads, file delivery, evidence, notes and timeline are leadership-only', async () => {
+test('all authenticated ranks can add evidence, notes, and timeline events; metadata identifies each author', async () => {
   const { socket, handlers } = makeSocket();
   const calls = [];
-  let actor = { id: 'member-1' };
+  let actor = { id: 'member-1', rank: 'AGENT' };
   const state = {
     cia_cases: [{
       id: 'case-1', caseNumber: 'CASE-RP-001', title: 'قضية خيالية', description: 'تفاصيل تمثيلية',
       status: 'OPEN', classification: 'CONFIDENTIAL', finalDecision: 'قرار تمثيلي'
     }],
-    cia_users: [{ id: 'leader-1', name: 'قائد اختبار' }]
+    cia_users: [
+      { id: 'report-owner', name: 'صاحب الملف', publicCode: 'CIA-001', rank: 'AGENT' },
+      { id: 'member-1', name: 'محقق مساعد', publicCode: 'CIA-102', rank: 'AGENT' },
+      { id: 'other-2', name: 'محقق آخر', publicCode: 'CIA-103', rank: 'HIGH COMMANDER' }
+    ]
   };
   const store = {
-    board: async (id) => { calls.push(['board', id]); return { evidence: [], notes: [], timeline: [], audit: [] }; },
+    board: async (id) => {
+      calls.push(['board', id]);
+      return {
+        evidence: [{
+          id: 'E-1', personId: id, title: 'دليل تمثيلي', caseIds: ['case-1'],
+          createdByUserId: 'member-1', createdAt: '2026-11-09T12:00:00.000Z'
+        }],
+        notes: [{
+          id: 'N-1', personId: id, title: 'ملاحظة تمثيلية', body: 'نص', caseId: 'case-1',
+          createdByUserId: 'member-1', updatedByUserId: 'member-1',
+          createdAt: '2026-11-09T12:01:00.000Z', updatedAt: '2026-11-09T12:01:00.000Z'
+        }],
+        timeline: [{
+          id: 'T-1', personId: id, title: 'حدث تمثيلي', body: 'نص', caseId: 'case-1',
+          actorUserId: 'member-1', updatedByUserId: 'member-1',
+          createdAt: '2026-11-09T12:02:00.000Z', updatedAt: '2026-11-09T12:02:00.000Z'
+        }],
+        audit: []
+      };
+    },
+    get: async (id) => id === 'WANTED-1' ? { id, createdByUserId: 'report-owner', caseIds: [] } : null,
     evidenceFile: async (args) => { calls.push(['file', args]); return { contentType: 'text/plain', fileName: 'rp-test.txt', data: 'UlA=' }; },
     saveEvidence: async (args) => { calls.push(['evidence', args]); return { ok: true }; },
     deleteEvidence: async (args) => { calls.push(['delete-evidence', args]); return { ok: true }; },
     saveNote: async (args) => { calls.push(['note', args]); return { ok: true }; },
     deleteNote: async (args) => { calls.push(['delete-note', args]); return { ok: true }; },
-    addTimelineEvent: async (args) => { calls.push(['timeline', args]); return { ok: true }; }
+    saveTimelineEvent: async (args) => { calls.push(['timeline', args]); return { ok: true }; },
+    deleteTimelineEvent: async (args) => { calls.push(['delete-timeline', args]); return { ok: true }; }
   };
   registerWantedPersonsSocket(socket, {
     getStore: () => store,
     getState: () => state,
     requireUser: () => actor,
-    isLeadership: (user) => user?.id === 'leader-1'
+    isLeadership: (user) => user?.id === 'leader-1' || user?.id === 'chief-1',
+    isPrimaryChief: (user) => user?.id === 'chief-1',
+    rankLabel: (rank) => rank || 'غير محددة'
   });
 
-  const protectedEvents = [
-    ['wanted-persons:investigation', { personId: 'WANTED-1' }],
-    ['wanted-persons:evidence:file', { personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }],
-    ['wanted-persons:evidence:save', { personId: 'WANTED-1', evidence: { caseIds: [] } }],
-    ['wanted-persons:evidence:delete', { personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }],
-    ['wanted-persons:note:save', { personId: 'WANTED-1', note: { title: 'ملاحظة', body: 'نص', caseId: '' } }],
-    ['wanted-persons:note:delete', { personId: 'WANTED-1', noteId: 'NOTE-1' }],
-    ['wanted-persons:timeline:add', { personId: 'WANTED-1', event: { title: 'حدث', caseId: '' } }]
-  ];
-  for (const [event, payload] of protectedEvents) {
-    let response;
-    await handlers.get(event)(payload, (result) => { response = result; });
-    assert.equal(response.ok, false, event + ' must reject non-leadership');
-  }
-  assert.equal(calls.length, 0, 'authorization must happen before the store is touched');
-
-  actor = { id: 'leader-1' };
   let response;
   await handlers.get('wanted-persons:investigation')({ personId: 'WANTED-1' }, (result) => { response = result; });
   assert.equal(response.ok, true);
   assert.equal(response.availableCases[0].description, 'تفاصيل تمثيلية');
   assert.equal(response.availableCases[0].finalDecision, 'قرار تمثيلي');
-  assert.equal(response.permissions.canManage, true);
+  assert.equal(response.permissions.canManageAll, false);
+  assert.equal(response.permissions.canContribute, true);
+  assert.equal(response.evidence[0].createdByName, 'محقق مساعد');
+  assert.equal(response.evidence[0].createdByCode, 'CIA-102');
+  assert.equal(response.evidence[0].createdByRank, 'AGENT');
+  assert.equal(response.evidence[0].permissions.canEdit, true);
+  assert.equal(Object.hasOwn(response.evidence[0], 'createdByUserId'), false);
+  assert.equal(response.notes[0].createdByCode, 'CIA-102');
+  assert.equal(response.notes[0].createdByRank, 'AGENT');
+  assert.equal(response.timeline[0].actorCode, 'CIA-102');
+  assert.equal(response.timeline[0].actorRank, 'AGENT');
+  assert.equal(response.timeline[0].createdAt, '2026-11-09T12:02:00.000Z');
 
   await handlers.get('wanted-persons:evidence:file')({ personId: 'WANTED-1', evidenceId: 'EVIDENCE-1' }, (result) => { response = result; });
   assert.equal(response.ok, true);
@@ -337,12 +438,18 @@ test('phase two investigation reads, file delivery, evidence, notes and timeline
 
   await handlers.get('wanted-persons:evidence:save')({ personId: 'WANTED-1', evidence: { caseIds: ['case-1'] } }, (result) => { response = result; });
   assert.equal(response.ok, true);
-  assert.equal(calls.find((call) => call[0] === 'evidence')[1].actor.id, 'leader-1');
+  assert.equal(calls.find((call) => call[0] === 'evidence')[1].actor.id, 'member-1');
+  assert.equal(calls.find((call) => call[0] === 'evidence')[1].actor.canManageAll, false);
   await handlers.get('wanted-persons:note:save')({ personId: 'WANTED-1', note: { title: 'ملاحظة', body: 'نص', caseId: 'case-1' } }, (result) => { response = result; });
   assert.equal(response.ok, true);
+  actor = { id: 'other-2', rank: 'HIGH COMMANDER' };
   await handlers.get('wanted-persons:timeline:add')({ personId: 'WANTED-1', event: { title: 'حدث', caseId: 'case-1' } }, (result) => { response = result; });
   assert.equal(response.ok, true);
   assert.equal(calls.some((call) => call[0] === 'timeline'), true);
+  assert.equal(calls.find((call) => call[0] === 'timeline')[1].actor.id, 'other-2');
+  actor = { id: 'chief-1', rank: 'CIA CHIEF' };
+  await handlers.get('wanted-persons:evidence:save')({ personId: 'WANTED-1', evidence: { caseIds: ['case-1'] } }, (result) => { response = result; });
+  assert.equal(calls.filter((call) => call[0] === 'evidence').at(-1)[1].actor.canManageAll, true);
 });
 
 test('case summaries preserve the phase one limited payload while the board reads existing case details', () => {
@@ -401,6 +508,12 @@ test('frontend uses text nodes and server events rather than browser storage', (
   assert.match(client, /wanted-persons:list/);
   assert.match(client, /wanted-persons:detail/);
   assert.match(client, /wanted-persons:save/);
+  assert.match(client, /wanted-persons:delete/);
+  assert.match(client, /wanted-persons:timeline:delete/);
+  assert.match(client, /type: 'note'/);
+  assert.match(client, /type: 'timeline'/);
+  assert.match(client, /الكود العسكري/);
+  assert.match(client, /الرتبة/);
   assert.match(client, /textContent/);
   assert.match(client, /await load\(true, true\)/);
   assert.match(client, /state\.activeId = person\?\.id/);
