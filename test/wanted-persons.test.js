@@ -48,6 +48,10 @@ class FakePostgres {
       return { rows: [], rowCount: 0 };
     }
     if (/^(create|alter|do)\s/i.test(lower)) return { rows: [], rowCount: 0 };
+    if (lower.startsWith('select id, case_ids from blackridge_wanted_persons where id = $1 for update')) {
+      const row = this.rows.get(params[0]);
+      return { rows: row ? [{ id: row.id, case_ids: [...row.case_ids] }] : [], rowCount: row ? 1 : 0 };
+    }
     if (lower.startsWith('select id from blackridge_wanted_persons where id = $1 for update')) {
       return { rows: this.rows.has(params[0]) ? [{ id: params[0] }] : [], rowCount: this.rows.has(params[0]) ? 1 : 0 };
     }
@@ -75,6 +79,14 @@ class FakePostgres {
         severity: params[5], status: params[6], case_ids: [...params[7]], notes: params[8], details: params[9],
         updated_by_user_id: params[10], updated_at: new Date(1).toISOString()
       });
+      return { rows: [{ ...row }], rowCount: 1 };
+    }
+    if (lower.startsWith('update blackridge_wanted_persons set case_ids = $2')) {
+      const row = this.rows.get(params[0]);
+      if (!row) return { rows: [], rowCount: 0 };
+      row.case_ids = [...params[1]];
+      row.updated_by_user_id = params[2];
+      row.updated_at = new Date(2).toISOString();
       return { rows: [{ ...row }], rowCount: 1 };
     }
     if (lower.startsWith('insert into blackridge_wanted_persons_audit')) {
@@ -164,6 +176,33 @@ test('save persists create and edit atomically, links existing case ids, and aud
   assert.equal(listing.items.length, 1);
 });
 
+test('case links update the existing wanted-person record and audit the archive references', async () => {
+  const pool = new FakePostgres();
+  let nextId = 0;
+  const store = new WantedPersonsStore(pool, { makeId: (prefix) => prefix + '-case-link-' + (++nextId) });
+  const created = await store.save({ person: person({ caseIds: ['case-1'] }), actor: { id: 'leader-1' } });
+  const linked = await store.saveCaseLinks({
+    personId: created.person.id,
+    caseIds: ['case-1', 'case-2', 'case-2'],
+    actor: { id: 'leader-1' }
+  });
+  assert.equal(linked.ok, true);
+  assert.deepEqual(linked.person.caseIds, ['case-1', 'case-2']);
+  assert.deepEqual(linked.linkedCaseIds, ['case-2']);
+  assert.deepEqual(linked.unlinkedCaseIds, []);
+  assert.equal(pool.audit.at(-1).action, 'UPDATED');
+  assert.deepEqual(pool.audit.at(-1).changed_fields, ['caseIds']);
+
+  const unlinked = await store.saveCaseLinks({
+    personId: created.person.id,
+    caseIds: [],
+    actor: { id: 'leader-1' }
+  });
+  assert.equal(unlinked.ok, true);
+  assert.deepEqual(unlinked.person.caseIds, []);
+  assert.deepEqual(unlinked.unlinkedCaseIds, ['case-1', 'case-2']);
+});
+
 test('invalid records and duplicate file numbers fail closed', async () => {
   const store = new WantedPersonsStore(new FakePostgres(), { makeId: (prefix) => prefix + '-1' });
   const invalid = await store.save({ person: person({ severity: 'EXTREME' }), actor: { id: 'leader-1' } });
@@ -216,6 +255,11 @@ test('wanted persons markup adds one independent nav item, page and assets', () 
   assert.match(injected, /id="wp-investigation-board"/);
   assert.match(injected, /id="wp-evidence-form"/);
   assert.match(injected, /id="wp-audit-list"/);
+  assert.match(injected, /id="wp-link-case"/);
+  assert.match(injected, /id="wp-create-case"/);
+  assert.match(injected, /id="wp-case-link-options"/);
+  assert.match(injected, /id="wp-new-case-form"/);
+  assert.match(injected, /أرشيف القضايا والأدلة/);
   const again = injectWantedPersonsMarkup(injected);
   for (const id of ['wanted-persons-nav', 'wanted-persons']) assert.equal((again.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
   assert.equal((again.match(/src="\/wanted-persons-client\.js"/g) || []).length, 1);
@@ -348,14 +392,56 @@ test('phase two investigation reads, file delivery, evidence, notes and timeline
 test('case summaries preserve the phase one limited payload while the board reads existing case details', () => {
   const cases = [{
     id: 'case-1', caseNumber: 'CASE-RP-001', title: 'قضية خيالية', description: 'تفاصيل سرية',
-    status: 'CLOSED', classification: 'CONFIDENTIAL', finalDecision: 'قرار نهائي'
+    status: 'CLOSED', classification: 'CONFIDENTIAL', finalDecision: 'قرار نهائي',
+    media: 'https://archive.example.test/evidence.pdf'
   }];
   assert.equal(Object.hasOwn(casesForPerson(['case-1'], { cia_cases: cases })[0], 'description'), false);
+  assert.equal(casesForPerson(['case-1'], { cia_cases: cases })[0].mediaUrl, 'https://archive.example.test/evidence.pdf');
   const detailed = investigationCases({ cia_cases: cases })[0];
   assert.equal(detailed.description, 'تفاصيل سرية');
   assert.equal(detailed.finalDecision, 'قرار نهائي');
+  assert.equal(detailed.mediaUrl, 'https://archive.example.test/evidence.pdf');
   const legacy = investigationCases({ cia_cases: [{ id: 'legacy-rp-01', title: 'قضية قديمة', details: 'تفاصيل قديمة' }] })[0];
   assert.equal(legacy.caseNumber, 'CASE-legacy-rp-01');
+  const missingArchiveRecord = casesForPerson(['deleted-case-id'], { cia_cases: cases })[0];
+  assert.equal(missingArchiveRecord.unavailable, true);
+  assert.equal(missingArchiveRecord.id, 'deleted-case-id');
+  assert.match(missingArchiveRecord.title, /غير متاحة/);
+});
+
+test('case-link socket writes accept only real archive cases', async () => {
+  const { socket, handlers } = makeSocket();
+  const calls = [];
+  const store = {
+    saveCaseLinks: async (input) => {
+      calls.push(input);
+      return { ok: true, person: { id: input.personId, caseIds: input.caseIds } };
+    }
+  };
+  let actor = { id: 'leader-1' };
+  const state = { cia_cases: [{ id: 'case-1', caseNumber: 'CASE-001', title: 'قضية قائمة' }] };
+  registerWantedPersonsSocket(socket, {
+    getStore: () => store,
+    getState: () => state,
+    requireUser: () => actor,
+    isLeadership: (user) => user?.id === 'leader-1'
+  });
+
+  let response;
+  await handlers.get('wanted-persons:cases:save')({
+    personId: 'WANTED-1',
+    caseIds: ['missing-case']
+  }, (result) => { response = result; });
+  assert.equal(response.ok, false);
+  assert.equal(calls.length, 0);
+
+  await handlers.get('wanted-persons:cases:save')({
+    personId: 'WANTED-1',
+    caseIds: ['case-1', 'case-1']
+  }, (result) => { response = result; });
+  assert.equal(response.ok, true);
+  assert.deepEqual(calls[0].caseIds, ['case-1']);
+  assert.deepEqual(response.relatedCases.map((item) => item.caseNumber), ['CASE-001']);
 });
 
 test('the existing Cases Vault writes numbered cases through server CIA events', () => {
@@ -401,6 +487,9 @@ test('frontend uses text nodes and server events rather than browser storage', (
   assert.match(client, /wanted-persons:list/);
   assert.match(client, /wanted-persons:detail/);
   assert.match(client, /wanted-persons:save/);
+  assert.match(client, /wanted-persons:cases:save/);
+  assert.match(client, /request\('case:create'/);
+  assert.match(client, /فتح أرشيف القضايا والأدلة/);
   assert.match(client, /textContent/);
   assert.match(client, /await load\(true, true\)/);
   assert.match(client, /state\.activeId = person\?\.id/);

@@ -321,6 +321,45 @@ class WantedPersonsStore {
     }
   }
 
+  async saveCaseLinks({ personId, caseIds = [], actor = {} } = {}) {
+    const personKey = clean(personId, 120);
+    const actorId = clean(actor.id, 120);
+    const nextIds = Array.isArray(caseIds)
+      ? [...new Set(caseIds.map((item) => clean(item, 120)).filter(Boolean))]
+      : null;
+    if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
+    if (!personKey || !nextIds || nextIds.length > 1000) return { ok: false, message: 'قائمة القضايا غير صالحة.' };
+    return this.withTransaction(async (client) => {
+      const existing = await client.query(
+        'SELECT id, case_ids FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE',
+        [personKey]
+      );
+      if (!existing.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+      const previousIds = Array.isArray(existing.rows[0].case_ids)
+        ? existing.rows[0].case_ids.map((item) => clean(item, 120)).filter(Boolean)
+        : parseArray(existing.rows[0].case_ids).map((item) => clean(item, 120)).filter(Boolean);
+      const linkedCaseIds = nextIds.filter((id) => !previousIds.includes(id));
+      const unlinkedCaseIds = previousIds.filter((id) => !nextIds.includes(id));
+      const result = await client.query(
+        'UPDATE blackridge_wanted_persons SET case_ids = $2::text[], updated_by_user_id = $3, updated_at = NOW() WHERE id = $1 RETURNING ' + SELECT_COLUMNS,
+        [personKey, nextIds, actorId]
+      );
+      if (linkedCaseIds.length || unlinkedCaseIds.length) {
+        await insertAudit(client, {
+          makeId: this.makeId,
+          personId: personKey,
+          actorId,
+          action: 'UPDATED',
+          entityType: 'CASE',
+          entityId: personKey,
+          changedFields: ['caseIds'],
+          metadata: { linkedCaseIds, unlinkedCaseIds }
+        });
+      }
+      return { ok: true, person: normalizeRow(result.rows?.[0]), linkedCaseIds, unlinkedCaseIds };
+    });
+  }
+
   async board(personId) {
     const key = clean(personId, 120);
     if (!key) return null;

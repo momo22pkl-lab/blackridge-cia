@@ -11,6 +11,7 @@
 .wp-eyebrow, .wp-kicker { margin: 0 0 8px; color: #c69d4b; font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em; }
 .wp-header h1 { margin: 0; color: #f2e6c8; font: 800 clamp(26px, 4vw, 42px)/1.15 Arial, sans-serif; }
 .wp-subtitle { margin: 9px 0 0; color: #a7a194; font-size: 13px; }
+.wp-page-guide { margin: 14px 2px 0; line-height: 1.8; }
 .wp-header-mark { display: grid; grid-template-columns: auto auto; align-items: center; gap: 12px; color: #c9a354; padding: 11px 15px; border: 1px solid rgba(198, 157, 75, .28); border-radius: 9px; background: rgba(18, 17, 14, .78); }
 .wp-header-mark span { font: 800 22px/1 ui-monospace, monospace; letter-spacing: .08em; }
 .wp-header-mark i { color: #aa3035; font-size: 21px; }
@@ -68,7 +69,13 @@
 .wp-detail-wide { grid-column: 1 / -1; }
 .wp-detail-card h3 { margin-bottom: 12px; }
 .wp-linked-cases { display: grid; gap: 8px; }
-.wp-case-row { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; padding: 10px; border-right: 2px solid #9d3035; border-radius: 4px; background: rgba(8, 8, 8, .45); }
+.wp-case-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.wp-case-section-heading h3 { margin-bottom: 10px; }
+.wp-case-row { display: grid; grid-template-columns: minmax(0, 1fr); padding: 0; border-right: 2px solid #9d3035; border-radius: 4px; background: rgba(8, 8, 8, .45); }
+.wp-case-open { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; width: 100%; padding: 10px; border: 0; color: inherit; text-align: right; background: transparent; cursor: pointer; }
+.wp-case-open:hover, .wp-case-open:focus-visible { outline: 2px solid rgba(197,160,76,.45); outline-offset: -2px; }
+.wp-case-unavailable { border-color: #8b7042; }
+.wp-case-unavailable .wp-case-title { color: #e7c782; }
 .wp-case-number { color: #d5ad61; font: 700 11px/1.4 ui-monospace, monospace; }
 .wp-case-title { color: #e1d8c5; font-size: 12px; }
 .wp-case-meta { grid-column: 2; color: #938b7c; font-size: 10px; }

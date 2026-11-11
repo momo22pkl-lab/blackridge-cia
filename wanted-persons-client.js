@@ -104,11 +104,19 @@
       return;
     }
     for (const item of cases) {
-      const row = make('article', 'wp-case-row');
-      row.append(make('span', 'wp-case-number', item.caseNumber || item.id || '—'));
-      row.append(make('span', 'wp-case-title', item.title || 'قضية بلا عنوان'));
+      const row = make('article', 'wp-case-row' + (item.unavailable ? ' wp-case-unavailable' : ''));
+      const open = make('button', 'wp-case-open');
+      open.type = 'button';
+      open.setAttribute('aria-label', 'عرض تفاصيل القضية ' + (item.caseNumber || item.id || ''));
+      open.append(make('span', 'wp-case-number', item.caseNumber || item.id || '—'));
+      open.append(make('span', 'wp-case-title', item.title || 'قضية بلا عنوان'));
       const meta = [item.status, item.classification].filter(Boolean).join(' · ');
-      row.append(make('span', 'wp-case-meta', meta || 'قضية مرتبطة بالسجل'));
+      open.append(make('span', 'wp-case-meta', meta || (item.unavailable ? 'معرّف مرتبط، لكن بياناته غير متاحة من الأرشيف.' : 'قضية مرتبطة بالسجل')));
+      open.addEventListener('click', () => {
+        showCaseDetails(item);
+        byId('wp-board-selection').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      row.append(open);
       container.append(row);
     }
   }
@@ -206,6 +214,7 @@
       byId('wp-detail-notes').textContent = person.notes || 'لا توجد ملاحظات مسجلة.';
       byId('wp-detail-details').textContent = person.details || 'لا توجد تفاصيل مسجلة.';
       byId('wp-edit-button').hidden = !result.permissions?.canManage;
+      byId('wp-case-actions').hidden = !result.permissions?.canManage;
       state.activePerson = person;
       showOnly('detail');
       if (!await loadInvestigation(person.id)) return false;
@@ -218,7 +227,10 @@
   }
 
   function fillCaseOptions(selectedIds) {
-    const container = byId('wp-case-options');
+    return renderCaseOptions(byId('wp-case-options'), selectedIds);
+  }
+
+  function renderCaseOptions(container, selectedIds) {
     container.replaceChildren();
     if (!state.cases.length) {
       container.append(make('span', 'wp-muted', 'لا توجد قضايا حالية متاحة للربط.'));
@@ -236,6 +248,10 @@
       label.append(input, make('span', '', labelText));
       container.append(label);
     }
+  }
+
+  function selectedCaseIds(containerId, inputName) {
+    return [...byId(containerId).querySelectorAll('input[name="' + inputName + '"]:checked')].map((input) => input.value);
   }
 
   function openEditor(person) {
@@ -375,7 +391,7 @@
   }
 
   function hideInlineEditors() {
-    for (const id of ['wp-evidence-editor', 'wp-note-editor', 'wp-timeline-editor', 'wp-case-editor']) byId(id).hidden = true;
+    for (const id of ['wp-evidence-editor', 'wp-note-editor', 'wp-timeline-editor', 'wp-case-editor', 'wp-case-link-editor', 'wp-new-case-editor']) byId(id).hidden = true;
   }
 
   function showInlineEditor(id) {
@@ -565,19 +581,47 @@
     panel.append(make('strong', 'wp-record-label', 'القضايا المرتبطة'), related, actions);
   }
 
+  function openCasesArchive() {
+    if (typeof window.showPane !== 'function') {
+      setStatus('تعذر فتح أرشيف القضايا من هذه الصفحة.', 'error');
+      return;
+    }
+    const nav = document.querySelector('.nav-list .nav-btn[onclick*="cases-vault"]');
+    window.showPane('cases-vault', nav || null);
+  }
+
   function showCaseDetails(item) {
     const panel = byId('wp-board-selection');
     panel.replaceChildren();
     const heading = make('div', 'wp-selection-heading');
     heading.append(make('div', '', item.caseNumber || 'CIA CASE'), make('h4', '', item.title || 'قضية'));
     panel.append(heading, make('p', 'wp-record-meta', 'الحالة: ' + (item.status || 'غير محددة') + ' · التصنيف: ' + (item.classification || 'غير محدد')));
+    if (item.unavailable) {
+      panel.append(make('p', 'wp-status wp-status-error', 'معرّف القضية محفوظ كارتباط، لكن سجلها غير متاح حاليًا في أرشيف القضايا.'));
+      return;
+    }
     panel.append(make('p', 'wp-long-text', item.description || 'لا توجد تفاصيل مسجلة.'));
     panel.append(make('strong', 'wp-record-label', 'القرار النهائي'), make('p', 'wp-long-text', item.finalDecision || 'لم يصدر قرار نهائي.'));
     panel.append(make('p', 'wp-record-meta', 'تاريخ الفتح: ' + readableDate(item.createdAt) + (item.updatedAt ? ' · آخر تحديث: ' + readableDate(item.updatedAt) : '')));
-    const edit = make('button', 'wp-button wp-button-primary', 'تحديث تفاصيل القضية والقرار');
-    edit.type = 'button';
-    edit.addEventListener('click', () => openCaseEditor(item));
-    panel.append(edit);
+    if (item.mediaUrl) {
+      const mediaLink = make('a', 'wp-button wp-button-muted', 'فتح الدليل في الأرشيف');
+      mediaLink.href = item.mediaUrl;
+      mediaLink.target = '_blank';
+      mediaLink.rel = 'noopener noreferrer';
+      panel.append(mediaLink);
+    }
+    const actions = make('div', 'wp-board-actions');
+    const archive = make('button', 'wp-button wp-button-muted', 'فتح أرشيف القضايا والأدلة');
+    archive.type = 'button';
+    archive.addEventListener('click', openCasesArchive);
+    actions.append(archive);
+    if (state.lastList?.permissions?.canManage) {
+      const edit = make('button', 'wp-button wp-button-primary', 'تحديث تفاصيل القضية والقرار');
+      edit.type = 'button';
+      edit.addEventListener('click', () => openCaseEditor(item));
+      actions.append(edit);
+    }
+    panel.append(actions);
   }
 
   function showPersonDetails() {
@@ -834,6 +878,78 @@
     }
   }
 
+  function openCaseLinkEditor() {
+    if (!state.activePerson || !state.lastList?.permissions?.canManage) return;
+    renderCaseOptions(byId('wp-case-link-options'), state.activePerson.caseIds || []);
+    showInlineEditor('wp-case-link-editor');
+  }
+
+  function refreshLinkedCases(result) {
+    if (result?.person) state.activePerson = { ...state.activePerson, ...result.person };
+    renderCases(byId('wp-detail-cases'), result?.relatedCases || [], 'لا توجد قضايا مرتبطة بهذا الملف.');
+  }
+
+  async function saveCaseLinksForm() {
+    const unlock = lockSubmission();
+    if (!unlock) return;
+    try {
+      const result = await request('wanted-persons:cases:save', {
+        personId: state.activeId,
+        caseIds: selectedCaseIds('wp-case-link-options', 'caseIds')
+      });
+      if (!result.ok) throw new Error(result.message || 'تعذر حفظ روابط القضايا.');
+      refreshLinkedCases(result);
+      hideInlineEditors();
+      await confirmRefreshAfterWrite('تم حفظ روابط القضايا من أرشيف القضايا.');
+    } catch (error) {
+      setStatus(error.message, 'error');
+    } finally {
+      unlock();
+    }
+  }
+
+  function openNewCaseEditor() {
+    if (!state.activePerson || !state.lastList?.permissions?.canManage) return;
+    byId('wp-new-case-form').reset();
+    showInlineEditor('wp-new-case-editor');
+    byId('wp-new-case-title').focus();
+  }
+
+  async function createAndLinkCase(event) {
+    event.preventDefault();
+    const form = byId('wp-new-case-form');
+    const unlock = lockSubmission(form);
+    if (!unlock) return;
+    let createdCase = null;
+    try {
+      const created = await request('case:create', {
+        title: byId('wp-new-case-title').value,
+        description: byId('wp-new-case-description').value,
+        media: byId('wp-new-case-media').value,
+        status: 'OPEN',
+        classification: 'CONFIDENTIAL'
+      });
+      if (!created.ok || !created.case?.id) throw new Error(created.message || 'تعذر إنشاء القضية في الأرشيف.');
+      createdCase = created.case;
+      const nextCaseIds = [...new Set([...(state.activePerson?.caseIds || []), String(createdCase.id)])];
+      const linked = await request('wanted-persons:cases:save', { personId: state.activeId, caseIds: nextCaseIds });
+      if (!linked.ok) {
+        hideInlineEditors();
+        await loadInvestigation(state.activeId);
+        throw new Error('تم إنشاء القضية ' + (createdCase.caseNumber || '') + ' في الأرشيف، لكن تعذر ربطها بالملف. افتح «ربط قضية موجودة» لإتمام الربط.');
+      }
+      refreshLinkedCases(linked);
+      hideInlineEditors();
+      await confirmRefreshAfterWrite('تم إنشاء القضية ' + (createdCase.caseNumber || '') + ' في الأرشيف وربطها بالملف.');
+      await load(true, true);
+    } catch (error) {
+      setStatus(error.message, 'error');
+      if (createdCase) await load(true, true);
+    } finally {
+      unlock();
+    }
+  }
+
   function openCaseEditor(item) {
     byId('wp-case-form').reset();
     byId('wp-case-id').value = item.id;
@@ -940,6 +1056,13 @@
     byId('wp-add-button').addEventListener('click', () => openEditor(null));
     byId('wp-back-button').addEventListener('click', () => { showOnly('list'); setStatus('', ''); });
     byId('wp-edit-button').addEventListener('click', editCurrent);
+    byId('wp-open-case-archive').addEventListener('click', openCasesArchive);
+    byId('wp-link-case').addEventListener('click', openCaseLinkEditor);
+    byId('wp-create-case').addEventListener('click', openNewCaseEditor);
+    byId('wp-case-link-save').addEventListener('click', saveCaseLinksForm);
+    byId('wp-case-link-cancel').addEventListener('click', hideInlineEditors);
+    byId('wp-new-case-form').addEventListener('submit', createAndLinkCase);
+    byId('wp-new-case-cancel').addEventListener('click', hideInlineEditors);
     byId('wp-cancel-button').addEventListener('click', () => {
       if (state.activeId) showOnly('detail');
       else showOnly('list');
