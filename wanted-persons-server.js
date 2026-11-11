@@ -8,7 +8,7 @@ const WANTED_PANE_MARKUP = [
   '<div id="wanted-persons" class="view-pane wanted-persons-page" aria-label="المجرمون المطلوبون">',
   '  <main class="wp-shell" dir="rtl">',
   '    <header class="wp-header">',
-  '      <div><p class="wp-eyebrow">BLACKRIDGE // INTELLIGENCE DIRECTORATE</p><h1>المجرمون المطلوبون</h1><p class="wp-subtitle">فهرس الملفات التحقيقية المصنفة · الوصول مقيد للقيادة · شخصيات BLACKRIDGE CITY RP فقط</p></div>',
+  '      <div><p class="wp-eyebrow">BLACKRIDGE // INTELLIGENCE DIRECTORATE</p><h1>المجرمون المطلوبون</h1><p class="wp-subtitle">ملفات BLACKRIDGE CITY RP · ابدأ بفتح ملف أو إنشاء ملف مخوّل، ثم اربطه بقضية من الأرشيف.</p></div>',
   '      <div class="wp-header-mark" aria-hidden="true"><span>BR</span><i class="fa-solid fa-user-secret"></i></div>',
   '    </header>',
   '    <div id="wp-status" class="wp-status" role="status" aria-live="polite" hidden></div>',
@@ -23,6 +23,7 @@ const WANTED_PANE_MARKUP = [
   '      </form>',
   '      <div id="wp-results-meta" class="wp-results-meta" aria-live="polite"></div>',
   '      <div id="wp-person-grid" class="wp-person-grid"><div class="wp-empty">سجّل الدخول ثم حمّل السجلات.</div></div>',
+  '      <p class="wp-help wp-page-guide">ابدأ باختيار ملف من السجل أو إنشاء ملف جديد. من صفحة الملف يمكنك فتح أرشيف القضايا والأدلة، ربط قضية موجودة أو إنشاء قضية جديدة؛ الأدلة والملاحظات والسجل الزمني تظهر في أقسامها أسفل لوحة التحقيق.</p>',
   '    </section>',
   '    <section id="wp-detail" class="wp-detail" aria-labelledby="wp-detail-title" hidden>',
   '      <div class="wp-detail-toolbar"><button id="wp-back-button" class="wp-button wp-button-muted" type="button"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> العودة إلى السجل</button><button id="wp-edit-button" class="wp-button wp-button-primary" type="button" hidden>تعديل الملف</button></div>',
@@ -31,7 +32,7 @@ const WANTED_PANE_MARKUP = [
   '        <div class="wp-profile-main"><p class="wp-kicker">INVESTIGATIVE DOSSIER</p><h2 id="wp-detail-title"></h2><p id="wp-detail-file" class="wp-file-number"></p><div id="wp-detail-badges" class="wp-badges"></div><div class="wp-profile-block"><h3>الأسماء المستعارة</h3><ul id="wp-detail-aliases" class="wp-aliases"></ul></div></div>',
   '      </article>',
   '      <div class="wp-detail-grid">',
-  '        <section class="wp-detail-card"><p class="wp-kicker">LINKED CASES</p><h3>القضايا المرتبطة</h3><div id="wp-detail-cases" class="wp-linked-cases"></div></section>',
+  '        <section class="wp-detail-card"><p class="wp-kicker">LINKED CASES</p><div class="wp-case-section-heading"><h3>القضايا المرتبطة</h3><div id="wp-case-actions" class="wp-board-actions"><button id="wp-open-case-archive" class="wp-button wp-button-muted" type="button">فتح أرشيف القضايا والأدلة</button><button id="wp-link-case" class="wp-button wp-button-muted" type="button">ربط قضية موجودة</button><button id="wp-create-case" class="wp-button wp-button-primary" type="button">إنشاء قضية جديدة</button></div></div><div id="wp-detail-cases" class="wp-linked-cases"></div></section>',
   '        <section class="wp-detail-card"><p class="wp-kicker">FIELD NOTES</p><h3>الملاحظات</h3><p id="wp-detail-notes" class="wp-long-text"></p></section>',
   '        <section class="wp-detail-card wp-detail-wide"><p class="wp-kicker">CASE DETAILS</p><h3>التفاصيل</h3><p id="wp-detail-details" class="wp-long-text"></p></section>',
   '      </div>',
@@ -46,6 +47,8 @@ const WANTED_PANE_MARKUP = [
   '        <div id="wp-board-empty" class="wp-empty" hidden>لا توجد أدلة أو قضايا مرتبطة بعد. أضف سجلات موثقة فقط.</div>',
   '        <div id="wp-board-selection" class="wp-board-selection" aria-live="polite"><p class="wp-muted">اختر دليلًا أو قضية لعرض التفاصيل.</p></div>',
   '      </section>',
+  '      <section id="wp-case-link-editor" class="wp-inline-editor" hidden><div class="wp-editor-card"><p class="wp-kicker">LINK EXISTING CASE</p><h3>ربط قضية من الأرشيف</h3><p class="wp-help">اختر القضايا الموجودة فعلًا في أرشيف القضايا. يُحفظ الربط مع ملف الشخص.</p><fieldset class="wp-form-wide"><legend>القضايا المرتبطة بالملف</legend><div id="wp-case-link-options" class="wp-case-options"></div></fieldset><div class="wp-form-actions"><button id="wp-case-link-save" class="wp-button wp-button-primary" type="button">حفظ روابط القضايا</button><button id="wp-case-link-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div></div></section>',
+  '      <section id="wp-new-case-editor" class="wp-inline-editor" hidden><form id="wp-new-case-form" class="wp-editor-card"><p class="wp-kicker">NEW CASE IN CASES VAULT</p><h3>إنشاء قضية وربطها بالملف</h3><p class="wp-help">تُنشأ القضية عبر أرشيف القضايا الحالي، ثم تُربط بهذا الملف. إذا تعذر الربط بعد الإنشاء ستبقى القضية محفوظة في الأرشيف.</p><div class="wp-form-grid"><label>عنوان القضية<input id="wp-new-case-title" maxlength="200" required></label><label>رابط دليل أرشيفي (HTTPS، اختياري)<input id="wp-new-case-media" type="url" maxlength="700" placeholder="https://…"></label><label class="wp-form-wide">تفاصيل القضية<textarea id="wp-new-case-description" maxlength="10000" rows="4" required></textarea></label></div><div class="wp-form-actions"><button class="wp-button wp-button-primary" type="submit">إنشاء القضية وربطها</button><button id="wp-new-case-cancel" class="wp-button wp-button-muted" type="button">إلغاء</button></div></form></section>',
   '      <section id="wp-evidence-editor" class="wp-inline-editor" hidden><form id="wp-evidence-form" class="wp-editor-card">',
   '        <p class="wp-kicker">RESTRICTED EVIDENCE INTAKE</p><h3 id="wp-evidence-editor-title">إضافة دليل</h3><input id="wp-evidence-id" type="hidden">',
   '        <div class="wp-form-grid"><label>نوع العنصر<select id="wp-evidence-category" required><option value="IMAGE">صورة / دليل</option><option value="VEHICLE">مركبة</option><option value="LOCATION">موقع</option><option value="PERSON">شخص / صورة ملف</option><option value="DOCUMENT">مستند</option><option value="OTHER">أخرى</option></select></label>',
@@ -132,12 +135,21 @@ function logStoreFailure(operation, error) {
 function summarizeCase(record) {
   if (!record || typeof record !== 'object') return null;
   const id = clean(record.id, 120);
+  let mediaUrl = '';
+  const media = clean(record.media, 700);
+  if (media) {
+    try {
+      const parsed = new URL(media);
+      if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) mediaUrl = parsed.toString();
+    } catch (_error) {}
+  }
   return {
     id,
     caseNumber: clean(record.caseNumber || record.number || (id ? 'CASE-' + id : ''), 100),
     title: clean(record.title, 200),
     status: clean(record.status, 40),
-    classification: clean(record.classification, 40)
+    classification: clean(record.classification, 40),
+    mediaUrl
   };
 }
 
@@ -154,6 +166,10 @@ function investigationCases(state) {
       ...summary,
       description: clean(record.description || record.details, 10000),
       finalDecision: clean(record.finalDecision, 2000),
+      mediaUrl: summary.mediaUrl,
+      siad: clean(record.siad, 200),
+      author: clean(record.author, 120),
+      date: clean(record.date || record.createdAt, 80),
       createdAt: clean(record.createdAt || record.date, 80),
       updatedAt: clean(record.updatedAt, 80)
     } : null;
@@ -161,8 +177,17 @@ function investigationCases(state) {
 }
 
 function casesForPerson(caseIds, state) {
-  const ids = new Set(Array.isArray(caseIds) ? caseIds.map((id) => clean(id, 120)) : []);
-  return availableCases(state).filter((item) => ids.has(item.id));
+  const ids = [...new Set(Array.isArray(caseIds) ? caseIds.map((id) => clean(id, 120)).filter(Boolean) : [])];
+  const byId = new Map(availableCases(state).map((item) => [item.id, item]));
+  return ids.map((id) => byId.get(id) || {
+    id,
+    caseNumber: id,
+    title: 'بيانات القضية غير متاحة في الأرشيف',
+    status: 'غير متاح',
+    classification: '',
+    mediaUrl: '',
+    unavailable: true
+  });
 }
 
 function cardPerson(person) {
@@ -320,6 +345,32 @@ function registerWantedPersonsSocket(socket, context = {}) {
     } catch (error) {
       logStoreFailure('save', error);
       return reply(callback, { ok: false, message: 'تعذر حفظ التغييرات في قاعدة البيانات.' });
+    }
+  });
+
+  socket.on('wanted-persons:cases:save', async (payload, callback) => {
+    const auth = access();
+    if (auth.error) return reply(callback, auth.error);
+    const store = getStore();
+    if (!store || typeof store.saveCaseLinks !== 'function') return reply(callback, unavailable());
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const caseIds = Array.isArray(source.caseIds)
+      ? [...new Set(source.caseIds.map((item) => clean(item, 120)).filter(Boolean))]
+      : null;
+    if (!caseIds) return reply(callback, { ok: false, message: 'قائمة القضايا غير صالحة.' });
+    const validIds = new Set(availableCases(getState()).map((item) => item.id));
+    if (caseIds.some((caseId) => !validIds.has(caseId))) return reply(callback, { ok: false, message: 'يمكن ربط الملف بقضايا موجودة في الأرشيف فقط.' });
+    try {
+      const result = await store.saveCaseLinks({
+        personId: clean(source.personId, 120),
+        caseIds,
+        actor: auth.actor
+      });
+      if (!result.ok) return reply(callback, result);
+      return reply(callback, { ...result, relatedCases: casesForPerson(result.person.caseIds, getState()) });
+    } catch (error) {
+      logStoreFailure('case-links-save', error);
+      return reply(callback, { ok: false, message: 'تعذر حفظ روابط القضايا في قاعدة البيانات.' });
     }
   });
 
