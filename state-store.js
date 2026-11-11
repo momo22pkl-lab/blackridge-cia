@@ -1,9 +1,11 @@
 'use strict';
 
 const CREATE_TABLE_SQL = 'CREATE TABLE IF NOT EXISTS blackridge_app_state (id SMALLINT PRIMARY KEY CHECK (id = 1), data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())';
+const { PRIMARY_CHIEF_MIGRATION_SQL, restorePrimaryChiefInState } = require('./primary-chief-protection');
 const SELECT_STATE_SQL = 'SELECT data FROM blackridge_app_state WHERE id = 1';
 const SEED_STATE_SQL = 'INSERT INTO blackridge_app_state (id, data, updated_at) VALUES (1, $1::jsonb, NOW()) ON CONFLICT (id) DO NOTHING';
 const UPSERT_STATE_SQL = 'INSERT INTO blackridge_app_state (id, data, updated_at) VALUES (1, $1::jsonb, NOW()) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at';
+const UPSERT_PRIMARY_CHIEF_HANDOVER_SQL = `WITH handover_context AS MATERIALIZED (SELECT set_config('blackridge.primary_chief_handover_actor_id', $2, true)) INSERT INTO blackridge_app_state (id, data, updated_at) SELECT 1, $1::jsonb, NOW() FROM handover_context ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`;
 
 class PostgresStateStore {
   constructor(pool) {
@@ -18,11 +20,13 @@ class PostgresStateStore {
     if (typeof normalizeState !== 'function') throw new TypeError('normalizeState must be a function.');
 
     await this.pool.query(CREATE_TABLE_SQL);
+    await this.pool.query(PRIMARY_CHIEF_MIGRATION_SQL);
     let result = await this.pool.query(SELECT_STATE_SQL);
     if (result.rows && result.rows.length) return normalizeState(this.decode(result.rows[0].data));
 
     const legacyState = typeof getLegacyState === 'function' ? await getLegacyState() : null;
     const seed = normalizeState(legacyState === null || legacyState === undefined ? initialState : legacyState);
+    restorePrimaryChiefInState(seed);
     const serialized = JSON.stringify(seed);
     if (typeof serialized !== 'string') throw new Error('Initial state is not JSON serializable.');
     await this.pool.query(SEED_STATE_SQL, [serialized]);
@@ -36,11 +40,14 @@ class PostgresStateStore {
     return typeof value === 'string' ? JSON.parse(value) : value;
   }
 
-  save(state) {
+  save(state, options = {}) {
     const serialized = JSON.stringify(state);
     if (typeof serialized !== 'string') return Promise.reject(new Error('Application state is not JSON serializable.'));
 
-    const write = this.writeQueue.catch(() => undefined).then(() => this.pool.query(UPSERT_STATE_SQL, [serialized]));
+    const handoverFrom = String(options && options.primaryChiefHandoverFrom || '').trim();
+    const query = handoverFrom ? UPSERT_PRIMARY_CHIEF_HANDOVER_SQL : UPSERT_STATE_SQL;
+    const params = handoverFrom ? [serialized, handoverFrom] : [serialized];
+    const write = this.writeQueue.catch(() => undefined).then(() => this.pool.query(query, params));
     this.writeQueue = write;
     write.then(
       () => { this.lastWriteError = null; },
@@ -56,4 +63,4 @@ class PostgresStateStore {
   }
 }
 
-module.exports = { PostgresStateStore };
+module.exports = { PostgresStateStore, CREATE_TABLE_SQL, SELECT_STATE_SQL, SEED_STATE_SQL, UPSERT_STATE_SQL, UPSERT_PRIMARY_CHIEF_HANDOVER_SQL };

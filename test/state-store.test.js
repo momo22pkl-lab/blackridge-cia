@@ -2,14 +2,25 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { PostgresStateStore } = require('../state-store');
+const { PostgresStateStore, UPSERT_PRIMARY_CHIEF_HANDOVER_SQL } = require('../state-store');
+const { restorePrimaryChiefInState } = require('../primary-chief-protection');
 
 class MemoryPool {
-  constructor() { this.row = null; this.failNextWrite = false; }
+  constructor() { this.row = null; this.failNextWrite = false; this.lastQuery = ''; this.lastHandoverFrom = null; }
   async query(sql, params = []) {
+    this.lastQuery = sql;
     const query = sql.replace(/\s+/g, ' ').trim().toLowerCase();
     if (query.startsWith('create table')) return { rows: [], rowCount: 0 };
+    if (query.includes('blackridge_protect_primary_chief_state') && query.includes('update blackridge_app_state as app_state')) {
+      if (this.row) restorePrimaryChiefInState(this.row);
+      return { rows: [], rowCount: 0 };
+    }
     if (query.startsWith('select data')) return { rows: this.row ? [{ data: structuredClone(this.row) }] : [], rowCount: this.row ? 1 : 0 };
+    if (query.startsWith('with handover_context as materialized')) {
+      this.row = JSON.parse(params[0]);
+      this.lastHandoverFrom = params[1];
+      return { rows: [], rowCount: 1 };
+    }
     if (query.startsWith('insert into blackridge_app_state')) {
       if (!query.includes('do nothing') && this.failNextWrite) {
         this.failNextWrite = false;
@@ -109,4 +120,47 @@ test('recovers the write queue after a temporary database failure', async () => 
   await store.save({ cia_users: [{ id: 'recovered' }] });
   await store.flush();
   assert.equal(pool.row.cia_users[0].id, 'recovered');
+});
+
+
+test('restores only the existing Primary Chief access flags during database load', async () => {
+  const pool = new MemoryPool();
+  const chief = {
+    id: 'chief-existing', rank: 'CIA CHIEF', publicCode: 'CHIEF-KEEP', secretCode: 'fixture-only',
+    militaryCode: 'MIL-KEEP', approved: false, suspended: true, securityStatus: 'SUSPENDED',
+    serviceApproved: true, permissions: ['command'], suspensionReason: 'keep the record', profanityStrikes: 3
+  };
+  const other = { id: 'member-1', rank: 'AGENT', approved: false, suspended: true, securityStatus: 'SUSPENDED' };
+  pool.row = { cia_users: [chief, other], cia_security_incidents: [{ id: 'incident-keep' }], cia_audit_logs: [{ id: 'audit-keep' }] };
+  const original = structuredClone(pool.row);
+  const store = new PostgresStateStore(pool);
+  const loaded = await store.load({
+    initialState: { cia_users: [] },
+    normalizeState: normalize
+  });
+
+  const expected = structuredClone(original);
+  expected.cia_users[0].approved = true;
+  expected.cia_users[0].suspended = false;
+  expected.cia_users[0].securityStatus = 'ACTIVE';
+  assert.deepEqual(pool.row, expected);
+  assert.deepEqual(loaded, expected);
+});
+
+
+test('uses an explicit database handover context only for the chief handover save', async () => {
+  const pool = new MemoryPool();
+  pool.row = { cia_users: [
+    { id: 'chief-old', rank: 'CIA CHIEF', approved: true, suspended: false, securityStatus: 'ACTIVE' },
+    { id: 'chief-next', rank: 'SUPREME COMMANDER', approved: true, suspended: false, securityStatus: 'ACTIVE' }
+  ] };
+  const store = new PostgresStateStore(pool);
+  const state = await store.load({ initialState: { cia_users: [] }, normalizeState: normalize });
+  state.cia_users[0].rank = 'SUPREME COMMANDER';
+  state.cia_users[1].rank = 'CIA CHIEF';
+  await store.save(state, { primaryChiefHandoverFrom: 'chief-old' });
+  await store.flush();
+  assert.match(UPSERT_PRIMARY_CHIEF_HANDOVER_SQL, /set_config/);
+  assert.equal(pool.lastHandoverFrom, 'chief-old');
+  assert.deepEqual(pool.row.cia_users.map((person) => person.rank), ['SUPREME COMMANDER', 'CIA CHIEF']);
 });
