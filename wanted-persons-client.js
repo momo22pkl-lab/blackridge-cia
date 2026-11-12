@@ -8,6 +8,11 @@
   };
   const severityLabels = { LOW: 'منخفضة', MEDIUM: 'متوسطة', HIGH: 'عالية', CRITICAL: 'حرجة' };
   const statusLabels = { WANTED: 'مطلوب', UNDER_INVESTIGATION: 'قيد التحقيق', DETAINED: 'موقوف', CLOSED: 'مغلق' };
+  const eventTypeLabels = {
+    MANUAL: 'حدث يدوي', TESTIMONY_RECORDED: 'تسجيل إفادة', FILE_OPENED: 'فتح الملف',
+    EVIDENCE_ADDED: 'إضافة دليل', CASE_LINKED: 'ربط قضية', CASE_UNLINKED: 'فك ارتباط قضية',
+    STATUS_UPDATED: 'تحديث حالة الملف'
+  };
 
   function request(event, payload) {
     const socket = window.blackRidgeSocket;
@@ -218,7 +223,7 @@
       state.activePerson = person;
       showOnly('detail');
       if (!await loadInvestigation(person.id)) return false;
-      setStatus('', '');
+      setStatus(result.historyWarning || '', result.historyWarning ? 'error' : '');
       return true;
     } catch (error) {
       setStatus(error.message, 'error');
@@ -357,8 +362,21 @@
     select.replaceChildren();
     const none = make('option', '', 'بدون قضية');
     none.value = '';
+    none.selected = !selectedId;
     select.append(none);
-    for (const item of state.cases) {
+    const linkedIds = new Set(state.activePerson?.caseIds || []);
+    const linkedCases = state.cases.filter((item) => linkedIds.has(item.id));
+    if (selectedId && !linkedIds.has(selectedId)) {
+      const existing = state.cases.find((item) => item.id === selectedId);
+      if (existing) {
+        const legacy = make('option', '', caseLabel(existing) + ' · غير مرتبط حاليًا بملف الشخص');
+        legacy.value = existing.id;
+        legacy.selected = true;
+        legacy.disabled = true;
+        select.append(legacy);
+      }
+    }
+    for (const item of linkedCases) {
       const option = make('option', '', caseLabel(item));
       option.value = item.id;
       option.selected = item.id === selectedId;
@@ -520,11 +538,10 @@
       }
     }
     byId('wp-board-empty').hidden = evidence.length > 0 || relatedCases.length > 0;
-    if (state.board?.permissions?.canManage) {
-      byId('wp-add-evidence').hidden = false;
-      byId('wp-add-note').hidden = false;
-      byId('wp-add-event').hidden = false;
-    }
+    const permissions = state.board?.permissions || {};
+    byId('wp-add-evidence').hidden = !permissions.canManage;
+    byId('wp-add-note').hidden = !permissions.canContribute;
+    byId('wp-add-event').hidden = !permissions.canContribute;
     fitBoard();
   }
 
@@ -568,13 +585,16 @@
     const download = make('button', 'wp-button wp-button-muted', 'تنزيل الملف');
     download.type = 'button';
     download.addEventListener('click', () => downloadEvidence(item));
-    const edit = make('button', 'wp-button wp-button-muted', 'تعديل / ربط');
-    edit.type = 'button';
-    edit.addEventListener('click', () => openEvidenceEditor(item));
-    const remove = make('button', 'wp-button wp-button-danger', 'حذف الدليل');
-    remove.type = 'button';
-    remove.addEventListener('click', () => deleteEvidence(item));
-    actions.append(download, edit, remove);
+    actions.append(download);
+    if (state.board?.permissions?.canManage) {
+      const edit = make('button', 'wp-button wp-button-muted', 'تعديل / ربط');
+      edit.type = 'button';
+      edit.addEventListener('click', () => openEvidenceEditor(item));
+      const remove = make('button', 'wp-button wp-button-danger', 'حذف الدليل');
+      remove.type = 'button';
+      remove.addEventListener('click', () => deleteEvidence(item));
+      actions.append(edit, remove);
+    }
     panel.append(heading, make('p', 'wp-long-text', item.description || 'لا يوجد وصف.'), make('p', 'wp-record-meta', 'المصدر: ' + (item.source || 'غير مسجل') + ' · التاريخ: ' + readableDate(item.recordedAt)), make('p', 'wp-record-meta', 'الملف: ' + item.fileName + ' · ' + formatBytes(item.fileSize)));
     const related = make('div', 'wp-related-cases');
     renderCaseLinks(related, item.relatedCases);
@@ -763,28 +783,38 @@
     if (!data.notes?.length) notes.append(make('p', 'wp-muted', 'لا توجد ملاحظات محققين.'));
     for (const item of data.notes || []) {
       const row = make('article', 'wp-record-card');
-      row.append(make('strong', '', item.title), make('p', 'wp-long-text', item.body), make('small', 'wp-record-meta', 'أُنشئت بواسطة ' + (item.createdByName || 'غير معروف') + ' · آخر تعديل بواسطة ' + (item.updatedByName || 'غير معروف') + ' · ' + readableDate(item.updatedAt)));
+      const changed = item.updatedAt && item.createdAt && new Date(item.updatedAt).getTime() > new Date(item.createdAt).getTime() + 1000;
+      const noteMeta = 'أُضيفت بواسطة ' + (item.createdByName || 'غير معروف') + ' · تاريخ الإضافة: ' + readableDate(item.createdAt);
+      row.append(make('strong', '', item.title), make('p', 'wp-long-text', item.body), make('small', 'wp-record-meta', noteMeta + (changed ? ' · آخر تحديث: ' + readableDate(item.updatedAt) + ' بواسطة ' + (item.updatedByName || 'غير معروف') : '')));
       const cases = make('div', 'wp-related-cases');
       renderCaseLinks(cases, item.relatedCases);
       row.append(cases);
-      const actions = make('div', 'wp-board-actions');
-      const edit = make('button', 'wp-button wp-button-muted', 'تعديل');
-      edit.type = 'button';
-      edit.addEventListener('click', () => openNoteEditor(item));
-      const remove = make('button', 'wp-button wp-button-danger', 'حذف');
-      remove.type = 'button';
-      remove.addEventListener('click', () => deleteNote(item));
-      actions.append(edit, remove);
-      row.append(actions);
+      if (item.permissions?.canEdit || item.permissions?.canDelete) {
+        const actions = make('div', 'wp-board-actions');
+        if (item.permissions?.canEdit) {
+          const edit = make('button', 'wp-button wp-button-muted', 'تعديل');
+          edit.type = 'button';
+          edit.addEventListener('click', () => openNoteEditor(item));
+          actions.append(edit);
+        }
+        if (item.permissions?.canDelete) {
+          const remove = make('button', 'wp-button wp-button-danger', 'حذف');
+          remove.type = 'button';
+          remove.addEventListener('click', () => deleteNote(item));
+          actions.append(remove);
+        }
+        row.append(actions);
+      }
       notes.append(row);
     }
 
     const timeline = byId('wp-timeline-list');
     timeline.replaceChildren();
     if (!data.timeline?.length) timeline.append(make('p', 'wp-muted', 'لا توجد أحداث مسجلة.'));
-    for (const item of data.timeline || []) {
+    const orderedTimeline = [...(data.timeline || [])].sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime());
+    for (const item of orderedTimeline) {
       const row = make('article', 'wp-record-card wp-timeline-entry');
-      row.append(make('strong', '', item.title), make('small', 'wp-record-meta', readableDate(item.occurredAt) + ' · سجّل الحدث ' + (item.actorName || 'غير معروف')), make('p', 'wp-long-text', item.body || 'لا توجد تفاصيل إضافية.'));
+      row.append(make('span', 'wp-event-type', eventTypeLabels[item.eventType] || eventTypeLabels.MANUAL), make('strong', '', item.title), make('small', 'wp-record-meta', readableDate(item.occurredAt) + ' · سجّل الحدث ' + (item.actorName || 'غير معروف')), make('p', 'wp-long-text', item.body || 'لا توجد تفاصيل إضافية.'));
       const cases = make('div', 'wp-related-cases');
       renderCaseLinks(cases, item.relatedCases);
       row.append(cases);
@@ -804,6 +834,7 @@
   }
 
   function openNoteEditor(item) {
+    if (!state.board?.permissions?.canContribute && !item?.permissions?.canEdit) return;
     byId('wp-note-form').reset();
     byId('wp-note-id').value = item?.id || '';
     byId('wp-note-editor-title').textContent = item ? 'تعديل ملاحظة المحقق' : 'ملاحظة محقق';
@@ -861,6 +892,7 @@
       const result = await request('wanted-persons:timeline:add', {
         personId: state.activeId,
         event: {
+          eventType: byId('wp-event-type').value,
           title: byId('wp-event-title').value,
           body: byId('wp-event-body').value,
           caseId: byId('wp-event-case').value,
