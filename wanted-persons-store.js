@@ -4,8 +4,10 @@ const crypto = require('node:crypto');
 
 const SEVERITIES = Object.freeze(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const STATUSES = Object.freeze(['WANTED', 'UNDER_INVESTIGATION', 'DETAINED', 'CLOSED']);
+const STATUS_LABELS = Object.freeze({ WANTED: 'مطلوب', UNDER_INVESTIGATION: 'قيد التحقيق', DETAINED: 'موقوف', CLOSED: 'مغلق' });
 const EVIDENCE_CATEGORIES = Object.freeze(['IMAGE', 'VEHICLE', 'LOCATION', 'PERSON', 'DOCUMENT', 'OTHER']);
 const EVIDENCE_MIME_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain']);
+const TIMELINE_EVENT_TYPES = Object.freeze(['MANUAL', 'TESTIMONY_RECORDED', 'FILE_OPENED', 'EVIDENCE_ADDED', 'CASE_LINKED', 'CASE_UNLINKED', 'STATUS_UPDATED']);
 const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 const SELECT_COLUMNS = 'id, file_number, full_name, aliases, image_url, severity, status, case_ids, notes, details, created_by_user_id, updated_by_user_id, created_at, updated_at';
 
@@ -24,6 +26,7 @@ const SCHEMA_SQL = [
   "CREATE TABLE IF NOT EXISTS blackridge_wanted_notes (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, case_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, body TEXT NOT NULL, created_by_user_id TEXT NOT NULL, updated_by_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_notes_person_created ON blackridge_wanted_notes (person_id, created_at DESC)',
   "CREATE TABLE IF NOT EXISTS blackridge_wanted_timeline (id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES blackridge_wanted_persons(id) ON DELETE RESTRICT, case_id TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', occurred_at TIMESTAMPTZ NOT NULL, actor_user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  "ALTER TABLE blackridge_wanted_timeline ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT 'MANUAL'",
   'CREATE INDEX IF NOT EXISTS idx_blackridge_wanted_timeline_person_occurred ON blackridge_wanted_timeline (person_id, occurred_at DESC)'
 ];
 
@@ -140,6 +143,7 @@ function normalizeTimelineEvent(row) {
     caseId: row.case_id || '',
     title: row.title,
     body: row.body || '',
+    eventType: TIMELINE_EVENT_TYPES.includes(row.event_type) ? row.event_type : 'MANUAL',
     occurredAt: row.occurred_at,
     actorUserId: row.actor_user_id,
     createdAt: row.created_at
@@ -168,9 +172,19 @@ async function insertAudit(client, { makeId, personId, actorId, action, entityTy
   );
 }
 
+const TIMELINE_SELECT = 'id, person_id, case_id, event_type, title, body, occurred_at, actor_user_id, created_at';
+
+async function insertTimelineEvent(client, { makeId, personId, caseId = '', eventType, title, body = '', occurredAt, actorId }) {
+  const id = makeId('WTIME');
+  const result = await client.query(
+    'INSERT INTO blackridge_wanted_timeline (id, person_id, case_id, event_type, title, body, occurred_at, actor_user_id) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8) RETURNING ' + TIMELINE_SELECT,
+    [id, personId, caseId, eventType, title, body, occurredAt || new Date().toISOString(), actorId]
+  );
+  return normalizeTimelineEvent(result.rows?.[0]);
+}
+
 const EVIDENCE_SELECT = 'id, person_id, category, title, description, source, recorded_at, case_ids, content_type, file_name, file_size, file_sha256, thumbnail_data, created_by_user_id, updated_by_user_id, created_at, updated_at';
 const NOTE_SELECT = 'id, person_id, case_id, title, body, created_by_user_id, updated_by_user_id, created_at, updated_at';
-const TIMELINE_SELECT = 'id, person_id, case_id, title, body, occurred_at, actor_user_id, created_at';
 const AUDIT_SELECT = 'id, person_id, actor_user_id, action, entity_type, entity_id, changed_fields, metadata, created_at';
 
 function buildListFilters(filters = {}) {
@@ -259,7 +273,7 @@ class WantedPersonsStore {
     return normalizeRow(result.rows?.[0]);
   }
 
-  async save({ person = {}, actor = {} } = {}) {
+  async save({ person = {}, actor = {}, caseLabels = {} } = {}) {
     const actorId = clean(actor.id, 120);
     const id = clean(person.id, 120);
     const fullName = clean(person.fullName, 160);
@@ -295,9 +309,15 @@ class WantedPersonsStore {
       return await this.withTransaction(async (client) => {
         let action = 'CREATED';
         let result;
+        let previousStatus = '';
+        let previousCaseIds = [];
         if (id) {
-          const existing = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [id]);
+          const existing = await client.query('SELECT id, status, case_ids FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [id]);
           if (!existing.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+          previousStatus = clean(existing.rows[0].status, 40);
+          previousCaseIds = Array.isArray(existing.rows[0].case_ids)
+            ? existing.rows[0].case_ids.map((item) => clean(item, 120)).filter(Boolean)
+            : parseArray(existing.rows[0].case_ids).map((item) => clean(item, 120)).filter(Boolean);
           action = 'UPDATED';
           result = await client.query(
             'UPDATE blackridge_wanted_persons SET file_number = $2, full_name = $3, aliases = $4::jsonb, image_url = $5, severity = $6, status = $7, case_ids = $8::text[], notes = $9, details = $10, updated_by_user_id = $11, updated_at = NOW() WHERE id = $1 RETURNING ' + SELECT_COLUMNS,
@@ -313,6 +333,23 @@ class WantedPersonsStore {
           'INSERT INTO blackridge_wanted_persons_audit (id, person_id, actor_user_id, action, changed_fields) VALUES ($1, $2, $3, $4, $5::jsonb)',
           [this.makeId('WPAUDIT'), recordId, actorId, action, JSON.stringify(changedFields)]
         );
+        const now = new Date().toISOString();
+        const addedCases = caseIds.filter((caseId) => !previousCaseIds.includes(caseId));
+        const removedCases = previousCaseIds.filter((caseId) => !caseIds.includes(caseId));
+        for (const caseId of addedCases) await insertTimelineEvent(client, {
+          makeId: this.makeId, personId: recordId, caseId, eventType: 'CASE_LINKED',
+          title: 'ربط قضية', body: clean(caseLabels[caseId] || caseId, 300), occurredAt: now, actorId
+        });
+        for (const caseId of removedCases) await insertTimelineEvent(client, {
+          makeId: this.makeId, personId: recordId, caseId, eventType: 'CASE_UNLINKED',
+          title: 'فك ارتباط قضية', body: clean(caseLabels[caseId] || caseId, 300), occurredAt: now, actorId
+        });
+        if (id && previousStatus && previousStatus !== status) await insertTimelineEvent(client, {
+          makeId: this.makeId, personId: recordId, eventType: 'STATUS_UPDATED',
+          title: 'تحديث حالة الملف',
+          body: 'من ' + (STATUS_LABELS[previousStatus] || previousStatus) + ' إلى ' + (STATUS_LABELS[status] || status),
+          occurredAt: now, actorId
+        });
         return { ok: true, action, person: normalizeRow(result.rows?.[0]) };
       });
     } catch (error) {
@@ -321,7 +358,7 @@ class WantedPersonsStore {
     }
   }
 
-  async saveCaseLinks({ personId, caseIds = [], actor = {} } = {}) {
+  async saveCaseLinks({ personId, caseIds = [], actor = {}, caseLabels = {} } = {}) {
     const personKey = clean(personId, 120);
     const actorId = clean(actor.id, 120);
     const nextIds = Array.isArray(caseIds)
@@ -355,6 +392,15 @@ class WantedPersonsStore {
           changedFields: ['caseIds'],
           metadata: { linkedCaseIds, unlinkedCaseIds }
         });
+        const now = new Date().toISOString();
+        for (const caseId of linkedCaseIds) await insertTimelineEvent(client, {
+          makeId: this.makeId, personId: personKey, caseId, eventType: 'CASE_LINKED',
+          title: 'ربط قضية', body: clean(caseLabels[caseId] || caseId, 300), occurredAt: now, actorId
+        });
+        for (const caseId of unlinkedCaseIds) await insertTimelineEvent(client, {
+          makeId: this.makeId, personId: personKey, caseId, eventType: 'CASE_UNLINKED',
+          title: 'فك ارتباط قضية', body: clean(caseLabels[caseId] || caseId, 300), occurredAt: now, actorId
+        });
       }
       return { ok: true, person: normalizeRow(result.rows?.[0]), linkedCaseIds, unlinkedCaseIds };
     });
@@ -377,6 +423,29 @@ class WantedPersonsStore {
       timeline: (timeline.rows || []).map(normalizeTimelineEvent),
       audit: (audit.rows || []).map(normalizeAudit)
     };
+  }
+
+  async recordFileOpened({ personId, actor = {}, fileNumber = '', actorName = '' } = {}) {
+    const personKey = clean(personId, 120);
+    const actorId = clean(actor.id, 120);
+    if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
+    if (!personKey) return { ok: false, message: 'معرّف الملف غير صالح.' };
+    return this.withTransaction(async (client) => {
+      const owner = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
+      if (!owner.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+      const recent = await client.query(
+        "SELECT id FROM blackridge_wanted_timeline WHERE person_id = $1 AND actor_user_id = $2 AND event_type = 'FILE_OPENED' AND occurred_at > NOW() - INTERVAL '15 minutes' LIMIT 1",
+        [personKey, actorId]
+      );
+      if (recent.rows?.length) return { ok: true, recorded: false };
+      await insertTimelineEvent(client, {
+        makeId: this.makeId, personId: personKey, eventType: 'FILE_OPENED',
+        title: 'فتح الملف',
+        body: 'فتح ملف ' + clean(fileNumber, 64) + ' بواسطة ' + (clean(actorName, 120) || actorId),
+        actorId
+      });
+      return { ok: true, recorded: true };
+    });
   }
 
   async evidenceFile({ personId, evidenceId } = {}) {
@@ -457,6 +526,10 @@ class WantedPersonsStore {
             makeId: this.makeId, personId: personKey, actorId, action: 'EVIDENCE_CREATED',
             entityType: 'EVIDENCE', entityId: recordId,
             changedFields: ['category', 'title', 'description', 'source', 'recordedAt', 'caseIds', 'contentType', 'fileName']
+          });
+          await insertTimelineEvent(client, {
+            makeId: this.makeId, personId: personKey, caseId: caseIds[0] || '',
+            eventType: 'EVIDENCE_ADDED', title: 'إضافة دليل', body: title, actorId
           });
           if (caseIds.length) await insertAudit(client, {
             makeId: this.makeId, personId: personKey, actorId, action: 'EVIDENCE_LINKED',
@@ -540,14 +613,17 @@ class WantedPersonsStore {
     if (title.length < 2 || !body || String(note.body || '').length > 10000) return { ok: false, message: 'العنوان والمحتوى مطلوبان؛ الحد الأقصى 10,000 حرف.' };
     const recordId = id || this.makeId('WNOTE');
     return this.withTransaction(async (client) => {
-      const owner = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
+      const owner = await client.query('SELECT id, case_ids FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
       if (!owner.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
+      const linkedCaseIds = Array.isArray(owner.rows[0].case_ids) ? owner.rows[0].case_ids : parseArray(owner.rows[0].case_ids);
+      if (caseId && !linkedCaseIds.includes(caseId)) return { ok: false, message: 'اربط القضية بالملف أولًا أو اختر «بدون قضية».' };
       let result;
       let changedFields = ['title', 'body', 'caseId'];
       if (id) {
-        const existing = await client.query('SELECT id, case_id, title, body FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
+        const existing = await client.query('SELECT id, case_id, title, body, created_by_user_id FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
         if (!existing.rows?.length) return { ok: false, message: 'الملاحظة غير موجودة في هذا الملف.' };
         const old = existing.rows[0];
+        if (!actor.canManageAll && String(old.created_by_user_id) !== actorId) return { ok: false, message: 'يمكنك تعديل ملاحظاتك فقط.' };
         changedFields = [];
         if (old.title !== title) changedFields.push('title');
         if (old.body !== body) changedFields.push('body');
@@ -577,8 +653,9 @@ class WantedPersonsStore {
     if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
     if (!personKey || !id) return { ok: false, message: 'معرّف الملاحظة غير صالح.' };
     return this.withTransaction(async (client) => {
-      const existing = await client.query('SELECT id FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
+      const existing = await client.query('SELECT id, created_by_user_id FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2 FOR UPDATE', [id, personKey]);
       if (!existing.rows?.length) return { ok: false, message: 'الملاحظة غير موجودة في هذا الملف.' };
+      if (!actor.canManageAll && String(existing.rows[0].created_by_user_id) !== actorId) return { ok: false, message: 'يمكنك حذف ملاحظاتك فقط.' };
       await client.query('DELETE FROM blackridge_wanted_notes WHERE id = $1 AND person_id = $2', [id, personKey]);
       await insertAudit(client, {
         makeId: this.makeId, personId: personKey, actorId, action: 'NOTE_DELETED',
@@ -592,31 +669,35 @@ class WantedPersonsStore {
     const personKey = clean(personId, 120);
     const actorId = clean(actor.id, 120);
     const caseId = clean(event.caseId, 120);
+    const eventType = clean(event.eventType || 'MANUAL', 40).toUpperCase();
     const title = clean(event.title, 200);
     const body = clean(event.body, 4000);
     const occurred = event.occurredAt ? new Date(event.occurredAt) : new Date();
     const occurredAt = Number.isNaN(occurred.getTime()) ? '' : occurred.toISOString();
     if (!actorId) return { ok: false, message: 'يلزم تسجيل الدخول.' };
-    if (!personKey || title.length < 2 || String(event.title || '').length > 200 || String(event.body || '').length > 4000) return { ok: false, message: 'تحقق من عنوان الحدث وتفاصيله.' };
+    if (!personKey || title.length < 2 || !body || String(event.title || '').length > 200 || String(event.body || '').length > 4000) return { ok: false, message: 'عنوان الحدث وتفاصيله مطلوبان (4000 حرف كحد أقصى).' };
+    if (!['MANUAL', 'TESTIMONY_RECORDED'].includes(eventType)) return { ok: false, message: 'نوع الحدث اليدوي غير صالح.' };
     if (!occurredAt) return { ok: false, message: 'تاريخ الحدث غير صالح.' };
-    const id = this.makeId('WTIME');
     return this.withTransaction(async (client) => {
-      const owner = await client.query('SELECT id FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
+      const owner = await client.query('SELECT id, case_ids FROM blackridge_wanted_persons WHERE id = $1 FOR UPDATE', [personKey]);
       if (!owner.rows?.length) return { ok: false, message: 'ملف المطلوب غير موجود.' };
-      const result = await client.query(
-        'INSERT INTO blackridge_wanted_timeline (id, person_id, case_id, title, body, occurred_at, actor_user_id) VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7) RETURNING ' + TIMELINE_SELECT,
-        [id, personKey, caseId, title, body, occurredAt, actorId]
-      );
+      const linkedCaseIds = Array.isArray(owner.rows[0].case_ids) ? owner.rows[0].case_ids : parseArray(owner.rows[0].case_ids);
+      if (caseId && !linkedCaseIds.includes(caseId)) return { ok: false, message: 'اربط القضية بالملف أولًا أو اختر «بدون قضية».' };
+      const timelineEvent = await insertTimelineEvent(client, {
+        makeId: this.makeId, personId: personKey, caseId, eventType, title, body, occurredAt, actorId
+      });
       await insertAudit(client, {
         makeId: this.makeId, personId: personKey, actorId, action: 'TIMELINE_CREATED',
-        entityType: 'TIMELINE', entityId: id, changedFields: ['title', 'body', 'caseId', 'occurredAt']
+        entityType: 'TIMELINE', entityId: timelineEvent.id,
+        changedFields: ['title', 'body', 'caseId', 'occurredAt', 'eventType'],
+        metadata: { eventType }
       });
-      return { ok: true, event: normalizeTimelineEvent(result.rows?.[0]) };
+      return { ok: true, event: timelineEvent };
     });
   }
 }
 
 module.exports = {
-  EVIDENCE_CATEGORIES, EVIDENCE_MIME_TYPES, MAX_EVIDENCE_BYTES, SCHEMA_SQL, SEVERITIES, STATUSES,
+  EVIDENCE_CATEGORIES, EVIDENCE_MIME_TYPES, MAX_EVIDENCE_BYTES, SCHEMA_SQL, SEVERITIES, STATUSES, TIMELINE_EVENT_TYPES,
   WantedPersonsStore, buildListFilters, matchesMimeSignature, normalizeRow, safeImageUrl
 };

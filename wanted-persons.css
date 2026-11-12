@@ -167,6 +167,8 @@
 .wp-record-list { display: grid; max-height: 470px; gap: 8px; overflow: auto; }
 .wp-record-card, .wp-audit-entry { display: grid; gap: 7px; padding: 10px; border: 1px solid rgba(197,160,76,.13); border-radius: 6px; background: rgba(9,9,9,.48); }
 .wp-record-card > strong, .wp-audit-entry > strong { color: #e5d6b4; font-size: 12px; }
+.wp-event-type { display: inline-flex; width: fit-content; padding: 3px 8px; border: 1px solid rgba(198, 157, 75, .28); border-radius: 999px; color: #d7b56d; font-size: 10px; }
+.wp-timeline-entry { gap: 5px; }
 .wp-record-card .wp-long-text { font-size: 12px; }
 .wp-audit-entry { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
 .wp-audit-entry .wp-record-meta:last-child { grid-column: 1 / -1; }

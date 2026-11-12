@@ -47,6 +47,13 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
     actor: { id: 'test-investigator-1' }
   });
   assert.equal(savedPerson.ok, true);
+  const linkedCase = await store.saveCaseLinks({
+    personId: savedPerson.person.id,
+    caseIds: ['CASE-RP-TEST-01'],
+    caseLabels: { 'CASE-RP-TEST-01': 'CASE-RP-TEST-01 · قضية تمثيلية' },
+    actor: { id: 'test-investigator-1' }
+  });
+  assert.equal(linkedCase.ok, true);
   const reopenedPerson = await store.get(savedPerson.person.id);
   assert.equal(reopenedPerson.fullName, 'شخصية خيالية للاختبار');
   const updatedPerson = await store.save({
@@ -128,7 +135,10 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
   const linkedBoard = await store.board(savedPerson.person.id);
   assert.equal(linkedBoard.evidence.length, 2);
   assert.equal(linkedBoard.notes.length, 1);
-  assert.equal(linkedBoard.timeline.length, 1);
+  assert.ok(linkedBoard.timeline.length >= 4);
+  assert.ok(linkedBoard.timeline.some((item) => item.eventType === 'EVIDENCE_ADDED'));
+  assert.ok(linkedBoard.timeline.some((item) => item.eventType === 'CASE_LINKED'));
+  assert.ok(linkedBoard.timeline.some((item) => item.eventType === 'MANUAL'));
   assert.ok(linkedBoard.audit.some((item) => item.action === 'EVIDENCE_CREATED' && item.actorUserId === 'test-investigator-1'));
   assert.ok(linkedBoard.audit.some((item) => item.action === 'NOTE_UPDATED' && item.actorUserId === 'test-investigator-2'));
   assert.ok(linkedBoard.audit.some((item) => item.action === 'TIMELINE_CREATED'));
@@ -158,7 +168,7 @@ test('phase two evidence, notes, timeline, links and audit persist in an isolate
   const noteDelete = await store.deleteNote({
     personId: savedPerson.person.id,
     noteId: addedNote.note.id,
-    actor: { id: 'test-investigator-1' }
+    actor: { id: 'test-investigator-2' }
   });
   assert.equal(noteDelete.ok, true);
   const finalBoard = await store.board(savedPerson.person.id);
