@@ -65,136 +65,6 @@
     try { return typeof window.blackRidgeGetNotificationSession === 'function' ? window.blackRidgeGetNotificationSession() : null; }
     catch (_error) { return null; }
   }
-  function chief(sessionValue) { return !!(sessionValue && sessionValue.authenticated && sessionValue.user && String(sessionValue.user.rank || '').toUpperCase() === 'CIA CHIEF'); }
-  function setStatus(message, isError) {
-    const node = $('ow-form-status');
-    if (node) { node.textContent = message || ''; node.style.color = isError ? '#ce6060' : '#bca7a7'; }
-  }
-  function labelPerson(person) {
-    return [person.name, person.publicCode, person.rankLabel || person.rank].filter(Boolean).join(' · ');
-  }
-  function updatePersonInfo() {
-    const select = $('ow-target');
-    const box = $('ow-person-info');
-    if (!select || !box) return;
-    const selected = select.options[select.selectedIndex];
-    const name = selected && selected.dataset.name;
-    if (!name) { box.hidden = true; box.textContent = ''; return; }
-    box.hidden = false;
-    box.textContent = 'الاسم: ' + name + '  |  الكود العسكري: ' + (selected.dataset.code || 'غير متوفر') +
-      '  |  الرتبة: ' + (selected.dataset.rank || 'غير متوفرة') +
-      (selected.dataset.sector ? '  |  القطاع: ' + selected.dataset.sector : '');
-  }
-  function loadPeople() {
-    const connection = socket();
-    if (!connection || !connection.connected) return;
-    connection.emit('official-warning:people:list', {}, (result) => {
-      const select = $('ow-target');
-      if (!select || !result) return;
-      select.replaceChildren();
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = result.ok ? '— اختر الشخص —' : (result.message || 'تعذر تحميل القائمة');
-      select.appendChild(placeholder);
-      if (!result.ok) { setStatus(result.message || 'تعذر تحميل قائمة الأفراد.', true); return; }
-      (result.people || []).forEach((person) => {
-        const option = document.createElement('option');
-        option.value = person.id;
-        option.textContent = labelPerson(person);
-        option.dataset.name = person.name || '';
-        option.dataset.code = person.publicCode || '';
-        option.dataset.rank = person.rankLabel || person.rank || '';
-        option.dataset.sector = person.sector || '';
-        select.appendChild(option);
-      });
-      updatePersonInfo();
-    });
-  }
-  function renderResponses(responses) {
-    const root = $('ow-response-list');
-    if (!root) return;
-    root.replaceChildren();
-    if (!responses || !responses.length) {
-      const empty = document.createElement('p'); empty.className = 'ow-empty'; empty.textContent = 'لا توجد تبريرات واردة.'; root.appendChild(empty); return;
-    }
-    responses.forEach((item) => {
-      const card = document.createElement('article'); card.className = 'ow-response-item';
-      const meta = document.createElement('div'); meta.className = 'ow-response-meta';
-      const who = document.createElement('span'); who.textContent = [item.sourceName, item.sourceCode].filter(Boolean).join(' · ') || 'فرد';
-      const date = document.createElement('time');
-      date.textContent = item.createdAt ? new Date(item.createdAt).toLocaleString('ar-JO') : '';
-      meta.append(who, date);
-      const text = document.createElement('div'); text.className = 'ow-response-text'; text.textContent = item.response || '';
-      const kind = document.createElement('div'); kind.className = 'ow-response-meta'; kind.textContent = (item.warningType || 'تحذير رسمي') + ' · ' + (item.warningId || '');
-      card.append(meta, text, kind); root.appendChild(card);
-    });
-  }
-  function loadResponses() {
-    const connection = socket();
-    if (!connection || !connection.connected) return;
-    connection.emit('official-warning:responses:list', {}, (result) => {
-      if (result && result.ok) renderResponses(result.responses || []);
-    });
-  }
-  function renderIssuedWarnings(warnings) {
-    const root = $('ow-issued-list');
-    if (!root) return;
-    root.replaceChildren();
-    if (!warnings || !warnings.length) {
-      const empty = document.createElement('p');
-      empty.className = 'ow-empty';
-      empty.textContent = 'لا توجد تحذيرات صادرة.';
-      root.appendChild(empty);
-      return;
-    }
-    warnings.forEach((warning) => {
-      const card = document.createElement('article');
-      card.className = 'ow-response-item';
-      const meta = document.createElement('div');
-      meta.className = 'ow-response-meta';
-      const person = document.createElement('span');
-      person.textContent = [warning.recipientName, warning.recipientCode, warning.recipientRank].filter(Boolean).join(' · ') || 'فرد';
-      const date = document.createElement('time');
-      date.textContent = warning.createdAt ? new Date(warning.createdAt).toLocaleString('ar-JO') : '';
-      meta.append(person, date);
-      const content = document.createElement('div');
-      content.className = 'ow-response-text';
-      content.textContent = (warning.warningType || 'تحذير رسمي') + ' — ' + (warning.content || '');
-      const toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'ow-secondary-button';
-      toggle.textContent = warning.allowJustification ? 'منع التبرير' : 'السماح بالتبرير';
-      toggle.addEventListener('click', () => {
-        const connection = socket();
-        if (!connection || !connection.connected) {
-          setStatus('تعذر الاتصال بالخادم؛ لم تتغير صلاحية التبرير.', true);
-          return;
-        }
-        toggle.disabled = true;
-        connection.emit('official-warning:set-justification', {
-          warningId: warning.warningId,
-          allowJustification: !warning.allowJustification
-        }, (result) => {
-          toggle.disabled = false;
-          if (!result || !result.ok) {
-            setStatus(result && result.message || 'تعذر تحديث صلاحية التبرير.', true);
-            return;
-          }
-          loadIssuedWarnings();
-          setStatus(result.warning.allowJustification ? 'تم السماح بالتبرير.' : 'تم منع التبرير.', false);
-        });
-      });
-      card.append(meta, content, toggle);
-      root.appendChild(card);
-    });
-  }
-  function loadIssuedWarnings() {
-    const connection = socket();
-    if (!connection || !connection.connected) return;
-    connection.emit('official-warning:issued:list', { limit: 50, offset: 0 }, (result) => {
-      if (result && result.ok) renderIssuedWarnings(result.warnings || []);
-    });
-  }
   function normalizedWarning(row) {
     const metadata = row && row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
     return {
@@ -293,22 +163,18 @@
   }
   function syncSession() {
     const current = session();
-    const card = $('official-warning-admin');
     if (!current || !current.authenticated || !current.user) {
       sessionKey = '';
-      if (card) card.hidden = true;
       activeWarning = null; queue.length = 0; shown.clear();
       stopWarningSound();
       const overlay = $('ow-warning-overlay');
       if (overlay) { overlay.classList.remove('is-open'); overlay.setAttribute('aria-hidden', 'true'); }
       return;
     }
-    if (card) card.hidden = !chief(current);
     const nextKey = String(current.user.id || '') + ':' + String(current.user.rank || '');
     if (nextKey === sessionKey) return;
     sessionKey = nextKey;
     loadWarnings();
-    if (chief(current)) { loadPeople(); loadResponses(); loadIssuedWarnings(); }
   }
   const connection = socket();
   if (connection) {
@@ -321,7 +187,6 @@
     connection.on('notification:new', (row) => {
       if (!row) return;
       if (row.type === 'WARNING') enqueueWarning(row);
-      if (row.type === 'WARNING_RESPONSE' && chief(session())) loadResponses();
     });
     connection.on('official-warning:justification:changed', (data) => {
       if (!data?.warning) return;
@@ -341,36 +206,6 @@
   window.addEventListener('pointerdown', primeWarningSound, { once: true, capture: true });
   window.addEventListener('keydown', primeWarningSound, { once: true, capture: true });
 
-  const target = $('ow-target');
-  if (target) target.addEventListener('change', updatePersonInfo);
-  const form = $('official-warning-form');
-  if (form) form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const current = session();
-    if (!chief(current)) { setStatus('إصدار التحذيرات الرسمية متاح للقائد فقط.', true); return; }
-    const connectionNow = socket();
-    if (!connectionNow || !connectionNow.connected) { setStatus('تعذر الاتصال بالخادم؛ لم يُصدر التحذير.', true); return; }
-    const data = new FormData(form);
-    const button = form.querySelector('button[type="submit"]'); button.disabled = true; setStatus('جارٍ حفظ التحذير وإرساله…', false);
-    connectionNow.emit('official-warning:create', {
-      targetUserId: data.get('targetUserId'), warningType: data.get('warningType'), content: data.get('content'),
-      allowJustification: data.get('allowJustification') === 'on'
-    }, (result) => {
-      button.disabled = false;
-      if (!result || !result.ok) { setStatus(result && result.message || 'تعذر إصدار التحذير.', true); return; }
-      const recipient = $('ow-target').selectedOptions[0];
-      setStatus('تم حفظ التحذير وإرساله إلى ' + (recipient && recipient.dataset.name || 'الشخص المحدد') + '.', false);
-      form.elements.content.value = '';
-      form.elements.warningType.value = '';
-      form.elements.allowJustification.checked = true;
-      loadResponses();
-      loadIssuedWarnings();
-    });
-  });
-  const refreshIssued = $('ow-refresh-issued');
-  if (refreshIssued) refreshIssued.addEventListener('click', loadIssuedWarnings);
-  const refresh = $('ow-refresh-responses');
-  if (refresh) refresh.addEventListener('click', loadResponses);
   window.addEventListener('blackridge:logout', () => { sessionKey = ''; syncSession(); });
   window.setInterval(syncSession, 1000);
   syncSession();
