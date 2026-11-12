@@ -323,7 +323,7 @@
       if (row.type === 'WARNING') enqueueWarning(row);
       if (row.type === 'WARNING_RESPONSE' && chief(session())) loadResponses();
     });
-    socket.on('official-warning:justification:changed', (data) => {
+    connection.on('official-warning:justification:changed', (data) => {
       if (!data?.warning) return;
       const changed = data.warning;
       for (const item of queue) {
