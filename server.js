@@ -794,7 +794,7 @@ const isHighCommander = (user) =>
   !!user && normalizeRank(user.rank) === 'HIGH COMMANDER';
 
 const isMorseSupervisor = (user) =>
-  isChief(user) || isSenior(user) || isHighCommander(user);
+  isChief(user);
 
 const isSecuritySupervisor = (user) =>
   isChief(user) || isSenior(user) || isHighCommander(user);
