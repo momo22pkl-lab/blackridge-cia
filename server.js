@@ -7595,21 +7595,21 @@ socket.on('member:saveIdentity', (payload, cb) => {
           );
         }
 
+        const availableBalance = Number(target.bank.balance);
         if (
-          target.bank.balance <
-          amount
+          !Number.isFinite(availableBalance) ||
+          availableBalance < amount
         ) {
           const bank = bankView(target, actor);
           return no(cb, 'الرصيد غير كافٍ.', {
             bank,
-            self: target.id === actor.id ? bank : bankView(actor, actor)
+            self: target.id === actor.id ? bank : bankView(actor, actor),
+            requestedAmount: amount,
+            availableBalance
           });
         }
 
-        target.bank.balance -=
-          Math.floor(
-            amount
-          );
+        target.bank.balance = availableBalance - amount;
 
         addAuditLog(
           'سحب بنكي',
