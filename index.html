@@ -5176,7 +5176,16 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       if(!Number.isFinite(amount)||amount<=0) return alert('اكتب مبلغ سحب صحيح.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('bank:withdraw',{amount},function(result){
-        if(!result||!result.ok) return alert((result&&result.message)||'تعذر السحب.');
+        if(!result||!result.ok){
+        const rejectedBank=result&&(result.self||result.bank);
+        const available=rejectedBank?Number(rejectedBank.balance):NaN;
+        if(currentUser&&Number.isFinite(available)){
+          currentUser={...currentUser,bank:{...(currentUser.bank||{}),balance:available}};
+          renderBank();
+        }
+        const availableMessage=Number.isFinite(available)?(' الرصيد الحالي لدى الخادم: '+available+'.'):'';
+        return alert(((result&&result.message)||'تعذر السحب.')+availableMessage);
+      }
          const b=result.self||result.bank||{};
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
         document.getElementById('bank-withdraw-amount').value='';
