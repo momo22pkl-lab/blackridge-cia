@@ -2124,7 +2124,7 @@ function ok(cb, payload = {}) {
   return reply(cb, response);
 }
 
-function no(cb, message) {
+function no(cb, message, details = {}) {
   const normalizedMessage = clean(message, 500);
   const loginMessage =
     normalizedMessage === 'يجب تسجيل الدخول.' ||
@@ -2133,6 +2133,7 @@ function no(cb, message) {
       : normalizedMessage;
 
   return reply(cb, {
+    ...details,
     ok: false,
     message: loginMessage
   });
@@ -7598,10 +7599,11 @@ socket.on('member:saveIdentity', (payload, cb) => {
           target.bank.balance <
           amount
         ) {
-          return no(
-            cb,
-            'الرصيد غير كافٍ.'
-          );
+          const bank = bankView(target, actor);
+          return no(cb, 'الرصيد غير كافٍ.', {
+            bank,
+            self: target.id === actor.id ? bank : bankView(actor, actor)
+          });
         }
 
         target.bank.balance -=

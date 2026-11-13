@@ -5172,20 +5172,37 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     }
 
     function withdrawBankMoney(){
-      const amount=Number(document.getElementById('bank-withdraw-amount')?.value);
+      const amount=Math.floor(Number(document.getElementById('bank-withdraw-amount')?.value));
       if(!Number.isFinite(amount)||amount<=0) return alert('اكتب مبلغ سحب صحيح.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
-      ciaSocket.emit('bank:withdraw',{amount},function(result){
-        if(!result||!result.ok) return alert((result&&result.message)||'تعذر السحب.');
-         const b=result.self||result.bank||{};
+      const syncBank=(b)=>{
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
-        document.getElementById('bank-withdraw-amount').value='';
         renderBank();
+      };
+      const sendWithdrawal=()=>ciaSocket.emit('bank:withdraw',{amount},function(result){
+        if(!result||!result.ok){
+          const rejectedBank=result&&(result.self||result.bank);
+          const available=rejectedBank?Number(rejectedBank.balance):NaN;
+          if(rejectedBank) syncBank(rejectedBank);
+          const availableMessage=Number.isFinite(available)?(' الرصيد الحالي لدى الخادم: '+available+'.'):'';
+          return alert(((result&&result.message)||'تعذر السحب.')+availableMessage);
+        }
+        const b=result.self||result.bank||{};
+        syncBank(b);
+        document.getElementById('bank-withdraw-amount').value='';
         renderDailyAuditLogs();
-        alert(`تم سحب ${result.amount||amount} من حسابك.`);
+        alert('تم سحب '+(result.amount||amount)+' من حسابك.');
+      });
+      ciaSocket.emit('bank:get',{},function(result){
+        if(!result||!result.ok) return alert((result&&result.message)||'تعذر تحديث رصيد البنك قبل السحب.');
+        const latest=result.self||result.bank;
+        const available=Number(latest&&latest.balance);
+        if(!latest||!Number.isFinite(available)) return alert('تعذر التحقق من الرصيد الحالي. حاول مرة أخرى.');
+        syncBank(latest);
+        if(available<amount) return alert('الرصيد غير كافٍ. الرصيد الحالي لدى الخادم: '+available+'.');
+        sendWithdrawal();
       });
     }
-
     function claimBankSalary(){
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
       ciaSocket.emit('bank:claimSalary',{},function(result){
