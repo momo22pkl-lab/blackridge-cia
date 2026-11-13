@@ -1,30 +1,3 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BLACK RIDGE CITY CIA SYSTEM - GTA V</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <link href="/notifications.css" rel="stylesheet">
-  <link href="/official-warnings.css" rel="stylesheet">
-  <link href="/blackridge-cipher.css" rel="stylesheet">
-  <style id="profanity-strike-dialog-css">
-#pr-strike-overlay{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:14px;background:rgba(0,0,0,.86);backdrop-filter:blur(5px)}
-.pr-strike-dialog{position:relative;width:min(480px,100%);max-height:min(88vh,760px);overflow:auto;padding:clamp(18px,5vw,26px);color:#f8eded;background:linear-gradient(145deg,#2a0b0e,#170709 62%,#090607);border:1px solid #7d2229;border-top:4px solid #c52732;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 38px rgba(139,0,0,.24);font-family:inherit;animation:pr-strike-enter .18s ease-out}
-.pr-strike-dialog:before{position:absolute;inset:0;content:"";pointer-events:none;opacity:.055;background:repeating-linear-gradient(0deg,transparent 0,transparent 4px,#ff2636 5px)}
-.pr-strike-dialog>*{position:relative}.pr-strike-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid #542025}
-.pr-strike-brand{color:#f0dede;font:800 .68rem/1.5 monospace;letter-spacing:.11em}.pr-strike-classification{margin-top:4px;color:#b27c80;font:600 .56rem/1.6 monospace;letter-spacing:.09em}
-.pr-strike-count{flex:none;padding:7px 9px;color:#ffb8bc;background:#3a0d12;border:1px solid #9c2933;border-radius:4px;font:800 .64rem monospace}
-.pr-strike-heading{display:flex;align-items:center;gap:10px;margin:18px 0 10px}.pr-strike-icon{display:grid;flex:none;width:32px;height:32px;place-items:center;color:#fff;background:#981e28;border-radius:5px;font:900 1.1rem monospace;box-shadow:0 0 16px rgba(205,39,50,.32)}
-.pr-strike-title{margin:0;color:#fff0f0;font-size:1.08rem;line-height:1.5}.pr-strike-message{margin:0;padding:14px;color:#f3dddd;background:rgba(8,4,5,.64);border:1px solid #492025;border-inline-start:3px solid #b5222c;border-radius:5px;font-size:.84rem;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere}
-.pr-strike-actions{display:flex;justify-content:flex-start;margin-top:18px}.pr-strike-ack{min-width:130px;padding:10px 16px;color:#fff;background:linear-gradient(180deg,#9d202a,#6f121a);border:1px solid #c34049;border-radius:5px;font:800 .76rem/1.4 system-ui,sans-serif;cursor:pointer;transition:filter .15s,transform .15s}
-.pr-strike-ack:hover{filter:brightness(1.18);transform:translateY(-1px)}.pr-strike-ack:focus-visible{outline:2px solid #ffc4c7;outline-offset:3px}
-@keyframes pr-strike-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
-@media(max-width:520px){.pr-strike-dialog{padding:18px 16px}.pr-strike-title{font-size:1rem}.pr-strike-message{font-size:.78rem}}@media(prefers-reduced-motion:reduce){.pr-strike-dialog{animation:none}.pr-strike-ack{transition:none}}
-  </style>
-  <script id="profanity-strike-dialog-js">
-    (function(){
-      var queue=[];var active=false;
       window.isProfanityStrikeWarning=function(message){return /تحذير\s+(?:أولي|ثانوي|نهائي)|المخالفة\s*[123]\s*\/\s*3|المخالفات اللفظية للمرة الثالثة/i.test(String(message||''));};
       function showNext(){
         if(active||!queue.length||!document.body)return;active=true;var item=queue.shift();
@@ -676,6 +649,37 @@
     .morse-live-notice strong { display:block; color:var(--primary-gold); font-size:.78rem; margin-bottom:4px; }
     .morse-live-notice span { display:block; color:var(--text-dim); font-size:.68rem; line-height:1.65; overflow-wrap:anywhere; }
     @keyframes morseNoticeIn { from { opacity:0; transform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
+  
+  
+    .operation-picker { position: relative; width: 100%; margin: 5px 0 8px; }
+    .operation-picker.is-open { z-index: 120; }
+    .operation-picker-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; color: var(--text-bright); background: linear-gradient(135deg, #111827, #0b1220); border: 1px solid rgba(34,211,238,.36); border-radius: 9px; text-align: right; cursor: pointer; transition: border-color .16s, box-shadow .16s, background .16s; }
+    .operation-picker-trigger:hover, .operation-picker.is-open .operation-picker-trigger { border-color: var(--cyan-glow); box-shadow: 0 0 0 3px rgba(34,211,238,.08); }
+    .operation-picker-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
+    .operation-picker-arrow { color: var(--cyan-glow); font-size: 1rem; transition: transform .16s; }
+    .operation-picker.is-open .operation-picker-arrow { transform: rotate(180deg); }
+    .operation-picker-selected { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .operation-picker-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; color: #dffaff; background: rgba(34,211,238,.09); border: 1px solid rgba(34,211,238,.23); border-radius: 999px; font-size: .63rem; }
+    .operation-picker-chip-remove { padding: 0 2px; color: var(--cyan-glow); background: transparent; border: 0; cursor: pointer; font-size: .85rem; line-height: 1; }
+    .operation-picker-panel { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 130; padding: 8px; background: #0b1220; border: 1px solid rgba(34,211,238,.42); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+    .operation-picker-panel[hidden] { display: none; }
+    .operation-picker-search { width: 100%; padding: 8px 10px; color: var(--text-bright); background: #111827; border: 1px solid var(--border); border-radius: 7px; outline: none; font-size: .74rem; }
+    .operation-picker-search:focus { border-color: var(--cyan-glow); }
+    .operation-picker-options { max-height: 230px; overflow: auto; margin-top: 7px; }
+    .operation-picker-option { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 7px; cursor: pointer; transition: background .14s; }
+    .operation-picker-option:hover { background: rgba(34,211,238,.09); }
+    .operation-picker-option[hidden] { display: none; }
+    .operation-picker-option input { flex: 0 0 auto; width: 15px; height: 15px; accent-color: var(--cyan-glow); }
+    .operation-picker-option-copy { display: grid; gap: 2px; min-width: 0; }
+    .operation-picker-option-copy strong { color: var(--text-bright); font-size: .7rem; font-weight: 700; }
+    .operation-picker-option-copy small { color: var(--text-dim); font-size: .61rem; }
+    .operation-picker-empty { padding: 12px 8px; color: var(--text-dim); text-align: center; font-size: .68rem; }
+
+  </style>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<style id="ibp-system-styles">
+body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ibp-mode .mobile-header,body.ibp-mode .sidebar,body.ibp-mode .sidebar-overlay{display:none!important}body.ibp-mode .content-area{height:100vh;width:100vw;max-width:100vw;padding:0!important;overflow:hidden;flex:1;background:#05070b}body.ibp-mode #ibp-command-center.view-pane.active{display:block;height:100%;overflow:auto}body.ibp-mode .view-pane.active:not(#ibp-command-center){height:100vh;overflow:auto;padding:64px 16px 20px}
+#ibp-return-bar{position:fixed;inset:0 0 auto;height:50px;z-index:10020;align-items:center;justify-content:space-between;padding:0 16px;background:rgba(5,8,13,.96);border-bottom:1px solid rgba(94,234,212,.28);backdrop-filter:blur(12px);color:#dbe5ef;font:700 .72rem monospace}#ibp-return-bar button{border:1px solid rgba(94,234,212,.45);border-radius:5px;padding:7px 11px;background:#0e1820;color:#8ee8d7;cursor:pointer;foansform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
   
   
     .operation-picker { position: relative; width: 100%; margin: 5px 0 8px; }
@@ -3013,7 +3017,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         class="btn-action"
         onclick="withdrawBankMoney(this)"
       >
-        سحب
+        سحب من الرصيد
       </button>
     </div>
   </div>
@@ -5177,6 +5181,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const amount=Math.floor(Number(input?.value));
       if(!Number.isFinite(amount)||amount<=0) return alert('اكتب مبلغ سحب صحيح.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      const publicCode=String(currentUser?.publicCode||'').trim();
+      if(!publicCode) return alert('تعذر تحديد الحساب البنكي. حدّث الصفحة ثم أعد المحاولة.');
       window.bankWithdrawalPending=true;
       const submitButton=button||document.querySelector('button[onclick="withdrawBankMoney(this)"]');
       if(submitButton) submitButton.disabled=true;
@@ -5197,31 +5203,33 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
         renderBank();
       };
-      const sendWithdrawal=()=>ciaSocket.emit('bank:withdraw',{amount},function(result){
+      const sendWithdrawal=()=>ciaSocket.emit('bank:withdraw',{amount,publicCode},function(result){
         if(completed) return;
         if(!result||!result.ok){
-          const rejectedBank=result&&(result.self||result.bank);
-          const available=rejectedBank?Number(rejectedBank.balance):NaN;
+          const rejectedBank=result&&(result.bank||result.self);
+          const serverBalance=result&&result.availableBalance;
+          const available=serverBalance!==null&&serverBalance!==undefined&&Number.isFinite(Number(serverBalance))?Number(serverBalance):NaN;
           const receivedAmount=Number(result&&result.requestedAmount);
-          if(rejectedBank) syncBank(rejectedBank);
+          if(rejectedBank&&String(rejectedBank.code||'')===publicCode) syncBank(rejectedBank);
           const amountMessage=Number.isFinite(receivedAmount)?(' المبلغ الذي استلمه الخادم: '+receivedAmount+'.'):(' المبلغ المرسل: '+amount+'.');
-          const availableMessage=Number.isFinite(available)?(' الرصيد الحالي لدى الخادم: '+available+'.'):'';
+          const availableMessage=Number.isFinite(available)?(' الرصيد الذي قارنه الخادم: '+available+'.'):'';
           if(!finish()) return;
           return alert(((result&&result.message)||'تعذر السحب.')+amountMessage+availableMessage);
         }
-        const b=result.self||result.bank||{};
+        const b=result.bank||result.self||{};
         if(!finish()) return;
         syncBank(b);
         if(input) input.value='';
         renderDailyAuditLogs();
         alert('تم سحب '+(result.amount||amount)+' من حسابك.');
       });
-      ciaSocket.emit('bank:get',{},function(result){
+      ciaSocket.emit('bank:get',{publicCode},function(result){
         if(completed) return;
         if(!result||!result.ok){if(finish()) alert((result&&result.message)||'تعذر تحديث رصيد البنك قبل السحب.');return;} 
-        const latest=result.self||result.bank;
+        const latest=result.bank||result.self;
         const available=Number(latest&&latest.balance);
         if(!latest||!Number.isFinite(available)){if(finish()) alert('تعذر التحقق من الرصيد الحالي. حاول مرة أخرى.');return;} 
+        if(String(latest.code||'')!==publicCode){if(finish()) alert('الحساب الذي أعاده الخادم لا يطابق الحساب المحدد. لم يتم السحب.');return;}
         syncBank(latest);
         if(available<amount){if(finish()) alert('الرصيد غير كافٍ. المبلغ المطلوب: '+amount+'. الرصيد الحالي لدى الخادم: '+available+'.');return;} 
         sendWithdrawal();
