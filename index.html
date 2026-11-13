@@ -3013,7 +3013,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         class="btn-action"
         onclick="withdrawBankMoney(this)"
       >
-        سحب
+        سحب من الرصيد
       </button>
     </div>
   </div>
@@ -5177,6 +5177,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       const amount=Math.floor(Number(input?.value));
       if(!Number.isFinite(amount)||amount<=0) return alert('اكتب مبلغ سحب صحيح.');
       if(!ciaSocket||!ciaSocket.connected) return alert('الاتصال بالسيرفر غير متاح.');
+      const publicCode=String(currentUser?.publicCode||'').trim();
+      if(!publicCode) return alert('تعذر تحديد الحساب البنكي. حدّث الصفحة ثم أعد المحاولة.');
       window.bankWithdrawalPending=true;
       const submitButton=button||document.querySelector('button[onclick="withdrawBankMoney(this)"]');
       if(submitButton) submitButton.disabled=true;
@@ -5197,31 +5199,33 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         currentUser={...currentUser,bank:{...(currentUser.bank||{}),bankAccount:b.accountNumber||currentUser.bank?.bankAccount||'',balance:b.balance??0,salary:b.salary??currentUser.bank?.salary??580,lastSalaryAt:b.lastSalaryAt||null,salaryClaimedToday:!!b.salaryClaimedToday,frozen:!!b.frozen,enabled:b.enabled!==false,salaryEnabled:b.salaryEnabled!==false,bankCode:b.bankCode||currentUser.bank?.bankCode||null}};
         renderBank();
       };
-      const sendWithdrawal=()=>ciaSocket.emit('bank:withdraw',{amount},function(result){
+      const sendWithdrawal=()=>ciaSocket.emit('bank:withdraw',{amount,publicCode},function(result){
         if(completed) return;
         if(!result||!result.ok){
-          const rejectedBank=result&&(result.self||result.bank);
-          const available=rejectedBank?Number(rejectedBank.balance):NaN;
+          const rejectedBank=result&&(result.bank||result.self);
+          const serverBalance=result&&result.availableBalance;
+          const available=serverBalance!==null&&serverBalance!==undefined&&Number.isFinite(Number(serverBalance))?Number(serverBalance):NaN;
           const receivedAmount=Number(result&&result.requestedAmount);
-          if(rejectedBank) syncBank(rejectedBank);
+          if(rejectedBank&&String(rejectedBank.code||'')===publicCode) syncBank(rejectedBank);
           const amountMessage=Number.isFinite(receivedAmount)?(' المبلغ الذي استلمه الخادم: '+receivedAmount+'.'):(' المبلغ المرسل: '+amount+'.');
-          const availableMessage=Number.isFinite(available)?(' الرصيد الحالي لدى الخادم: '+available+'.'):'';
+          const availableMessage=Number.isFinite(available)?(' الرصيد الذي قارنه الخادم: '+available+'.'):'';
           if(!finish()) return;
           return alert(((result&&result.message)||'تعذر السحب.')+amountMessage+availableMessage);
         }
-        const b=result.self||result.bank||{};
+        const b=result.bank||result.self||{};
         if(!finish()) return;
         syncBank(b);
         if(input) input.value='';
         renderDailyAuditLogs();
         alert('تم سحب '+(result.amount||amount)+' من حسابك.');
       });
-      ciaSocket.emit('bank:get',{},function(result){
+      ciaSocket.emit('bank:get',{publicCode},function(result){
         if(completed) return;
         if(!result||!result.ok){if(finish()) alert((result&&result.message)||'تعذر تحديث رصيد البنك قبل السحب.');return;} 
-        const latest=result.self||result.bank;
+        const latest=result.bank||result.self;
         const available=Number(latest&&latest.balance);
         if(!latest||!Number.isFinite(available)){if(finish()) alert('تعذر التحقق من الرصيد الحالي. حاول مرة أخرى.');return;} 
+        if(String(latest.code||'')!==publicCode){if(finish()) alert('الحساب الذي أعاده الخادم لا يطابق الحساب المحدد. لم يتم السحب.');return;}
         syncBank(latest);
         if(available<amount){if(finish()) alert('الرصيد غير كافٍ. المبلغ المطلوب: '+amount+'. الرصيد الحالي لدى الخادم: '+available+'.');return;} 
         sendWithdrawal();
