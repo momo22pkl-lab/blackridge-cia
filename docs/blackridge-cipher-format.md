@@ -7,7 +7,7 @@ The browser-only BLACKRIDGE CIPHER uses Web Crypto API AES-256-GCM. It does not 
 - Key derivation: PBKDF2 with HMAC-SHA-256, 600,000 iterations, and the passphrase entered by the user.
 - Salt: 16 cryptographically random bytes, generated independently for every message.
 - Cipher: AES-256-GCM with a 12-byte cryptographically random IV and a 128-bit authentication tag.
-- The passphrase and plaintext are kept in browser memory while the user operates the page. The cipher module does not persist them or send them to an API.
+- The passphrase and plaintext exist in browser memory while the user operates the page. The standalone cipher module does not persist or send them. In the integrated BLACKRIDGE application, a successful decrypt can send the plaintext and original code to CIA CHIEF for the audit feature described below; the passphrase is never sent.
 
 ## Symbol display
 
@@ -50,4 +50,4 @@ The image renderer is capped at 12 million pixels. If a message exceeds that ima
 
 ## Operational notes
 
-Share the passphrase separately from the cipher text. Anyone with both can decrypt the message. A strong, unique passphrase matters; PBKDF2 slows guessing but cannot make a weak passphrase strong. There is no password recovery. The application must be opened in a browser with Web Crypto support over HTTPS or localhost. A compromised device, malicious browser extension, or compromised page can still expose text or the passphrase while in use.
+Share the passphrase separately from the cipher text. Anyone with both can decrypt the message. A strong, unique passphrase matters; PBKDF2 slows guessing but cannot make a weak passphrase strong. There is no password recovery. The application must be opened in a browser with Web Crypto support over HTTPS or localhost. A successful decrypt in the integrated BLACKRIDGE application, while signed in, sends the original symbol code and decrypted plaintext to the server for a leadership audit log and real-time CIA CHIEF notice. The log retains up to 10 recent decryptions. The passphrase is never included in that request. The standalone cipher module does not send the passphrase or message by itself. A compromised device, malicious browser extension, or compromised page can still expose text or the passphrase while in use.

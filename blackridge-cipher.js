@@ -619,10 +619,19 @@ function initializeCipherPage(documentRef, cipher) {
     result.hidden = true;
     setStatus('decrypt', imageFile ? 'تُقرأ خطوط الصورة وتُفك محليًا على هذا الجهاز.' : 'يتم التحقق من الشفرة على هذا الجهاز فقط.', 'info');
     try {
-      const plaintext = imageFile
-        ? await cipher.decryptMessageBytes(await readScribbleUpload(imageFile), passphrase)
-        : await cipher.decryptMessage(code, passphrase);
+      let plaintext;
+      let sourceCode = code.trim();
+      if (imageFile) {
+        const packed = await readScribbleUpload(imageFile);
+        plaintext = await cipher.decryptMessageBytes(packed, passphrase);
+        sourceCode = cipher.encodeSymbolMessage(packed);
+      } else {
+        plaintext = await cipher.decryptMessage(code, passphrase);
+      }
       query('#br-cipher-plaintext-output').value = plaintext;
+      documentRef.dispatchEvent(new CustomEvent('blackridge:cipher-decoded', {
+        detail: { sourceCode, plaintext }
+      }));
       result.hidden = false;
       setStatus('decrypt', 'تم التحقق وفك التشفير بنجاح.', 'success');
     } catch (error) {

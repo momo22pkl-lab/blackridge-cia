@@ -36,6 +36,7 @@ const SOCKET_TEXT_FIELDS = Object.freeze({
 
 const ALREADY_MODERATED_SOCKET_EVENTS = new Set([
   'morse:translate',
+  'cipher:decoded',
   'radio:text',
   'radio:code',
   'chat:send',

@@ -30,6 +30,7 @@ test('central socket policy covers direct writes and the old shared-data save pa
     ['Seeded chat content.', 'Seeded report', 'Report body.']
   );
   assert.deepEqual(getSocketTextInputs('security:manageBlockedTerm', { term: 'admin-managed rule' }), []);
+  assert.deepEqual(getSocketTextInputs('cipher:decoded', { sourceCode: '◈◉', translation: 'Decoded private message.' }), []);
 });
 
 test('future write-style socket events use the central fallback without swallowing control fields', () => {
