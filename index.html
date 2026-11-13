@@ -2321,7 +2321,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <div class="br-cipher-brand">
             <div class="br-cipher-overline">BLACKRIDGE // PRIVATE MESSAGE TOOL</div>
             <h1>شفرة الاستخبارات</h1>
-            <p>تشفير وفك تشفير محليان على هذا الجهاز</p>
+            <p>التشفير محلي؛ ويصل إشعار فك الشفرة إلى القيادة</p>
           </div>
           <svg class="br-cipher-scribble" viewBox="0 0 180 60" aria-hidden="true">
             <path d="M2 42c18-28 26 24 45-8S75 54 93 25s24 23 39-5 29 11 46-12M9 53c17-16 23 7 39-13s24 15 43-5 25 11 39-8 24 8 41-7" fill="none" stroke="currentColor" stroke-width="1"/>
@@ -2331,7 +2331,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
         <div class="br-cipher-privacy" role="note">
           <i class="fa-solid fa-lock" aria-hidden="true"></i>
-          الرسالة والمفتاح لا يُرسلان إلى الخادم. استخدم مفتاحًا مشتركًا قويًا وأرسله عبر قناة منفصلة.
+          المفتاح لا يغادر هذا الجهاز. عند فك التشفير بعد تسجيل الدخول، تُرسل الشفرة الأصلية والنص المفكوك إلى CIA CHIEF للإشعار والسجل.
         </div>
 
         <div class="br-cipher-tabs" role="tablist" aria-label="اختيار العملية">
@@ -2391,7 +2391,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
             <textarea id="br-cipher-plaintext-output" class="br-cipher-output br-cipher-plaintext-output" rows="6" readonly aria-label="الرسالة الأصلية بعد فك التشفير"></textarea>
           </div>
         </section>
-        <footer class="br-cipher-footer"><span>BR-CIPHER/1</span><span>AES-256-GCM · PBKDF2 / SHA-256</span><span>LOCAL ONLY</span></footer>
+        <section id="br-cipher-leadership-audit" class="br-cipher-result br-cipher-audit" hidden aria-live="polite">
+          <div class="br-cipher-result-head"><span><i class="fa-solid fa-user-shield" aria-hidden="true"></i> سجل فك الشفرة — CIA CHIEF</span><span>آخر 10 عمليات</span></div>
+          <div id="br-cipher-audit-list" class="br-cipher-audit-list"></div>
+        </section>
+        <footer class="br-cipher-footer"><span>BR-CIPHER/1</span><span>AES-256-GCM · PBKDF2 / SHA-256</span><span>KEY STAYS LOCAL</span></footer>
       </section>
     </div>
     <div id="ibp-return-bar" style="display:none"><button type="button" onclick="openIBPHome()">← رجوع إلى مركز IBP</button><span>IBP // LOS SANTOS SECTOR COMMAND</span><button type="button" onclick="exitIBPWorkspace()">الخروج إلى BLACK RIDGE</button></div>
@@ -3229,6 +3233,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let ibpReturnToCenter = false;
     let ibpClockTimer = null;
     let morseAuditLogs = [];
+    let cipherAuditLogs = [];
     let activeChatMode = 'global';
     let sosTimer = null;
     let currentSOSBannerId = null;
@@ -3566,10 +3571,12 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         attendanceLogs = Array.isArray(state.cia_attendance) ? state.cia_attendance : [];
         operationsList = Array.isArray(state.cia_operations) ? state.cia_operations : [];
         morseAuditLogs = Array.isArray(state.cia_morse_logs) ? state.cia_morse_logs : [];
+        cipherAuditLogs = Array.isArray(state.cia_cipher_logs) ? state.cia_cipher_logs : [];
         supportMessages = Array.isArray(state.cia_support) ? state.cia_support : supportMessages;
         if (currentUser && state.cia_users) { const me=state.cia_users.find(u=>u.id===currentUser.id); if(me){ currentUser={...currentUser,...me}; } }
         if (typeof updateViews === 'function') updateViews();
         renderMorsePanels();
+        renderCipherAuditLogs();
         if (document.getElementById('leadership-secure-chat-panel')) renderLeadershipSecureChats();
         renderSupportPanel();
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
@@ -3775,6 +3782,21 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
       ciaSocket.on('operation:assigned', function(result){ const op=result&&result.operation?result.operation:result; playRadioBeep(1000); if(op) alert(`تم إسناد مهمة ميدانية ${op.missionNumber||op.id||''}.`); loadTacticalOperations(); });
       ciaSocket.on('morse:activity', function(payload){ if(payload&&payload.log) showMorseSupervisorNotice(payload.log); });
+      ciaSocket.on('cipher:activity', function(payload){ if(payload&&payload.log) showCipherSupervisorNotice(payload.log); });
+      document.addEventListener('blackridge:cipher-decoded', function(event){
+        const detail=event&&event.detail?event.detail:{};
+        const status=document.querySelector('[data-cipher-status="decrypt"]');
+        if(!detail.sourceCode||typeof detail.plaintext!=='string') return;
+        if(!currentUser||!ciaSessionAuthenticated||!ciaSocket||!ciaSocket.connected){
+          if(status){status.textContent='تم فك الشفرة محليًا، لكن لم يصل إشعار القيادة لأن اتصال الخدمة غير متاح.';status.dataset.kind='info';}
+          return;
+        }
+        ciaSocket.emit('cipher:decoded',{sourceCode:detail.sourceCode,translation:detail.plaintext},function(result){
+          if(!status) return;
+          if(!result||!result.ok){status.textContent='تم فك الشفرة محليًا، لكن تعذر تسجيلها للقيادة: '+((result&&result.message)||'الاتصال غير متاح.');status.dataset.kind='error';return;}
+          status.textContent='تم فك الشفرة وإرسال النص والشفرة إلى CIA CHIEF؛ المفتاح لم يُرسل.';status.dataset.kind='success';
+        });
+      });
       ciaSocket.on('member:kicked', function(result){
         const message=(result&&result.message)||'تم فصل الشخصية.';
         const reason=result&&result.reason?'\nسبب الفصل: '+result.reason:'';
@@ -5906,7 +5928,74 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       setTimeout(function() { card.remove(); }, 15000);
     }
 
-        function renderMorsePanels() {
+        function showCipherSupervisorNotice(log) {
+      if (!log || !currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      if (log.publicCode && currentUser.publicCode && log.publicCode === currentUser.publicCode) return;
+      const host = document.getElementById('morse-live-notices');
+      if (!host) return;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'morse-live-notice';
+      const heading = document.createElement('strong');
+      heading.textContent = 'فك شفرة استخبارات جديد';
+      const detail = document.createElement('span');
+      const identity = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—');
+      const translation = String(log.translation || '');
+      const sourceCode = String(log.sourceCode || '');
+      detail.textContent = identity + '\nالنص: ' + translation.slice(0, 180) + (translation.length > 180 ? '…' : '') +
+        '\nالشفرة: ' + sourceCode.slice(0, 320) + (sourceCode.length > 320 ? '…' : '');
+      card.append(heading, detail);
+      card.addEventListener('click', function() {
+        showPane('blackridge-cipher-view', document.getElementById('blackridge-cipher-nav'));
+        renderCipherAuditLogs();
+        card.remove();
+      });
+      host.prepend(card);
+      while (host.children.length > 4) host.lastElementChild.remove();
+      setTimeout(function() { card.remove(); }, 15000);
+    }
+
+    function renderCipherAuditLogs() {
+      const panel = document.getElementById('br-cipher-leadership-audit');
+      const list = document.getElementById('br-cipher-audit-list');
+      if (!panel || !list) return;
+      const canReview = currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      panel.hidden = !canReview;
+      if (!canReview) return;
+      const logs = Array.isArray(cipherAuditLogs) ? cipherAuditLogs.slice(0, 10) : [];
+      if (!logs.length) {
+        list.textContent = 'لا توجد عمليات فك شفرة مسجلة بعد.';
+        return;
+      }
+      list.replaceChildren(...logs.map(log => {
+        const article = document.createElement('article');
+        article.className = 'br-cipher-audit-item';
+        const identity = document.createElement('strong');
+        identity.textContent = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—');
+        const meta = document.createElement('div');
+        meta.className = 'br-cipher-audit-meta';
+        const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        meta.textContent = (log.rankLabel || log.rank || '') + ' · فك شفرة · ' + when;
+        const messageLabel = document.createElement('strong');
+        messageLabel.className = 'br-cipher-audit-label';
+        messageLabel.textContent = 'النص المفكوك';
+        const message = document.createElement('pre');
+        message.className = 'br-cipher-audit-text';
+        message.textContent = log.translation || '';
+        const details = document.createElement('details');
+        details.className = 'br-cipher-audit-code';
+        const summary = document.createElement('summary');
+        summary.textContent = 'عرض الشفرة الأصلية';
+        const code = document.createElement('pre');
+        code.dir = 'ltr';
+        code.textContent = log.sourceCode || '';
+        details.append(summary, code);
+        article.append(identity, meta, messageLabel, message, details);
+        return article;
+      }));
+    }
+
+    function renderMorsePanels() {
       const panel = document.getElementById('morse-leadership-panel');
       if (!panel) return;
       const canReview = currentUser && isTopThreeMissionRank(currentUser.rank);

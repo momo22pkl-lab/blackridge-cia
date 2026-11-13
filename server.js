@@ -353,6 +353,7 @@ const EMPTY_STATE = {
   cia_cases: [],
   cia_map_locations: {},
   cia_morse_logs: [],
+  cia_cipher_logs: [],
   cia_hq_locations: [],
   cia_audit_logs: [],
   cia_security_incidents: [],
@@ -437,7 +438,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
   for (const key of [
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-    'cia_morse_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
+    'cia_morse_logs', 'cia_cipher_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
     'cia_notifications', 'cia_web_push_subscriptions', 'cia_cover_badges', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
@@ -808,6 +809,11 @@ function morseLogForViewer(log, viewer) {
     delete visibleLog.userId;
   }
   return visibleLog;
+}
+
+function cipherLogForViewer(log, viewer) {
+  if (!log || !isMorseSupervisor(viewer)) return null;
+  return { ...log };
 }
 
 const isLeadership = (user) =>
@@ -2043,6 +2049,13 @@ function snapshot(viewer = null) {
       isMorseSupervisor(viewer)
         ? (state.cia_morse_logs || [])
             .map((log) => morseLogForViewer(log, viewer))
+            .filter(Boolean)
+        : [],
+
+    cia_cipher_logs:
+      isMorseSupervisor(viewer)
+        ? (state.cia_cipher_logs || [])
+            .map((log) => cipherLogForViewer(log, viewer))
             .filter(Boolean)
         : [],
 
@@ -8051,6 +8064,51 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
       }
       return ok(cb, { translation, logId: log.id });
+    });
+
+    socket.on('cipher:decoded', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لاستخدام شفرة الاستخبارات.');
+      if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل تسجيل فك الشفرة.');
+      const rawSourceCode = typeof payload?.sourceCode === 'string' ? payload.sourceCode : '';
+      const rawTranslation = typeof payload?.translation === 'string' ? payload.translation : '';
+      if (!rawSourceCode.trim() || !rawTranslation.trim()) return no(cb, 'بيانات فك الشفرة غير مكتملة.');
+      if (rawSourceCode.length > 100000 || rawTranslation.length > 20000) return no(cb, 'الشفرة أو النص المفكوك يتجاوز الحد المسموح للسجل.');
+      const sourceCode = clean(rawSourceCode, 100000);
+      const translation = rawTranslation.trim();
+      if (!sourceCode || !translation) return no(cb, 'بيانات فك الشفرة غير مكتملة.');
+      const moderation = await moderateOutgoingText(actor, translation, 'CIPHER');
+      if (moderation) return no(cb, moderation.message || 'تم حظر النص بواسطة مركز الأمن.');
+
+      const log = {
+        id: makeId('CIPHER'),
+        userId: actor.id,
+        realName: clean(actor.identity?.fullName || actor.name, 160),
+        userName: clean(actor.name, 120),
+        publicCode: clean(actor.publicCode, 100),
+        rank: normalizeRank(actor.rank),
+        rankLabel: rankLabel(actor.rank),
+        sourceCode,
+        translation,
+        at: now()
+      };
+      state.cia_cipher_logs.unshift(log);
+      state.cia_cipher_logs = state.cia_cipher_logs.slice(0, 10);
+      saveState();
+      emitState();
+
+      const connectedSockets = io.sockets && io.sockets.sockets;
+      const socketList = connectedSockets instanceof Map
+        ? connectedSockets.values()
+        : Object.values(connectedSockets || {});
+      for (const targetSocket of socketList) {
+        const recipient = requireAuthenticatedUser(targetSocket);
+        if (isMorseSupervisor(recipient)) {
+          const visibleLog = cipherLogForViewer(log, recipient);
+          if (visibleLog) targetSocket.emit('cipher:activity', { log: visibleLog });
+        }
+      }
+      return ok(cb, { logId: log.id });
     });
 
     /* =====================================================
