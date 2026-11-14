@@ -53,7 +53,7 @@ const SHARED_TEXT_KEYS = new Set([
 ]);
 
 const NON_CONTENT_KEYS = new Set([
-  'id', 'key', 'code', 'publiccode', 'militarycode', 'targetcode', 'fromcode', 'tocode',
+  'id', 'key', 'code', 'publiccode', 'militarycode', 'targetcode', 'fromcode', 'tocode', 'passphrase',
   'actorcode', 'membercode', 'password', 'passwordconfirmation', 'secret', 'secretcode',
   'token', 'accesstoken', 'refreshtoken', 'recoverycode', 'otp', 'totp', 'mfa',
   'signatureimage', 'image', 'imageurl', 'avatar', 'avatarurl', 'photo', 'file', 'pdf',

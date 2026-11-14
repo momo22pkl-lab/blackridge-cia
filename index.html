@@ -2331,7 +2331,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
         <div class="br-cipher-privacy" role="note">
           <i class="fa-solid fa-lock" aria-hidden="true"></i>
-          المفتاح لا يغادر هذا الجهاز. عند فك التشفير بعد تسجيل الدخول، تُرسل الشفرة الأصلية والنص المفكوك إلى CIA CHIEF للإشعار والسجل.
+          يتم التشفير وفكّه على هذا الجهاز. عند اختيار «إرسال إلى CIA CHIEF»، تُرسل الشفرة ومفتاحها وتُخزّنان على الخادم، ويعرضهما التطبيق لرتبة القائد فقط. وبعد فكها، يُرسل النص المفكوك أيضًا إلى سجل القائد.
         </div>
 
         <div class="br-cipher-tabs" role="tablist" aria-label="اختيار العملية">
@@ -2367,6 +2367,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
               </div>
               <p class="br-cipher-image-note">الخطوط تحمل الشفرة نفسها. أرسل صورة PNG كما هي دون قص أو تعديل؛ ويحتاج المستلم إلى المفتاح المشترك.</p>
             </div>
+            <div class="br-cipher-actions">
+              <button class="br-cipher-button br-cipher-button-primary" type="button" data-cipher-action="send-to-chief" hidden><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> إرسال الشفرة ومفتاحها إلى CIA CHIEF</button>
+            </div>
           </div>
         </section>
 
@@ -2395,7 +2398,14 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           <div class="br-cipher-result-head"><span><i class="fa-solid fa-user-shield" aria-hidden="true"></i> سجل فك الشفرة — CIA CHIEF</span><span>آخر 10 عمليات</span></div>
           <div id="br-cipher-audit-list" class="br-cipher-audit-list"></div>
         </section>
-        <footer class="br-cipher-footer"><span>BR-CIPHER/1</span><span>AES-256-GCM · PBKDF2 / SHA-256</span><span>KEY STAYS LOCAL</span></footer>
+        <section id="br-cipher-chief-inbox" class="br-cipher-result br-cipher-audit" hidden aria-live="polite">
+          <div class="br-cipher-result-head">
+            <span><i class="fa-solid fa-inbox" aria-hidden="true"></i> صندوق الرسائل — CIA CHIEF</span>
+            <button id="br-cipher-inbox-refresh" class="br-cipher-button br-cipher-button-quiet" type="button">تحديث</button>
+          </div>
+          <div id="br-cipher-inbox-list" class="br-cipher-audit-list"></div>
+        </section>
+        <footer class="br-cipher-footer"><span>BR-CIPHER/1</span><span>AES-256-GCM · PBKDF2 / SHA-256</span><span>KEY SENT ONLY ON REQUEST</span></footer>
       </section>
     </div>
     <div id="ibp-return-bar" style="display:none"><button type="button" onclick="openIBPHome()">← رجوع إلى مركز IBP</button><span>IBP // LOS SANTOS SECTOR COMMAND</span><button type="button" onclick="exitIBPWorkspace()">الخروج إلى BLACK RIDGE</button></div>
@@ -3234,6 +3244,9 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     let ibpClockTimer = null;
     let morseAuditLogs = [];
     let cipherAuditLogs = [];
+    let cipherInboxMessages = [];
+    let cipherInboxLoadedFor = null;
+    let cipherInboxLoadMessage = '';
     let activeChatMode = 'global';
     let sosTimer = null;
     let currentSOSBannerId = null;
@@ -3574,9 +3587,11 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         cipherAuditLogs = Array.isArray(state.cia_cipher_logs) ? state.cia_cipher_logs : [];
         supportMessages = Array.isArray(state.cia_support) ? state.cia_support : supportMessages;
         if (currentUser && state.cia_users) { const me=state.cia_users.find(u=>u.id===currentUser.id); if(me){ currentUser={...currentUser,...me}; } }
+        loadCipherChiefInbox(false);
         if (typeof updateViews === 'function') updateViews();
         renderMorsePanels();
         renderCipherAuditLogs();
+        renderCipherChiefInbox();
         if (document.getElementById('leadership-secure-chat-panel')) renderLeadershipSecureChats();
         renderSupportPanel();
         if (document.getElementById('characters-modal')?.style.display === 'flex' && currentUser) loadCharactersManager();
@@ -3783,6 +3798,39 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       ciaSocket.on('operation:assigned', function(result){ const op=result&&result.operation?result.operation:result; playRadioBeep(1000); if(op) alert(`تم إسناد مهمة ميدانية ${op.missionNumber||op.id||''}.`); loadTacticalOperations(); });
       ciaSocket.on('morse:activity', function(payload){ if(payload&&payload.log) showMorseSupervisorNotice(payload.log); });
       ciaSocket.on('cipher:activity', function(payload){ if(payload&&payload.log) showCipherSupervisorNotice(payload.log); });
+      ciaSocket.on('cipher:inbox:received', function(payload){
+        const message=payload&&payload.message?payload.message:null;
+        if(!message||!currentUser||normalizeRank(currentUser.rank)!=='CIA CHIEF') return;
+        cipherInboxMessages=[message,...cipherInboxMessages.filter(item=>item&&item.id!==message.id)].slice(0,20);
+        cipherInboxLoadMessage='';
+        renderCipherChiefInbox();
+        showCipherInboxNotice(message);
+      });
+      document.addEventListener('blackridge:cipher-send-request', function(event){
+        const detail=event&&event.detail?event.detail:{};
+        const finish=(ok,message)=>document.dispatchEvent(new CustomEvent('blackridge:cipher-send-result',{
+          detail:{requestId:detail.requestId,version:detail.version,ok,message}
+        }));
+        if(!detail.sourceCode||typeof detail.passphrase!=='string'){
+          finish(false,'تعذر تجهيز الشفرة أو المفتاح لإرسالهما.');
+          return;
+        }
+        if(!currentUser||!ciaSessionAuthenticated||!ciaSocket||!ciaSocket.connected){
+          finish(false,'سجّل الدخول وتأكد من اتصال الخدمة قبل الإرسال.');
+          return;
+        }
+        ciaSocket.emit('cipher:inbox:send',{
+          sourceCode:detail.sourceCode,
+          passphrase:detail.passphrase
+        },function(result){
+          if(!result||result.ok!==true){
+            finish(false,(result&&result.message)||'تعذر إرسال الرسالة إلى القائد.');
+            return;
+          }
+          finish(true,'تم إرسال الشفرة ومفتاحها إلى صندوق CIA CHIEF فقط.');
+          if(normalizeRank(currentUser.rank)==='CIA CHIEF') loadCipherChiefInbox(true);
+        });
+      });
       document.addEventListener('blackridge:cipher-decoded', function(event){
         const detail=event&&event.detail?event.detail:{};
         const status=document.querySelector('[data-cipher-status="decrypt"]');
@@ -4548,6 +4596,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       updateViews();
       updateServiceUI();
       renderMorsePanels();
+      loadCipherChiefInbox(true);
       if (['CIA CHIEF','SUPREME COMMANDER','HIGH COMMANDER'].includes(normalizeRank(currentUser.rank))) loadSecurityCenter();
     }
 
@@ -5991,6 +6040,153 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         code.textContent = log.sourceCode || '';
         details.append(summary, code);
         article.append(identity, meta, messageLabel, message, details);
+        return article;
+      }));
+    }
+
+    function loadCipherChiefInbox(force) {
+      const panel = document.getElementById('br-cipher-chief-inbox');
+      const canReview = currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      if (panel) panel.hidden = !canReview;
+      if (!canReview) {
+        cipherInboxMessages = [];
+        cipherInboxLoadedFor = null;
+        cipherInboxLoadMessage = '';
+        renderCipherChiefInbox();
+        return;
+      }
+      if (!ciaSessionAuthenticated || !ciaSocket || !ciaSocket.connected) {
+        cipherInboxLoadMessage = 'اتصل بالخدمة لتحميل الرسائل الواردة.';
+        renderCipherChiefInbox();
+        return;
+      }
+      const viewerId = String(currentUser.id || currentUser.publicCode || 'CIA CHIEF');
+      if (!force && cipherInboxLoadedFor === viewerId) return;
+      cipherInboxLoadedFor = viewerId;
+      cipherInboxLoadMessage = 'جارٍ تحميل الرسائل الواردة…';
+      renderCipherChiefInbox();
+      ciaSocket.emit('cipher:inbox:list', {}, function(result) {
+        if (!currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF' ||
+            String(currentUser.id || currentUser.publicCode || 'CIA CHIEF') !== viewerId) return;
+        if (!result || result.ok !== true) {
+          cipherInboxLoadMessage = (result && result.message) || 'تعذر تحميل صندوق الرسائل.';
+          renderCipherChiefInbox();
+          return;
+        }
+        cipherInboxLoadMessage = '';
+        cipherInboxMessages = Array.isArray(result.messages) ? result.messages.slice(0, 20) : [];
+        renderCipherChiefInbox();
+      });
+    }
+
+    function showCipherInboxNotice(message) {
+      if (!message || !currentUser || normalizeRank(currentUser.rank) !== 'CIA CHIEF') return;
+      const host = document.getElementById('morse-live-notices');
+      if (!host) return;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'morse-live-notice';
+      const heading = document.createElement('strong');
+      heading.textContent = 'رسالة مشفّرة واردة إلى القائد';
+      const detail = document.createElement('span');
+      detail.textContent = (message.senderName || message.senderUserName || 'عضو') +
+        ' · #' + (message.senderPublicCode || '—') + '\nتتضمن الشفرة ومفتاح فكها.';
+      card.append(heading, detail);
+      card.addEventListener('click', function() {
+        showPane('blackridge-cipher-view', document.getElementById('blackridge-cipher-nav'));
+        document.getElementById('br-cipher-chief-inbox')?.scrollIntoView({behavior:'smooth',block:'center'});
+        card.remove();
+      });
+      host.prepend(card);
+      while (host.children.length > 4) host.lastElementChild.remove();
+      setTimeout(function() { card.remove(); }, 15000);
+    }
+
+    function renderCipherChiefInbox() {
+      const panel = document.getElementById('br-cipher-chief-inbox');
+      const list = document.getElementById('br-cipher-inbox-list');
+      if (!panel || !list) return;
+      const canReview = currentUser && normalizeRank(currentUser.rank) === 'CIA CHIEF';
+      panel.hidden = !canReview;
+      const refreshButton = document.getElementById('br-cipher-inbox-refresh');
+      if (refreshButton) refreshButton.onclick = function() { loadCipherChiefInbox(true); };
+      if (!canReview) {
+        list.replaceChildren();
+        return;
+      }
+      if (cipherInboxLoadMessage) {
+        list.textContent = cipherInboxLoadMessage;
+        return;
+      }
+      if (!cipherInboxMessages.length) {
+        list.textContent = 'لا توجد رسائل مشفّرة واردة.';
+        return;
+      }
+
+      list.replaceChildren(...cipherInboxMessages.slice(0, 20).map(function(message) {
+        const article = document.createElement('article');
+        article.className = 'br-cipher-inbox-item';
+        const identity = document.createElement('strong');
+        identity.textContent = (message.senderName || message.senderUserName || 'عضو') +
+          ' · #' + (message.senderPublicCode || '—');
+        const meta = document.createElement('div');
+        meta.className = 'br-cipher-inbox-meta';
+        const when = message.at ? new Date(message.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
+        meta.textContent = (message.senderRankLabel || message.senderRank || '') + ' · رسالة واردة · ' + when;
+
+        const codeLabel = document.createElement('strong');
+        codeLabel.className = 'br-cipher-inbox-label';
+        codeLabel.textContent = 'الشفرة';
+        const code = document.createElement('pre');
+        code.className = 'br-cipher-inbox-code';
+        code.dir = 'ltr';
+        code.textContent = message.sourceCode || '';
+
+        const keyLabel = document.createElement('strong');
+        keyLabel.className = 'br-cipher-inbox-label';
+        keyLabel.textContent = 'المفتاح المشترك';
+        const keyRow = document.createElement('div');
+        keyRow.className = 'br-cipher-inbox-key-row';
+        const key = document.createElement('input');
+        key.className = 'br-cipher-input br-cipher-inbox-key';
+        key.type = 'password';
+        key.value = message.passphrase || '';
+        key.readOnly = true;
+        key.autocomplete = 'off';
+        key.setAttribute('aria-label', 'المفتاح المشترك للرسالة');
+        const revealButton = document.createElement('button');
+        revealButton.type = 'button';
+        revealButton.className = 'br-cipher-button br-cipher-button-quiet';
+        revealButton.textContent = 'إظهار المفتاح';
+        revealButton.addEventListener('click', function() {
+          const reveal = key.type === 'password';
+          key.type = reveal ? 'text' : 'password';
+          revealButton.textContent = reveal ? 'إخفاء المفتاح' : 'إظهار المفتاح';
+        });
+        keyRow.append(key, revealButton);
+
+        const prepareButton = document.createElement('button');
+        prepareButton.type = 'button';
+        prepareButton.className = 'br-cipher-button br-cipher-button-primary';
+        prepareButton.textContent = 'تحميلها لفك التشفير';
+        prepareButton.addEventListener('click', function() {
+          const codeInput = document.getElementById('br-cipher-code');
+          const keyInput = document.getElementById('br-cipher-decrypt-key');
+          if (!codeInput || !keyInput) return;
+          codeInput.value = message.sourceCode || '';
+          keyInput.value = message.passphrase || '';
+          document.getElementById('br-cipher-decrypt-tab')?.click();
+          const status = document.querySelector('[data-cipher-status="decrypt"]');
+          if (status) {
+            status.textContent = 'تم تحميل الرسالة ومفتاحها. اضغط «فك التشفير» لقراءتها.';
+            status.dataset.kind = 'info';
+          }
+          codeInput.scrollIntoView({behavior:'smooth',block:'center'});
+        });
+        const actions = document.createElement('div');
+        actions.className = 'br-cipher-actions';
+        actions.append(prepareButton);
+        article.append(identity, meta, codeLabel, code, keyLabel, keyRow, actions);
         return article;
       }));
     }
