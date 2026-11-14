@@ -18,12 +18,16 @@ Add the signing key as a deployment secret. The CIA chief must first sign in thr
 
 The former OSD chief password/bootstrap/MFA endpoints return `410 Gone`; their database columns and existing records are left untouched. Members continue to sign in with their military code, and OSD rejects codes that are not linked to an active, approved personnel record. Only the primary `CIA CHIEF` account receives `ADMIN` and user-management permissions; other roles and clearances are derived from the personnel record's rank. An OSD user can enable or disable access, but cannot change a rank, role, clearance, or permission through the browser.
 
-Without PostgreSQL, the OSD API fails closed and does not create documents. Without `OSD_SIGNING_SECRET`, existing records can be read, but signed issue actions are disabled and verification reports that the document cannot be verified.
+Without PostgreSQL, the OSD API fails closed and does not create documents. Without `OSD_SIGNING_SECRET`, existing records can be read, but creator signing, signed issue actions, and signature verification are disabled.
 
 ## Included workflow
 
 - Separate OSD document storage, CIA-session SSO for the chief, personnel-linked identities, rank-derived clearance and server-enforced permissions, one-time SSO handoff tickets, expiring HttpOnly sessions, same-origin writes, and login throttling.
 - Fourteen document templates, bilingual responsive center, separate drafts, archive/search filters, preview, approval, signing/issue, revocation, archive, expiring and revocable share links, and public verification.
+- Mandatory creator sign-off before submission. The server binds the active personnel identity, rank, military code, UTC signing time, and current document contents to an HMAC signature; creator sign-off does not approve or issue the document.
+- Rank-aware review assignment selects the nearest higher-ranked, active approver with sufficient clearance and the existing `APPROVE_DOCUMENTS` permission. A same-rank peer is used only when no higher approver is available; the system never sends a document down the rank hierarchy. Submission is blocked if no eligible reviewer exists.
+- The assigned reviewer alone can approve or reject. Rejections require a reason. Reviewer and creator receive persistent in-site notifications, and the assigned-reviewer inbox is scoped to the authenticated reviewer.
+- Workflow statuses are `DRAFT`, `PENDING SIGNATURE`, `SIGNED`, `PENDING APPROVAL`, `APPROVED`, `REJECTED`, `ISSUED`, `REVOKED`, `EXPIRED`, and `ARCHIVED`. Status, reviewer assignment, decision snapshots, notifications, and the existing hash-chained audit events are stored in PostgreSQL; workflow writes are transactional.
 - Dedicated share viewer links that open the document directly. Anonymous links are restricted to `PUBLIC` documents; internal links require an active OSD session, `VIEW_DOCUMENTS`, and sufficient server-checked clearance.
 - Protected viewing hides print/download controls, suppresses ordinary copy/selection actions, and can display a recipient watermark. These browser-side measures reduce casual copying but cannot prevent screenshots, photographs, or browser-level access.
 - Issued-document print layouts retain the existing browser print-to-PDF flow, signature, official layout, verification code, clickable verification URL, and a locally generated QR code.
@@ -44,4 +48,4 @@ An issued snapshot is never edited in place. An amendment creates a new draft re
 
 ## Checks
 
-Run `npm test` for the repository's Node test suite. The OSD tests cover authorization rules, one-time CIA SSO, automatic sole-chief provisioning, rejection of non-chief identities and retired setup/password/MFA routes, member login, role-escalation rejection, public/internal share policy, expiry and revocation decisions, privacy redaction, QR generation, document normalization, numbering, version increments, PNG signature validation, and signature-integrity helpers. Authentication routes are exercised against a database test double; production PostgreSQL contents and live browser rendering require separate live-environment checks.
+Run `npm test` for the repository's Node test suite. OSD workflow tests exercise document creation, the unsigned-submit guard, creator signatures, rank-based assignment for agent/high commander/supreme commander/chief, assigned inbox isolation, approval and reason-required rejection, notification delivery and read state, and persistence across a fresh session using a PostgreSQL test double. The rest of the OSD tests cover CIA SSO, role and clearance rules, shares, privacy, QR generation, versioning, and signature integrity. These automated tests do not connect to production PostgreSQL or verify a live browser session.

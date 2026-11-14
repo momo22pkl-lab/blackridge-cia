@@ -27,6 +27,15 @@
       </a>
       <div class="top-context"><span class="top-context-dot"></span><span data-i18n="topSystem">DOCUMENT AUTHORITY SYSTEM</span><span class="context-separator">/</span><span id="topSector">LOS SANTOS SECTOR</span></div>
       <div class="top-actions">
+        <div class="notification-wrap">
+          <button class="icon-button notification-button" type="button" id="notificationButton" data-action="toggleNotifications" aria-label="Notifications" aria-expanded="false" title="Notifications">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><b id="notificationCount" class="notification-count" hidden>0</b>
+          </button>
+          <section id="notificationPanel" class="notification-popover" aria-label="Notifications" hidden>
+            <header><strong data-i18n="notificationsTitle">الإشعارات</strong><button class="text-button" type="button" data-action="refreshNotifications" data-i18n="refreshNotifications">تحديث</button></header>
+            <div id="notificationList" class="notification-list" aria-live="polite"></div>
+          </section>
+        </div>
         <span class="live-state"><i></i><span data-i18n="online">ONLINE</span></span>
         <button class="icon-button lang-toggle" type="button" aria-label="Switch language">عربي</button>
         <span class="top-clock"><b id="clock">--:--:--</b><small id="today">-- --- ----</small></span>
@@ -89,7 +98,7 @@
           </div>
           <section class="panel workflow-panel">
             <div class="panel-head"><div><div class="panel-kicker">CONTROLLED WORKFLOW</div><h2 data-i18n="workflow">مسار الوثيقة</h2></div><span class="workflow-caption" data-i18n="workflowCaption">كل انتقال حالة مسجل باسم المستخدم ووقته</span></div>
-            <div class="workflow-steps"><div class="workflow-step complete"><i>01</i><span data-i18n="stepDraft">إنشاء مسودة</span></div><b></b><div class="workflow-step"><i>02</i><span data-i18n="stepReview">مراجعة واعتماد</span></div><b></b><div class="workflow-step"><i>03</i><span data-i18n="stepSign">توقيع وإصدار</span></div><b></b><div class="workflow-step"><i>04</i><span data-i18n="stepVerify">تحقق وأرشفة</span></div></div>
+            <div class="workflow-steps"><div class="workflow-step complete"><i>01</i><span data-i18n="stepDraft">إنشاء مسودة</span></div><b></b><div class="workflow-step"><i>02</i><span data-i18n="stepCreatorSign">توقيع المنشئ</span></div><b></b><div class="workflow-step"><i>03</i><span data-i18n="stepReview">مراجعة واعتماد</span></div><b></b><div class="workflow-step"><i>04</i><span data-i18n="stepSign">توقيع وإصدار</span></div><b></b><div class="workflow-step"><i>05</i><span data-i18n="stepVerify">تحقق وأرشفة</span></div></div>
           </section>
         </section>
 

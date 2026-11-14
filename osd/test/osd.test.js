@@ -8,20 +8,24 @@ const {
   ALL_PERMISSIONS,
   CLASSIFICATIONS,
   ROLE_DEFAULTS,
+  approvalRankLevel,
   allowedPermissions,
   canReadClassification,
   canonicalJson,
+  createCreatorSignature,
   nextMinorVersion,
   normalizeDocument,
   normalizeShareOptions,
   normalizeSignatureImage,
   safeDocument,
+  selectApprovalReviewer,
   sectorCode,
   sha256,
   shareAccessDecision,
   signPayload,
   signingSecretReady,
   verificationResult,
+  verifyCreatorSignature,
   verifyIssuedDocument
 } = require('../server');
 const QR = require('../qr-code');
@@ -67,6 +71,48 @@ test('clearance checks are enforced from the server-side classification order', 
   assert.equal(canReadClassification({ clearance: 'INTERNAL' }, 'SECRET'), false);
   assert.equal(canReadClassification({ clearance: 'TOP SECRET' }, 'TOP SECRET'), true);
   assert.deepEqual(ROLE_DEFAULTS.AGENT.clearance, 'INTERNAL');
+});
+
+test('approval routing selects the nearest active authorized rank without selecting the creator', () => {
+  const approver = (id, rank, clearance = 'TOP SECRET', active = true) => ({
+    id, rank, clearance, active, permissions: ['APPROVE_DOCUMENTS']
+  });
+  const people = [
+    approver('high', 'HIGH COMMANDER', 'SECRET'),
+    approver('senior', 'SUPREME COMMANDER'),
+    approver('chief', 'CIA CHIEF'),
+    approver('other-chief', 'CIA CHIEF'),
+    approver('inactive-chief', 'CIA CHIEF', 'TOP SECRET', false),
+    { ...approver('unprivileged', 'HIGH COMMANDER'), permissions: [] }
+  ];
+  assert.equal(approvalRankLevel('AGENT'), 1);
+  assert.equal(approvalRankLevel('HIGH COMMANDER'), 2);
+  assert.equal(approvalRankLevel('SENIOR COMMANDER CIA'), 3);
+  assert.equal(approvalRankLevel('CIA CHIEF'), 4);
+  assert.equal(selectApprovalReviewer({ id: 'agent', rank: 'AGENT' }, people, 'INTERNAL')?.id, 'high');
+  assert.equal(selectApprovalReviewer({ id: 'high-author', rank: 'HIGH COMMANDER' }, people, 'SECRET')?.id, 'senior');
+  assert.equal(selectApprovalReviewer({ id: 'senior-author', rank: 'SUPREME COMMANDER' }, people, 'TOP SECRET')?.id, 'chief');
+  assert.equal(selectApprovalReviewer({ id: 'chief', rank: 'CIA CHIEF' }, people, 'TOP SECRET')?.id, 'other-chief');
+  assert.equal(selectApprovalReviewer({ id: 'only-chief', rank: 'CIA CHIEF' }, [people[4]], 'TOP SECRET'), null);
+  assert.equal(selectApprovalReviewer({ id: 'solo-chief', rank: 'CIA CHIEF' }, [people[1]], 'TOP SECRET'), null);
+  assert.equal(selectApprovalReviewer({ id: 'agent', rank: 'AGENT' }, people, 'TOP SECRET')?.id, 'senior');
+});
+
+test('creator signature binds the authenticated identity and current document version', () => {
+  const secret = 'creator-signature-test-secret-with-at-least-32-bytes';
+  const document = {
+    id: 'doc-1', document_number: 'OSD-OPS-2026-00001', version: '1.0',
+    document_type: 'OFFICIAL MEMORANDUM', title: 'Review memo', body: { text: 'Approved test text.' },
+    sector: 'Operations', classification: 'INTERNAL', recipient: 'Command'
+  };
+  const signer = { id: 'user-agent', displayName: 'Field Agent', rank: 'AGENT', militaryCode: 'AG-200' };
+  const signature = createCreatorSignature(document, signer, '2026-11-13T10:00:00.000Z', secret);
+  assert.equal(verifyCreatorSignature(signature, document, secret), true);
+  assert.equal(verifyCreatorSignature(signature, { ...document, title: 'Altered memo' }, secret), false);
+  assert.equal(verifyCreatorSignature(signature, document, 'different-signature-secret-with-at-least-32-bytes'), false);
+  assert.deepEqual(signature.payload.signer, {
+    id: 'user-agent', name: 'Field Agent', rank: 'AGENT', militaryCode: 'AG-200'
+  });
 });
 
 test('user-assigned permissions reject unknown capabilities and deduplicate valid entries', () => {
