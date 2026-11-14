@@ -2331,7 +2331,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
 
         <div class="br-cipher-privacy" role="note">
           <i class="fa-solid fa-lock" aria-hidden="true"></i>
-          يتم التشفير وفكّه على هذا الجهاز. عند اختيار «إرسال إلى CIA CHIEF»، تُرسل الشفرة ومفتاحها وتُخزّنان على الخادم، ويعرضهما التطبيق لرتبة القائد فقط. وبعد فكها، يُرسل النص المفكوك أيضًا إلى سجل القائد.
+          عند التشفير أو الإرسال أو فك الشفرة، تُرسل الشفرة والنص إلى الخادم ليظهر سجل النشاط لـ CIA CHIEF فقط. لا تُرسل عبارة المرور في سجل التدقيق؛ لكنها تُرسل وتُخزّن في صندوق القائد عند اختيار «إرسال إلى CIA CHIEF».
         </div>
 
         <div class="br-cipher-tabs" role="tablist" aria-label="اختيار العملية">
@@ -2395,7 +2395,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
           </div>
         </section>
         <section id="br-cipher-leadership-audit" class="br-cipher-result br-cipher-audit" hidden aria-live="polite">
-          <div class="br-cipher-result-head"><span><i class="fa-solid fa-user-shield" aria-hidden="true"></i> سجل فك الشفرة — CIA CHIEF</span><span>آخر 10 عمليات</span></div>
+          <div class="br-cipher-result-head"><span><i class="fa-solid fa-user-shield" aria-hidden="true"></i> سجل نشاط الشفرة — CIA CHIEF</span><span>آخر 10 أنشطة</span></div>
           <div id="br-cipher-audit-list" class="br-cipher-audit-list"></div>
         </section>
         <section id="br-cipher-chief-inbox" class="br-cipher-result br-cipher-audit" hidden aria-live="polite">
@@ -3811,8 +3811,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         const finish=(ok,message)=>document.dispatchEvent(new CustomEvent('blackridge:cipher-send-result',{
           detail:{requestId:detail.requestId,version:detail.version,ok,message}
         }));
-        if(!detail.sourceCode||typeof detail.passphrase!=='string'){
-          finish(false,'تعذر تجهيز الشفرة أو المفتاح لإرسالهما.');
+        if(!detail.sourceCode||typeof detail.passphrase!=='string'||typeof detail.plaintext!=='string'){
+          finish(false,'تعذر تجهيز الشفرة أو الترجمة أو المفتاح لإرسالها.');
           return;
         }
         if(!currentUser||!ciaSessionAuthenticated||!ciaSocket||!ciaSocket.connected){
@@ -3821,14 +3821,33 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
         }
         ciaSocket.emit('cipher:inbox:send',{
           sourceCode:detail.sourceCode,
-          passphrase:detail.passphrase
+          passphrase:detail.passphrase,
+          translation:detail.plaintext
         },function(result){
           if(!result||result.ok!==true){
             finish(false,(result&&result.message)||'تعذر إرسال الرسالة إلى القائد.');
             return;
           }
-          finish(true,'تم إرسال الشفرة ومفتاحها إلى صندوق CIA CHIEF فقط.');
+          finish(true,'تم إرسال الرسالة وتسجيل نشاط الإرسال لدى CIA CHIEF فقط.');
           if(normalizeRank(currentUser.rank)==='CIA CHIEF') loadCipherChiefInbox(true);
+        });
+      });
+      document.addEventListener('blackridge:cipher-encrypted', function(event){
+        const detail=event&&event.detail?event.detail:{};
+        const status=document.querySelector('[data-cipher-status="encrypt"]');
+        if(!detail.sourceCode||typeof detail.plaintext!=='string') return;
+        if(!currentUser||!ciaSessionAuthenticated||!ciaSocket||!ciaSocket.connected){
+          if(status){status.textContent='اكتمل التشفير محليًا، لكن لم يُسجّل النشاط للقائد لأن الاتصال غير متاح.';status.dataset.kind='info';}
+          return;
+        }
+        ciaSocket.emit('cipher:audit:send',{
+          activity:'encrypted',
+          sourceCode:detail.sourceCode,
+          translation:detail.plaintext
+        },function(result){
+          if(!status) return;
+          if(!result||!result.ok){status.textContent='اكتمل التشفير، لكن تعذر تسجيله للقائد: '+((result&&result.message)||'الاتصال غير متاح.');status.dataset.kind='error';return;}
+          status.textContent='سُجل التشفير وأُرسلت الشفرة والنص إلى CIA CHIEF.';status.dataset.kind='success';
         });
       });
       document.addEventListener('blackridge:cipher-decoded', function(event){
@@ -5986,12 +6005,17 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       card.type = 'button';
       card.className = 'morse-live-notice';
       const heading = document.createElement('strong');
-      heading.textContent = 'فك شفرة استخبارات جديد';
+        const activityLabels = {encrypted:'تشفير شفرة استخبارات',sent:'إرسال شفرة استخبارات',decoded:'فك شفرة استخبارات'};
+        const activityLabel = activityLabels[log.activity] || activityLabels.decoded;
+        heading.textContent = activityLabel + ' جديد';
       const detail = document.createElement('span');
       const identity = (log.realName || log.userName || 'عضو') + ' · #' + (log.publicCode || '—');
+        const rank = log.rankLabel || log.rank || 'رتبة غير محددة';
+        const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
       const translation = String(log.translation || '');
       const sourceCode = String(log.sourceCode || '');
-      detail.textContent = identity + '\nالنص: ' + translation.slice(0, 180) + (translation.length > 180 ? '…' : '') +
+        detail.textContent = identity + '\n' + rank + ' · ' + when +
+          '\nالنص: ' + translation.slice(0, 180) + (translation.length > 180 ? '…' : '') +
         '\nالشفرة: ' + sourceCode.slice(0, 320) + (sourceCode.length > 320 ? '…' : '');
       card.append(heading, detail);
       card.addEventListener('click', function() {
@@ -6013,7 +6037,7 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
       if (!canReview) return;
       const logs = Array.isArray(cipherAuditLogs) ? cipherAuditLogs.slice(0, 10) : [];
       if (!logs.length) {
-        list.textContent = 'لا توجد عمليات فك شفرة مسجلة بعد.';
+        list.textContent = 'لا توجد أنشطة شفرة مسجلة بعد.';
         return;
       }
       list.replaceChildren(...logs.map(log => {
@@ -6024,10 +6048,14 @@ function renderIBPWorkspace() {const root=document.getElementById('ibp-command-c
         const meta = document.createElement('div');
         meta.className = 'br-cipher-audit-meta';
         const when = log.at ? new Date(log.at).toLocaleString('ar-JO', {dateStyle:'medium',timeStyle:'short'}) : 'غير محدد';
-        meta.textContent = (log.rankLabel || log.rank || '') + ' · فك شفرة · ' + when;
+        const activityLabels = {encrypted:'تشفير',sent:'إرسال للقائد',decoded:'فك شفرة'};
+        const activityLabel = activityLabels[log.activity] || activityLabels.decoded;
+        meta.textContent = (log.rankLabel || log.rank || '') + ' · ' + activityLabel + ' · ' + when;
         const messageLabel = document.createElement('strong');
         messageLabel.className = 'br-cipher-audit-label';
-        messageLabel.textContent = 'النص المفكوك';
+        messageLabel.textContent = log.activity === 'encrypted'
+          ? 'النص قبل التشفير'
+          : log.activity === 'sent' ? 'النص المُرسل' : 'النص المفكوك';
         const message = document.createElement('pre');
         message.className = 'br-cipher-audit-text';
         message.textContent = log.translation || '';

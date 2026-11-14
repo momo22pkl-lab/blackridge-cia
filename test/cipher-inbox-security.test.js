@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const pageSource = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const cipherClientSource = fs.readFileSync(path.join(__dirname, '..', 'blackridge-cipher.js'), 'utf8');
 
 function sourceBetween(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -55,6 +56,52 @@ test('new cipher messages are pushed only to authenticated CIA CHIEF sockets', (
   assert.match(sendHandler, /recipient\.serviceApproved\s*!==\s*false\s*&&\s*isChief\(recipient\)/);
   assert.match(sendHandler, /targetSocket\.emit\('cipher:inbox:received'/);
   assert.match(sendHandler, /passphrase,/);
+});
+
+test('encryption and sending create CIA CHIEF audit entries without the passphrase', () => {
+  const auditWriter = sourceBetween(
+    serverSource,
+    'function appendCipherAuditLog',
+    'function cipherInboxMessageForViewer'
+  );
+  assert.match(auditWriter, /userId:\s*actor\.id/);
+  assert.match(auditWriter, /sourceCode:/);
+  assert.match(auditWriter, /translation:/);
+  assert.match(auditWriter, /activity,/);
+  assert.match(auditWriter, /if\s*\(isMorseSupervisor\(recipient\)\)/);
+  assert.doesNotMatch(auditWriter, /passphrase/);
+
+  const encryptionHandler = sourceBetween(
+    serverSource,
+    "socket.on('cipher:audit:send'",
+    "socket.on('cipher:decoded'"
+  );
+  assert.match(encryptionHandler, /requireAuthenticatedUser\(socket\)/);
+  assert.match(encryptionHandler, /payload\?\.activity\s*!==\s*'encrypted'/);
+  assert.match(encryptionHandler, /appendCipherAuditLog\(actor,\s*sourceCode,\s*translation,\s*'encrypted'\)/);
+
+  const sendHandler = sourceBetween(
+    serverSource,
+    "socket.on('cipher:inbox:send'",
+    "socket.on('cipher:audit:send'"
+  );
+  assert.match(sendHandler, /rawTranslation/);
+  assert.match(sendHandler, /moderateOutgoingText\(actor,\s*translation,\s*'CIPHER'\)/);
+  assert.match(sendHandler, /appendCipherAuditLog\(actor,\s*message\.sourceCode,\s*translation,\s*'sent'\)/);
+
+  const encryptionClient = sourceBetween(
+    cipherClientSource,
+    "encryptButton.addEventListener('click'",
+    "sendToChiefButton.addEventListener('click'"
+  );
+  assert.match(encryptionClient, /blackridge:cipher-encrypted/);
+  assert.match(encryptionClient, /plaintext:\s*message/);
+  assert.match(cipherClientSource, /plaintext:\s*pendingEncryptedMessage\.plaintext/);
+  assert.match(pageSource, /blackridge:cipher-encrypted/);
+  assert.match(pageSource, /activity:'encrypted'/);
+  assert.match(pageSource, /translation:detail\.plaintext/);
+  assert.match(pageSource, /تشفير شفرة استخبارات/);
+  assert.match(pageSource, /إرسال شفرة استخبارات/);
 });
 
 test('the inbox panel and message-preparation controls are restricted to CIA CHIEF', () => {
