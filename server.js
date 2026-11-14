@@ -817,6 +817,39 @@ function cipherLogForViewer(log, viewer) {
   return { ...log };
 }
 
+function appendCipherAuditLog(actor, sourceCode, translation, activity) {
+  const log = {
+    id: makeId('CIPHER'),
+    userId: actor.id,
+    realName: clean(actor.identity?.fullName || actor.name, 160),
+    userName: clean(actor.name, 120),
+    publicCode: clean(actor.publicCode, 100),
+    rank: normalizeRank(actor.rank),
+    rankLabel: rankLabel(actor.rank),
+    activity,
+    sourceCode: clean(sourceCode, 120000),
+    translation: String(translation || '').trim(),
+    at: now()
+  };
+  state.cia_cipher_logs.unshift(log);
+  state.cia_cipher_logs = state.cia_cipher_logs.slice(0, 10);
+  saveState();
+  emitState();
+
+  const connectedSockets = io.sockets && io.sockets.sockets;
+  const socketList = connectedSockets instanceof Map
+    ? connectedSockets.values()
+    : Object.values(connectedSockets || {});
+  for (const targetSocket of socketList) {
+    const recipient = requireAuthenticatedUser(targetSocket);
+    if (isMorseSupervisor(recipient)) {
+      const visibleLog = cipherLogForViewer(log, recipient);
+      if (visibleLog) targetSocket.emit('cipher:activity', { log: visibleLog });
+    }
+  }
+  return log;
+}
+
 function cipherInboxMessageForViewer(message, viewer) {
   if (!message || !isChief(viewer)) return null;
   return { ...message };
@@ -8084,19 +8117,23 @@ socket.on('member:saveIdentity', (payload, cb) => {
       return ok(cb, { messages });
     });
 
-    socket.on('cipher:inbox:send', (payload, cb) => {
+    socket.on('cipher:inbox:send', async (payload, cb) => {
       const actor = requireAuthenticatedUser(socket);
       if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لإرسال الرسالة.');
       if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل الإرسال.');
 
       const rawSourceCode = typeof payload?.sourceCode === 'string' ? payload.sourceCode : '';
       const passphrase = typeof payload?.passphrase === 'string' ? payload.passphrase : '';
-      if (!rawSourceCode.trim() || passphrase.length < 8) {
-        return no(cb, 'الشفرة ورمزها السري مطلوبان، ويجب أن يتكون الرمز من 8 أحرف على الأقل.');
+      const rawTranslation = typeof payload?.translation === 'string' ? payload.translation : '';
+      if (!rawSourceCode.trim() || !rawTranslation.trim() || passphrase.length < 8) {
+        return no(cb, 'الشفرة وترجمتها ورمزها السري مطلوبة، ويجب أن يتكون الرمز من 8 أحرف على الأقل.');
       }
-      if (rawSourceCode.length > 120000 || passphrase.length > 1024) {
-        return no(cb, 'الشفرة أو الرمز السري يتجاوز الحد المسموح.');
+      if (rawSourceCode.length > 120000 || rawTranslation.length > 20000 || passphrase.length > 1024) {
+        return no(cb, 'الشفرة أو الترجمة أو الرمز السري يتجاوز الحد المسموح.');
       }
+      const translation = rawTranslation.trim();
+      const moderation = await moderateOutgoingText(actor, translation, 'CIPHER');
+      if (moderation) return no(cb, moderation.message || 'تم حظر النص بواسطة مركز الأمن.');
 
       const message = {
         id: makeId('CIPHERMSG'),
@@ -8112,8 +8149,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       };
       state.cia_cipher_inbox.unshift(message);
       state.cia_cipher_inbox = state.cia_cipher_inbox.slice(0, 20);
-      saveState();
-      emitState();
+      const auditLog = appendCipherAuditLog(actor, message.sourceCode, translation, 'sent');
 
       const connectedSockets = io.sockets && io.sockets.sockets;
       const socketList = connectedSockets instanceof Map
@@ -8127,7 +8163,29 @@ socket.on('member:saveIdentity', (payload, cb) => {
           });
         }
       }
-      return ok(cb, { messageId: message.id, at: message.at });
+      return ok(cb, { messageId: message.id, logId: auditLog.id, at: message.at });
+    });
+
+    socket.on('cipher:audit:send', async (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لاستخدام شفرة الاستخبارات.');
+      if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل تسجيل التشفير.');
+      if (payload?.activity !== 'encrypted') return no(cb, 'نوع نشاط الشفرة غير صالح.');
+
+      const rawSourceCode = typeof payload?.sourceCode === 'string' ? payload.sourceCode : '';
+      const rawTranslation = typeof payload?.translation === 'string' ? payload.translation : '';
+      if (!rawSourceCode.trim() || !rawTranslation.trim()) return no(cb, 'بيانات التشفير غير مكتملة.');
+      if (rawSourceCode.length > 100000 || rawTranslation.length > 20000) {
+        return no(cb, 'الشفرة أو النص يتجاوز الحد المسموح للسجل.');
+      }
+      const sourceCode = clean(rawSourceCode, 100000);
+      const translation = rawTranslation.trim();
+      if (!sourceCode || !translation) return no(cb, 'بيانات التشفير غير مكتملة.');
+      const moderation = await moderateOutgoingText(actor, translation, 'CIPHER');
+      if (moderation) return no(cb, moderation.message || 'تم حظر النص بواسطة مركز الأمن.');
+
+      const log = appendCipherAuditLog(actor, sourceCode, translation, 'encrypted');
+      return ok(cb, { logId: log.id });
     });
 
     socket.on('cipher:decoded', async (payload, cb) => {
@@ -8144,34 +8202,7 @@ socket.on('member:saveIdentity', (payload, cb) => {
       const moderation = await moderateOutgoingText(actor, translation, 'CIPHER');
       if (moderation) return no(cb, moderation.message || 'تم حظر النص بواسطة مركز الأمن.');
 
-      const log = {
-        id: makeId('CIPHER'),
-        userId: actor.id,
-        realName: clean(actor.identity?.fullName || actor.name, 160),
-        userName: clean(actor.name, 120),
-        publicCode: clean(actor.publicCode, 100),
-        rank: normalizeRank(actor.rank),
-        rankLabel: rankLabel(actor.rank),
-        sourceCode,
-        translation,
-        at: now()
-      };
-      state.cia_cipher_logs.unshift(log);
-      state.cia_cipher_logs = state.cia_cipher_logs.slice(0, 10);
-      saveState();
-      emitState();
-
-      const connectedSockets = io.sockets && io.sockets.sockets;
-      const socketList = connectedSockets instanceof Map
-        ? connectedSockets.values()
-        : Object.values(connectedSockets || {});
-      for (const targetSocket of socketList) {
-        const recipient = requireAuthenticatedUser(targetSocket);
-        if (isMorseSupervisor(recipient)) {
-          const visibleLog = cipherLogForViewer(log, recipient);
-          if (visibleLog) targetSocket.emit('cipher:activity', { log: visibleLog });
-        }
-      }
+      const log = appendCipherAuditLog(actor, sourceCode, translation, 'decoded');
       return ok(cb, { logId: log.id });
     });
 

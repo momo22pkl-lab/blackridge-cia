@@ -611,7 +611,7 @@ function initializeCipherPage(documentRef, cipher) {
         scribbleResult.hidden = false;
         await renderScribbleDownload(cipher.encodeScribbleFrame(packed));
         query('[data-cipher-action="copy-encrypted"]').hidden = true;
-        setStatus('encrypt', 'اكتمل التشفير. أرسل الشفرة ومفتاحها إلى القائد من الزر أدناه.', 'success');
+        setStatus('encrypt', 'اكتمل التشفير؛ جارٍ إشعار CIA CHIEF.', 'info');
       } else {
         releaseScribbleUrl();
         query('#br-cipher-scribble-preview').removeAttribute('src');
@@ -620,7 +620,7 @@ function initializeCipherPage(documentRef, cipher) {
         scribbleResult.hidden = true;
         symbolResult.hidden = false;
         query('#br-cipher-output').value = sourceCode;
-        setStatus('encrypt', 'اكتمل التشفير. أرسل الشفرة ومفتاحها إلى القائد من الزر أدناه.', 'success');
+        setStatus('encrypt', 'اكتمل التشفير؛ جارٍ إشعار CIA CHIEF.', 'info');
       }
       if (revision !== encryptionRevision) {
         throw new Error('تغيّرت الرسالة أو المفتاح أثناء التشفير. أعد المحاولة.');
@@ -628,8 +628,12 @@ function initializeCipherPage(documentRef, cipher) {
       pendingEncryptedMessage = {
         sourceCode,
         passphrase,
+        plaintext: message,
         version: ++encryptedMessageSequence
       };
+      documentRef.dispatchEvent(new CustomEvent('blackridge:cipher-encrypted', {
+        detail: { sourceCode, plaintext: message }
+      }));
       sendToChiefButton.hidden = false;
       result.hidden = false;
     } catch (error) {
@@ -650,7 +654,8 @@ function initializeCipherPage(documentRef, cipher) {
         requestId,
         version: pendingEncryptedMessage.version,
         sourceCode: pendingEncryptedMessage.sourceCode,
-        passphrase: pendingEncryptedMessage.passphrase
+        passphrase: pendingEncryptedMessage.passphrase,
+        plaintext: pendingEncryptedMessage.plaintext
       }
     }));
   });
