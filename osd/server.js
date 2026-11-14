@@ -4,7 +4,10 @@ const crypto = require('node:crypto');
 const { createHttpTextModerationMiddleware } = require('../moderation-boundaries');
 
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
-const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
+const STATUSES = [
+  'DRAFT', 'PENDING SIGNATURE', 'SIGNED', 'PENDING APPROVAL', 'APPROVED', 'REJECTED',
+  'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'
+];
 const DOCUMENT_TYPES = [
   'OFFICIAL DIRECTIVE', 'COMMAND ORDER', 'SECTOR NOTICE', 'ADMINISTRATIVE DOCUMENT',
   'OPERATIONAL REPORT', 'AUTHORIZATION DOCUMENT', 'OFFICIAL MEMORANDUM',
@@ -123,7 +126,7 @@ CREATE TABLE IF NOT EXISTS osd_documents (
   sector TEXT NOT NULL,
   classification TEXT NOT NULL CHECK (classification IN ('PUBLIC','INTERNAL','CONFIDENTIAL','SECRET','TOP SECRET')),
   recipient TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL CHECK (status IN ('DRAFT','PENDING APPROVAL','APPROVED','ISSUED','REVOKED','EXPIRED','ARCHIVED')),
+  status TEXT NOT NULL CHECK (status IN ('DRAFT','PENDING SIGNATURE','SIGNED','PENDING APPROVAL','APPROVED','REJECTED','ISSUED','REVOKED','EXPIRED','ARCHIVED')),
   version TEXT NOT NULL,
   created_by TEXT NOT NULL REFERENCES osd_users(id),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -131,6 +134,12 @@ CREATE TABLE IF NOT EXISTS osd_documents (
   expires_at TIMESTAMPTZ,
   revoked_at TIMESTAMPTZ,
   revoked_reason TEXT,
+  creator_signature JSONB,
+  approval_assigned_to TEXT REFERENCES osd_users(id) ON DELETE SET NULL,
+  approval_assignment_snapshot JSONB,
+  approval_decided_by TEXT REFERENCES osd_users(id) ON DELETE SET NULL,
+  approval_decision_snapshot JSONB,
+  rejection_reason TEXT,
   signature JSONB,
   integrity_hash TEXT,
   issued_snapshot JSONB
@@ -138,6 +147,28 @@ CREATE TABLE IF NOT EXISTS osd_documents (
 CREATE INDEX IF NOT EXISTS osd_documents_status_idx ON osd_documents(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS osd_documents_sector_idx ON osd_documents(sector);
 ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS amends_document_id TEXT REFERENCES osd_documents(id);
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS creator_signature JSONB;
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS approval_assigned_to TEXT REFERENCES osd_users(id) ON DELETE SET NULL;
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS approval_assignment_snapshot JSONB;
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS approval_decided_by TEXT REFERENCES osd_users(id) ON DELETE SET NULL;
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS approval_decision_snapshot JSONB;
+ALTER TABLE osd_documents ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE osd_documents DROP CONSTRAINT IF EXISTS osd_documents_status_check;
+ALTER TABLE osd_documents ADD CONSTRAINT osd_documents_status_check
+  CHECK (status IN ('DRAFT','PENDING SIGNATURE','SIGNED','PENDING APPROVAL','APPROVED','REJECTED','ISSUED','REVOKED','EXPIRED','ARCHIVED'));
+CREATE INDEX IF NOT EXISTS osd_documents_reviewer_idx ON osd_documents(approval_assigned_to, status, updated_at DESC);
+CREATE TABLE IF NOT EXISTS osd_notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES osd_users(id) ON DELETE CASCADE,
+  document_id TEXT REFERENCES osd_documents(id) ON DELETE CASCADE,
+  notification_type TEXT NOT NULL CHECK (notification_type IN ('REVIEW_REQUEST','DECISION','WITHDRAWN')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  href TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS osd_notifications_user_idx ON osd_notifications(user_id, read_at, created_at DESC);
 CREATE TABLE IF NOT EXISTS osd_document_versions (
   id TEXT PRIMARY KEY,
   document_id TEXT NOT NULL REFERENCES osd_documents(id),
@@ -502,6 +533,73 @@ function roleProfileForPersonnel(person, isPrimaryChief = false) {
   return { role, clearance: profile.clearance, permissions: [...profile.permissions] };
 }
 
+function approvalRankLevel(rank) {
+  const normalized = cleanText(rank, 100).toUpperCase();
+  if (normalized === 'CIA CHIEF') return 4;
+  if (['SUPREME COMMANDER', 'SENIOR COMMANDER', 'SENIOR COMMANDER CIA', 'COMMANDER'].includes(normalized)) return 3;
+  if (normalized === 'HIGH COMMANDER') return 2;
+  return 1;
+}
+
+function selectApprovalReviewer(author, candidates, classification) {
+  const authorLevel = approvalRankLevel(author?.rank);
+  const eligible = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
+    candidate &&
+    String(candidate.id || '') !== String(author?.id || '') &&
+    !(candidate.militaryCode && author?.militaryCode &&
+      String(candidate.militaryCode).toUpperCase() === String(author.militaryCode).toUpperCase()) &&
+    candidate.active !== false &&
+    hasPermission(candidate, 'APPROVE_DOCUMENTS') &&
+    canReadClassification(candidate, classification)
+  );
+  if (!eligible.length) return null;
+
+  const higher = eligible.filter((candidate) => approvalRankLevel(candidate.rank) > authorLevel);
+  const peers = eligible.filter((candidate) => approvalRankLevel(candidate.rank) === authorLevel);
+  const pool = higher.length
+    ? higher.filter((candidate) => approvalRankLevel(candidate.rank) === Math.min(...higher.map((item) => approvalRankLevel(item.rank))))
+    : peers;
+  return pool.sort((left, right) => String(left.id).localeCompare(String(right.id)))[0] || null;
+}
+
+function creatorSignaturePayload(document, signer, signedAt) {
+  return {
+    document: {
+      id: document.id,
+      documentNumber: document.document_number,
+      version: document.version,
+      type: document.document_type,
+      title: document.title,
+      body: document.body,
+      sector: document.sector,
+      classification: document.classification,
+      recipient: document.recipient,
+      expiresAt: document.expires_at ? new Date(document.expires_at).toISOString() : null
+    },
+    signer: {
+      id: signer.id,
+      name: signer.displayName || signer.name,
+      rank: signer.rank,
+      militaryCode: signer.militaryCode
+    },
+    signedAt
+  };
+}
+
+function createCreatorSignature(document, signer, signedAt, secret) {
+  const payload = creatorSignaturePayload(document, signer, signedAt);
+  return { payload, signature: signPayload(payload, secret) };
+}
+
+function verifyCreatorSignature(signature, document, secret) {
+  if (!signature?.payload || !signature.signature || !signingSecretReady(secret)) return false;
+  const { signer, signedAt } = signature.payload;
+  if (!signer || !signedAt) return false;
+  const currentPayload = creatorSignaturePayload(document, signer, signedAt);
+  return canonicalJson(currentPayload) === canonicalJson(signature.payload) &&
+    safeEqual(signPayload(currentPayload, secret), signature.signature);
+}
+
 function allowedPermissions(value) {
   return Array.isArray(value) && value.every((permission) => ALL_PERMISSIONS.includes(permission))
     ? [...new Set(value)]
@@ -611,6 +709,13 @@ function safeDocument(row, user, options = {}) {
   const seeIdentity = hasPermission(user, 'VIEW_SIGNER_IDENTITY') || hasPermission(user, 'VIEW_REAL_SIGNER_IDENTITY');
   const seeRole = hasPermission(user, 'VIEW_SIGNER_ROLE');
   const seeSignatureImage = hasPermission(user, 'DOWNLOAD_DOCUMENTS') || seeIdentity;
+  const creatorSignature = row.creator_signature && typeof row.creator_signature === 'object' ? row.creator_signature : null;
+  const canSeeWorkflowIdentity = !options.public && (
+    String(row.created_by || '') === String(user?.id || '') ||
+    String(row.approval_assigned_to || '') === String(user?.id || '') ||
+    hasPermission(user, 'VIEW_AUDIT_TRAIL') ||
+    seeIdentity
+  );
   const revoked = row.status === 'REVOKED' || !!row.revoked_at;
   const expired = row.status === 'ISSUED' && row.expires_at && new Date(row.expires_at).getTime() <= Date.now();
   const result = {
@@ -631,6 +736,17 @@ function safeDocument(row, user, options = {}) {
     expiresAt: row.expires_at,
     revokedAt: row.revoked_at,
     revokedReason: options.public ? null : row.revoked_reason,
+    creatorSignature: !options.public && creatorSignature ? {
+      signerName: canSeeWorkflowIdentity ? creatorSignature.payload?.signer?.name : undefined,
+      signerRank: creatorSignature.payload?.signer?.rank,
+      militaryCode: canSeeWorkflowIdentity ? creatorSignature.payload?.signer?.militaryCode : undefined,
+      signedAt: creatorSignature.payload?.signedAt,
+      signatureHash: canSeeWorkflowIdentity ? creatorSignature.signature : undefined
+    } : null,
+    approvalAssignedTo: canSeeWorkflowIdentity ? row.approval_assigned_to || null : null,
+    approvalAssignee: canSeeWorkflowIdentity ? row.approval_assignment_snapshot || null : null,
+    approvalDecision: canSeeWorkflowIdentity ? row.approval_decision_snapshot || null : null,
+    rejectionReason: canSeeWorkflowIdentity ? row.rejection_reason || null : null,
     body: row.body,
     signature: signature ? {
       display: seeIdentity ? signature.signerName : seeRole ? 'COMMANDER / AUTHORIZED SIGNATURE' : 'AUTHORIZED COMMAND',
@@ -822,6 +938,7 @@ function createOsdRouter({
     const profile = roleProfileForPersonnel(person, account?.is_primary_chief === true);
     return {
       id: account.id,
+      personnelId: String(person?.id || ''),
       username: account.username,
       militaryCode,
       displayName: cleanText(person?.displayName || person?.name || account.display_name, 120),
@@ -1089,6 +1206,73 @@ function createOsdRouter({
       [document.id, snapshot.type, snapshot.title, JSON.stringify(snapshot.body), snapshot.sector, snapshot.classification, snapshot.recipient, version, snapshot.expiresAt]
     );
     return { version, snapshot: snapshotForVersion, contentHash };
+  }
+
+  async function approvalCandidates(client) {
+    const result = await client.query(
+      `SELECT id,personnel_id,military_code,is_primary_chief
+       FROM osd_users WHERE enabled=TRUE`
+    );
+    const people = personnelRoster();
+    return result.rows.map((account) => {
+      const person = account.personnel_id
+        ? people.find((entry) => String(entry.id || '') === String(account.personnel_id))
+        : findPersonnelByCode(people, account.military_code);
+      if (!isEligiblePersonnel(person)) return null;
+      const profile = roleProfileForPersonnel(person, account.is_primary_chief === true);
+      if (!profile.permissions.includes('APPROVE_DOCUMENTS')) return null;
+      return {
+        id: account.id,
+        personnelId: String(person.id || ''),
+        displayName: cleanText(person.displayName || person.name || account.military_code, 120),
+        militaryCode: normalizeMilitaryCode(person.militaryCode || person.publicCode || person.code),
+        rank: cleanText(person.rank, 100).toUpperCase(),
+        role: profile.role,
+        clearance: profile.clearance,
+        permissions: profile.permissions,
+        active: true
+      };
+    }).filter(Boolean);
+  }
+
+  async function insertNotification(client, { userId, documentId, type, title, message }) {
+    const id = crypto.randomUUID();
+    const href = `/osd/?document=${encodeURIComponent(documentId)}`;
+    await client.query(
+      `INSERT INTO osd_notifications
+       (id,user_id,document_id,notification_type,title,message,href)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, userId, documentId, type, cleanText(title, 160), cleanText(message, 500), href]
+    );
+    return { id, href };
+  }
+
+  function auditActorLabel(user) {
+    return [user.rank, user.militaryCode].filter(Boolean).join(' · ') || user.role;
+  }
+
+  function reviewerSnapshot(reviewer) {
+    return {
+      userId: reviewer.id,
+      displayName: reviewer.displayName,
+      rank: reviewer.rank,
+      militaryCode: reviewer.militaryCode,
+      role: reviewer.role,
+      assignedAt: new Date().toISOString()
+    };
+  }
+
+  function decisionSnapshot(user, decision, reason, decidedAt) {
+    return {
+      userId: user.id,
+      displayName: user.displayName,
+      rank: user.rank,
+      militaryCode: user.militaryCode,
+      role: user.role,
+      decision,
+      reason: reason || '',
+      decidedAt
+    };
   }
 
   router.get('/health', asyncRoute(async (req, res) => {
@@ -1553,6 +1737,34 @@ function createOsdRouter({
     res.json({ loggedOut: true });
   }));
 
+  router.get('/notifications', currentUser, asyncRoute(async (req, res) => {
+    const result = await req.osdPool.query(
+      `SELECT id,document_id,notification_type,title,message,href,read_at,created_at
+       FROM osd_notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 25`,
+      [req.osdUser.id]
+    );
+    res.json({ notifications: result.rows.map((row) => ({
+      id: row.id,
+      documentId: row.document_id,
+      type: row.notification_type,
+      title: row.title,
+      message: row.message,
+      href: row.href,
+      readAt: row.read_at,
+      createdAt: row.created_at
+    })) });
+  }));
+
+  router.post('/notifications/:id/read', currentUser, asyncRoute(async (req, res) => {
+    const result = await req.osdPool.query(
+      `UPDATE osd_notifications SET read_at=COALESCE(read_at,NOW())
+       WHERE id=$1 AND user_id=$2 RETURNING id`,
+      [cleanText(req.params.id, 100), req.osdUser.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Notification not found.' });
+    res.json({ read: true });
+  }));
+
   router.get('/documents', currentUser, requirePermission('VIEW_DOCUMENTS'), asyncRoute(async (req, res) => {
     const result = await req.osdPool.query(
       `SELECT * FROM osd_documents
@@ -1570,6 +1782,20 @@ function createOsdRouter({
     if (sector) documents = documents.filter((document) => document.sector.toLowerCase().includes(sector));
     if (search) documents = documents.filter((document) => [document.documentNumber, document.title, document.verificationCode].some((value) => String(value).toLowerCase().includes(search)));
     res.json({ documents });
+  }));
+
+  router.get('/approval-inbox', currentUser, requirePermission('APPROVE_DOCUMENTS'), asyncRoute(async (req, res) => {
+    const result = await req.osdPool.query(
+      `SELECT * FROM osd_documents
+       WHERE status='PENDING APPROVAL' AND approval_assigned_to=$1
+         AND classification = ANY($2::text[])
+       ORDER BY updated_at DESC LIMIT 200`,
+      [
+        req.osdUser.id,
+        CLASSIFICATIONS.slice(0, CLASSIFICATIONS.indexOf(req.osdUser.clearance) + 1)
+      ]
+    );
+    res.json({ documents: result.rows.map((row) => safeDocument(row, req.osdUser)) });
   }));
 
   router.post('/documents', currentUser, requirePermission('CREATE_DOCUMENTS'), asyncRoute(async (req, res) => {
@@ -1602,7 +1828,20 @@ function createOsdRouter({
          VALUES ($1,$2,'1.0',$3::jsonb,$4,$5,'Initial draft')`,
         [crypto.randomUUID(), documentId, JSON.stringify(draft), contentHash, req.osdUser.id]
       );
-      await appendAudit(client, { documentId, actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'DOCUMENT CREATED', version: '1.0', metadata: { documentNumber } });
+      await appendAudit(client, {
+        documentId,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action: 'DOCUMENT CREATED',
+        version: '1.0',
+        metadata: {
+          documentNumber,
+          creatorName: req.osdUser.displayName,
+          creatorRank: req.osdUser.rank,
+          militaryCode: req.osdUser.militaryCode,
+          createdAt: new Date().toISOString()
+        }
+      });
       await client.query('COMMIT');
       const created = await pool.query('SELECT * FROM osd_documents WHERE id=$1', [documentId]);
       res.status(201).json({ document: safeDocument(created.rows[0], req.osdUser) });
@@ -1666,7 +1905,20 @@ function createOsdRouter({
          VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7)`,
         [crypto.randomUUID(), documentId, version, JSON.stringify(draft), contentHash, req.osdUser.id, `Amends ${previous.document_number}`]
       );
-      await appendAudit(client, { documentId, actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'AMENDMENT DRAFT CREATED', version, metadata: { amends: previous.document_number } });
+      await appendAudit(client, {
+        documentId,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action: 'AMENDMENT DRAFT CREATED',
+        version,
+        metadata: {
+          amends: previous.document_number,
+          creatorName: req.osdUser.displayName,
+          creatorRank: req.osdUser.rank,
+          militaryCode: req.osdUser.militaryCode,
+          createdAt: new Date().toISOString()
+        }
+      });
       await appendAudit(client, { documentId: previous.id, actorId: req.osdUser.id, actorLabel: req.osdUser.role, action: 'AMENDMENT CREATED', version: previous.version, metadata: { amendmentDocument: documentNumber } });
       await client.query('COMMIT');
       const created = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [documentId]);
@@ -1756,6 +2008,259 @@ function createOsdRouter({
       client.release();
     }
   }));
+
+  router.post('/documents/:id/prepare-signature', currentUser, requirePermission('EDIT_DRAFTS'), asyncRoute(async (req, res) => {
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await getDocument(client, cleanText(req.params.id, 100), true);
+      if (!checkDocumentVisibility(req.osdUser, document, res)) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      if (document.created_by !== req.osdUser.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the document creator may sign and submit it.' });
+      }
+      if (document.creator_signature) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'This document already has a creator signature.' });
+      }
+      const legacyPending = document.status === 'PENDING APPROVAL';
+      if (document.status !== 'DRAFT' && !legacyPending) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Cannot prepare a document in ${document.status} status for signature.` });
+      }
+      await client.query(
+        `UPDATE osd_documents SET status='PENDING SIGNATURE',approval_assigned_to=NULL,
+         approval_assignment_snapshot=NULL,updated_at=NOW() WHERE id=$1`,
+        [document.id]
+      );
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action: legacyPending ? 'LEGACY DOCUMENT RETURNED FOR CREATOR SIGNATURE' : 'DOCUMENT PREPARED FOR CREATOR SIGNATURE',
+        version: document.version,
+        metadata: {
+          creatorName: req.osdUser.displayName,
+          creatorRank: req.osdUser.rank,
+          militaryCode: req.osdUser.militaryCode
+        }
+      });
+      if (legacyPending && document.approval_assigned_to) {
+        await insertNotification(client, {
+          userId: document.approval_assigned_to,
+          documentId: document.id,
+          type: 'WITHDRAWN',
+          title: 'Document returned for creator signature',
+          message: `${document.document_number} was returned to its creator before review.`,
+        });
+      }
+      await client.query('COMMIT');
+      const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
+      res.json({ document: safeDocument(result.rows[0], req.osdUser) });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
+  router.post('/documents/:id/signature', currentUser, requirePermission('CREATE_DOCUMENTS'), asyncRoute(async (req, res) => {
+    if (!signingSecretReady(env.OSD_SIGNING_SECRET)) {
+      return res.status(503).json({ error: 'Set OSD_SIGNING_SECRET to at least 32 random bytes before signing documents.' });
+    }
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await getDocument(client, cleanText(req.params.id, 100), true);
+      if (!checkDocumentVisibility(req.osdUser, document, res)) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      if (document.created_by !== req.osdUser.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the document creator may sign and submit it.' });
+      }
+      if (document.status !== 'PENDING SIGNATURE' || document.creator_signature) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'This document is not waiting for its creator signature.' });
+      }
+      const signedAt = new Date().toISOString();
+      const creatorSignature = createCreatorSignature(document, req.osdUser, signedAt, env.OSD_SIGNING_SECRET);
+      await client.query(
+        `UPDATE osd_documents SET status='SIGNED',creator_signature=$2::jsonb,updated_at=NOW()
+         WHERE id=$1`,
+        [document.id, JSON.stringify(creatorSignature)]
+      );
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action: 'CREATOR SIGNED DOCUMENT',
+        version: document.version,
+        metadata: {
+          signerName: req.osdUser.displayName,
+          signerRank: req.osdUser.rank,
+          militaryCode: req.osdUser.militaryCode,
+          signedAt,
+          signatureHash: creatorSignature.signature
+        }
+      });
+      await client.query('COMMIT');
+      const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
+      res.json({ document: safeDocument(result.rows[0], req.osdUser) });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
+  router.post('/documents/:id/submit', currentUser, requirePermission('SUBMIT_FOR_APPROVAL'), asyncRoute(async (req, res) => {
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await getDocument(client, cleanText(req.params.id, 100), true);
+      if (!checkDocumentVisibility(req.osdUser, document, res)) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      if (document.created_by !== req.osdUser.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the document creator may submit it for approval.' });
+      }
+      if (document.status !== 'SIGNED' || document.creator_signature?.payload?.signer?.id !== req.osdUser.id ||
+          !verifyCreatorSignature(document.creator_signature, document, env.OSD_SIGNING_SECRET)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'The creator must sign this document before submitting it for approval.' });
+      }
+      const candidates = await approvalCandidates(client);
+      const reviewer = selectApprovalReviewer(req.osdUser, candidates, document.classification);
+      if (!reviewer) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'No active, authorized reviewer with sufficient clearance is available.' });
+      }
+      const assignment = reviewerSnapshot(reviewer);
+      await client.query(
+        `UPDATE osd_documents SET status='PENDING APPROVAL',approval_assigned_to=$2,
+         approval_assignment_snapshot=$3::jsonb,approval_decided_by=NULL,
+         approval_decision_snapshot=NULL,rejection_reason=NULL,updated_at=NOW() WHERE id=$1`,
+        [document.id, reviewer.id, JSON.stringify(assignment)]
+      );
+      await insertNotification(client, {
+        userId: reviewer.id,
+        documentId: document.id,
+        type: 'REVIEW_REQUEST',
+        title: 'Document awaiting your review',
+        message: `${document.document_number} — ${document.title} was submitted by ${req.osdUser.displayName} (${req.osdUser.rank}).`
+      });
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action: 'SUBMITTED FOR APPROVAL',
+        version: document.version,
+        metadata: {
+          creatorName: req.osdUser.displayName,
+          creatorRank: req.osdUser.rank,
+          creatorMilitaryCode: req.osdUser.militaryCode,
+          reviewerId: reviewer.id,
+          reviewerName: reviewer.displayName,
+          reviewerRank: reviewer.rank,
+          reviewerMilitaryCode: reviewer.militaryCode,
+          assignedAt: assignment.assignedAt
+        }
+      });
+      await client.query('COMMIT');
+      const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
+      res.json({ document: safeDocument(result.rows[0], req.osdUser) });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
+  async function decideApproval(req, res, decision) {
+    const reason = decision === 'REJECTED' ? cleanText(req.body?.reason, 1000) : '';
+    if (decision === 'REJECTED' && !reason) {
+      return res.status(400).json({ error: 'A rejection reason is required.' });
+    }
+    const client = await req.osdPool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await getDocument(client, cleanText(req.params.id, 100), true);
+      if (!checkDocumentVisibility(req.osdUser, document, res)) {
+        await client.query('ROLLBACK');
+        return;
+      }
+      if (document.created_by === req.osdUser.id || document.approval_assigned_to !== req.osdUser.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only the assigned reviewer may decide this document.' });
+      }
+      if (document.status !== 'PENDING APPROVAL') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Cannot review a document in ${document.status} status.` });
+      }
+      if (!document.creator_signature ||
+          document.creator_signature.payload?.signer?.id !== document.created_by ||
+          !verifyCreatorSignature(document.creator_signature, document, env.OSD_SIGNING_SECRET)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'The document has no valid creator signature and cannot be approved.' });
+      }
+      const decidedAt = new Date().toISOString();
+      const decisionRecord = decisionSnapshot(req.osdUser, decision, reason, decidedAt);
+      await client.query(
+        `UPDATE osd_documents SET status=$2,approval_decided_by=$3,
+         approval_decision_snapshot=$4::jsonb,rejection_reason=$5,updated_at=NOW()
+         WHERE id=$1`,
+        [document.id, decision, req.osdUser.id, JSON.stringify(decisionRecord), reason || null]
+      );
+      const action = decision === 'APPROVED' ? 'DOCUMENT APPROVED' : 'DOCUMENT REJECTED';
+      await appendAudit(client, {
+        documentId: document.id,
+        actorId: req.osdUser.id,
+        actorLabel: auditActorLabel(req.osdUser),
+        action,
+        version: document.version,
+        metadata: {
+          reviewerName: req.osdUser.displayName,
+          reviewerRank: req.osdUser.rank,
+          reviewerMilitaryCode: req.osdUser.militaryCode,
+          decision,
+          reason,
+          decidedAt
+        }
+      });
+      await insertNotification(client, {
+        userId: document.created_by,
+        documentId: document.id,
+        type: 'DECISION',
+        title: decision === 'APPROVED' ? 'Document approved' : 'Document rejected',
+        message: decision === 'APPROVED'
+          ? `${document.document_number} was approved by ${req.osdUser.displayName} (${req.osdUser.rank}).`
+          : `${document.document_number} was rejected by ${req.osdUser.displayName} (${req.osdUser.rank}). Reason: ${reason}`
+      });
+      await client.query('COMMIT');
+      const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
+      res.json({ document: safeDocument(result.rows[0], req.osdUser) });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  router.post('/documents/:id/approve', currentUser, requirePermission('APPROVE_DOCUMENTS'), asyncRoute((req, res) =>
+    decideApproval(req, res, 'APPROVED')));
+  router.post('/documents/:id/reject', currentUser, requirePermission('APPROVE_DOCUMENTS'), asyncRoute((req, res) =>
+    decideApproval(req, res, 'REJECTED')));
 
   async function transition(req, res, action, permission, from, to, options = {}) {
     const permissions = Array.isArray(permission) ? permission : [permission];
@@ -1857,10 +2362,6 @@ function createOsdRouter({
     }
   }
 
-  router.post('/documents/:id/submit', currentUser, asyncRoute((req, res) =>
-    transition(req, res, 'SUBMITTED FOR APPROVAL', 'SUBMIT_FOR_APPROVAL', ['DRAFT'], 'PENDING APPROVAL')));
-  router.post('/documents/:id/approve', currentUser, asyncRoute((req, res) =>
-    transition(req, res, 'DOCUMENT APPROVED', 'APPROVE_DOCUMENTS', ['PENDING APPROVAL'], 'APPROVED')));
   router.post('/documents/:id/issue', currentUser, asyncRoute((req, res) =>
     transition(req, res, 'DOCUMENT SIGNED AND ISSUED', ['SIGN_DOCUMENTS', 'ISSUE_DOCUMENTS'], ['APPROVED'], 'ISSUED', { issue: true })));
   router.post('/documents/:id/revoke', currentUser, asyncRoute((req, res) =>
@@ -1883,7 +2384,7 @@ function createOsdRouter({
     const document = await getDocument(req.osdPool, cleanText(req.params.id, 100));
     if (!checkDocumentVisibility(req.osdUser, document, res)) return;
     const result = await req.osdPool.query(
-      `SELECT id,actor_label,action,version,metadata,previous_hash,event_hash,created_at
+      `SELECT id,actor_id,actor_label,action,version,metadata,previous_hash,event_hash,created_at
        FROM osd_audit_events WHERE document_id=$1 ORDER BY id DESC LIMIT 200`,
       [document.id]
     );
@@ -2219,9 +2720,11 @@ module.exports = {
   ROLE_DEFAULTS,
   STATUSES,
   allowedPermissions,
+  approvalRankLevel,
   canReadClassification,
   canonicalJson,
   createOsdRouter,
+  createCreatorSignature,
   findPersonnelByCode,
   isEligiblePersonnel,
   nextMinorVersion,
@@ -2232,6 +2735,7 @@ module.exports = {
   roleProfileForPersonnel,
   safeEqual,
   safeDocument,
+  selectApprovalReviewer,
   sectorCode,
   sha256,
   shareAccessDecision,
@@ -2239,5 +2743,6 @@ module.exports = {
   signingSecretReady,
   verificationResult,
   verifyTotp,
+  verifyCreatorSignature,
   verifyIssuedDocument
 };
