@@ -59,3 +59,10 @@
 .br-cipher-audit-code{margin-top:8px}
 .br-cipher-audit-code summary{color:#c9b477;font-size:.76rem;cursor:pointer}
 .br-cipher-audit-code pre{margin-top:7px;color:#d5bd83;direction:ltr;text-align:left;font-family:"Courier New",monospace}
+.br-cipher-inbox-item{padding:12px;color:#e7ebee;background:rgba(4,8,12,.72);border:1px solid rgba(185,154,87,.3);border-inline-start:3px solid #b99a57;border-radius:4px}
+.br-cipher-inbox-meta{margin:4px 0 9px;color:#9ba7af;font-size:.73rem;line-height:1.6}
+.br-cipher-inbox-label{display:block;margin:8px 0 4px;color:#d8c48f;font-size:.78rem}
+.br-cipher-inbox-code{max-height:180px;overflow:auto;margin:0;padding:9px;color:#d5bd83;background:#080d12;border:1px solid #25313a;border-radius:3px;direction:ltr;text-align:left;font:.78rem/1.65 "Courier New",monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.br-cipher-inbox-key-row{display:flex;align-items:center;gap:8px}
+.br-cipher-inbox-key{flex:1;min-width:0;direction:ltr;text-align:left}
+@media(max-width:600px){.br-cipher-inbox-key-row{align-items:stretch;flex-direction:column}.br-cipher-inbox-key-row .br-cipher-button{width:100%}}

@@ -573,23 +573,45 @@ function initializeCipherPage(documentRef, cipher) {
   };
 
   const encryptButton = query('[data-cipher-action="encrypt"]');
+  const sendToChiefButton = query('[data-cipher-action="send-to-chief"]');
+  let pendingEncryptedMessage = null;
+  let encryptionRevision = 0;
+  let encryptedMessageSequence = 0;
+  let sendRequestSequence = 0;
+  let activeSendRequestId = 0;
+  const invalidateEncryptedMessage = () => {
+    encryptionRevision += 1;
+    pendingEncryptedMessage = null;
+    sendToChiefButton.hidden = true;
+  };
+  query('#br-cipher-plain').addEventListener('input', invalidateEncryptedMessage);
+  query('#br-cipher-encrypt-key').addEventListener('input', invalidateEncryptedMessage);
+  query('#br-cipher-output-mode').addEventListener('change', invalidateEncryptedMessage);
+
   encryptButton.addEventListener('click', async () => {
     const message = query('#br-cipher-plain').value;
     const passphrase = query('#br-cipher-encrypt-key').value;
+    const revision = encryptionRevision;
     const result = query('[data-cipher-result="encrypted"]');
     const symbolResult = query('[data-cipher-symbol-result]');
     const scribbleResult = query('[data-cipher-scribble-result]');
+    pendingEncryptedMessage = null;
+    sendToChiefButton.hidden = true;
     setBusy(encryptButton, true, 'جارٍ التشفير…');
     result.hidden = true;
     setStatus('encrypt', 'يتم التشفير على هذا الجهاز فقط.', 'info');
     try {
       const packed = await cipher.encryptMessageBytes(message, passphrase);
+      if (revision !== encryptionRevision) {
+        throw new Error('تغيّرت الرسالة أو المفتاح أثناء التشفير. أعد المحاولة.');
+      }
+      const sourceCode = cipher.encodeSymbolMessage(packed);
       if (query('#br-cipher-output-mode').value === 'scribble') {
         symbolResult.hidden = true;
         scribbleResult.hidden = false;
         await renderScribbleDownload(cipher.encodeScribbleFrame(packed));
         query('[data-cipher-action="copy-encrypted"]').hidden = true;
-        setStatus('encrypt', 'اكتمل التشفير. نزّل صورة PNG الأصلية وأرسل المفتاح عبر قناة منفصلة.', 'success');
+        setStatus('encrypt', 'اكتمل التشفير. أرسل الشفرة ومفتاحها إلى القائد من الزر أدناه.', 'success');
       } else {
         releaseScribbleUrl();
         query('#br-cipher-scribble-preview').removeAttribute('src');
@@ -597,9 +619,18 @@ function initializeCipherPage(documentRef, cipher) {
         query('[data-cipher-action="copy-encrypted"]').hidden = false;
         scribbleResult.hidden = true;
         symbolResult.hidden = false;
-        query('#br-cipher-output').value = cipher.encodeSymbolMessage(packed);
-        setStatus('encrypt', 'اكتمل التشفير. انسخ الرموز وأرسل المفتاح عبر قناة منفصلة.', 'success');
+        query('#br-cipher-output').value = sourceCode;
+        setStatus('encrypt', 'اكتمل التشفير. أرسل الشفرة ومفتاحها إلى القائد من الزر أدناه.', 'success');
       }
+      if (revision !== encryptionRevision) {
+        throw new Error('تغيّرت الرسالة أو المفتاح أثناء التشفير. أعد المحاولة.');
+      }
+      pendingEncryptedMessage = {
+        sourceCode,
+        passphrase,
+        version: ++encryptedMessageSequence
+      };
+      sendToChiefButton.hidden = false;
       result.hidden = false;
     } catch (error) {
       result.hidden = true;
@@ -607,6 +638,35 @@ function initializeCipherPage(documentRef, cipher) {
     } finally {
       setBusy(encryptButton, false);
     }
+  });
+
+  sendToChiefButton.addEventListener('click', () => {
+    if (!pendingEncryptedMessage || sendToChiefButton.disabled) return;
+    const requestId = ++sendRequestSequence;
+    activeSendRequestId = requestId;
+    setBusy(sendToChiefButton, true, 'جارٍ الإرسال…');
+    documentRef.dispatchEvent(new CustomEvent('blackridge:cipher-send-request', {
+      detail: {
+        requestId,
+        version: pendingEncryptedMessage.version,
+        sourceCode: pendingEncryptedMessage.sourceCode,
+        passphrase: pendingEncryptedMessage.passphrase
+      }
+    }));
+  });
+
+  documentRef.addEventListener('blackridge:cipher-send-result', (event) => {
+    const detail = event && event.detail ? event.detail : {};
+    if (Number(detail.requestId) !== activeSendRequestId) return;
+    setBusy(sendToChiefButton, false);
+    const sent = detail.ok === true;
+    if (sent && pendingEncryptedMessage && pendingEncryptedMessage.version === detail.version) {
+      pendingEncryptedMessage = null;
+      sendToChiefButton.hidden = true;
+    }
+    setStatus('encrypt', detail.message || (sent
+      ? 'وصلت الشفرة ومفتاحها إلى صندوق CIA CHIEF.'
+      : 'تعذر إرسال الرسالة إلى القائد.'), sent ? 'success' : 'error');
   });
 
   const decryptButton = query('[data-cipher-action="decrypt"]');
@@ -645,6 +705,7 @@ function initializeCipherPage(documentRef, cipher) {
 
   query('[data-cipher-action="clear-encrypt"]').addEventListener('click', () => {
     releaseScribbleUrl();
+    invalidateEncryptedMessage();
     query('#br-cipher-plain').value = '';
     query('#br-cipher-encrypt-key').value = '';
     query('#br-cipher-output').value = '';

@@ -354,6 +354,7 @@ const EMPTY_STATE = {
   cia_map_locations: {},
   cia_morse_logs: [],
   cia_cipher_logs: [],
+  cia_cipher_inbox: [],
   cia_hq_locations: [],
   cia_audit_logs: [],
   cia_security_incidents: [],
@@ -438,7 +439,7 @@ function normalizePersistedState(parsed, source = 'persisted state') {
   for (const key of [
     'cia_users', 'cia_queue', 'cia_character_queue', 'cia_accounts',
     'cia_support', 'cia_sos', 'cia_reports', 'cia_cases', 'cia_hq_locations',
-    'cia_morse_logs', 'cia_cipher_logs', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
+    'cia_morse_logs', 'cia_cipher_logs', 'cia_cipher_inbox', 'cia_audit_logs', 'cia_security_incidents', 'cia_attendance', 'cia_operations', 'cia_battalions',
     'cia_notifications', 'cia_web_push_subscriptions', 'cia_cover_badges', 'ibp_deployments', 'ibp_operations', 'ibp_intelligence', 'ibp_reports', 'ibp_messages'
   ]) {
     if (!Array.isArray(loadedState[key])) loadedState[key] = [];
@@ -814,6 +815,11 @@ function morseLogForViewer(log, viewer) {
 function cipherLogForViewer(log, viewer) {
   if (!log || !isMorseSupervisor(viewer)) return null;
   return { ...log };
+}
+
+function cipherInboxMessageForViewer(message, viewer) {
+  if (!message || !isChief(viewer)) return null;
+  return { ...message };
 }
 
 const isLeadership = (user) =>
@@ -8064,6 +8070,64 @@ socket.on('member:saveIdentity', (payload, cb) => {
         }
       }
       return ok(cb, { translation, logId: log.id });
+    });
+
+    socket.on('cipher:inbox:list', (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً.');
+      if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب.');
+      if (!isChief(actor)) return no(cb, 'صندوق الرسائل المشفّرة متاح لـ CIA CHIEF فقط.');
+
+      const messages = (state.cia_cipher_inbox || [])
+        .map((message) => cipherInboxMessageForViewer(message, actor))
+        .filter(Boolean);
+      return ok(cb, { messages });
+    });
+
+    socket.on('cipher:inbox:send', (payload, cb) => {
+      const actor = requireAuthenticatedUser(socket);
+      if (!actor) return no(cb, 'سجّل الدخول إلى حسابك أولاً لإرسال الرسالة.');
+      if (actor.serviceApproved === false) return no(cb, 'اعتماد الهوية من القيادة مطلوب قبل الإرسال.');
+
+      const rawSourceCode = typeof payload?.sourceCode === 'string' ? payload.sourceCode : '';
+      const passphrase = typeof payload?.passphrase === 'string' ? payload.passphrase : '';
+      if (!rawSourceCode.trim() || passphrase.length < 8) {
+        return no(cb, 'الشفرة ورمزها السري مطلوبان، ويجب أن يتكون الرمز من 8 أحرف على الأقل.');
+      }
+      if (rawSourceCode.length > 120000 || passphrase.length > 1024) {
+        return no(cb, 'الشفرة أو الرمز السري يتجاوز الحد المسموح.');
+      }
+
+      const message = {
+        id: makeId('CIPHERMSG'),
+        senderId: actor.id,
+        senderName: clean(actor.identity?.fullName || actor.name, 160),
+        senderUserName: clean(actor.name, 120),
+        senderPublicCode: clean(actor.publicCode, 100),
+        senderRank: normalizeRank(actor.rank),
+        senderRankLabel: rankLabel(actor.rank),
+        sourceCode: rawSourceCode.trim(),
+        passphrase,
+        at: now()
+      };
+      state.cia_cipher_inbox.unshift(message);
+      state.cia_cipher_inbox = state.cia_cipher_inbox.slice(0, 20);
+      saveState();
+      emitState();
+
+      const connectedSockets = io.sockets && io.sockets.sockets;
+      const socketList = connectedSockets instanceof Map
+        ? connectedSockets.values()
+        : Object.values(connectedSockets || {});
+      for (const targetSocket of socketList) {
+        const recipient = requireAuthenticatedUser(targetSocket);
+        if (recipient && recipient.serviceApproved !== false && isChief(recipient)) {
+          targetSocket.emit('cipher:inbox:received', {
+            message: cipherInboxMessageForViewer(message, recipient)
+          });
+        }
+      }
+      return ok(cb, { messageId: message.id, at: message.at });
     });
 
     socket.on('cipher:decoded', async (payload, cb) => {
