@@ -53,6 +53,12 @@ const { injectWeaponArmoryMarkup, registerWeaponArmorySocket } = require('./weap
 const { injectWantedPersonsMarkup, registerWantedPersonsSocket } = require('./wanted-persons-server');
 const { injectMilitaryPersonnelDossierMarkup } = require('./military-personnel-dossier-server');
 const { registerMilitaryPersonnelDossierSocket } = require('./military-personnel-dossier-socket');
+const {
+  PuzzleSystemStore,
+  injectPuzzleMarkup,
+  registerPuzzleRoutes,
+  registerPuzzleSocket
+} = require('./puzzle-system');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const { installSocketModerationBoundary } = require('./moderation-boundaries');
@@ -119,6 +125,7 @@ let mobilePushStore = null;
 let weaponArmoryStore = null;
 let wantedPersonsStore = null;
 let militaryPersonnelDossierStore = null;
+let puzzleStore = null;
 let appEntryHtml = null;
 const mobilePushTransport = createWebPushTransport();
 
@@ -226,6 +233,8 @@ for (const [route, file] of Object.entries(publicAssets)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
 }
 
+registerPuzzleRoutes(app, { getStore: () => puzzleStore });
+
 app.get('/service-worker.js', (req, res) => {
   res.set({
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -243,7 +252,7 @@ app.get(['/', '/index.html'], (req, res) => {
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
     return res.status(200).type('html').send(
-      injectOsdSsoMarkup(injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml))))))
+      injectPuzzleMarkup(injectOsdSsoMarkup(injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))))))
     );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');
@@ -11659,6 +11668,16 @@ io.on('connection', (socket) => {
   });
 });
 
+io.on('connection', (socket) => {
+  registerPuzzleSocket(socket, {
+    getStore: () => puzzleStore,
+    getState: () => state,
+    requireUser: requireSocketUser,
+    normalizeRank,
+    isLeadership: isSecuritySupervisor
+  });
+});
+
 /* =====================================================
    HTTP SERVER START
 ===================================================== */
@@ -11719,12 +11738,16 @@ async function initializePersistence() {
     console.log('[BLACK RIDGE] PostgreSQL weapon armory store ready.');
     console.log('[BLACK RIDGE] PostgreSQL wanted persons store ready.');
     console.log('[BLACK RIDGE] PostgreSQL military personnel dossier store ready.');
+    puzzleStore = new PuzzleSystemStore(postgresPool);
+    await puzzleStore.initialize();
+    console.log('[BLACK RIDGE] PostgreSQL puzzle system store ready.');
     return;
   }
 
   weaponArmoryStore = null;
   wantedPersonsStore = null;
   militaryPersonnelDossierStore = null;
+  puzzleStore = null;
   if (IS_RENDER_RUNTIME) {
     console.warn('[BLACK RIDGE] DATABASE_URL is not configured; using temporary JSON state at ' + DATA_FILE + '. State may be lost on restart or redeploy.');
   }
