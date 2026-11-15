@@ -41,7 +41,10 @@ const TYPES = [
   ['OFFICIAL LETTER', 'Official Letter', 'Formal correspondence issued by the document authority.']
 ];
 const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP SECRET'];
-const STATUSES = ['DRAFT', 'PENDING APPROVAL', 'APPROVED', 'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'];
+const STATUSES = [
+  'DRAFT', 'PENDING SIGNATURE', 'SIGNED', 'PENDING APPROVAL', 'APPROVED', 'REJECTED',
+  'ISSUED', 'REVOKED', 'EXPIRED', 'ARCHIVED'
+];
 const REPORT_FONTS = ['IBM Plex Sans Arabic', 'IBM Plex Mono', 'Inter', 'Arial', 'Georgia', 'Tahoma'];
 const COPY = {
   ar: {
@@ -57,7 +60,8 @@ const COPY = {
     reviewHint: 'وثائق تنتظر الإجراء', verifyDocument: 'التحقق من وثيقة', verifyHint: 'تحقق من الرقم أو رمز التحقق',
     integrityNote: 'تُسجّل النسخ الصادرة وسجل التدقيق على الخادم. لا تُعد هيئة الوثيقة وحدها دليلاً على أصالتها.',
     workflow: 'مسار الوثيقة', workflowCaption: 'كل انتقال حالة مسجل باسم المستخدم ووقته', stepDraft: 'إنشاء مسودة',
-    stepReview: 'مراجعة واعتماد', stepSign: 'توقيع وإصدار', stepVerify: 'تحقق وأرشفة', creatorTitle: 'إنشاء وثيقة رسمية',
+    stepCreatorSign: 'توقيع المنشئ', stepReview: 'مراجعة واعتماد', stepSign: 'توقيع وإصدار',
+    stepVerify: 'تحقق وأرشفة', creatorTitle: 'إنشاء وثيقة رسمية',
     documentDetails: 'بيانات الوثيقة', details: 'البيانات', preview: 'المعاينة', review: 'المراجعة', documentType: 'نوع الوثيقة',
     typeHint: 'اختر القالب المناسب لمحتوى الوثيقة.', title: 'العنوان', titleHint: 'سيظهر العنوان كما هو في النسخة الصادرة.',
     sector: 'القطاع', classification: 'درجة السرية', recipient: 'المستلم / الجهة', body: 'محتوى الوثيقة',
@@ -126,7 +130,20 @@ const COPY = {
     issuedEyebrow: 'SIGNED REGISTER', archiveEyebrow: 'DOCUMENT REGISTER',
     verifyEyebrow: 'OSD AUTHENTICITY SERVICE', auditEyebrow: 'APPEND-ONLY EVENT REGISTER',
     createEyebrow: 'NEW OFFICIAL RECORD', templatesEyebrow: 'CONTROLLED FORMAT LIBRARY',
-    settingsEyebrow: 'IDENTITY & ACCESS', previewDraft: 'معاينة الوثيقة'
+    settingsEyebrow: 'IDENTITY & ACCESS', previewDraft: 'معاينة الوثيقة',
+    notificationsTitle: 'الإشعارات', refreshNotifications: 'تحديث', noNotifications: 'لا توجد إشعارات جديدة.',
+    statusDraft: 'مسودة', statusPendingSignature: 'بانتظار توقيع المنشئ', statusSigned: 'موقّعة — بانتظار الإرسال',
+    statusPendingApproval: 'بانتظار مراجعة المسؤول', statusApproved: 'معتمدة', statusRejected: 'مرفوضة',
+    statusIssued: 'صادرة', statusRevoked: 'ملغاة', statusExpired: 'منتهية', statusArchived: 'مؤرشفة',
+    creatorSignature: 'توقيع المنشئ', creatorRank: 'رتبة المنشئ', militaryCode: 'الكود العسكري',
+    signedAt: 'وقت التوقيع', assignedReviewer: 'المراجع المستلم', reviewedBy: 'اتخذ القرار',
+    decisionDate: 'وقت القرار', rejectionReason: 'سبب الرفض',
+    prepareSignature: 'مراجعة وإعداد التوقيع', signAsCreator: 'التوقيع باسم حسابي',
+    reject: 'رفض الوثيقة', rejected: 'تم رفض الوثيقة.',
+    signaturePrepared: 'أصبحت الوثيقة بانتظار توقيع المنشئ.', creatorSigned: 'تم تسجيل توقيع المنشئ.',
+    confirmCreatorSign: 'ستوقّع بصفتك {name} — {rank} — {code}. يُحفظ التوقيع مع وقت الخادم ولا يمكن تغييره بعد الإرسال. هل راجعت الوثيقة؟',
+    rejectionPrompt: 'سبب رفض الوثيقة مطلوب:', notificationReview: 'وثيقة جديدة تنتظر مراجعتك',
+    notificationDecision: 'تم اتخاذ قرار بشأن وثيقتك'
   },
   en: {
     topSystem: 'DOCUMENT AUTHORITY SYSTEM', online: 'ONLINE', workspace: 'WORKSPACE', center: 'Document Center',
@@ -143,7 +160,8 @@ const COPY = {
     reviewHint: 'Documents awaiting action', verifyDocument: 'Verify Document', verifyHint: 'Check a number or code',
     integrityNote: 'Issued versions and audit events are recorded server-side. Document appearance alone does not prove authenticity.',
     workflow: 'Document Workflow', workflowCaption: 'Every state transition records the user and timestamp',
-    stepDraft: 'Create Draft', stepReview: 'Review & Approve', stepSign: 'Sign & Issue', stepVerify: 'Verify & Archive',
+    stepDraft: 'Create Draft', stepCreatorSign: 'Creator signs', stepReview: 'Review & Approve',
+    stepSign: 'Sign & Issue', stepVerify: 'Verify & Archive',
     creatorTitle: 'Create Official Document', documentDetails: 'Document Details', details: 'Details',
     preview: 'Preview', review: 'Review', documentType: 'Document Type', typeHint: 'Choose the template for this document.',
     title: 'Title', titleHint: 'The title appears as entered on the issued version.', sector: 'Sector',
@@ -214,7 +232,20 @@ const COPY = {
     pendingEyebrow: 'COMMAND REVIEW QUEUE', issuedEyebrow: 'SIGNED REGISTER', archiveEyebrow: 'DOCUMENT REGISTER',
     verifyEyebrow: 'OSD AUTHENTICITY SERVICE', auditEyebrow: 'APPEND-ONLY EVENT REGISTER',
     createEyebrow: 'NEW OFFICIAL RECORD', templatesEyebrow: 'CONTROLLED FORMAT LIBRARY',
-    settingsEyebrow: 'IDENTITY & ACCESS', previewDraft: 'Preview Document'
+    settingsEyebrow: 'IDENTITY & ACCESS', previewDraft: 'Preview Document',
+    notificationsTitle: 'Notifications', refreshNotifications: 'Refresh', noNotifications: 'No notifications.',
+    statusDraft: 'Draft', statusPendingSignature: 'Awaiting creator signature', statusSigned: 'Signed — ready to submit',
+    statusPendingApproval: 'Awaiting reviewer', statusApproved: 'Approved', statusRejected: 'Rejected',
+    statusIssued: 'Issued', statusRevoked: 'Revoked', statusExpired: 'Expired', statusArchived: 'Archived',
+    creatorSignature: 'Creator signature', creatorRank: 'Creator rank', militaryCode: 'Military code',
+    signedAt: 'Signed at', assignedReviewer: 'Assigned reviewer', reviewedBy: 'Decision by',
+    decisionDate: 'Decision time', rejectionReason: 'Rejection reason',
+    prepareSignature: 'Review and prepare signature', signAsCreator: 'Sign as this account',
+    reject: 'Reject document', rejected: 'Document rejected.',
+    signaturePrepared: 'The document is awaiting its creator signature.', creatorSigned: 'Creator signature recorded.',
+    confirmCreatorSign: 'You will sign as {name} — {rank} — {code}. The server records the time, and the signature cannot be changed after submission. Have you reviewed the document?',
+    rejectionPrompt: 'A rejection reason is required:', notificationReview: 'A document is awaiting your review',
+    notificationDecision: 'A decision was made on your document'
   }
 };
 
@@ -264,11 +295,14 @@ let pendingMfaEnrollmentToken = '';
 const state = {
   user: null,
   documents: [],
+  inbox: [],
+  notifications: [],
   page: 'center',
   language: 'ar',
   editingId: null,
   selectedDocument: null,
   shareDocument: null,
+  notificationOpen: false,
   publicMode: false
 };
 
@@ -314,9 +348,13 @@ function setLanguage(language) {
   $$('[data-i18n]').forEach((element) => { element.textContent = t(element.dataset.i18n); });
   $$('[data-i18n-placeholder]').forEach((element) => { element.placeholder = t(element.dataset.i18nPlaceholder); });
   updateReportSectionControls();
+  [...$('#filterStatus').options].forEach((option) => {
+    if (option.value) option.textContent = localizedStatus(option.value);
+  });
   renderPageHeading();
   renderRows();
   renderPreview();
+  renderNotifications();
 }
 
 function formatDate(value, withTime = false) {
@@ -363,6 +401,7 @@ function setPage(page) {
   if (page === 'audit') void loadAudit();
   if (page === 'templates') renderTemplates();
   if (page === 'archive') renderRows();
+  if (page === 'pending') void loadApprovalInbox();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -392,7 +431,23 @@ function classificationTag(classification) {
 
 function statusTag(status) {
   const slug = String(status || '').toLowerCase().replace(/\s+/g, '-');
-  return `<span class="status-tag ${escapeHtml(slug)}">${escapeHtml(status || '—')}</span>`;
+  return `<span class="status-tag ${escapeHtml(slug)}">${escapeHtml(localizedStatus(status))}</span>`;
+}
+
+function localizedStatus(status) {
+  const keys = {
+    DRAFT: 'statusDraft',
+    'PENDING SIGNATURE': 'statusPendingSignature',
+    SIGNED: 'statusSigned',
+    'PENDING APPROVAL': 'statusPendingApproval',
+    APPROVED: 'statusApproved',
+    REJECTED: 'statusRejected',
+    ISSUED: 'statusIssued',
+    REVOKED: 'statusRevoked',
+    EXPIRED: 'statusExpired',
+    ARCHIVED: 'statusArchived'
+  };
+  return keys[status] ? t(keys[status]) : status || '—';
 }
 
 function docCell(document) {
@@ -406,7 +461,8 @@ function actionCell(document) {
 function filteredDocuments(status = '') {
   let documents = state.documents.slice();
   if (status) documents = documents.filter((doc) => doc.status === status);
-  if (state.page === 'drafts') documents = documents.filter((doc) => doc.status === 'DRAFT');
+  if (state.page === 'drafts') documents = documents.filter((doc) =>
+    ['DRAFT', 'PENDING SIGNATURE', 'SIGNED'].includes(doc.status));
   if (state.page === 'archive') {
     const search = $('#archiveSearch')?.value.trim().toLowerCase() || '';
     const type = $('#filterType')?.value || '';
@@ -426,17 +482,18 @@ function renderRows() {
   $('#recentRows').innerHTML = recent.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${classificationTag(doc.classification)}</td><td>${statusTag(doc.status)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
   $('#recentEmpty').classList.toggle('visible', !recent.length);
   $('#statTotal').textContent = docs.length;
-  $('#statPending').textContent = docs.filter((doc) => doc.status === 'PENDING APPROVAL').length;
+  $('#statPending').textContent = state.inbox.length;
   $('#statIssued').textContent = docs.filter((doc) => ['ISSUED', 'ARCHIVED'].includes(doc.status)).length;
-  $('#statDrafts').textContent = docs.filter((doc) => doc.status === 'DRAFT').length;
-  $('#pendingCount').textContent = docs.filter((doc) => doc.status === 'PENDING APPROVAL').length;
+  $('#statDrafts').textContent = docs.filter((doc) =>
+    ['DRAFT', 'PENDING SIGNATURE', 'SIGNED'].includes(doc.status)).length;
+  $('#pendingCount').textContent = state.inbox.length;
 
   const archive = filteredDocuments();
   $('#archiveRows').innerHTML = archive.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${statusTag(doc.status)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
   $('#archiveCount').textContent = `${archive.length} RECORD${archive.length === 1 ? '' : 'S'}`;
   $('#archiveEmpty').classList.toggle('visible', !archive.length);
 
-  const pending = docs.filter((doc) => doc.status === 'PENDING APPROVAL');
+  const pending = state.inbox;
   $('#pendingRows').innerHTML = pending.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
   $('#pendingPanelCount').textContent = `${pending.length} PENDING`;
   $('#pendingEmpty').classList.toggle('visible', !pending.length);
@@ -446,7 +503,7 @@ function renderRows() {
   $('#issuedCount').textContent = `${issued.length} ISSUED`;
   $('#issuedEmpty').classList.toggle('visible', !issued.length);
 
-  const drafts = docs.filter((doc) => doc.status === 'DRAFT');
+  const drafts = docs.filter((doc) => ['DRAFT', 'PENDING SIGNATURE', 'SIGNED'].includes(doc.status));
   $('#draftRows').innerHTML = drafts.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
   $('#draftCount').textContent = `${drafts.length} DRAFT${drafts.length === 1 ? '' : 'S'}`;
   $('#draftEmpty').classList.toggle('visible', !drafts.length);
@@ -458,11 +515,50 @@ async function loadDocuments() {
   renderRows();
 }
 
+async function loadApprovalInbox() {
+  if (!can('APPROVE_DOCUMENTS')) {
+    state.inbox = [];
+    renderRows();
+    return;
+  }
+  const result = await request('/approval-inbox');
+  state.inbox = result.documents || [];
+  renderRows();
+}
+
+function renderNotifications() {
+  const unread = state.notifications.filter((notification) => !notification.readAt).length;
+  $('#notificationCount').textContent = unread > 99 ? '99+' : String(unread);
+  $('#notificationCount').hidden = unread === 0;
+  $('#notificationButton').setAttribute('aria-expanded', String(state.notificationOpen));
+  $('#notificationButton').setAttribute('aria-label', t('notificationsTitle'));
+  $('#notificationButton').title = t('notificationsTitle');
+  $('#notificationPanel').hidden = !state.notificationOpen;
+  $('#notificationList').innerHTML = state.notifications.length
+    ? state.notifications.map((notification) => `
+      <a class="notification-item ${notification.readAt ? '' : 'is-unread'}"
+         data-notification-id="${escapeHtml(notification.id)}"
+         href="${escapeHtml(notification.href)}">
+        <span class="notification-dot" aria-hidden="true"></span>
+        <span><strong>${escapeHtml(notification.title)}</strong>
+          <small>${escapeHtml(notification.message)}</small>
+          <time>${escapeHtml(formatDate(notification.createdAt, true))}</time></span>
+      </a>`).join('')
+    : `<p class="notification-empty">${escapeHtml(t('noNotifications'))}</p>`;
+}
+
+async function loadNotifications() {
+  const result = await request('/notifications');
+  state.notifications = result.notifications || [];
+  renderNotifications();
+}
+
 function initSelects() {
   $('#docType').innerHTML = TYPES.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(state.language === 'ar' ? value : value)}</option>`).join('');
   $('#docClassification').innerHTML = CLASSIFICATIONS.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
   $('#filterType').insertAdjacentHTML('beforeend', TYPES.map(([value]) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(''));
-  $('#filterStatus').insertAdjacentHTML('beforeend', STATUSES.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(''));
+  $('#filterStatus').insertAdjacentHTML('beforeend', STATUSES.map((value) =>
+    `<option value="${escapeHtml(value)}">${escapeHtml(localizedStatus(value))}</option>`).join(''));
   $('#filterClass').insertAdjacentHTML('beforeend', CLASSIFICATIONS.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(''));
   $('#docClassification').value = 'INTERNAL';
 }
@@ -644,13 +740,26 @@ function fieldMeta(label, value) {
 
 function modalActions(document) {
   const actions = [`<button class="button button-quiet" data-action="closeModal">${escapeHtml(t('close'))}</button>`];
+  const isCreator = String(document.createdBy || '') === String(state.user?.id || '');
   const activeIssued = ['ISSUED', 'ARCHIVED'].includes(document.status) && !document.revokedAt &&
     !(document.expiresAt && new Date(document.expiresAt).getTime() <= Date.now());
   if (document.status === 'DRAFT' && can('EDIT_DRAFTS')) {
     actions.push(`<button class="button button-outline" data-action="editDraft" data-id="${escapeHtml(document.id)}">${escapeHtml(t('editDraft'))}</button>`);
-    if (can('SUBMIT_FOR_APPROVAL')) actions.push(`<button class="button button-primary" data-action="submitForApproval" data-id="${escapeHtml(document.id)}">${escapeHtml(t('sendReview'))}</button>`);
+    if (isCreator && can('EDIT_DRAFTS')) actions.push(`<button class="button button-primary" data-action="prepareSignature" data-id="${escapeHtml(document.id)}">${escapeHtml(t('prepareSignature'))}</button>`);
   }
-  if (document.status === 'PENDING APPROVAL' && can('APPROVE_DOCUMENTS')) actions.push(`<button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>`);
+  if (document.status === 'PENDING APPROVAL' && isCreator && !document.creatorSignature && can('EDIT_DRAFTS')) {
+    actions.push(`<button class="button button-primary" data-action="prepareSignature" data-id="${escapeHtml(document.id)}">${escapeHtml(t('prepareSignature'))}</button>`);
+  }
+  if (document.status === 'PENDING SIGNATURE' && isCreator && can('CREATE_DOCUMENTS')) {
+    actions.push(`<button class="button button-primary" data-action="signCreator" data-id="${escapeHtml(document.id)}">${escapeHtml(t('signAsCreator'))}</button>`);
+  }
+  if (document.status === 'SIGNED' && isCreator && can('SUBMIT_FOR_APPROVAL')) {
+    actions.push(`<button class="button button-primary" data-action="submitForApproval" data-id="${escapeHtml(document.id)}">${escapeHtml(t('sendReview'))}</button>`);
+  }
+  if (document.status === 'PENDING APPROVAL' && document.approvalAssignedTo === state.user?.id && can('APPROVE_DOCUMENTS')) {
+    actions.push(`<button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>`);
+    actions.push(`<button class="button button-quiet" data-action="rejectDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('reject'))}</button>`);
+  }
   if (document.status === 'APPROVED' && can('ISSUE_DOCUMENTS') && can('SIGN_DOCUMENTS')) actions.push(`<button class="button button-primary" data-action="issueDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('signIssue'))}</button>`);
   if (activeIssued && can('CREATE_DOCUMENTS')) actions.push(`<button class="button button-outline" data-action="amendDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('amendDocument'))}</button>`);
   if (activeIssued && can('DOWNLOAD_DOCUMENTS')) {
@@ -671,10 +780,14 @@ function showDocument(document) {
   $('#modalNumber').textContent = document.documentNumber;
   const body = document.body?.text || '';
   const signer = document.signature?.display || t('publicSigner');
+  const creatorSignature = document.creatorSignature;
+  const creatorSigner = creatorSignature?.signerName || t('publicSigner');
+  const assignment = document.approvalAssignee;
+  const decision = document.approvalDecision;
   $('#modalContent').innerHTML = `
     <div class="dialog-meta-grid">
       ${fieldMeta(t('fileNo'), document.documentNumber)}
-      ${fieldMeta(t('statusCol'), document.status)}
+      ${fieldMeta(t('statusCol'), localizedStatus(document.status))}
       ${fieldMeta(t('typeCol'), document.type)}
       ${fieldMeta(t('classificationCol'), document.classification)}
       ${fieldMeta(t('sectorCol'), document.sector)}
@@ -683,10 +796,18 @@ function showDocument(document) {
       ${fieldMeta(t('issuedLabel'), formatDate(document.issuedAt, true))}
       ${fieldMeta(t('verificationCode'), document.verificationCode)}
       ${fieldMeta(t('signer'), signer)}
+      ${creatorSignature ? fieldMeta(t('creatorSignature'), creatorSigner) : ''}
+      ${creatorSignature?.signerRank ? fieldMeta(t('creatorRank'), creatorSignature.signerRank) : ''}
+      ${creatorSignature?.militaryCode ? fieldMeta(t('militaryCode'), creatorSignature.militaryCode) : ''}
+      ${creatorSignature?.signedAt ? fieldMeta(t('signedAt'), formatUtcTimestamp(creatorSignature.signedAt)) : ''}
+      ${assignment ? fieldMeta(t('assignedReviewer'), `${assignment.displayName} · ${assignment.rank} · ${assignment.militaryCode}`) : ''}
+      ${decision ? fieldMeta(t('reviewedBy'), `${decision.displayName} · ${decision.rank} · ${decision.militaryCode}`) : ''}
+      ${decision?.decidedAt ? fieldMeta(t('decisionDate'), formatUtcTimestamp(decision.decidedAt)) : ''}
     </div>
     ${document.signature?.signatureImage ? `<img class="dialog-signature" src="${escapeHtml(document.signature.signatureImage)}" alt="${escapeHtml(t('signerSignatureAlt'))}">` : ''}
     <div class="dialog-copy">${escapeHtml(body || (state.language === 'ar' ? 'لا يوجد محتوى نصي في هذه الوثيقة.' : 'No document text is available.'))}</div>
     ${document.revokedReason ? `<p class="dialog-copy"><b>${escapeHtml(t('revoke'))}:</b> ${escapeHtml(document.revokedReason)}</p>` : ''}
+    ${document.rejectionReason ? `<p class="workflow-rejection"><b>${escapeHtml(t('rejectionReason'))}:</b> ${escapeHtml(document.rejectionReason)}</p>` : ''}
   `;
   $('#modalActions').innerHTML = modalActions(document);
   $('#documentModal').hidden = false;
@@ -751,21 +872,36 @@ async function createAmendment(id) {
 }
 
 async function actOnDocument(action, id) {
+  const encodedId = encodeURIComponent(id);
   const methods = {
-    submitForApproval: ['POST', `/documents/${id}/submit`, null, t('submitted')],
-    approveDocument: ['POST', `/documents/${id}/approve`, null, t('approved')],
-    issueDocument: ['POST', `/documents/${id}/issue`, null, t('issuedMessage')],
-    archiveDocument: ['POST', `/documents/${id}/archive`, null, t('archivedMessage')]
+    prepareSignature: ['POST', `/documents/${encodedId}/prepare-signature`, null, t('signaturePrepared')],
+    signCreator: ['POST', `/documents/${encodedId}/signature`, null, t('creatorSigned')],
+    submitForApproval: ['POST', `/documents/${encodedId}/submit`, null, t('submitted')],
+    approveDocument: ['POST', `/documents/${encodedId}/approve`, null, t('approved')],
+    issueDocument: ['POST', `/documents/${encodedId}/issue`, null, t('issuedMessage')],
+    archiveDocument: ['POST', `/documents/${encodedId}/archive`, null, t('archivedMessage')]
   };
   if (action === 'issueDocument') {
     openSignatureDialog(id);
     return;
   }
   if (action === 'approveDocument' && !window.confirm(t('confirmApprove'))) return;
+  if (action === 'signCreator') {
+    const confirmation = t('confirmCreatorSign')
+      .replace('{name}', state.user.displayName)
+      .replace('{rank}', state.user.rank)
+      .replace('{code}', state.user.militaryCode);
+    if (!window.confirm(confirmation)) return;
+  }
   if (action === 'revokeDocument') {
     const reason = window.prompt(t('confirmRevoke'));
     if (!reason?.trim()) return;
-    methods.revokeDocument = ['POST', `/documents/${id}/revoke`, { reason: reason.trim() }, t('revokedMessage')];
+    methods.revokeDocument = ['POST', `/documents/${encodedId}/revoke`, { reason: reason.trim() }, t('revokedMessage')];
+  }
+  if (action === 'rejectDocument') {
+    const reason = window.prompt(t('rejectionPrompt'));
+    if (!reason?.trim()) return;
+    methods.rejectDocument = ['POST', `/documents/${encodedId}/reject`, { reason: reason.trim() }, t('rejected')];
   }
   const operation = methods[action];
   if (!operation) return;
@@ -773,6 +909,8 @@ async function actOnDocument(action, id) {
     await request(operation[1], { method: operation[0], body: operation[2] ? JSON.stringify(operation[2]) : '{}' });
     $('#documentModal').hidden = true;
     await loadDocuments();
+    await loadApprovalInbox().catch(() => undefined);
+    await loadNotifications().catch(() => undefined);
     toast(operation[3]);
     const changed = state.documents.find((document) => document.id === id);
     if (changed) showDocument(changed);
@@ -1365,10 +1503,17 @@ async function authenticate() {
       option.disabled = CLASSIFICATIONS.indexOf(option.value) > CLASSIFICATIONS.indexOf(state.user.clearance);
     });
     await loadDocuments();
+    await loadApprovalInbox().catch(() => undefined);
+    await loadNotifications().catch(() => undefined);
     if (!can('CREATE_DOCUMENTS')) $$('[data-page="create"]').forEach((button) => button.hidden = true);
     if (!can('VIEW_AUDIT_TRAIL')) $$('[data-page="audit"]').forEach((button) => button.hidden = true);
     if (!can('MANAGE_USERS')) $$('[data-page="settings"]').forEach((button) => button.hidden = true);
     setPage('center');
+    const documentId = new URLSearchParams(location.search).get('document');
+    if (documentId) {
+      await openDocument(documentId);
+      history.replaceState(null, '', location.pathname);
+    }
   } catch (error) {
     showAuth(true);
     $('#authMessage').textContent = t('chiefSsoCopy');
@@ -1440,6 +1585,13 @@ document.addEventListener('click', async (event) => {
       showAuth(true);
       location.reload();
     } else if (action === 'closeModal') $('#documentModal').hidden = true;
+    else if (action === 'toggleNotifications') {
+      state.notificationOpen = !state.notificationOpen;
+      renderNotifications();
+    } else if (action === 'refreshNotifications') {
+      await loadNotifications();
+      await loadApprovalInbox().catch(() => undefined);
+    }
     else if (action === 'removeReportSection') {
       const section = target.closest('[data-report-section]');
       if (section && $$('#reportSections [data-report-section]').length > 1) {
@@ -1457,7 +1609,7 @@ document.addEventListener('click', async (event) => {
     else if (action === 'viewDocument') await openDocument(id);
     else if (action === 'editDraft') editDraft(id);
     else if (action === 'amendDocument') await createAmendment(id);
-    else if (['submitForApproval', 'approveDocument', 'issueDocument', 'revokeDocument', 'archiveDocument'].includes(action)) await actOnDocument(action, id);
+    else if (['prepareSignature', 'signCreator', 'submitForApproval', 'approveDocument', 'rejectDocument', 'issueDocument', 'revokeDocument', 'archiveDocument'].includes(action)) await actOnDocument(action, id);
     else if (action === 'shareDocument') await shareDocument(id);
     else if (action === 'createShareLink') await createShareLink(id);
     else if (action === 'revokeShareLink') await revokeShareLink(id, target.dataset.shareId);
@@ -1492,6 +1644,19 @@ document.addEventListener('click', async (event) => {
   } catch (error) { toast(error.message, 'error'); }
 });
 
+$('#notificationList').addEventListener('click', async (event) => {
+  const link = event.target.closest('a[data-notification-id]');
+  if (!link) return;
+  event.preventDefault();
+  try {
+    await request(`/notifications/${encodeURIComponent(link.dataset.notificationId)}/read`, {
+      method: 'POST',
+      body: '{}'
+    });
+  } catch {}
+  location.assign(link.href);
+});
+
 $('#signatureModal').addEventListener('click', (event) => {
   if (event.target === $('#signatureModal')) {
     signingDocumentId = null;
@@ -1509,5 +1674,10 @@ initSelects();
 setReportSections([{}]);
 renderTemplates();
 setInterval(updateClock, 1000);
+setInterval(() => {
+  if (!state.user) return;
+  void loadNotifications().catch(() => undefined);
+  if (can('APPROVE_DOCUMENTS')) void loadApprovalInbox().catch(() => undefined);
+}, 30_000);
 updateClock();
 void authenticate();
