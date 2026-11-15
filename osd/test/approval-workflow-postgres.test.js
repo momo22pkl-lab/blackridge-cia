@@ -68,13 +68,19 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
       person.suspended !== true &&
       person.securityStatus === 'ACTIVE'
   }));
+  const ssoTickets = new Map();
 
   const app = express();
   app.use(express.json());
   app.use('/api/osd', createOsdRouter({
     getPool: () => testPool,
     getPersonnel: () => personnel,
-    env: { OSD_SIGNING_SECRET: signingSecret, NODE_ENV: 'test' }
+    env: { OSD_SIGNING_SECRET: signingSecret, NODE_ENV: 'test' },
+    consumeMilitarySsoTicket: (ticket) => {
+      const identity = ssoTickets.get(ticket) || null;
+      ssoTickets.delete(ticket);
+      return identity;
+    }
   }));
   server = app.listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => {
@@ -123,6 +129,39 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {})
   });
+  const logoutAndLogin = async (personId) => {
+    const account = users.get(personId);
+    const logout = await request(personId, '/auth/logout', { method: 'POST', body: {} });
+    assert.equal(logout.status, 200, `${personId} should be able to log out`);
+    const person = personnel.find((entry) => entry.id === personId);
+    let login;
+    if (person.rank === 'CIA CHIEF') {
+      const ticket = crypto.randomBytes(24).toString('base64url');
+      ssoTickets.set(ticket, { personnelId: person.id, militaryCode: person.militaryCode });
+      login = await fetch(`${base}/auth/sso`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: new URL(base).origin
+        },
+        body: JSON.stringify({ ticket })
+      });
+    } else {
+      login = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'member', militaryCode: person.militaryCode })
+      });
+    }
+    assert.equal(login.status, 200, `${personId} should be able to sign in again`);
+    const cookies = typeof login.headers.getSetCookie === 'function'
+      ? login.headers.getSetCookie()
+      : [login.headers.get('set-cookie') || ''];
+    const sessionCookie = cookies.find((cookie) => cookie.startsWith('osd_session='));
+    assert.ok(sessionCookie, `${personId} should receive a new session`);
+    const token = decodeURIComponent(sessionCookie.split(';', 1)[0].slice('osd_session='.length));
+    users.set(personId, { id: account.id, token });
+  };
   const createSignedDocument = async (personId, title) => {
     const created = await request(personId, '/documents', {
       method: 'POST',
@@ -204,6 +243,15 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
     [chiefDocumentId]
   );
   assert.deepEqual(chiefNotifications.rows, [{ user_id: chiefId, notification_type: 'DECISION' }]);
+  await logoutAndLogin('person-chief');
+  const chiefAfterLogin = await request('person-chief', `/documents/${chiefDocumentId}`);
+  assert.equal(chiefAfterLogin.status, 200);
+  assert.equal((await chiefAfterLogin.json()).document.status, 'APPROVED');
+  const chiefNotificationsAfterLogin = await request('person-chief', '/notifications');
+  assert.equal(
+    (await chiefNotificationsAfterLogin.json()).notifications.filter((item) => item.documentId === chiefDocumentId).length,
+    1
+  );
   assert.equal((await request('person-chief', `/documents/${chiefDocumentId}/approve`, {
     method: 'POST', body: {}
   })).status, 403, 'the creator cannot use the reviewer action to approve their own document');
@@ -233,6 +281,17 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
   assert.equal((await request('person-high', `/documents/${agentDocumentId}/reject`, {
     method: 'POST', body: { reason: 'Duplicate decision attempt.' }
   })).status, 409);
+  await logoutAndLogin('person-agent');
+  const agentAfterLogin = await request('person-agent', `/documents/${agentDocumentId}`);
+  assert.equal(agentAfterLogin.status, 200);
+  const persistedAgentDocument = (await agentAfterLogin.json()).document;
+  assert.equal(persistedAgentDocument.status, 'REJECTED');
+  assert.equal(persistedAgentDocument.rejectionReason, 'Supporting details are required.');
+  const agentNotificationsAfterLogin = await request('person-agent', '/notifications');
+  assert.equal(
+    (await agentNotificationsAfterLogin.json()).notifications.filter((item) => item.documentId === agentDocumentId).length,
+    1
+  );
 
   for (const route of [
     { author: 'person-high', reviewer: 'person-senior' },
@@ -251,6 +310,15 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
     });
     assert.equal(approved.status, 200);
     assert.equal((await approved.json()).document.status, 'APPROVED');
+    await logoutAndLogin(route.author);
+    const reopened = await request(route.author, `/documents/${documentId}`);
+    assert.equal(reopened.status, 200);
+    assert.equal((await reopened.json()).document.status, 'APPROVED');
+    const decisionNotifications = await request(route.author, '/notifications');
+    assert.equal(
+      (await decisionNotifications.json()).notifications.filter((item) => item.documentId === documentId).length,
+      1
+    );
   }
 
   const failedSaveDocumentId = await createSignedDocument('person-chief', 'Failed approval write');
