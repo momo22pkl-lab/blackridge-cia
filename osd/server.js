@@ -2138,43 +2138,113 @@ function createOsdRouter({
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'The creator must sign this document before submitting it for approval.' });
       }
-      const candidates = await approvalCandidates(client);
-      const reviewer = selectApprovalReviewer(req.osdUser, candidates, document.classification);
-      if (!reviewer) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({ error: 'No active, authorized reviewer with sufficient clearance is available.' });
-      }
-      const assignment = reviewerSnapshot(reviewer);
-      await client.query(
-        `UPDATE osd_documents SET status='PENDING APPROVAL',approval_assigned_to=$2,
-         approval_assignment_snapshot=$3::jsonb,approval_decided_by=NULL,
-         approval_decision_snapshot=NULL,rejection_reason=NULL,updated_at=NOW() WHERE id=$1`,
-        [document.id, reviewer.id, JSON.stringify(assignment)]
-      );
-      await insertNotification(client, {
-        userId: reviewer.id,
-        documentId: document.id,
-        type: 'REVIEW_REQUEST',
-        title: 'Document awaiting your review',
-        message: `${document.document_number} — ${document.title} was submitted by ${req.osdUser.displayName} (${req.osdUser.rank}).`
-      });
-      await appendAudit(client, {
-        documentId: document.id,
-        actorId: req.osdUser.id,
-        actorLabel: auditActorLabel(req.osdUser),
-        action: 'SUBMITTED FOR APPROVAL',
-        version: document.version,
-        metadata: {
-          creatorName: req.osdUser.displayName,
-          creatorRank: req.osdUser.rank,
-          creatorMilitaryCode: req.osdUser.militaryCode,
-          reviewerId: reviewer.id,
-          reviewerName: reviewer.displayName,
-          reviewerRank: reviewer.rank,
-          reviewerMilitaryCode: reviewer.militaryCode,
-          assignedAt: assignment.assignedAt
+      const submittedAt = new Date().toISOString();
+      const signature = document.creator_signature;
+      if (req.osdUser.rank === 'CIA CHIEF') {
+        const approvedAt = new Date().toISOString();
+        const approvalReason = 'Automatically approved because the creator holds the CIA CHIEF rank.';
+        const decisionRecord = {
+          ...decisionSnapshot(req.osdUser, 'APPROVED', approvalReason, approvedAt),
+          approvalMethod: 'AUTO_CIA_CHIEF_RANK',
+          submittedAt,
+          signedAt: signature.payload.signedAt,
+          signatureHash: signature.signature
+        };
+        const saved = await client.query(
+          `UPDATE osd_documents SET status='APPROVED',approval_assigned_to=NULL,
+           approval_assignment_snapshot=NULL,approval_decided_by=$2,
+           approval_decision_snapshot=$3::jsonb,rejection_reason=NULL,updated_at=NOW()
+           WHERE id=$1 AND status='SIGNED' RETURNING id`,
+          [document.id, req.osdUser.id, JSON.stringify(decisionRecord)]
+        );
+        if (saved.rowCount !== 1) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'This signed document has already been submitted.' });
         }
-      });
+        await appendAudit(client, {
+          documentId: document.id,
+          actorId: req.osdUser.id,
+          actorLabel: auditActorLabel(req.osdUser),
+          action: 'SUBMITTED FOR APPROVAL',
+          version: document.version,
+          metadata: {
+            creatorName: req.osdUser.displayName,
+            creatorRank: req.osdUser.rank,
+            creatorMilitaryCode: req.osdUser.militaryCode,
+            signatureHash: signature.signature,
+            signedAt: signature.payload.signedAt,
+            submittedAt,
+            approvalMethod: 'AUTO_CIA_CHIEF_RANK'
+          }
+        });
+        await appendAudit(client, {
+          documentId: document.id,
+          actorId: req.osdUser.id,
+          actorLabel: auditActorLabel(req.osdUser),
+          action: 'DOCUMENT AUTO-APPROVED BY CIA CHIEF RANK',
+          version: document.version,
+          metadata: {
+            creatorUserId: req.osdUser.id,
+            creatorName: req.osdUser.displayName,
+            creatorRank: req.osdUser.rank,
+            creatorMilitaryCode: req.osdUser.militaryCode,
+            approvalMethod: 'AUTO_CIA_CHIEF_RANK',
+            approvalReason,
+            signatureHash: signature.signature,
+            signedAt: signature.payload.signedAt,
+            submittedAt,
+            approvedAt
+          }
+        });
+        await insertNotification(client, {
+          userId: document.created_by,
+          documentId: document.id,
+          type: 'DECISION',
+          title: 'Document approved automatically',
+          message: `${document.document_number} was automatically approved because its creator holds the CIA CHIEF rank.`
+        });
+      } else {
+        const candidates = await approvalCandidates(client);
+        const reviewer = selectApprovalReviewer(req.osdUser, candidates, document.classification);
+        if (!reviewer) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'No active, authorized reviewer with sufficient clearance is available.' });
+        }
+        const assignment = reviewerSnapshot(reviewer);
+        await client.query(
+          `UPDATE osd_documents SET status='PENDING APPROVAL',approval_assigned_to=$2,
+           approval_assignment_snapshot=$3::jsonb,approval_decided_by=NULL,
+           approval_decision_snapshot=NULL,rejection_reason=NULL,updated_at=NOW() WHERE id=$1`,
+          [document.id, reviewer.id, JSON.stringify(assignment)]
+        );
+        await insertNotification(client, {
+          userId: reviewer.id,
+          documentId: document.id,
+          type: 'REVIEW_REQUEST',
+          title: 'Document awaiting your review',
+          message: `${document.document_number} — ${document.title} was submitted by ${req.osdUser.displayName} (${req.osdUser.rank}).`
+        });
+        await appendAudit(client, {
+          documentId: document.id,
+          actorId: req.osdUser.id,
+          actorLabel: auditActorLabel(req.osdUser),
+          action: 'SUBMITTED FOR APPROVAL',
+          version: document.version,
+          metadata: {
+            creatorName: req.osdUser.displayName,
+            creatorRank: req.osdUser.rank,
+            creatorMilitaryCode: req.osdUser.militaryCode,
+            signatureHash: signature.signature,
+            signedAt: signature.payload.signedAt,
+            submittedAt,
+            reviewerId: reviewer.id,
+            reviewerName: reviewer.displayName,
+            reviewerRank: reviewer.rank,
+            reviewerMilitaryCode: reviewer.militaryCode,
+            assignedAt: assignment.assignedAt
+          }
+        });
+      }
       await client.query('COMMIT');
       const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
       res.json({ document: safeDocument(result.rows[0], req.osdUser) });

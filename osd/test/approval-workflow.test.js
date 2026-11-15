@@ -22,7 +22,7 @@ const personnel = [
 class ApprovalWorkflowPool {
   constructor() {
     this.users = personnel.map((person, index) => {
-      const isPrimaryChief = person.id === 'person-chief';
+      const isPrimaryChief = person.id === 'person-chief-peer';
       const profile = roleProfileForPersonnel(person, isPrimaryChief);
       return {
         id: `user-${person.id}`,
@@ -199,6 +199,18 @@ class ApprovalWorkflowPool {
       }
       return { rows: [] };
     }
+    if (query.startsWith("update osd_documents set status='approved'")) {
+      const document = this.documents.find((item) => item.id === values[0] && item.status === 'SIGNED');
+      if (!document) return { rows: [], rowCount: 0 };
+      document.status = 'APPROVED';
+      document.approval_assigned_to = null;
+      document.approval_assignment_snapshot = null;
+      document.approval_decided_by = values[1];
+      document.approval_decision_snapshot = JSON.parse(values[2]);
+      document.rejection_reason = null;
+      document.updated_at = new Date().toISOString();
+      return { rows: [{ id: document.id }], rowCount: 1 };
+    }
     if (query.startsWith("update osd_documents set status='pending approval'")) {
       const document = this.documents.find((item) => item.id === values[0]);
       if (document) {
@@ -274,8 +286,7 @@ test('OSD approval workflow persists signatures, routed review, decisions and no
   const routes = [
     { author: 'person-agent', reviewer: 'person-high', decision: 'approve' },
     { author: 'person-high', reviewer: 'person-senior', decision: 'reject' },
-    { author: 'person-senior', reviewer: 'person-chief', decision: 'approve' },
-    { author: 'person-chief', reviewer: 'person-chief-peer', decision: 'reject' }
+    { author: 'person-senior', reviewer: 'person-chief', decision: 'approve' }
   ];
 
   for (let index = 0; index < routes.length; index += 1) {
@@ -382,4 +393,76 @@ test('OSD approval workflow persists signatures, routed review, decisions and no
       'DOCUMENT VIEWED'
     ]);
   }
+
+  const chiefId = userIdFor('person-chief');
+  const chiefCreate = await request(chiefId, '/documents', {
+    method: 'POST',
+    body: {
+      type: 'OFFICIAL MEMORANDUM',
+      title: 'Chief auto-approval',
+      sector: 'Operations',
+      classification: 'INTERNAL',
+      recipient: 'Command',
+      body: 'A CIA Chief rank approval test document.'
+    }
+  });
+  assert.equal(chiefCreate.status, 201);
+  const { document: chiefDraft } = await chiefCreate.json();
+  assert.equal((await request(chiefId, `/documents/${chiefDraft.id}/prepare-signature`, {
+    method: 'POST', body: {}
+  })).status, 200);
+  assert.equal((await request(chiefId, `/documents/${chiefDraft.id}/signature`, {
+    method: 'POST', body: {}
+  })).status, 200);
+
+  const chiefSubmitted = await request(chiefId, `/documents/${chiefDraft.id}/submit`, {
+    method: 'POST', body: {}
+  });
+  assert.equal(chiefSubmitted.status, 200);
+  const chiefApproved = (await chiefSubmitted.json()).document;
+  assert.equal(chiefApproved.status, 'APPROVED');
+  assert.equal(chiefApproved.approvalAssignedTo, null);
+  assert.equal(chiefApproved.approvalDecision.approvalMethod, 'AUTO_CIA_CHIEF_RANK');
+  assert.equal(
+    chiefApproved.approvalDecision.reason,
+    'Automatically approved because the creator holds the CIA CHIEF rank.'
+  );
+  assert.equal(chiefApproved.approvalDecision.userId, chiefId);
+  assert.ok(chiefApproved.approvalDecision.submittedAt);
+  assert.ok(chiefApproved.approvalDecision.decidedAt);
+
+  const chiefNotifications = (await (await request(chiefId, '/notifications')).json()).notifications
+    .filter((notification) => notification.documentId === chiefDraft.id);
+  assert.equal(chiefNotifications.length, 1);
+  assert.equal(chiefNotifications[0].type, 'DECISION');
+  const chiefPeerNotifications = (await (await request(userIdFor('person-chief-peer'), '/notifications')).json()).notifications
+    .filter((notification) => notification.documentId === chiefDraft.id);
+  assert.equal(chiefPeerNotifications.length, 0, 'automatic approval does not send a reviewer request');
+
+  const duplicateSubmission = await request(chiefId, `/documents/${chiefDraft.id}/submit`, {
+    method: 'POST', body: {}
+  });
+  assert.equal(duplicateSubmission.status, 409);
+  const afterRetryNotifications = (await (await request(chiefId, '/notifications')).json()).notifications
+    .filter((notification) => notification.documentId === chiefDraft.id);
+  assert.equal(afterRetryNotifications.length, 1, 'retrying submission does not duplicate the approval notification');
+
+  const chiefAudit = pool.auditEvents.filter((event) => event.document_id === chiefDraft.id);
+  assert.deepEqual(chiefAudit.map((event) => event.action), [
+    'DOCUMENT CREATED',
+    'DOCUMENT PREPARED FOR CREATOR SIGNATURE',
+    'CREATOR SIGNED DOCUMENT',
+    'SUBMITTED FOR APPROVAL',
+    'DOCUMENT AUTO-APPROVED BY CIA CHIEF RANK'
+  ]);
+  const signedEvent = chiefAudit.find((event) => event.action === 'CREATOR SIGNED DOCUMENT');
+  const submittedEvent = chiefAudit.find((event) => event.action === 'SUBMITTED FOR APPROVAL');
+  const approvedEvent = chiefAudit.find((event) => event.action === 'DOCUMENT AUTO-APPROVED BY CIA CHIEF RANK');
+  assert.equal(signedEvent.actor_id, chiefId);
+  assert.equal(signedEvent.metadata.signerRank, 'CIA CHIEF');
+  assert.ok(signedEvent.metadata.signedAt);
+  assert.equal(submittedEvent.actor_id, chiefId);
+  assert.ok(submittedEvent.metadata.submittedAt);
+  assert.ok(approvedEvent.metadata.approvedAt);
+  assert.equal(approvedEvent.metadata.approvalMethod, 'AUTO_CIA_CHIEF_RANK');
 });
