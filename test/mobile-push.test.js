@@ -121,6 +121,80 @@ test('mobile push form offers sector-wide and single-member targeting with an em
   assert.match(inboxStyles, /@media \(max-width: 700px\)/);
 });
 
+test('browser permission is not shown as active when the server rejects an existing subscription', async () => {
+  const source = fs.readFileSync(path.join(projectRoot, 'mobile-push-client.js'), 'utf8');
+  const makeElement = (id = '') => ({ id, hidden: false, disabled: false, textContent: '', dataset: {}, listeners: new Map(), addEventListener(name, handler) { this.listeners.set(name, handler); }, setAttribute() {}, focus() {} });
+  const enableButton = makeElement();
+  const disableButton = makeElement();
+  const testButton = makeElement();
+  const closeButton = makeElement();
+  const sendForm = makeElement();
+  const formFields = new Map(['sector', 'audience', 'memberId', 'notificationType'].map((name) => [`#mobile-push-send-form [name=\"${name}\"]`, makeElement()]));
+  const navItems = [];
+  const nav = makeElement();
+  nav.appendChild = (item) => navItems.push(item);
+  const status = makeElement('mobile-push-status');
+  const compatibility = makeElement('mobile-push-compatibility');
+  const elements = new Map([[status.id, status], [compatibility.id, compatibility]]);
+  const selectorMap = new Map([
+    ['[data-mobile-push-enable]', enableButton],
+    ['[data-mobile-push-disable]', disableButton],
+    ['[data-mobile-push-test]', testButton],
+    ['[data-mobile-push-close]', closeButton],
+    ['#mobile-push-send-form', sendForm],
+    ...formFields
+  ]);
+  const createElement = () => {
+    const element = makeElement();
+    element.querySelector = (selector) => selectorMap.get(selector) || null;
+    element.appendChild = () => {};
+    return element;
+  };
+  const document = {
+    readyState: 'complete',
+    head: { appendChild() {} },
+    body: { appendChild(element) { if (element.id) elements.set(element.id, element); } },
+    createElement,
+    getElementById(id) { return elements.get(id) || null; },
+    querySelector(selector) { return selector === '.nav-list' ? nav : selectorMap.get(selector) || null; },
+    addEventListener() {}
+  };
+  const registration = { pushManager: { async getSubscription() { return { endpoint: 'https://fcm.googleapis.com/push/send/device-a', toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'key', auth: 'auth' } }; } }; } } };
+  const serviceWorker = { async register() { return registration; }, ready: Promise.resolve(registration) };
+  const socket = {
+    connected: true,
+    handlers: new Map(),
+    on(name, handler) { this.handlers.set(name, handler); },
+    emit(name, _payload, callback) {
+      if (name === 'mobile-push:info') callback({ ok: true, configured: true, publicKey: 'A'.repeat(87), canSend: false, sectors: [] });
+      else callback({ ok: false, message: 'تعذر حفظ اشتراك هذا الجهاز.' });
+    }
+  };
+  const window = {
+    isSecureContext: true,
+    blackRidgeSocket: socket,
+    blackRidgeGetNotificationSession: () => ({ user: { id: 'member-a' }, authenticated: true }),
+    Notification: { permission: 'granted', async requestPermission() { return 'granted'; } },
+    PushManager: {},
+    matchMedia: () => ({ matches: false }),
+    addEventListener() {},
+    setInterval() {}
+  };
+  const navigator = { userAgent: 'Android Chrome', platform: 'Linux arm', maxTouchPoints: 0, serviceWorker };
+  vm.runInNewContext(source, { window, document, navigator, Notification: window.Notification, URL, URLSearchParams, console });
+  assert.equal(navItems.length, 1);
+  navItems[0].listeners.get('click')({});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(enableButton.hidden, false);
+  assert.equal(testButton.hidden, true);
+  assert.equal(status.dataset.kind, 'error');
+  assert.match(status.textContent, /تعذر حفظ اشتراك هذا الجهاز/);
+  assert.doesNotMatch(status.textContent, /تم تأكيد ربط|مفعّلة على هذا الجهاز/);
+  const overlay = elements.get('mobile-push-overlay');
+  assert.match(overlay.innerHTML, /إعدادات الموقع في Chrome/);
+  assert.match(overlay.innerHTML, /إرسال إشعار تجريبي لهذا الجهاز/);
+});
+
 test('push endpoints are HTTPS push-service URLs and invalid subscriptions are rejected', () => {
   assert.equal(normalizePushEndpoint('https://fcm.googleapis.com/push/send/device-a'), 'https://fcm.googleapis.com/push/send/device-a');
   assert.equal(normalizePushEndpoint('http://fcm.googleapis.com/push/send/device-a'), '');
@@ -574,6 +648,40 @@ test('security alerts use the existing private inbox, preserve targeting, and in
   assert.equal(sent[0].payload.securityAlertCard.subject, 'نشاط أمني غير معتاد');
   assert.equal(sent[0].payload.securityAlertCard.priority, 'CRITICAL');
   assert.match(sent[0].payload.url, new RegExp(`notificationId=${page.rows[0].id}`));
+});
+
+test('device test notifications can only target the authenticated user’s saved device', async () => {
+  const socket = mockSocket();
+  const sent = [];
+  const actor = person('member-test-push', 'AG-701');
+  const own = { userId: actor.id, subscription: subscription('https://fcm.googleapis.com/push/send/own-device') };
+  const other = { userId: 'member-other', subscription: subscription('https://fcm.googleapis.com/push/send/other-device') };
+  registerMobilePushSocket(socket, {
+    requireSocketUser: () => actor,
+    getUsers: () => [actor],
+    getUnits: () => [],
+    store: {
+      async listForUsers(ids) { return [own, other].filter((record) => ids.includes(record.userId)); },
+      async removeExpiredSubscription() {}
+    },
+    transport: {
+      configured: true,
+      async sendNotification(value, payload, options) { sent.push({ endpoint: value.endpoint, payload: JSON.parse(payload), options }); }
+    },
+    makeId: (prefix) => `${prefix}-701`
+  });
+  const result = await socket.call('mobile-push:test', { endpoint: own.subscription.endpoint });
+  assert.equal(result.ok, true);
+  assert.equal(result.acceptedByPushService, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].endpoint, own.subscription.endpoint);
+  assert.equal(sent[0].payload.title, 'اختبار إشعارات الهاتف');
+  assert.equal(sent[0].payload.body, 'إذا ظهر هذا التنبيه، يعمل Web Push على هذا الجهاز.');
+  const rejected = await socket.call('mobile-push:test', { endpoint: other.subscription.endpoint });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.message, /لم يؤكد الخادم اشتراك هذا الجهاز/);
+  assert.equal(sent.length, 1);
 });
 
 test('mobile push can target one eligible member and only that member’s devices', async () => {

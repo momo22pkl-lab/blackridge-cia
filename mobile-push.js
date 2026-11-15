@@ -8,6 +8,8 @@ const SECURITY_ALERT_TYPE = 'SECURITY_ALERT';
 const COMMAND_CIRCULAR_TYPE = 'COMMAND_CIRCULAR';
 const BROADCAST_INTERVAL_MS = 15000;
 const lastBroadcastAt = new Map();
+const lastDeviceTestAt = new Map();
+const DEVICE_TEST_INTERVAL_MS = 15000;
 const MOBILE_PUSH_HEAD_MARKUP = [
   '<link rel="manifest" href="/manifest.webmanifest">',
   '<link rel="apple-touch-icon" href="/blackridge-push-icon-192.png">',
@@ -223,6 +225,56 @@ function registerMobilePushSocket(socket, context) {
     } catch (_error) {
       return fail(callback, 'تعذر إيقاف اشتراك هذا الجهاز على الخادم.');
     }
+  });
+
+  socket.on('mobile-push:test', async (payload, callback) => {
+    const actor = getActor();
+    if (!actor) return fail(callback, 'يجب تسجيل الدخول إلى الخدمة أولاً.');
+    if (context.transport.configured !== true || typeof context.transport.sendNotification !== 'function') {
+      return fail(callback, 'إشعارات الهاتف غير مهيأة على الخادم بعد.');
+    }
+    const endpoint = normalizePushEndpoint(payload?.endpoint);
+    if (!endpoint) return fail(callback, 'اشتراك هذا الجهاز غير صالح. أعد تفعيل الإشعارات ثم جرّب مجددًا.');
+
+    let subscriptions;
+    try {
+      subscriptions = await context.store.listForUsers([actor.id]);
+    } catch (_error) {
+      return fail(callback, 'تعذر التحقق من اشتراك هذا الجهاز على الخادم.');
+    }
+    const device = (Array.isArray(subscriptions) ? subscriptions : []).find((record) =>
+      String(record?.userId) === String(actor.id) && record.subscription?.endpoint === endpoint
+    );
+    if (!device) return fail(callback, 'لم يؤكد الخادم اشتراك هذا الجهاز لحسابك. اضغط «تفعيل» لإعادة الربط.');
+
+    const rateLimitKey = String(actor.id) + ':' + endpoint;
+    const nowMs = Date.now();
+    const lastSentAt = lastDeviceTestAt.get(rateLimitKey) || 0;
+    if (nowMs - lastSentAt < DEVICE_TEST_INTERVAL_MS) {
+      return fail(callback, 'انتظر قليلًا قبل إرسال اختبار آخر إلى هذا الجهاز.');
+    }
+    lastDeviceTestAt.set(rateLimitKey, nowMs);
+
+    let delivery;
+    try {
+      delivery = await sendBatched(
+        [device],
+        context.transport.sendNotification,
+        {
+          id: context.makeId('PUSH-TEST'),
+          title: 'اختبار إشعارات الهاتف',
+          body: 'إذا ظهر هذا التنبيه، يعمل Web Push على هذا الجهاز.',
+          priority: 'NORMAL',
+          url: '/'
+        },
+        'NORMAL',
+        (userId, expiredEndpoint) => context.store.removeExpiredSubscription(userId, expiredEndpoint)
+      );
+    } catch (_error) {
+      return fail(callback, 'تعذر إرسال إشعار الاختبار إلى خدمة الهاتف.');
+    }
+    if (delivery.failed) return fail(callback, 'لم تقبل خدمة الهاتف إشعار الاختبار؛ أعد تفعيل الاشتراك ثم جرّب مجددًا.');
+    return reply(callback, { ok: true, acceptedByPushService: delivery.accepted, failed: delivery.failed });
   });
 
   socket.on('mobile-push:send-sector', async (payload, callback) => {

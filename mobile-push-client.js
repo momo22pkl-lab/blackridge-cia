@@ -69,6 +69,8 @@
       #mobile-push-status { min-height:2.8em; margin:12px 0; padding:9px 11px; color:#c9d4dc; background:#0a1119; border:1px solid #273746; border-radius:6px; font-size:.78rem; }
       #mobile-push-status[data-kind="error"] { color:#ffc3c3; border-color:#803941; }
       #mobile-push-status[data-kind="success"] { color:#bce8c9; border-color:#34744a; }
+      .mobile-push-steps { margin:10px 0 0; padding-inline-start:22px; color:#a8b6c3; font-size:.76rem; }
+      .mobile-push-steps li { margin:5px 0; }
       .mobile-push-controls { display:flex; flex-wrap:wrap; gap:8px; }
       .mobile-push-button { min-height:42px; padding:9px 14px; color:#10151a; background:#d6b168; border:1px solid #edcf86; border-radius:6px; font:700 .8rem system-ui,sans-serif; cursor:pointer; }
       .mobile-push-button.secondary { color:#dce4e9; background:#111b26; border-color:#344453; }
@@ -123,8 +125,15 @@
           <div class="mobile-push-controls">
             <button type="button" class="mobile-push-button" data-mobile-push-enable>تفعيل على هذا الجهاز</button>
             <button type="button" class="mobile-push-button secondary" data-mobile-push-disable hidden>إيقاف على هذا الجهاز</button>
+            <button type="button" class="mobile-push-button secondary" data-mobile-push-test hidden>إرسال إشعار تجريبي لهذا الجهاز</button>
           </div>
           <p class="mobile-push-help" id="mobile-push-compatibility"></p>
+          <ol class="mobile-push-steps">
+            <li>على Android افتح إعدادات الموقع في Chrome وتأكد أن الإشعارات مسموحة.</li>
+            <li>إذا سبق أن ضغطت «سماح»، اضغط «تفعيل» مجددًا لربط هذا الجهاز بحسابك.</li>
+            <li>بعد تأكيد الربط، أرسل إشعارًا تجريبيًا وتأكد من ظهوره على الهاتف.</li>
+            <li>على iPhone/iPad بإصدار 16.4 أو أحدث: أضف الموقع إلى الشاشة الرئيسية وافتحه من الأيقونة قبل التفعيل.</li>
+          </ol>
           <form id="mobile-push-send-form" hidden>
             <h3 class="mobile-push-form-title">إصدار استدعاء رسمي</h3>
             <label class="mobile-push-field">نوع الإشعار
@@ -171,6 +180,7 @@
       });
       overlay.querySelector('[data-mobile-push-enable]').addEventListener('click', enablePush);
       overlay.querySelector('[data-mobile-push-disable]').addEventListener('click', disablePush);
+      overlay.querySelector('[data-mobile-push-test]').addEventListener('click', sendTestPush);
       overlay.querySelector('#mobile-push-send-form [name="sector"]').addEventListener('change', handleSectorChange);
       overlay.querySelector('#mobile-push-send-form [name="audience"]').addEventListener('change', handleAudienceChange);
       overlay.querySelector('#mobile-push-send-form [name="memberId"]').addEventListener('change', updateSendAvailability);
@@ -217,6 +227,7 @@
   function updateDeviceControls() {
     const enable = document.querySelector('[data-mobile-push-enable]');
     const disable = document.querySelector('[data-mobile-push-disable]');
+    const test = document.querySelector('[data-mobile-push-test]');
     const compatible = window.isSecureContext &&
       'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window &&
       !(IOS_DEVICE && !(navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches));
@@ -226,7 +237,11 @@
     }
     if (disable) {
       disable.hidden = !state.subscribed;
-      disable.disabled = !compatible;
+      disable.disabled = !compatible || state.busy;
+    }
+    if (test) {
+      test.hidden = !state.subscribed;
+      test.disabled = !state.subscribed || state.busy;
     }
   }
 
@@ -388,6 +403,8 @@
   async function refreshInfo() {
     if (!refreshNavigation()) return;
     try {
+      state.subscribed = false;
+      updateDeviceControls();
       state.info = await emit('mobile-push:info');
       const form = document.getElementById('mobile-push-send-form');
       if (form) {
@@ -430,12 +447,20 @@
         updateDeviceControls();
         return;
       }
+      if (state.info?.configured !== true) {
+        state.subscribed = false;
+        updateDeviceControls();
+        setStatus('إذن المتصفح موجود، لكن الخادم غير جاهز لحفظ اشتراك هذا الجهاز.', 'error');
+        return;
+      }
+      await emit('mobile-push:subscribe', { subscription: subscription.toJSON() });
       state.subscribed = true;
-      if (state.info?.configured) await emit('mobile-push:subscribe', { subscription: subscription.toJSON() });
       updateDeviceControls();
-      setStatus('إشعارات الهاتف مفعّلة على هذا الجهاز.', 'success');
-    } catch (_error) {
-      // Rebinding a previously approved browser subscription is best-effort.
+      setStatus('تم تأكيد ربط هذا الجهاز بحسابك. أرسل إشعارًا تجريبيًا للتحقق من الوصول.', 'success');
+    } catch (error) {
+      state.subscribed = false;
+      updateDeviceControls();
+      setStatus('إذن المتصفح لا يعني أن الجهاز سُجّل على الخادم. تعذّر تأكيد الربط: ' + error.message + ' اضغط «تفعيل على هذا الجهاز» لإعادة المحاولة.', 'error');
     }
   }
 
@@ -482,7 +507,36 @@
       setStatus(error.message || 'تعذر تفعيل إشعارات الهاتف على هذا الجهاز.', 'error');
     } finally {
       state.busy = false;
-      button.disabled = false;
+      updateDeviceControls();
+    }
+  }
+
+  async function sendTestPush(event) {
+    if (state.busy) return;
+    const button = event.currentTarget;
+    state.busy = true;
+    button.disabled = true;
+    setStatus('جارٍ إرسال إشعار تجريبي إلى هذا الجهاز فقط…');
+    try {
+      const registration = await readyRegistration();
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        state.subscribed = false;
+        updateDeviceControls();
+        setStatus('لم يعد لهذا الجهاز اشتراك في المتصفح. اضغط «تفعيل على هذا الجهاز» لإعادة الربط.', 'error');
+        return;
+      }
+      await emit('mobile-push:test', { endpoint: subscription.endpoint });
+      setStatus('قبلت خدمة Web Push الإشعار التجريبي لهذا الجهاز. افحص إشعارات الهاتف؛ القبول لا يضمن أن نظام التشغيل عرضه.', 'success');
+    } catch (error) {
+      if (/لم تقبل خدمة الهاتف|لم يؤكد الخادم|اشتراك هذا الجهاز غير صالح/.test(error.message || '')) {
+        state.subscribed = false;
+      }
+      updateDeviceControls();
+      setStatus(error.message || 'تعذّر إرسال الإشعار التجريبي. أعد تفعيل الجهاز ثم جرّب مجددًا.', 'error');
+    } finally {
+      state.busy = false;
+      updateDeviceControls();
     }
   }
 
@@ -512,7 +566,7 @@
       setStatus(error.message || 'تم إيقاف الاشتراك المحلي لكن تعذر تنظيفه على الخادم.', 'error');
     } finally {
       state.busy = false;
-      button.disabled = false;
+      updateDeviceControls();
     }
   }
 
