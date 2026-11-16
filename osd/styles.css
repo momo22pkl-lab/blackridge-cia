@@ -124,6 +124,8 @@ button:disabled { opacity: .48; cursor: not-allowed !important; }
 .button-outline { border-color: rgba(209,174,105,.35); color: #d4ba7b; background: rgba(209,174,105,.05); }
 .button-quiet { border-color: var(--line); color: #a2adba; background: #0c1218; }
 .button-quiet:hover, .button-outline:hover { border-color: rgba(209,174,105,.55); color: #e9d49f; }
+.button-reject { border-color: rgba(216,125,125,.34); color: #dc9999; background: rgba(144,43,43,.09); }
+.button-reject:hover { border-color: rgba(216,125,125,.62); color: #f0b1b1; background: rgba(144,43,43,.16); }
 .button-plus { font: 700 15px var(--mono); }
 .page-view { display: none; animation: appear .2s ease-out; }
 .page-view.active { display: block; }
@@ -159,6 +161,16 @@ tbody tr:hover td { background: rgba(255,255,255,.018); }
 .doc-cell { min-width: 150px; }
 .doc-cell strong { display: block; color: #e3e8ec; font: 700 8px var(--mono); letter-spacing: .02em; }
 .doc-cell small { display: block; max-width: 210px; margin-top: 4px; overflow: hidden; color: #8997a4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.review-queue-table { min-width: 1080px; }
+.review-meta-cell { min-width: 128px; }
+.review-meta-cell strong { display: block; color: #dfe5e9; font-size: 9px; font-weight: 650; white-space: normal; }
+.review-meta-cell small { display: block; margin-top: 4px; color: #7f8d98; font-size: 8px; line-height: 1.45; white-space: normal; }
+.review-signature-recorded { color: var(--mint) !important; }
+.review-signature-missing { color: #c58f68; white-space: nowrap; }
+.review-submission-time { display: inline-block; min-width: 120px; color: #b8c0c8; font: 600 8px var(--mono); white-space: nowrap; }
+.review-row-actions { display: flex; align-items: center; gap: 5px; min-width: 210px; }
+.review-row-actions .button { min-height: 29px; padding: 0 8px; font-size: 8px; white-space: nowrap; }
+.review-row-actions .row-action { flex: 0 0 auto; }
 .classification-tag, .status-tag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 1px solid rgba(148,163,184,.13); border-radius: 3px; color: #aeb8c2; background: rgba(148,163,184,.045); white-space: nowrap; font: 600 7px var(--mono); }
 .classification-tag::before { width: 4px; height: 4px; border-radius: 50%; background: #8190a0; content: ""; }
 .classification-tag.top-secret, .classification-tag.secret { color: #d88787; border-color: rgba(216,125,125,.21); background: rgba(144,43,43,.08); }

@@ -107,6 +107,7 @@ const COPY = {
     chiefSsoAction: 'المتابعة عبر بوابة CIA',
     authSecure: 'جلسات آمنة · صلاحيات مستمدة من سجل الأفراد · لا توجد صلاحيات تجريبية',
     required: 'يرجى استكمال الحقول المطلوبة.', saved: 'حُفظت المسودة.', submitted: 'أُرسلت الوثيقة للمراجعة.',
+    autoApproved: 'اعتُمدت الوثيقة تلقائيًا بعد توقيع CIA CHIEF.',
     approved: 'تم اعتماد الوثيقة.', issuedMessage: 'تم توقيع الوثيقة وإصدارها.', revokedMessage: 'أُلغيت الوثيقة.',
     archivedMessage: 'أُرشفت الوثيقة.', noPermission: 'ليس لديك صلاحية لهذا الإجراء.',
     createFailed: 'تعذر حفظ الوثيقة.', noRecords: 'لا توجد سجلات متاحة.', print: 'طباعة / حفظ PDF', imageDownload: 'تنزيل صورة التقرير', imageDownloaded: 'تم تنزيل صورة التقرير.', autoShareFailed: 'تم إصدار الوثيقة، لكن تعذر إنشاء رابط المشاركة تلقائياً. يمكنك إنشاؤه من نافذة المشاركة.',
@@ -136,6 +137,9 @@ const COPY = {
     statusPendingApproval: 'بانتظار مراجعة المسؤول', statusApproved: 'معتمدة', statusRejected: 'مرفوضة',
     statusIssued: 'صادرة', statusRevoked: 'ملغاة', statusExpired: 'منتهية', statusArchived: 'مؤرشفة',
     creatorSignature: 'توقيع المنشئ', creatorRank: 'رتبة المنشئ', militaryCode: 'الكود العسكري',
+    reviewCreator: 'بيانات المنشئ', reviewSignature: 'توقيع المنشئ',
+    submittedAtLabel: 'وقت الإرسال للمراجعة', unknownCreator: 'منشئ غير معروف',
+    creatorSignedShort: 'التوقيع مسجل', signatureMissing: 'لا يوجد توقيع منشئ',
     signedAt: 'وقت التوقيع', assignedReviewer: 'المراجع المستلم', reviewedBy: 'اتخذ القرار',
     decisionDate: 'وقت القرار', rejectionReason: 'سبب الرفض',
     prepareSignature: 'مراجعة وإعداد التوقيع', signAsCreator: 'التوقيع باسم حسابي',
@@ -209,6 +213,7 @@ const COPY = {
     chiefSsoAction: 'Continue through CIA',
     authSecure: 'Secure sessions · permissions derived from personnel records · no demo roles',
     required: 'Complete the required fields.', saved: 'Draft saved.', submitted: 'Document submitted for review.',
+    autoApproved: 'The document was approved automatically because you are CIA CHIEF.',
     approved: 'Document approved.', issuedMessage: 'Document signed and issued.', revokedMessage: 'Document revoked.',
     archivedMessage: 'Document archived.', noPermission: 'You are not authorized for this action.',
     createFailed: 'Could not save the document.', noRecords: 'No records available.', print: 'Print / Save PDF', imageDownload: 'Download Report Image', imageDownloaded: 'Report image downloaded.', autoShareFailed: 'The document was issued, but automatic sharing failed. You can create a link from the share panel.',
@@ -238,6 +243,9 @@ const COPY = {
     statusPendingApproval: 'Awaiting reviewer', statusApproved: 'Approved', statusRejected: 'Rejected',
     statusIssued: 'Issued', statusRevoked: 'Revoked', statusExpired: 'Expired', statusArchived: 'Archived',
     creatorSignature: 'Creator signature', creatorRank: 'Creator rank', militaryCode: 'Military code',
+    reviewCreator: 'Creator details', reviewSignature: 'Creator signature',
+    submittedAtLabel: 'Sent for review', unknownCreator: 'Unknown creator',
+    creatorSignedShort: 'Signature recorded', signatureMissing: 'Creator signature unavailable',
     signedAt: 'Signed at', assignedReviewer: 'Assigned reviewer', reviewedBy: 'Decision by',
     decisionDate: 'Decision time', rejectionReason: 'Rejection reason',
     prepareSignature: 'Review and prepare signature', signAsCreator: 'Sign as this account',
@@ -454,8 +462,38 @@ function docCell(document) {
   return `<div class="doc-cell"><strong>${escapeHtml(document.documentNumber)}</strong><small>${escapeHtml(document.title)}</small></div>`;
 }
 
+function reviewCreatorCell(document) {
+  const signature = document.creatorSignature;
+  const creatorName = signature?.signerName || t('unknownCreator');
+  const details = [signature?.signerRank, signature?.militaryCode].filter(Boolean).join(' · ');
+  return `<div class="review-meta-cell"><strong>${escapeHtml(creatorName)}</strong>${details ? `<small>${escapeHtml(details)}</small>` : ''}</div>`;
+}
+
+function reviewSignatureCell(document) {
+  const signature = document.creatorSignature;
+  if (!signature?.signedAt) return `<span class="review-signature-missing">${escapeHtml(t('signatureMissing'))}</span>`;
+  return `<div class="review-meta-cell"><strong class="review-signature-recorded">${escapeHtml(t('creatorSignedShort'))}</strong><small>${escapeHtml(formatUtcTimestamp(signature.signedAt))}</small></div>`;
+}
+
+function reviewSubmissionCell(document) {
+  const assignedAt = document.approvalAssignee?.assignedAt;
+  return `<time class="review-submission-time" datetime="${escapeHtml(assignedAt || '')}">${escapeHtml(formatDate(assignedAt, true))}</time>`;
+}
+
 function actionCell(document) {
   return `<button class="row-action" data-action="viewDocument" data-id="${escapeHtml(document.id)}" aria-label="Open document" title="${escapeHtml(t('more'))}">···</button>`;
+}
+
+function reviewActionsCell(document) {
+  const isAssignedReviewer = document.status === 'PENDING APPROVAL' &&
+    document.approvalAssignedTo === state.user?.id &&
+    can('APPROVE_DOCUMENTS');
+  if (!isAssignedReviewer) return actionCell(document);
+  return `<div class="review-row-actions">
+    <button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>
+    <button class="button button-reject" data-action="rejectDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('reject'))}</button>
+    ${actionCell(document)}
+  </div>`;
 }
 
 function filteredDocuments(status = '') {
@@ -494,7 +532,7 @@ function renderRows() {
   $('#archiveEmpty').classList.toggle('visible', !archive.length);
 
   const pending = state.inbox;
-  $('#pendingRows').innerHTML = pending.map((doc) => `<tr><td>${docCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${escapeHtml(formatDate(doc.updatedAt, true))}</td><td>${actionCell(doc)}</td></tr>`).join('');
+  $('#pendingRows').innerHTML = pending.map((doc) => `<tr><td>${docCell(doc)}</td><td>${reviewCreatorCell(doc)}</td><td>${reviewSignatureCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${reviewSubmissionCell(doc)}</td><td>${reviewActionsCell(doc)}</td></tr>`).join('');
   $('#pendingPanelCount').textContent = `${pending.length} PENDING`;
   $('#pendingEmpty').classList.toggle('visible', !pending.length);
 
@@ -758,7 +796,7 @@ function modalActions(document) {
   }
   if (document.status === 'PENDING APPROVAL' && document.approvalAssignedTo === state.user?.id && can('APPROVE_DOCUMENTS')) {
     actions.push(`<button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>`);
-    actions.push(`<button class="button button-quiet" data-action="rejectDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('reject'))}</button>`);
+    actions.push(`<button class="button button-reject" data-action="rejectDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('reject'))}</button>`);
   }
   if (document.status === 'APPROVED' && can('ISSUE_DOCUMENTS') && can('SIGN_DOCUMENTS')) actions.push(`<button class="button button-primary" data-action="issueDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('signIssue'))}</button>`);
   if (activeIssued && can('CREATE_DOCUMENTS')) actions.push(`<button class="button button-outline" data-action="amendDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('amendDocument'))}</button>`);
@@ -906,12 +944,15 @@ async function actOnDocument(action, id) {
   const operation = methods[action];
   if (!operation) return;
   try {
-    await request(operation[1], { method: operation[0], body: operation[2] ? JSON.stringify(operation[2]) : '{}' });
+    const result = await request(operation[1], { method: operation[0], body: operation[2] ? JSON.stringify(operation[2]) : '{}' });
     $('#documentModal').hidden = true;
     await loadDocuments();
     await loadApprovalInbox().catch(() => undefined);
     await loadNotifications().catch(() => undefined);
-    toast(operation[3]);
+    const successMessage = action === 'submitForApproval' && result.document?.status === 'APPROVED'
+      ? t('autoApproved')
+      : operation[3];
+    toast(successMessage);
     const changed = state.documents.find((document) => document.id === id);
     if (changed) showDocument(changed);
   } catch (error) {
