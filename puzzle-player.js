@@ -23,7 +23,7 @@
   function call(eventName, payload = {}) {
     return new Promise((resolve) => {
       if (typeof window.io !== 'function') return resolve({ ok: false, message: 'تعذر بدء اتصال اللعب.' });
-      const socket = window.blackRidgePuzzleSocket || (window.blackRidgePuzzleSocket = window.io());
+      const socket = window.blackRidgePuzzleSocket || (window.blackRidgePuzzleSocket = window.io('/public-puzzles'));
       let finished = false;
       const finish = (result) => {
         if (finished) return;
@@ -248,7 +248,7 @@
   }
 
   if (typeof window.io === 'function') {
-    const socket = window.io();
+    const socket = window.io('/public-puzzles');
     window.blackRidgePuzzleSocket = socket;
     socket.on('connect', () => {
       connection.textContent = 'اتصال مباشر · لا يلزم حساب';

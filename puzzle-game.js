@@ -2,11 +2,26 @@
 
 (function attachBlackridgePuzzleGame(global) {
   function loadImage(source) {
+    if (typeof Blob !== 'undefined' && source instanceof Blob && typeof global.createImageBitmap === 'function') {
+      return global.createImageBitmap(source, { imageOrientation: 'from-image' })
+        .catch(() => global.createImageBitmap(source));
+    }
     return new Promise((resolve, reject) => {
       const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('تعذر فتح الصورة المحددة.'));
-      image.src = source;
+      let objectUrl = '';
+      const releaseUrl = () => {
+        if (!objectUrl) return;
+        global.URL.revokeObjectURL(objectUrl);
+        objectUrl = '';
+      };
+      image.onload = () => { releaseUrl(); resolve(image); };
+      image.onerror = () => { releaseUrl(); reject(new Error('تعذر فتح الصورة المحددة.')); };
+      if (typeof Blob !== 'undefined' && source instanceof Blob && global.URL?.createObjectURL) {
+        objectUrl = global.URL.createObjectURL(source);
+        image.src = objectUrl;
+      } else {
+        image.src = source;
+      }
     });
   }
 
@@ -69,64 +84,70 @@
       throw new Error('عدد القطع غير صالح.');
     }
     const image = await loadImage(source);
-    let maxEdge = 1000;
-    let board;
-    let imageData;
-    while (maxEdge >= 500) {
-      const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
-      board = document.createElement('canvas');
-      board.width = Math.max(100, Math.round(image.naturalWidth * scale));
-      board.height = Math.max(100, Math.round(image.naturalHeight * scale));
-      const boardContext = board.getContext('2d', { alpha: false });
-      boardContext.drawImage(image, 0, 0, board.width, board.height);
-      imageData = board.toDataURL('image/jpeg', 0.84);
-      if (imageData.length <= 1_850_000) break;
-      maxEdge = Math.floor(maxEdge * 0.82);
-    }
-    if (!board || !imageData || imageData.length > 1_850_000) {
-      throw new Error('الصورة كبيرة جدًا؛ اختر لقطة أصغر.');
-    }
+    try {
+      const sourceWidth = Number(image.naturalWidth || image.width);
+      const sourceHeight = Number(image.naturalHeight || image.height);
+      if (!sourceWidth || !sourceHeight) throw new Error('أبعاد الصورة غير صالحة.');
 
-    const cellWidth = board.width / cols;
-    const cellHeight = board.height / rows;
-    const amplitude = Math.max(5, Math.min(cellWidth, cellHeight) * 0.19);
-    const bleed = Math.ceil(amplitude + 2);
-    const edges = edgeGrid(rows, cols);
-    const pieces = [];
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.ceil(cellWidth + bleed * 2);
-        canvas.height = Math.ceil(cellHeight + bleed * 2);
-        const context = canvas.getContext('2d');
-        tracePiece(context, cellWidth, cellHeight, bleed, edges, row, col, amplitude);
-        context.save();
-        context.clip();
-        context.drawImage(board, bleed - col * cellWidth, bleed - row * cellHeight, board.width, board.height);
-        context.restore();
-        context.save();
-        context.strokeStyle = 'rgba(18, 20, 23, .8)';
-        context.lineWidth = 1.15;
-        tracePiece(context, cellWidth, cellHeight, bleed, edges, row, col, amplitude);
-        context.stroke();
-        context.restore();
-        const id = global.crypto && typeof global.crypto.randomUUID === 'function'
-          ? global.crypto.randomUUID()
-          : `piece_${Date.now().toString(36)}_${row}_${col}_${Math.random().toString(36).slice(2, 8)}`;
-        const imageUrl = canvas.toDataURL('image/png');
-        if (imageUrl.length > 340_000) throw new Error('إحدى القطع كبيرة جدًا؛ اختر صورة أصغر أو عدد قطع أقل.');
-        pieces.push({ id, row, col, width: canvas.width, height: canvas.height, image: imageUrl });
+      let maxEdge = 800;
+      while (maxEdge >= 400) {
+        const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+        const board = document.createElement('canvas');
+        board.width = Math.max(100, Math.round(sourceWidth * scale));
+        board.height = Math.max(100, Math.round(sourceHeight * scale));
+        const boardContext = board.getContext('2d', { alpha: false });
+        if (!boardContext) throw new Error('تعذر تجهيز الصورة في هذا المتصفح.');
+        boardContext.drawImage(image, 0, 0, board.width, board.height);
+        const imageData = board.toDataURL('image/jpeg', 0.84);
+        if (imageData.length > 1_850_000) {
+          maxEdge = Math.floor(maxEdge * 0.82);
+          continue;
+        }
+
+        const cellWidth = board.width / cols;
+        const cellHeight = board.height / rows;
+        const amplitude = Math.max(5, Math.min(cellWidth, cellHeight) * 0.19);
+        const bleed = Math.ceil(amplitude + 2);
+        const edges = edgeGrid(rows, cols);
+        const pieces = [];
+        let oversizedPiece = false;
+        for (let row = 0; row < rows && !oversizedPiece; row += 1) {
+          for (let col = 0; col < cols; col += 1) {
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(cellWidth + bleed * 2);
+            canvas.height = Math.ceil(cellHeight + bleed * 2);
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('تعذر تقسيم الصورة في هذا المتصفح.');
+            tracePiece(context, cellWidth, cellHeight, bleed, edges, row, col, amplitude);
+            context.save();
+            context.clip();
+            context.drawImage(board, bleed - col * cellWidth, bleed - row * cellHeight, board.width, board.height);
+            context.restore();
+            context.save();
+            context.strokeStyle = 'rgba(18, 20, 23, .8)';
+            context.lineWidth = 1.15;
+            tracePiece(context, cellWidth, cellHeight, bleed, edges, row, col, amplitude);
+            context.stroke();
+            context.restore();
+            const id = global.crypto && typeof global.crypto.randomUUID === 'function'
+              ? global.crypto.randomUUID()
+              : `piece_${Date.now().toString(36)}_${row}_${col}_${Math.random().toString(36).slice(2, 8)}`;
+            const imageUrl = canvas.toDataURL('image/png');
+            if (imageUrl.length > 340_000) { oversizedPiece = true; break; }
+            pieces.push({ id, row, col, width: canvas.width, height: canvas.height, image: imageUrl });
+          }
+        }
+        const requestEstimate = new TextEncoder().encode(JSON.stringify({ image: imageData, imageWidth: board.width, imageHeight: board.height, rows, cols, bleed, pieces })).length + 12_000;
+        if (oversizedPiece || requestEstimate > 5_200_000) {
+          maxEdge = Math.floor(maxEdge * 0.82);
+          continue;
+        }
+        return { image: imageData, imageWidth: board.width, imageHeight: board.height, rows, cols, bleed, pieces };
       }
+      throw new Error('تعذر ضغط الصورة والقطع إلى الحجم المسموح. جرّب عدد قطع أقل أو صورة أصغر.');
+    } finally {
+      if (typeof image.close === 'function') image.close();
     }
-    return {
-      image: imageData,
-      imageWidth: board.width,
-      imageHeight: board.height,
-      rows,
-      cols,
-      bleed,
-      pieces
-    };
   }
 
   global.BlackridgePuzzleGame = Object.freeze({ preparePieces });

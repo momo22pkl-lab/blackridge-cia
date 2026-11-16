@@ -42,7 +42,7 @@ function injectPuzzleMarkup(html) {
           <form id="br-puzzle-create-form" class="br-puzzle-form">
             <label class="br-puzzle-field br-puzzle-upload">
               <span>صورة الموقع من GTA</span>
-              <input id="br-puzzle-image-file" name="image" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required>
+              <input id="br-puzzle-image-file" name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" required>
               <small>اختر لقطة للمكان فقط؛ حجم الصورة يُخفّض تلقائيًا قبل الحفظ.</small>
             </label>
             <label class="br-puzzle-field"><span>عنوان اللغز</span><input name="title" maxlength="100" required placeholder="مثال: أثر عند الميناء"></label>
@@ -138,8 +138,6 @@ function registerPuzzleSocket(socket, {
       reply(callback, { ok: false, message: 'تعذر إكمال العملية. لم يتم اعتماد التغيير.' });
     }
   };
-  const progressKey = (token) => `${socket.id}:${token}`;
-
   socket.on('puzzles:overview', (payload, callback) => run(callback, async () => {
     const actor = activeUser();
     if (!actor) return { ok: false, message: 'سجّل الدخول إلى الموقع أولًا.' };
@@ -199,6 +197,21 @@ function registerPuzzleSocket(socket, {
   });
   socket.on('puzzles:permission:grant', changePermission('GRANT'));
   socket.on('puzzles:permission:revoke', changePermission('REVOKE'));
+
+
+}
+
+function registerPublicPuzzleSocket(socket, { getStore } = {}) {
+  const reply = (callback, result) => {
+    if (typeof callback === 'function') callback(result);
+  };
+  const storeForRequest = () => typeof getStore === 'function' ? getStore() : null;
+  const unavailable = () => ({ ok: false, message: 'خدمة الألغاز تتطلب اتصال PostgreSQL؛ لم يُحفظ أي شيء محليًا.' });
+  const run = async (callback, task) => {
+    try { reply(callback, await task()); }
+    catch (_error) { reply(callback, { ok: false, message: 'تعذر إكمال العملية. حاول مرة أخرى.' }); }
+  };
+  const progressKey = (token) => `${socket.id}:${token}`;
 
   socket.on('puzzles:share:load', (payload, callback) => run(callback, async () => {
     const token = clean(payload?.shareToken, 80);
@@ -267,6 +280,7 @@ function registerPuzzleSocket(socket, {
     };
   }));
 
+
   socket.on('disconnect', () => {
     const prefix = `${socket.id}:`;
     for (const key of publicProgress.keys()) if (key.startsWith(prefix)) publicProgress.delete(key);
@@ -277,5 +291,6 @@ module.exports = {
   PuzzleSystemStore,
   injectPuzzleMarkup,
   registerPuzzleRoutes,
-  registerPuzzleSocket
+  registerPuzzleSocket,
+  registerPublicPuzzleSocket
 };
