@@ -484,6 +484,18 @@ function actionCell(document) {
   return `<button class="row-action" data-action="viewDocument" data-id="${escapeHtml(document.id)}" aria-label="Open document" title="${escapeHtml(t('more'))}">···</button>`;
 }
 
+function reviewActionsCell(document) {
+  const isAssignedReviewer = document.status === 'PENDING APPROVAL' &&
+    document.approvalAssignedTo === state.user?.id &&
+    can('APPROVE_DOCUMENTS');
+  if (!isAssignedReviewer) return actionCell(document);
+  return `<div class="review-row-actions">
+    <button class="button button-primary" data-action="approveDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('approve'))}</button>
+    <button class="button button-reject" data-action="rejectDocument" data-id="${escapeHtml(document.id)}">${escapeHtml(t('reject'))}</button>
+    ${actionCell(document)}
+  </div>`;
+}
+
 function filteredDocuments(status = '') {
   let documents = state.documents.slice();
   if (status) documents = documents.filter((doc) => doc.status === status);
@@ -520,7 +532,7 @@ function renderRows() {
   $('#archiveEmpty').classList.toggle('visible', !archive.length);
 
   const pending = state.inbox;
-  $('#pendingRows').innerHTML = pending.map((doc) => `<tr><td>${docCell(doc)}</td><td>${reviewCreatorCell(doc)}</td><td>${reviewSignatureCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${reviewSubmissionCell(doc)}</td><td>${actionCell(doc)}</td></tr>`).join('');
+  $('#pendingRows').innerHTML = pending.map((doc) => `<tr><td>${docCell(doc)}</td><td>${reviewCreatorCell(doc)}</td><td>${reviewSignatureCell(doc)}</td><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.sector)}</td><td>${classificationTag(doc.classification)}</td><td>${reviewSubmissionCell(doc)}</td><td>${reviewActionsCell(doc)}</td></tr>`).join('');
   $('#pendingPanelCount').textContent = `${pending.length} PENDING`;
   $('#pendingEmpty').classList.toggle('visible', !pending.length);
 

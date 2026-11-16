@@ -34,7 +34,17 @@ test('approval inbox renders assigned documents instead of every document awaiti
   assert.ok(rows.includes('reviewCreatorCell(doc)'));
   assert.ok(rows.includes('reviewSignatureCell(doc)'));
   assert.ok(rows.includes('reviewSubmissionCell(doc)'));
+  assert.ok(rows.includes('reviewActionsCell(doc)'));
   assert.ok(inboxLoader.includes("request('/approval-inbox')"));
+});
+
+test('review rows show accept and reject only to the assigned authorized reviewer', () => {
+  const actions = section('function reviewActionsCell(document)', 'function filteredDocuments(');
+  assert.ok(actions.includes("document.status === 'PENDING APPROVAL'"));
+  assert.ok(actions.includes('document.approvalAssignedTo === state.user?.id'));
+  assert.ok(actions.includes("can('APPROVE_DOCUMENTS')"));
+  assert.ok(actions.includes('data-action="approveDocument"'));
+  assert.ok(actions.includes('data-action="rejectDocument"'));
 });
 
 test('CIA Chief submission shows automatic approval instead of a review message', () => {
