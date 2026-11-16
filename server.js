@@ -57,7 +57,8 @@ const {
   PuzzleSystemStore,
   injectPuzzleMarkup,
   registerPuzzleRoutes,
-  registerPuzzleSocket
+  registerPuzzleSocket,
+  registerPublicPuzzleSocket
 } = require('./puzzle-system');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
@@ -11676,6 +11677,10 @@ io.on('connection', (socket) => {
     normalizeRank,
     isLeadership: isSecuritySupervisor
   });
+});
+
+io.of('/public-puzzles').on('connection', (socket) => {
+  registerPublicPuzzleSocket(socket, { getStore: () => puzzleStore });
 });
 
 /* =====================================================

@@ -62,9 +62,10 @@
         await navigator.clipboard.writeText(copy.value);
         button.textContent = 'تم نسخ الرابط';
       } catch (_error) {
+        copy.focus();
         copy.select();
-        document.execCommand('copy');
-        button.textContent = 'تم نسخ الرابط';
+        const copied = document.execCommand('copy');
+        button.textContent = copied ? 'تم نسخ الرابط' : 'حدد الرابط لنسخه';
       }
     });
     section.append(copy, button);
@@ -161,6 +162,7 @@
     if (!response.ok) {
       if (status) status.textContent = 'قاعدة البيانات غير متاحة';
       listRoot.replaceChildren(createElement('div', 'br-puzzle-empty is-error', response.message || 'تعذر تحميل الألغاز.'));
+      if (lastCreatedToken) listRoot.prepend(renderShareLink(lastCreatedToken));
       byId('br-puzzle-create-panel').hidden = true;
       byId('br-puzzle-permissions-panel').hidden = true;
       return;
@@ -171,15 +173,6 @@
     renderPuzzles(response.puzzles);
     if (lastCreatedToken) listRoot.prepend(renderShareLink(lastCreatedToken));
     renderPermissions(response.agents, response.permissionAudit);
-  }
-
-  function readFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('تعذر قراءة الصورة.'));
-      reader.readAsDataURL(file);
-    });
   }
 
   function renderPreview(prepared) {
@@ -222,8 +215,7 @@
     button.disabled = true;
     button.textContent = 'جارٍ تجهيز القطع…';
     try {
-      const source = await readFile(file);
-      preparedPuzzle = await window.BlackridgePuzzleGame.preparePieces(source, side, side);
+      preparedPuzzle = await window.BlackridgePuzzleGame.preparePieces(file, side, side);
       renderPreview(preparedPuzzle);
       byId('br-puzzle-create-button').disabled = false;
       showMessage('المعاينة جاهزة. ملف الصورة الكامل سيبقى مخفيًا عن اللاعب حتى يركّب كل القطع.', 'success');
@@ -253,6 +245,7 @@
       solutionNote: data.get('solutionNote'),
       rows: preparedPuzzle.rows,
       cols: preparedPuzzle.cols,
+      bleed: preparedPuzzle.bleed,
       image: preparedPuzzle.image,
       imageWidth: preparedPuzzle.imageWidth,
       imageHeight: preparedPuzzle.imageHeight,
@@ -260,9 +253,13 @@
     };
     try {
       const response = await call('puzzles:create', payload);
-      if (!response.ok) return showMessage(response.message || 'تعذر حفظ البازل.', 'error');
-      showMessage('تم حفظ البازل. أرسل الرابط إلى اللاعب؛ لن يرى الصورة كاملة قبل إكماله.', 'success');
-      lastCreatedToken = response.puzzle.shareToken;
+      const shareToken = response?.puzzle?.shareToken;
+      if (response?.ok !== true || !/^[a-f0-9]{64}$/.test(String(shareToken || ''))) {
+        return showMessage(response?.message || 'لم يؤكد الخادم حفظ البازل؛ لم يتم إنشاء رابط مشاركة.', 'error');
+      }
+      lastCreatedToken = shareToken;
+      showMessage('تم حفظ البازل بنجاح. أرسل الرابط إلى اللاعب؛ لن يرى الصورة كاملة قبل إكماله.', 'success');
+      listRoot.prepend(renderShareLink(lastCreatedToken));
       form.reset();
       selectedFile = null;
       preparedPuzzle = null;

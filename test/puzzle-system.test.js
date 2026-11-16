@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 const {
   SCHEMA_SQL,
   PuzzleSystemStore,
@@ -11,7 +14,12 @@ const {
   safeSharedPuzzle,
   verifyAnswer
 } = require('../puzzle-system-store');
-const { injectPuzzleMarkup, registerPuzzleSocket } = require('../puzzle-system');
+const { injectPuzzleMarkup, registerPuzzleSocket, registerPublicPuzzleSocket } = require('../puzzle-system');
+const puzzleClientSource = readFileSync(path.join(__dirname, '../puzzle-system-client.js'), 'utf8');
+const puzzleGameSource = readFileSync(path.join(__dirname, '../puzzle-game.js'), 'utf8');
+const puzzlePlayerSource = readFileSync(path.join(__dirname, '../puzzle-player.js'), 'utf8');
+const puzzlePlayerHtml = readFileSync(path.join(__dirname, '../puzzle-player.html'), 'utf8');
+const serverSource = readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 
 const JPEG = 'data:image/jpeg;base64,/9j/2Q==';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2r8AAAAASUVORK5CYII=';
@@ -110,6 +118,10 @@ test('puzzle creation validates a complete grid of safe image pieces', () => {
   const unsafeImage = makePayload();
   unsafeImage.pieces[0].image = 'data:image/svg+xml;base64,PHN2Zz4=';
   assert.throws(() => normalizePuzzlePayload(unsafeImage), /JPEG أو PNG أو WebP/);
+
+  const missingBleed = makePayload();
+  delete missingBleed.bleed;
+  assert.throws(() => normalizePuzzlePayload(missingBleed), /أبعاد الصورة غير صالحة/);
 });
 
 test('public puzzle data hides the original image, answer, clue, and piece positions', () => {
@@ -133,13 +145,79 @@ test('injected puzzle view adds the nav and assets once', () => {
   assert.equal(injectPuzzleMarkup(injected), injected);
 });
 
+test('public and authenticated sockets expose separate puzzle event surfaces', () => {
+  const publicSocket = new FakeSocket('public-only');
+  registerPublicPuzzleSocket(publicSocket, { getStore: () => null });
+  assert.deepEqual([...publicSocket.handlers.keys()].sort(), [
+    'disconnect',
+    'puzzles:share:answer',
+    'puzzles:share:complete',
+    'puzzles:share:load',
+    'puzzles:share:place'
+  ]);
+
+  const memberSocket = new FakeSocket('member-only');
+  registerPuzzleSocket(memberSocket, { getStore: () => null });
+  assert.equal([...memberSocket.handlers.keys()].some((event) => event.startsWith('puzzles:share:')), false);
+  assert.equal(memberSocket.handlers.has('puzzles:create'), true);
+});
+
+test('gallery, create payload, and public namespace remain wired', () => {
+  const injected = injectPuzzleMarkup('<html><head></head><body>\n  <div class="content-area"></div>\n</body></html>');
+  assert.match(injected, /accept="\.jpg,\.jpeg,\.png,\.webp,image\/jpeg,image\/png,image\/webp"/);
+  assert.doesNotMatch(injected, /\bcapture\b/);
+  assert.match(puzzleClientSource, /bleed:\s*preparedPuzzle\.bleed/);
+  assert.match(puzzleClientSource, /shareToken = response\?\.puzzle\?\.shareToken/);
+  assert.match(puzzlePlayerSource, /window\.io\(['"]\/public-puzzles['"]\)/);
+  assert.match(serverSource, /io\.of\(['"]\/public-puzzles['"]\)/);
+  assert.doesNotMatch(puzzlePlayerHtml, /<a[^>]+href=["']\/["']/i);
+});
+
+test('normal and large image files are orientation-normalized and scaled before slicing', async () => {
+  for (const sample of [{ width: 640, height: 480, side: 3 }, { width: 6000, height: 4000, side: 4 }]) {
+    let seenOrientation = '';
+    let closed = false;
+    let pieceId = 0;
+    const drawing = {
+      drawImage() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {},
+      quadraticCurveTo() {}, closePath() {}, clip() {}, stroke() {}
+    };
+    const documentMock = { createElement() {
+      return {
+        width: 0, height: 0,
+        getContext() { return drawing; },
+        toDataURL(type) {
+          return type === 'image/jpeg'
+            ? 'data:image/jpeg;base64,' + 'A'.repeat(50000)
+            : 'data:image/png;base64,' + 'A'.repeat(2000);
+        }
+      };
+    } };
+    const windowMock = {
+      crypto: { randomUUID() { pieceId += 1; return 'piece_' + String(pieceId).padStart(8, '0'); } },
+      async createImageBitmap(_file, options) {
+        seenOrientation = options?.imageOrientation || '';
+        return { width: sample.width, height: sample.height, close() { closed = true; } };
+      }
+    };
+    const context = vm.createContext({ window: windowMock, Blob, document: documentMock, TextEncoder, Image: function Image() {} });
+    vm.runInContext(puzzleGameSource, context, { filename: 'puzzle-game.js' });
+    const prepared = await windowMock.BlackridgePuzzleGame.preparePieces(new Blob(['photo'], { type: 'image/jpeg' }), sample.side, sample.side);
+    assert.equal(seenOrientation, 'from-image');
+    assert.equal(prepared.pieces.length, sample.side * sample.side);
+    assert.ok(prepared.imageWidth <= 800 && prepared.imageHeight <= 800);
+    assert.ok(prepared.bleed >= 2);
+    assert.equal(closed, true);
+  }
+});
+
 test('public player must place every piece before receiving the full photo or clue', async () => {
   const storedPuzzle = makeStoredPuzzle();
   const store = {
     async getByShareToken() { return storedPuzzle; }
   };
   const socket = new FakeSocket('player-1');
-  registerPuzzleSocket(socket, { getStore: () => store, requireUser: () => null });
+  registerPublicPuzzleSocket(socket, { getStore: () => store });
 
   const loaded = await socket.trigger('puzzles:share:load', { shareToken: 'a'.repeat(64) });
   assert.equal(loaded.ok, true);
