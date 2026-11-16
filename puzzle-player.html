@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#090b0e">
+  <title>لغز موقع | BLACKRIDGE CIA</title>
+  <link rel="stylesheet" href="/puzzle-system.css">
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="/puzzle-player.js" defer></script>
+</head>
+<body class="br-puzzle-player-body">
+  <header class="br-player-header">
+    <a class="br-player-brand" href="/" aria-label="BLACKRIDGE CIA">
+      <span class="br-player-seal">BR</span>
+      <span><strong>BLACKRIDGE</strong><small>FIELD CHALLENGE</small></span>
+    </a>
+    <span id="br-player-connection" class="br-puzzle-status">جارٍ الاتصال…</span>
+  </header>
+  <main id="br-player-root" class="br-player-root">
+    <section id="br-player-loading" class="br-player-loading">
+      <span class="br-player-loader" aria-hidden="true"></span>
+      <p>جارٍ تحميل قطع اللغز…</p>
+    </section>
+    <section id="br-player-content" hidden>
+      <div class="br-player-heading">
+        <span class="br-puzzle-kicker">LOCATION PUZZLE</span>
+        <h1 id="br-player-title"></h1>
+        <p id="br-player-intro">ركّب القطع لتكشف المشهد ثم أجب عن اللغز.</p>
+        <button id="br-player-hint-toggle" class="br-player-hint-toggle" type="button" hidden>إظهار التلميح</button>
+        <p id="br-player-hint" class="br-player-hint" hidden></p>
+      </div>
+      <div class="br-player-progress-row">
+        <span id="br-player-progress-text">0 / 0 قطعة</span>
+        <div class="br-player-progress"><span id="br-player-progress-bar"></span></div>
+      </div>
+      <section class="br-player-board-wrap" aria-label="لوحة تركيب البازل">
+        <div id="br-player-board" class="br-player-board"></div>
+      </section>
+      <section id="br-player-tray-wrap" class="br-player-tray-wrap">
+        <div class="br-player-tray-heading">
+          <div><span class="br-puzzle-kicker">PUZZLE PIECES</span><h2>اسحب القطع إلى اللوحة</h2></div>
+          <span id="br-player-piece-count" class="br-player-piece-count"></span>
+        </div>
+        <div id="br-player-tray" class="br-player-tray"></div>
+      </section>
+      <div id="br-player-message" class="br-player-message" role="status" aria-live="polite"></div>
+      <section id="br-player-complete" class="br-player-complete" hidden>
+        <div class="br-player-final-photo-wrap">
+          <img id="br-player-final-photo" alt="الصورة الكاملة بعد إكمال البازل">
+          <span class="br-player-photo-caption">LOCATION REVEALED</span>
+        </div>
+        <div class="br-player-clue-card">
+          <span class="br-puzzle-kicker">FIELD RIDDLE</span>
+          <p id="br-player-clue"></p>
+          <form id="br-player-answer-form" class="br-player-answer-form">
+            <label for="br-player-answer">ما الموقع؟</label>
+            <div class="br-player-answer-row">
+              <input id="br-player-answer" name="answer" maxlength="120" autocomplete="off" required placeholder="اكتب إجابتك">
+              <button class="br-puzzle-button" type="submit">تحقق</button>
+            </div>
+          </form>
+          <div id="br-player-reveal" class="br-player-reveal" hidden></div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <footer class="br-player-footer">BLACKRIDGE CIA <span>·</span> PUBLIC PUZZLE LINK</footer>
+</body>
+</html>
