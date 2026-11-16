@@ -60,6 +60,7 @@ const {
   registerPuzzleSocket,
   registerPublicPuzzleSocket
 } = require('./puzzle-system');
+const { injectCiaCipherHubMarkup } = require('./cia-cipher-hub');
 const { injectCoverIdentityMarkup, registerCoverIdentitySocket } = require('./cover-identity');
 const { createRadioIceConfig } = require('./radio-ice-config');
 const { installSocketModerationBoundary } = require('./moderation-boundaries');
@@ -219,6 +220,8 @@ const publicAssets = Object.freeze({
   '/cover-identity-client.js': 'cover-identity-client.js',
   '/blackridge-cipher.css': 'blackridge-cipher.css',
   '/blackridge-cipher.js': 'blackridge-cipher.js',
+  '/cia-cipher-hub.css': 'cia-cipher-hub.css',
+  '/cia-cipher-hub-client.js': 'cia-cipher-hub-client.js',
   '/sos-alert-sound.js': 'sos-alert-sound.js',
   '/radio-signal-policy.js': 'radio-signal-policy.js',
   '/radio-audio-health.js': 'radio-audio-health.js',
@@ -253,7 +256,7 @@ app.get(['/', '/index.html'], (req, res) => {
   try {
     if (appEntryHtml === null) appEntryHtml = fs.readFileSync(entryPoint, 'utf8');
     return res.status(200).type('html').send(
-      injectPuzzleMarkup(injectOsdSsoMarkup(injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml)))))))
+      injectCiaCipherHubMarkup(injectPuzzleMarkup(injectOsdSsoMarkup(injectMilitaryPersonnelDossierMarkup(injectWantedPersonsMarkup(injectCoverIdentityMarkup(injectWeaponArmoryMarkup(injectMobilePushMarkup(appEntryHtml))))))))
     );
   } catch (_error) {
     return res.status(500).send('BLACK RIDGE CIA: index.html could not be loaded.');

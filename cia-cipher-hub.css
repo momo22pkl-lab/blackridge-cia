@@ -1,0 +1,153 @@
+#cia-cipher-hub-view {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: clamp(14px, 3vw, 34px);
+  overflow-y: auto;
+}
+
+.cia-cipher-hub {
+  --cia-hub-gold: #c3a460;
+  --cia-hub-ink: #0a0e13;
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  color: #e9edf0;
+}
+
+.cia-cipher-hub__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: clamp(18px, 3vw, 30px);
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid rgba(195, 164, 96, .28);
+  border-inline-start: 3px solid var(--cia-hub-gold);
+  background: linear-gradient(135deg, rgba(25, 29, 34, .96), rgba(9, 13, 18, .98));
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .22);
+}
+
+.cia-cipher-hub__eyebrow,
+.cia-cipher-card__eyebrow {
+  color: #bda66e;
+  font: 700 .68rem/1.5 "Courier New", monospace;
+  letter-spacing: .12em;
+}
+
+.cia-cipher-hub__header h1 {
+  margin: 6px 0;
+  color: #f2eee5;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  line-height: 1.25;
+}
+
+.cia-cipher-hub__header p {
+  margin: 0;
+  color: #a5adb4;
+  font-size: .92rem;
+  line-height: 1.7;
+}
+
+.cia-cipher-hub__seal {
+  display: grid;
+  flex: 0 0 auto;
+  width: clamp(54px, 8vw, 76px);
+  aspect-ratio: 1;
+  place-items: center;
+  color: var(--cia-hub-gold);
+  border: 1px solid rgba(195, 164, 96, .48);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(195, 164, 96, .12), transparent 72%);
+  font-size: clamp(1.4rem, 4vw, 2rem);
+}
+
+.cia-cipher-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 20px);
+}
+
+.cia-cipher-card {
+  display: flex;
+  min-width: 0;
+  min-height: 290px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: clamp(16px, 2.4vw, 24px);
+  border: 1px solid #29333c;
+  border-top: 2px solid rgba(195, 164, 96, .68);
+  border-radius: 6px;
+  background: linear-gradient(155deg, #151a20 0%, #0b0f14 80%);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, .18);
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.cia-cipher-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(195, 164, 96, .7);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, .28);
+}
+
+.cia-cipher-card__icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #d0b36f;
+  border: 1px solid rgba(195, 164, 96, .34);
+  border-radius: 5px;
+  background: rgba(195, 164, 96, .08);
+  font-size: 1.25rem;
+}
+
+.cia-cipher-card__body { margin: 18px 0 22px; }
+.cia-cipher-card__body h2 { margin: 5px 0 8px; color: #f0ede5; font-size: 1.2rem; line-height: 1.4; }
+.cia-cipher-card__body p { margin: 0; color: #a8b0b7; font-size: .88rem; line-height: 1.75; }
+
+.cia-cipher-card__action,
+.cia-cipher-hub-back {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 10px 14px;
+  color: #1a1710;
+  border: 1px solid #d0b36f;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #cfb26c, #a78948);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 800;
+  text-align: center;
+  cursor: pointer;
+  transition: filter .16s ease, transform .16s ease;
+}
+
+.cia-cipher-card__action { width: 100%; margin-top: auto; }
+.cia-cipher-card__action:hover,
+.cia-cipher-hub-back:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.cia-cipher-card__action:focus-visible,
+.cia-cipher-hub-back:focus-visible,
+#cia-cipher-hub-nav:focus-visible { outline: 2px solid #e8d39b; outline-offset: 3px; }
+
+.cia-cipher-hub-back {
+  margin: 0 0 14px auto;
+  direction: rtl;
+  color: #e3d4ac;
+  border-color: rgba(195, 164, 96, .48);
+  background: #151b21;
+}
+.cia-cipher-hub-back:hover { color: #fff; background: #202830; }
+
+@media (max-width: 900px) {
+  .cia-cipher-hub__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  #cia-cipher-hub-view { padding: 12px; }
+  .cia-cipher-hub__header { align-items: flex-start; gap: 12px; }
+  .cia-cipher-hub__grid { grid-template-columns: minmax(0, 1fr); }
+  .cia-cipher-card { min-height: 0; }
+  .cia-cipher-card__body { margin: 14px 0 18px; }
+}
