@@ -242,7 +242,6 @@
       hint: data.get('hint'),
       clue: data.get('clue'),
       answer: data.get('answer'),
-      solutionNote: data.get('solutionNote'),
       rows: preparedPuzzle.rows,
       cols: preparedPuzzle.cols,
       bleed: preparedPuzzle.bleed,

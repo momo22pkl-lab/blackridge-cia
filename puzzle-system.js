@@ -47,9 +47,8 @@ function injectPuzzleMarkup(html) {
             </label>
             <label class="br-puzzle-field"><span>عنوان اللغز</span><input name="title" maxlength="100" required placeholder="مثال: أثر عند الميناء"></label>
             <label class="br-puzzle-field"><span>تلميح اختياري</span><input name="hint" maxlength="300" placeholder="يظهر للاعب قبل البدء"></label>
-            <label class="br-puzzle-field br-puzzle-field-wide"><span>اللغز الذي يظهر بعد تركيب الصورة</span><textarea name="clue" maxlength="800" required rows="3" placeholder="اكتب السؤال أو الملاحظة التي تقود إلى الموقع"></textarea></label>
+            <label class="br-puzzle-field br-puzzle-field-wide"><span>اللغز الذي يظهر بعد تركيب الصورة</span><textarea name="clue" maxlength="800" required rows="3" placeholder="اكتب اللغز أو السؤال الذي يقود إلى الإجابة"></textarea></label>
             <label class="br-puzzle-field"><span>الإجابة الصحيحة</span><input name="answer" maxlength="120" required autocomplete="off" placeholder="لا تظهر للاعب قبل الحل"></label>
-            <label class="br-puzzle-field"><span>رسالة/موقع يظهر بعد الإجابة</span><input name="solutionNote" maxlength="500" placeholder="اختياري"></label>
             <label class="br-puzzle-field"><span>عدد القطع</span>
               <select name="pieceCount"><option value="9">9 قطع — سهل</option><option value="16" selected>16 قطعة — متوسط</option><option value="25">25 قطعة — صعب</option><option value="36">36 قطعة — خبير</option></select>
             </label>
@@ -275,8 +274,7 @@ function registerPublicPuzzleSocket(socket, { getStore } = {}) {
     return {
       ok: true,
       correct: true,
-      answer: session.puzzle.answer_text,
-      solutionNote: session.puzzle.solution_note || ''
+      answer: session.puzzle.answer_text
     };
   }));
 
