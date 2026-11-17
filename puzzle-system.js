@@ -9,6 +9,14 @@ const {
 } = require('./puzzle-system-store');
 
 const publicProgress = new Map();
+function invalidatePublicPuzzleSessions(shareToken) {
+  const suffix = `:${clean(shareToken, 80)}`;
+  if (suffix.length <= 1) return;
+  for (const key of publicProgress.keys()) {
+    if (key.endsWith(suffix)) publicProgress.delete(key);
+  }
+}
+
 const PUBLIC_ASSETS = Object.freeze({
   '/puzzle-system.js': 'puzzle-system-client.js',
   '/puzzle-game.js': 'puzzle-game.js',
@@ -61,10 +69,12 @@ function injectPuzzleMarkup(html) {
         </section>
         <section id="br-puzzle-permissions-panel" class="br-puzzle-card" hidden>
           <div class="br-puzzle-card-head"><div><span class="br-puzzle-kicker">AGENT ACCESS</span><h2>صلاحيات إنشاء الألغاز</h2></div></div>
-          <p class="br-puzzle-muted">يمكن للرتب القيادية منح Agent صلاحية الإنشاء أو سحبها. كل تغيير يُسجّل باسم الرتبة والوقت.</p>
+          <p class="br-puzzle-muted">يمكن للرتب القيادية منح Agent صلاحية إدارة الألغاز بالإنشاء والحذف أو سحبها. كل تغيير يُسجّل باسم الرتبة والوقت.</p>
           <div id="br-puzzle-agent-list" class="br-puzzle-agent-list"></div>
           <div class="br-puzzle-audit-head">سجل منح وسحب الصلاحيات</div>
           <div id="br-puzzle-permission-audit" class="br-puzzle-audit-list"></div>
+          <div class="br-puzzle-audit-head">سجل حذف الألغاز</div>
+          <div id="br-puzzle-delete-audit" class="br-puzzle-audit-list"></div>
         </section>
         <section class="br-puzzle-card">
           <div class="br-puzzle-card-head"><div><span class="br-puzzle-kicker">SHARED CHALLENGES</span><h2>الألغاز المتاحة</h2></div><button id="br-puzzle-refresh" type="button" class="br-puzzle-icon-button" aria-label="تحديث الألغاز"><i class="fa-solid fa-rotate"></i></button></div>
@@ -147,6 +157,7 @@ function registerPuzzleSocket(socket, {
     const puzzles = await store.listPuzzles(100);
     let agents = [];
     let permissionAudit = [];
+    let puzzleAudit = [];
     if (isLeader) {
       const roster = Array.isArray(getState()?.cia_users) ? getState().cia_users : [];
       const grants = await store.listCreatorPermissions();
@@ -160,8 +171,9 @@ function registerPuzzleSocket(socket, {
           granted: grantedIds.has(String(person.id))
         }));
       permissionAudit = await store.listPermissionAudit(100);
+      puzzleAudit = await store.listPuzzleAudit(100);
     }
-    return { ok: true, canCreate, canManagePermissions: isLeader, puzzles, agents, permissionAudit };
+    return { ok: true, canCreate, canManagePuzzles: canCreate, canManagePermissions: isLeader, puzzles, agents, permissionAudit, puzzleAudit };
   }));
 
   socket.on('puzzles:create', (payload, callback) => run(callback, async () => {
@@ -174,6 +186,23 @@ function registerPuzzleSocket(socket, {
       return { ok: false, message: 'إنشاء الألغاز متاح للقيادة ولـ Agents الذين مُنحوا الصلاحية.' };
     }
     return store.createPuzzle({ actor, input: payload, isLeadership: isLeader });
+  }));
+
+  socket.on('puzzles:delete', (payload, callback) => run(callback, async () => {
+    const actor = activeUser();
+    if (!actor) return { ok: false, message: 'سجّل الدخول إلى الموقع أولًا.' };
+    const store = storeForRequest();
+    if (!store) return unavailable();
+    const isLeader = leadership(actor);
+    if (!isLeader && !(await store.hasCreatorPermission(actor.id))) {
+      return { ok: false, message: 'حذف الألغاز متاح للقيادة ولـ Agents الذين مُنحوا صلاحية إدارة الألغاز.' };
+    }
+    const puzzleId = clean(payload?.puzzleId, 120);
+    if (!puzzleId) return { ok: false, message: 'حدد اللغز المراد حذفه.' };
+    const result = await store.deletePuzzle({ actor, puzzleId });
+    if (result?.ok !== true) return result;
+    invalidatePublicPuzzleSessions(result.shareToken);
+    return { ok: true, puzzleId: result.puzzleId };
   }));
 
   const changePermission = (action) => (payload, callback) => run(callback, async () => {

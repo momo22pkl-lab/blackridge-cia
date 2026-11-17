@@ -48,7 +48,17 @@ const SCHEMA_SQL = [
     action TEXT NOT NULL CHECK (action IN ('GRANTED', 'REVOKED')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
-  'CREATE INDEX IF NOT EXISTS idx_blackridge_puzzle_permission_audit_created ON blackridge_puzzle_permission_audit (created_at DESC)'
+  'CREATE INDEX IF NOT EXISTS idx_blackridge_puzzle_permission_audit_created ON blackridge_puzzle_permission_audit (created_at DESC)',
+  `CREATE TABLE IF NOT EXISTS blackridge_puzzle_audit (
+    id TEXT PRIMARY KEY,
+    actor_user_id TEXT NOT NULL,
+    actor_code TEXT NOT NULL DEFAULT '',
+    puzzle_id TEXT NOT NULL,
+    puzzle_title TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL CHECK (action IN ('DELETED')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_blackridge_puzzle_audit_created ON blackridge_puzzle_audit (created_at DESC)'
 ];
 
 function clean(value, max = 200) {
@@ -350,6 +360,58 @@ class PuzzleSystemStore {
       [value]
     );
     return result.rows?.[0] || null;
+  }
+
+  async deletePuzzle({ actor, puzzleId }) {
+    const actorId = clean(actor?.id, 120);
+    const targetId = clean(puzzleId, 120);
+    if (!actorId || !targetId) {
+      return { ok: false, message: 'تعذر تحديد اللغز أو صاحب العملية.' };
+    }
+
+    return this.withTransaction(async (client) => {
+      const removed = await client.query(
+        `DELETE FROM blackridge_puzzles
+         WHERE id = $1 AND active = TRUE
+         RETURNING id, share_token, title`,
+        [targetId]
+      );
+      const puzzle = removed.rows?.[0];
+      if (!puzzle) return { ok: false, message: 'اللغز غير موجود أو حُذف مسبقًا.' };
+
+      await client.query(
+        `INSERT INTO blackridge_puzzle_audit
+         (id, actor_user_id, actor_code, puzzle_id, puzzle_title, action)
+         VALUES ($1, $2, $3, $4, $5, 'DELETED')`,
+        [
+          this.makeId(),
+          actorId,
+          clean(actor.publicCode, 100),
+          puzzle.id,
+          clean(puzzle.title, 100)
+        ]
+      );
+
+      return { ok: true, puzzleId: puzzle.id, shareToken: puzzle.share_token };
+    });
+  }
+
+  async listPuzzleAudit(limit = 100) {
+    const result = await this.pool.query(
+      `SELECT actor_user_id, actor_code, puzzle_id, puzzle_title, action, created_at
+       FROM blackridge_puzzle_audit
+       ORDER BY created_at DESC, id DESC
+       LIMIT $1`,
+      [Math.max(1, Math.min(200, Number(limit) || 100))]
+    );
+    return (result.rows || []).map((row) => ({
+      actorUserId: row.actor_user_id,
+      actorCode: row.actor_code || '',
+      puzzleId: row.puzzle_id,
+      puzzleTitle: row.puzzle_title || '',
+      action: row.action,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
+    }));
   }
 
   async listCreatorPermissions() {

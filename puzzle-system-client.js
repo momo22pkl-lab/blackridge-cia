@@ -72,7 +72,7 @@
     return section;
   }
 
-  function renderPuzzles(puzzles) {
+  function renderPuzzles(puzzles, canManagePuzzles = false) {
     listRoot.replaceChildren();
     if (!Array.isArray(puzzles) || !puzzles.length) {
       listRoot.append(createElement('div', 'br-puzzle-empty', 'لا توجد ألغاز منشأة حتى الآن.'));
@@ -95,6 +95,26 @@
         catch (_error) { showMessage(url, 'success'); }
       });
       actions.append(open, copy);
+      if (canManagePuzzles) {
+        const remove = createElement('button', 'br-puzzle-button br-puzzle-button-revoke', 'حذف اللغز');
+        remove.type = 'button';
+        remove.addEventListener('click', async () => {
+          const titleText = puzzle.title || 'بلا عنوان';
+          const confirmed = window.confirm(`هل أنت متأكد من حذف اللغز «${titleText}» نهائيًا؟ سيتم تعطيل رابط المشاركة.`);
+          if (!confirmed) return;
+          remove.disabled = true;
+          const result = await call('puzzles:delete', { puzzleId: puzzle.id });
+          if (result?.ok !== true) {
+            remove.disabled = false;
+            showMessage(result?.message || 'تعذر حذف اللغز.', 'error');
+            return;
+          }
+          if (lastCreatedToken === puzzle.shareToken) lastCreatedToken = '';
+          await loadOverview();
+          showMessage('تم حذف اللغز نهائيًا وتعطيل رابط المشاركة.', 'success');
+        });
+        actions.append(remove);
+      }
       card.append(title, detail, actions);
       listRoot.append(card);
     }
@@ -106,10 +126,11 @@
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ar', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
-  function renderPermissions(agents, audit) {
+  function renderPermissions(agents, audit, puzzleAudit) {
     const root = byId('br-puzzle-agent-list');
     const auditRoot = byId('br-puzzle-permission-audit');
-    if (!root || !auditRoot) return;
+    const deleteAuditRoot = byId('br-puzzle-delete-audit');
+    if (!root || !auditRoot || !deleteAuditRoot) return;
     root.replaceChildren();
     if (!Array.isArray(agents) || !agents.length) {
       root.append(createElement('div', 'br-puzzle-empty', 'لا توجد حسابات Agent في القائمة.'));
@@ -141,17 +162,32 @@
     auditRoot.replaceChildren();
     if (!Array.isArray(audit) || !audit.length) {
       auditRoot.append(createElement('div', 'br-puzzle-empty', 'لا توجد تغييرات مسجلة بعد.'));
-      return;
+    } else {
+      for (const entry of audit.slice(0, 60)) {
+        const row = createElement('div', 'br-puzzle-audit-row');
+        const action = entry.action === 'GRANTED' ? 'منح صلاحية' : 'سحب صلاحية';
+        row.append(
+          createElement('span', 'br-puzzle-audit-action', action),
+          createElement('span', '', `${entry.actorCode || 'قيادة'} ← ${entry.targetCode || 'Agent'}`),
+          createElement('time', '', formatDate(entry.createdAt))
+        );
+        auditRoot.append(row);
+      }
     }
-    for (const entry of audit.slice(0, 60)) {
-      const row = createElement('div', 'br-puzzle-audit-row');
-      const action = entry.action === 'GRANTED' ? 'منح صلاحية' : 'سحب صلاحية';
-      row.append(
-        createElement('span', 'br-puzzle-audit-action', action),
-        createElement('span', '', `${entry.actorCode || 'قيادة'} ← ${entry.targetCode || 'Agent'}`),
-        createElement('time', '', formatDate(entry.createdAt))
-      );
-      auditRoot.append(row);
+
+    deleteAuditRoot.replaceChildren();
+    if (!Array.isArray(puzzleAudit) || !puzzleAudit.length) {
+      deleteAuditRoot.append(createElement('div', 'br-puzzle-empty', 'لا توجد عمليات حذف مسجلة بعد.'));
+    } else {
+      for (const entry of puzzleAudit.slice(0, 60)) {
+        const row = createElement('div', 'br-puzzle-audit-row');
+        row.append(
+          createElement('span', 'br-puzzle-audit-action', 'حذف لغز'),
+          createElement('span', '', `${entry.actorCode || 'قيادة'} ← ${entry.puzzleTitle || 'لغز محذوف'}`),
+          createElement('time', '', formatDate(entry.createdAt))
+        );
+        deleteAuditRoot.append(row);
+      }
     }
   }
 
@@ -170,9 +206,9 @@
     if (status) status.textContent = 'متصل بقاعدة البيانات';
     byId('br-puzzle-create-panel').hidden = response.canCreate !== true;
     byId('br-puzzle-permissions-panel').hidden = response.canManagePermissions !== true;
-    renderPuzzles(response.puzzles);
+    renderPuzzles(response.puzzles, response.canManagePuzzles === true);
     if (lastCreatedToken) listRoot.prepend(renderShareLink(lastCreatedToken));
-    renderPermissions(response.agents, response.permissionAudit);
+    renderPermissions(response.agents, response.permissionAudit, response.puzzleAudit);
   }
 
   function renderPreview(prepared) {
