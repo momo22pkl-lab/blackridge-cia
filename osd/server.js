@@ -2421,6 +2421,15 @@ function createOsdRouter({
           ? { reason: cleanText(req.body?.reason, 1000) }
           : options.issue ? { signatureImageHash: sha256(signatureImage.slice(signatureImage.indexOf(',') + 1)) } : {}
       });
+      if (options.issue && document.created_by) {
+        await insertNotification(client, {
+          userId: document.created_by,
+          documentId: document.id,
+          type: 'DECISION',
+          title: 'Document issued',
+          message: `${document.document_number} was signed and issued.`
+        });
+      }
       await client.query('COMMIT');
       const result = await req.osdPool.query('SELECT * FROM osd_documents WHERE id=$1', [document.id]);
       res.json({ document: safeDocument(result.rows[0], req.osdUser) });

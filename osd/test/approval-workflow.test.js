@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const express = require('express');
+const signatureImage = require('./signature-fixture');
 const {
   createOsdRouter,
   roleProfileForPersonnel,
@@ -224,6 +225,18 @@ class ApprovalWorkflowPool {
       }
       return { rows: [] };
     }
+    if (query.startsWith('update osd_documents set status=$2') && query.includes('issued_at=$3')) {
+      const document = this.documents.find((item) => item.id === values[0]);
+      if (document) {
+        document.status = values[1];
+        document.issued_at = values[2];
+        document.signature = JSON.parse(values[3]);
+        document.integrity_hash = values[4];
+        document.issued_snapshot = JSON.parse(values[5]);
+        document.updated_at = new Date().toISOString();
+      }
+      return { rows: [] };
+    }
     if (query.startsWith('update osd_documents set status=$2')) {
       const document = this.documents.find((item) => item.id === values[0]);
       if (document) {
@@ -366,15 +379,47 @@ test('OSD approval workflow persists signatures, routed review, decisions and no
     if (route.decision === 'reject') assert.equal(decided.rejectionReason, 'Supporting details are required.');
     else assert.equal(decided.rejectionReason, null);
 
+    let expectedStatus = decided.status;
+    const shouldIssueToRequester = index === 0;
+    if (shouldIssueToRequester) {
+      const issuerId = userIdFor('person-senior');
+      const issueResponse = await request(issuerId, `/documents/${draft.id}/issue`, {
+        method: 'POST',
+        body: { signatureImage }
+      });
+      assert.equal(issueResponse.status, 200);
+      assert.equal((await issueResponse.json()).document.status, 'ISSUED');
+      expectedStatus = 'ISSUED';
+
+      const duplicateIssue = await request(issuerId, `/documents/${draft.id}/issue`, {
+        method: 'POST',
+        body: { signatureImage }
+      });
+      assert.equal(duplicateIssue.status, 409, 'an issued document cannot be issued twice');
+
+      const issuedList = await request(authorId, '/documents');
+      const issuedDocuments = (await issuedList.json()).documents;
+      assert.ok(
+        issuedDocuments.some((document) => document.id === draft.id && document.status === 'ISSUED'),
+        'the requester can find the issued document in their document list'
+      );
+    }
+
     const newLoginToken = pool.addSession(authorId);
     tokens.set(authorId, newLoginToken);
     const persisted = await request(authorId, `/documents/${draft.id}`);
     assert.equal(persisted.status, 200);
-    assert.equal((await persisted.json()).document.status, decided.status);
+    assert.equal((await persisted.json()).document.status, expectedStatus);
     const decisionNotifications = (await (await request(authorId, '/notifications')).json()).notifications;
     const decisionNotification = decisionNotifications.find((notification) => notification.documentId === draft.id);
     assert.ok(decisionNotification, 'the decision notification remains available after a fresh session');
     assert.equal(decisionNotification.type, 'DECISION');
+    if (shouldIssueToRequester) {
+      const issuedNotifications = decisionNotifications.filter((notification) =>
+        notification.documentId === draft.id && notification.title === 'Document issued');
+      assert.equal(issuedNotifications.length, 1, 'the requester receives one persistent issue notification');
+      assert.equal(issuedNotifications[0].href, `/osd/?document=${draft.id}`);
+    }
 
     const markRead = await request(authorId, `/notifications/${decisionNotification.id}/read`, {
       method: 'POST', body: {}
@@ -390,6 +435,7 @@ test('OSD approval workflow persists signatures, routed review, decisions and no
       'CREATOR SIGNED DOCUMENT',
       'SUBMITTED FOR APPROVAL',
       route.decision === 'reject' ? 'DOCUMENT REJECTED' : 'DOCUMENT APPROVED',
+      ...(shouldIssueToRequester ? ['DOCUMENT SIGNED AND ISSUED'] : []),
       'DOCUMENT VIEWED'
     ]);
   }
