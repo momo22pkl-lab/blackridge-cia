@@ -326,16 +326,37 @@ class PuzzleSystemStore {
     });
   }
 
-  async listPuzzles(limit = 100) {
+  async listPuzzles(limit = 100, { actorId = '', isLeadership = false } = {}) {
     const result = await this.pool.query(
-      `SELECT id, share_token, title, hint, creator_code, rows, cols, created_at
+      `SELECT id, share_token, title, hint, creator_code, creator_user_id, rows, cols, created_at
        FROM blackridge_puzzles
        WHERE active = TRUE
        ORDER BY created_at DESC, id DESC
        LIMIT $1`,
       [Math.max(1, Math.min(200, Number(limit) || 100))]
     );
-    return (result.rows || []).map(puzzleSummary);
+    const userId = clean(actorId, 120);
+    return (result.rows || []).map((row) => ({
+      ...puzzleSummary(row),
+      canDelete: isLeadership === true || (Boolean(userId) && String(row.creator_user_id || '') === userId)
+    }));
+  }
+
+  async deletePuzzle({ actor, puzzleId, isLeadership = false } = {}) {
+    const actorId = clean(actor?.id, 120);
+    const id = clean(puzzleId, 120);
+    if (!actorId || !id) return { ok: false, message: 'تعذر التحقق من صاحب طلب الحذف.' };
+
+    const result = await this.pool.query(
+      `DELETE FROM blackridge_puzzles
+       WHERE id = $1 AND active = TRUE
+         AND (creator_user_id = $2 OR $3::boolean = TRUE)
+       RETURNING id`,
+      [id, actorId, isLeadership === true]
+    );
+    const deleted = result.rows?.[0];
+    if (!deleted) return { ok: false, message: 'هذا اللغز غير موجود أو لا تملك صلاحية حذفه.' };
+    return { ok: true, puzzleId: deleted.id };
   }
 
   async getByShareToken(token) {

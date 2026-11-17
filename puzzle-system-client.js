@@ -95,6 +95,25 @@
         catch (_error) { showMessage(url, 'success'); }
       });
       actions.append(open, copy);
+      if (puzzle.canDelete === true) {
+        const remove = createElement('button', 'br-puzzle-button br-puzzle-button-revoke', 'حذف');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `حذف اللغز ${puzzle.title || ''}`);
+        remove.addEventListener('click', async () => {
+          const confirmed = window.confirm('حذف هذا اللغز نهائيًا؟ سيتوقف رابط المشاركة ولن يمكن استرجاعه.');
+          if (!confirmed) return;
+          remove.disabled = true;
+          const result = await call('puzzles:delete', { puzzleId: puzzle.id });
+          if (!result.ok) {
+            showMessage(result.message || 'تعذر حذف اللغز.', 'error');
+            remove.disabled = false;
+            return;
+          }
+          showMessage('تم حذف اللغز وإيقاف رابط المشاركة.', 'success');
+          await loadOverview();
+        });
+        actions.append(remove);
+      }
       card.append(title, detail, actions);
       listRoot.append(card);
     }

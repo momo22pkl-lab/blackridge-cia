@@ -144,7 +144,7 @@ function registerPuzzleSocket(socket, {
     if (!store) return unavailable();
     const isLeader = leadership(actor);
     const canCreate = isLeader || await store.hasCreatorPermission(actor.id);
-    const puzzles = await store.listPuzzles(100);
+    const puzzles = await store.listPuzzles(100, { actorId: actor.id, isLeadership: isLeader });
     let agents = [];
     let permissionAudit = [];
     if (isLeader) {
@@ -174,6 +174,24 @@ function registerPuzzleSocket(socket, {
       return { ok: false, message: 'إنشاء الألغاز متاح للقيادة ولـ Agents الذين مُنحوا الصلاحية.' };
     }
     return store.createPuzzle({ actor, input: payload, isLeadership: isLeader });
+  }));
+
+  socket.on('puzzles:delete', (payload, callback) => run(callback, async () => {
+    const actor = activeUser();
+    if (!actor) return { ok: false, message: 'سجّل الدخول إلى الموقع أولًا.' };
+    const store = storeForRequest();
+    if (!store) return unavailable();
+    const result = await store.deletePuzzle({
+      actor,
+      puzzleId: clean(payload?.puzzleId, 120),
+      isLeadership: leadership(actor)
+    });
+    if (result.ok) {
+      for (const [key, progress] of publicProgress) {
+        if (String(progress.puzzle?.id || '') === String(result.puzzleId)) publicProgress.delete(key);
+      }
+    }
+    return result;
   }));
 
   const changePermission = (action) => (payload, callback) => run(callback, async () => {

@@ -171,12 +171,116 @@ test('public and authenticated sockets expose separate puzzle event surfaces', (
   assert.equal(memberSocket.handlers.has('puzzles:create'), true);
 });
 
+test('puzzle list only grants delete visibility to its creator or leadership', async () => {
+  const pool = {
+    async query(sql) {
+      assert.match(sql, /creator_user_id/);
+      return { rows: [{
+        id: 'PUZ-owned',
+        share_token: 'a'.repeat(64),
+        title: 'Owned puzzle',
+        creator_code: 'AG-1',
+        creator_user_id: 'agent-1',
+        rows: 3,
+        cols: 3,
+        created_at: '2026-11-17T00:00:00.000Z'
+      }] };
+    },
+    async connect() { return { query: this.query.bind(this), release() {} }; }
+  };
+  const store = new PuzzleSystemStore(pool);
+  const owned = await store.listPuzzles(100, { actorId: 'agent-1' });
+  const other = await store.listPuzzles(100, { actorId: 'agent-2' });
+  const leader = await store.listPuzzles(100, { actorId: 'leader-1', isLeadership: true });
+  assert.equal(owned[0].canDelete, true);
+  assert.equal(other[0].canDelete, false);
+  assert.equal(leader[0].canDelete, true);
+  assert.equal('creatorUserId' in owned[0], false);
+});
+
+test('puzzle deletion is scoped to owner or leadership and removes the database row', async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      const allowed = params[2] === true || params[1] === 'agent-1';
+      return { rows: allowed ? [{ id: params[0] }] : [] };
+    },
+    async connect() { return { query: this.query.bind(this), release() {} }; }
+  };
+  const store = new PuzzleSystemStore(pool);
+  const owner = await store.deletePuzzle({ actor: { id: 'agent-1' }, puzzleId: 'PUZ-owned' });
+  assert.deepEqual(owner, { ok: true, puzzleId: 'PUZ-owned' });
+  assert.match(calls[0].sql, /DELETE FROM blackridge_puzzles/);
+  assert.ok(calls[0].sql.includes('creator_user_id = $2'));
+
+  const denied = await store.deletePuzzle({ actor: { id: 'agent-2' }, puzzleId: 'PUZ-owned' });
+  assert.equal(denied.ok, false);
+
+  const leader = await store.deletePuzzle({
+    actor: { id: 'leader-1' },
+    puzzleId: 'PUZ-owned',
+    isLeadership: true
+  });
+  assert.equal(leader.ok, true);
+});
+
+test('unauthenticated visitors cannot delete puzzles', async () => {
+  let deleteCalled = false;
+  const socket = new FakeSocket('anonymous-delete');
+  registerPuzzleSocket(socket, {
+    getStore: () => ({
+      async deletePuzzle() { deleteCalled = true; return { ok: true, puzzleId: 'PUZ-owned' }; }
+    }),
+    requireUser: () => null
+  });
+  const result = await socket.trigger('puzzles:delete', { puzzleId: 'PUZ-owned' });
+  assert.equal(result.ok, false);
+  assert.equal(deleteCalled, false);
+});
+
+test('authorized puzzle deletion invalidates existing public play sessions', async () => {
+  const storedPuzzle = makeStoredPuzzle();
+  const store = {
+    async getByShareToken() { return storedPuzzle; },
+    async deletePuzzle({ actor, puzzleId, isLeadership }) {
+      assert.equal(actor.id, 'agent-1');
+      assert.equal(puzzleId, storedPuzzle.id);
+      assert.equal(isLeadership, false);
+      return { ok: true, puzzleId: storedPuzzle.id };
+    }
+  };
+  const publicSocket = new FakeSocket('delete-player');
+  registerPublicPuzzleSocket(publicSocket, { getStore: () => store });
+  const loaded = await publicSocket.trigger('puzzles:share:load', { shareToken: 'c'.repeat(64) });
+  assert.equal(loaded.ok, true);
+
+  const ownerSocket = new FakeSocket('delete-owner');
+  registerPuzzleSocket(ownerSocket, {
+    getStore: () => store,
+    requireUser: () => ({ id: 'agent-1' }),
+    isLeadership: () => false
+  });
+  const deleted = await ownerSocket.trigger('puzzles:delete', { puzzleId: storedPuzzle.id });
+  assert.equal(deleted.ok, true);
+  const afterDelete = await publicSocket.trigger('puzzles:share:place', {
+    shareToken: 'c'.repeat(64),
+    pieceId: storedPuzzle.pieces[0].id,
+    row: storedPuzzle.pieces[0].row,
+    col: storedPuzzle.pieces[0].col
+  });
+  assert.equal(afterDelete.ok, false);
+});
+
 test('gallery, create payload, and public namespace remain wired', () => {
   const injected = injectPuzzleMarkup('<html><head></head><body>\n  <div class="content-area"></div>\n</body></html>');
   assert.match(injected, /accept="\.jpg,\.jpeg,\.png,\.webp,image\/jpeg,image\/png,image\/webp"/);
   assert.doesNotMatch(injected, /\bcapture\b/);
   assert.match(puzzleClientSource, /bleed:\s*preparedPuzzle\.bleed/);
   assert.match(puzzleClientSource, /shareToken = response\?\.puzzle\?\.shareToken/);
+  assert.match(puzzleClientSource, /puzzle\.canDelete === true/);
+  assert.match(puzzleClientSource, /window\.confirm/);
+  assert.match(puzzleClientSource, /call\('puzzles:delete'/);
   assert.match(puzzlePlayerSource, /window\.io\(['"]\/public-puzzles['"]\)/);
   assert.match(serverSource, /io\.of\(['"]\/public-puzzles['"]\)/);
   assert.doesNotMatch(puzzlePlayerHtml, /<a[^>]+href=["']\/["']/i);
