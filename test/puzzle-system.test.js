@@ -14,7 +14,7 @@ const {
   safeSharedPuzzle,
   verifyAnswer
 } = require('../puzzle-system-store');
-const { injectPuzzleMarkup, registerPuzzleSocket, registerPublicPuzzleSocket } = require('../puzzle-system');
+const { injectPuzzleMarkup, registerPuzzleRoutes, registerPuzzleSocket, registerPublicPuzzleSocket } = require('../puzzle-system');
 const puzzleClientSource = readFileSync(path.join(__dirname, '../puzzle-system-client.js'), 'utf8');
 const puzzleGameSource = readFileSync(path.join(__dirname, '../puzzle-game.js'), 'utf8');
 const puzzlePlayerSource = readFileSync(path.join(__dirname, '../puzzle-player.js'), 'utf8');
@@ -171,119 +171,23 @@ test('public and authenticated sockets expose separate puzzle event surfaces', (
   assert.equal(memberSocket.handlers.has('puzzles:create'), true);
 });
 
-test('puzzle list only grants delete visibility to its creator or leadership', async () => {
-  const pool = {
-    async query(sql) {
-      assert.match(sql, /creator_user_id/);
-      return { rows: [{
-        id: 'PUZ-owned',
-        share_token: 'a'.repeat(64),
-        title: 'Owned puzzle',
-        creator_code: 'AG-1',
-        creator_user_id: 'agent-1',
-        rows: 3,
-        cols: 3,
-        created_at: '2026-11-17T00:00:00.000Z'
-      }] };
-    },
-    async connect() { return { query: this.query.bind(this), release() {} }; }
-  };
-  const store = new PuzzleSystemStore(pool);
-  const owned = await store.listPuzzles(100, { actorId: 'agent-1' });
-  const other = await store.listPuzzles(100, { actorId: 'agent-2' });
-  const leader = await store.listPuzzles(100, { actorId: 'leader-1', isLeadership: true });
-  assert.equal(owned[0].canDelete, true);
-  assert.equal(other[0].canDelete, false);
-  assert.equal(leader[0].canDelete, true);
-  assert.equal('creatorUserId' in owned[0], false);
-});
-
-test('puzzle deletion is scoped to owner or leadership and removes the database row', async () => {
-  const calls = [];
-  const pool = {
-    async query(sql, params = []) {
-      calls.push({ sql, params });
-      const allowed = params[2] === true || params[1] === 'agent-1';
-      return { rows: allowed ? [{ id: params[0] }] : [] };
-    },
-    async connect() { return { query: this.query.bind(this), release() {} }; }
-  };
-  const store = new PuzzleSystemStore(pool);
-  const owner = await store.deletePuzzle({ actor: { id: 'agent-1' }, puzzleId: 'PUZ-owned' });
-  assert.deepEqual(owner, { ok: true, puzzleId: 'PUZ-owned' });
-  assert.match(calls[0].sql, /DELETE FROM blackridge_puzzles/);
-  assert.ok(calls[0].sql.includes('creator_user_id = $2'));
-
-  const denied = await store.deletePuzzle({ actor: { id: 'agent-2' }, puzzleId: 'PUZ-owned' });
-  assert.equal(denied.ok, false);
-
-  const leader = await store.deletePuzzle({
-    actor: { id: 'leader-1' },
-    puzzleId: 'PUZ-owned',
-    isLeadership: true
-  });
-  assert.equal(leader.ok, true);
-});
-
-test('unauthenticated visitors cannot delete puzzles', async () => {
-  let deleteCalled = false;
-  const socket = new FakeSocket('anonymous-delete');
-  registerPuzzleSocket(socket, {
-    getStore: () => ({
-      async deletePuzzle() { deleteCalled = true; return { ok: true, puzzleId: 'PUZ-owned' }; }
-    }),
-    requireUser: () => null
-  });
-  const result = await socket.trigger('puzzles:delete', { puzzleId: 'PUZ-owned' });
-  assert.equal(result.ok, false);
-  assert.equal(deleteCalled, false);
-});
-
-test('authorized puzzle deletion invalidates existing public play sessions', async () => {
-  const storedPuzzle = makeStoredPuzzle();
-  const store = {
-    async getByShareToken() { return storedPuzzle; },
-    async deletePuzzle({ actor, puzzleId, isLeadership }) {
-      assert.equal(actor.id, 'agent-1');
-      assert.equal(puzzleId, storedPuzzle.id);
-      assert.equal(isLeadership, false);
-      return { ok: true, puzzleId: storedPuzzle.id };
-    }
-  };
-  const publicSocket = new FakeSocket('delete-player');
-  registerPublicPuzzleSocket(publicSocket, { getStore: () => store });
-  const loaded = await publicSocket.trigger('puzzles:share:load', { shareToken: 'c'.repeat(64) });
-  assert.equal(loaded.ok, true);
-
-  const ownerSocket = new FakeSocket('delete-owner');
-  registerPuzzleSocket(ownerSocket, {
-    getStore: () => store,
-    requireUser: () => ({ id: 'agent-1' }),
-    isLeadership: () => false
-  });
-  const deleted = await ownerSocket.trigger('puzzles:delete', { puzzleId: storedPuzzle.id });
-  assert.equal(deleted.ok, true);
-  const afterDelete = await publicSocket.trigger('puzzles:share:place', {
-    shareToken: 'c'.repeat(64),
-    pieceId: storedPuzzle.pieces[0].id,
-    row: storedPuzzle.pieces[0].row,
-    col: storedPuzzle.pieces[0].col
-  });
-  assert.equal(afterDelete.ok, false);
-});
-
 test('gallery, create payload, and public namespace remain wired', () => {
   const injected = injectPuzzleMarkup('<html><head></head><body>\n  <div class="content-area"></div>\n</body></html>');
   assert.match(injected, /accept="\.jpg,\.jpeg,\.png,\.webp,image\/jpeg,image\/png,image\/webp"/);
   assert.doesNotMatch(injected, /\bcapture\b/);
   assert.match(puzzleClientSource, /bleed:\s*preparedPuzzle\.bleed/);
   assert.match(puzzleClientSource, /shareToken = response\?\.puzzle\?\.shareToken/);
-  assert.match(puzzleClientSource, /puzzle\.canDelete === true/);
-  assert.match(puzzleClientSource, /window\.confirm/);
-  assert.match(puzzleClientSource, /call\('puzzles:delete'/);
   assert.match(puzzlePlayerSource, /window\.io\(['"]\/public-puzzles['"]\)/);
   assert.match(serverSource, /io\.of\(['"]\/public-puzzles['"]\)/);
   assert.doesNotMatch(puzzlePlayerHtml, /<a[^>]+href=["']\/["']/i);
+});
+
+test('puzzle deletion UI is visible only to managers and asks for confirmation', () => {
+  assert.match(puzzleClientSource, /renderPuzzles\(response\.puzzles, response\.canManagePuzzles === true\)/);
+  assert.match(puzzleClientSource, /if \(canManagePuzzles\)/);
+  assert.match(puzzleClientSource, /window\.confirm\(/);
+  assert.match(puzzleClientSource, /call\('puzzles:delete'/);
+  assert.match(puzzleSystemSource, /id="br-puzzle-delete-audit"/);
 });
 
 test('normal and large image files are orientation-normalized and scaled before slicing', async () => {
@@ -428,6 +332,72 @@ test('leader permission changes are restricted to Agents and write through the s
   assert.equal(grantedTarget, agent.id);
 });
 
+test('only puzzle managers can delete, and deleting invalidates open and refreshed share links', async () => {
+  const shareToken = 'a'.repeat(64);
+  const storedPuzzle = { ...makeStoredPuzzle(), id: 'PUZ-delete', share_token: shareToken };
+  let exists = true;
+  let deleteCalls = 0;
+  const store = {
+    async hasCreatorPermission(userId) { return userId === 'authorized-agent'; },
+    async deletePuzzle({ puzzleId }) {
+      deleteCalls += 1;
+      assert.equal(puzzleId, storedPuzzle.id);
+      exists = false;
+      return { ok: true, puzzleId, shareToken };
+    },
+    async getByShareToken(token) {
+      return exists && token === shareToken ? storedPuzzle : null;
+    }
+  };
+
+  const publicSocket = new FakeSocket('public-delete-check');
+  registerPublicPuzzleSocket(publicSocket, { getStore: () => store });
+  const beforeDelete = await publicSocket.trigger('puzzles:share:load', { shareToken });
+  assert.equal(beforeDelete.ok, true);
+
+  const unauthorizedSocket = new FakeSocket('unauthorized-delete');
+  registerPuzzleSocket(unauthorizedSocket, {
+    getStore: () => store,
+    requireUser: () => ({ id: 'unauthorized-agent', rank: 'AGENT' }),
+    isLeadership: () => false
+  });
+  const denied = await unauthorizedSocket.trigger('puzzles:delete', { puzzleId: storedPuzzle.id });
+  assert.equal(denied.ok, false);
+  assert.equal(deleteCalls, 0);
+
+  const managerSocket = new FakeSocket('authorized-delete');
+  registerPuzzleSocket(managerSocket, {
+    getStore: () => store,
+    requireUser: () => ({ id: 'authorized-agent', publicCode: 'AG-1', rank: 'AGENT' }),
+    isLeadership: () => false
+  });
+  const deleted = await managerSocket.trigger('puzzles:delete', { puzzleId: storedPuzzle.id });
+  assert.deepEqual(deleted, { ok: true, puzzleId: storedPuzzle.id });
+  assert.equal(deleteCalls, 1);
+  assert.equal((await store.getByShareToken(shareToken)), null);
+
+  const activeSession = await publicSocket.trigger('puzzles:share:place', {
+    shareToken,
+    pieceId: storedPuzzle.pieces[0].id,
+    row: 0,
+    col: 0
+  });
+  assert.equal(activeSession.ok, false);
+
+  let sharedPageStatus = 200;
+  let sharedPageHandler;
+  const fakeApp = { get(route, handler) { if (route === '/puzzles/:shareToken') sharedPageHandler = handler; } };
+  registerPuzzleRoutes(fakeApp, { getStore: () => store });
+  const response = {
+    status(code) { sharedPageStatus = code; return this; },
+    send() { return this; },
+    set() { return this; },
+    sendFile() { return this; }
+  };
+  await sharedPageHandler({ params: { shareToken } }, response);
+  assert.equal(sharedPageStatus, 404);
+});
+
 test('PostgreSQL schema and creation store image pieces outside browser storage', async () => {
   assert.ok(SCHEMA_SQL.some((sql) => /image_data BYTEA/i.test(sql)));
   assert.ok(SCHEMA_SQL.some((sql) => /blackridge_puzzle_permission_audit/i.test(sql)));
@@ -465,4 +435,66 @@ test('PostgreSQL schema and creation store image pieces outside browser storage'
   const insert = calls.find((entry) => /INSERT INTO blackridge_puzzles/i.test(entry.sql));
   assert.ok(Buffer.isBuffer(insert.params[12]));
   assert.equal(JSON.parse(insert.params[18]).length, 4);
+});
+
+test('hard deletion removes only the selected puzzle and records an audit entry', async () => {
+  assert.ok(SCHEMA_SQL.some((sql) => /CREATE TABLE IF NOT EXISTS blackridge_puzzle_audit/i.test(sql)));
+  const shareTokens = ['b'.repeat(64), 'c'.repeat(64)];
+  const puzzles = [
+    { id: 'PUZ-remove', share_token: shareTokens[0], title: 'Remove this one', hint: '', creator_code: 'AG-1', rows: 2, cols: 2, piece_bleed: 12, created_at: '2026-11-15T00:00:00.000Z', active: true },
+    { id: 'PUZ-keep', share_token: shareTokens[1], title: 'Keep this one', hint: '', creator_code: 'AG-2', rows: 2, cols: 2, piece_bleed: 12, created_at: '2026-11-14T00:00:00.000Z', active: true }
+  ];
+  const audit = [];
+  const calls = [];
+  const query = async (sql, params = []) => {
+    calls.push({ sql, params });
+    if (/^DELETE FROM blackridge_puzzles/i.test(sql)) {
+      const index = puzzles.findIndex((puzzle) => puzzle.id === params[0] && puzzle.active);
+      return { rows: index < 0 ? [] : [puzzles.splice(index, 1)[0]] };
+    }
+    if (/INSERT INTO blackridge_puzzle_audit/i.test(sql)) {
+      audit.push({
+        id: params[0],
+        actor_user_id: params[1],
+        actor_code: params[2],
+        puzzle_id: params[3],
+        puzzle_title: params[4],
+        action: 'DELETED',
+        created_at: '2026-11-17T00:00:00.000Z'
+      });
+      return { rows: [] };
+    }
+    if (/FROM blackridge_puzzles/i.test(sql) && /WHERE active = TRUE/i.test(sql)) {
+      return { rows: puzzles.filter((puzzle) => puzzle.active).slice(0, params[0]) };
+    }
+    if (/FROM blackridge_puzzles/i.test(sql) && /WHERE share_token = \$1/i.test(sql)) {
+      return { rows: puzzles.filter((puzzle) => puzzle.share_token === params[0] && puzzle.active) };
+    }
+    if (/FROM blackridge_puzzle_audit/i.test(sql)) return { rows: audit };
+    return { rows: [] };
+  };
+  const pool = {
+    query,
+    async connect() { return { query, release() {} }; }
+  };
+  const store = new PuzzleSystemStore(pool, { makeId: () => 'AUDIT-1' });
+
+  const result = await store.deletePuzzle({
+    actor: { id: 'agent-1', publicCode: 'AG-1' },
+    puzzleId: 'PUZ-remove'
+  });
+  assert.deepEqual(result, { ok: true, puzzleId: 'PUZ-remove', shareToken: shareTokens[0] });
+  assert.deepEqual((await store.listPuzzles()).map((puzzle) => puzzle.id), ['PUZ-keep']);
+  assert.equal(await store.getByShareToken(shareTokens[0]), null);
+  assert.equal((await store.getByShareToken(shareTokens[1])).id, 'PUZ-keep');
+  assert.deepEqual(await store.listPuzzleAudit(), [{
+    actorUserId: 'agent-1',
+    actorCode: 'AG-1',
+    puzzleId: 'PUZ-remove',
+    puzzleTitle: 'Remove this one',
+    action: 'DELETED',
+    createdAt: '2026-11-17T00:00:00.000Z'
+  }]);
+  assert.match(calls.find((entry) => /^DELETE FROM blackridge_puzzles/i.test(entry.sql)).sql, /WHERE id = \$1 AND active = TRUE/);
+  assert.equal(calls.filter((entry) => /^DELETE FROM blackridge_puzzles/i.test(entry.sql)).length, 1);
 });
