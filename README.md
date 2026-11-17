@@ -34,6 +34,24 @@ Other platforms can be entered manually with a platform name, username, and HTTP
 Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
 Run npm test to check the PostgreSQL state-store adapter.
 
+## CIA Voice Studio
+
+The main dashboard includes an independent, audio-only voice studio. It uses ElevenLabs Speech-to-Speech with the multilingual voice-conversion model for voice changes, ElevenLabs Scribe v2 for transcription, and OpenAI Chat Completions for translation. The translated text is spoken with the selected ElevenLabs voice. Missing provider configuration returns an explicit error; the app never shows a fabricated conversion.
+
+Configure these as server-side environment variables in the deployment platform. Never commit their values:
+
+- `ELEVENLABS_API_KEY`
+- `OPENAI_API_KEY` (translation mode only)
+- `ELEVENLABS_VOICE_ID_OBSIDIAN`
+- `ELEVENLABS_VOICE_ID_DEEP_AUTHORITY`
+- `ELEVENLABS_VOICE_ID_OPERATOR`
+- `ELEVENLABS_VOICE_ID_PROFESSIONAL`
+- Optional: `CIA_VOICE_TRANSLATION_MODEL` (defaults to `gpt-4o-mini`)
+
+Each voice ID must identify a non-impersonating voice that the ElevenLabs account can use for voice conversion and multilingual speech. The IDs themselves are not returned to the browser. Configure only voices you have the rights to use; this feature does not clone voices.
+
+Audio is held temporarily in the browser and server memory, then sent to ElevenLabs for conversion/transcription and to OpenAI for translation. Blackridge does not write recordings or generated clips to its database or filesystem. The user must check the consent box before processing. Provider data handling and retention remain subject to the configured provider accounts. The in-memory per-user limit is six processing requests per ten minutes, and uploads/results are limited to 5 MB. WAV support depends on the ElevenLabs account; MP3 is the default.
+
 ## Field reports
 
 The main CIA dashboard's field-report deletion and image-download requirements are documented in [docs/field-report-requirements.md](docs/field-report-requirements.md). These requirements are separate from the signed OSD document workspace below.
