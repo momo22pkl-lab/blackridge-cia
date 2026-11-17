@@ -852,10 +852,15 @@ function showDocument(document) {
 }
 
 async function openDocument(id) {
-  const cached = state.documents.find((document) => document.id === id);
-  if (!cached) return;
-  const { document } = await request(`/documents/${encodeURIComponent(id)}`);
-  showDocument(document);
+  if (!id) return;
+  try {
+    const { document } = await request(`/documents/${encodeURIComponent(id)}`);
+    state.documents = [document, ...state.documents.filter((item) => item.id !== document.id)];
+    renderRows();
+    showDocument(document);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 async function saveDraft(event) {

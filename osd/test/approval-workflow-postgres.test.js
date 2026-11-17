@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const express = require('express');
 const { Pool } = require('pg');
+const signatureImage = require('./signature-fixture');
 const { createOsdRouter, roleProfileForPersonnel, sha256 } = require('../server');
 
 const databaseUrl = process.env.OSD_TEST_DATABASE_URL;
@@ -310,15 +311,33 @@ test('OSD approval workflow persists rank-based decisions atomically in isolated
     });
     assert.equal(approved.status, 200);
     assert.equal((await approved.json()).document.status, 'APPROVED');
+    let expectedStatus = 'APPROVED';
+    const shouldIssue = route.author === 'person-high';
+    if (shouldIssue) {
+      const issued = await request(route.reviewer, `/documents/${documentId}/issue`, {
+        method: 'POST',
+        body: { signatureImage }
+      });
+      assert.equal(issued.status, 200);
+      assert.equal((await issued.json()).document.status, 'ISSUED');
+      expectedStatus = 'ISSUED';
+    }
     await logoutAndLogin(route.author);
     const reopened = await request(route.author, `/documents/${documentId}`);
     assert.equal(reopened.status, 200);
-    assert.equal((await reopened.json()).document.status, 'APPROVED');
+    assert.equal((await reopened.json()).document.status, expectedStatus);
+    const listedAfterLogin = await request(route.author, '/documents');
+    assert.ok((await listedAfterLogin.json()).documents.some((item) =>
+      item.id === documentId && item.status === expectedStatus));
     const decisionNotifications = await request(route.author, '/notifications');
-    assert.equal(
-      (await decisionNotifications.json()).notifications.filter((item) => item.documentId === documentId).length,
-      1
-    );
+    const documentNotifications = (await decisionNotifications.json()).notifications.filter((item) =>
+      item.documentId === documentId);
+    assert.equal(documentNotifications.length, shouldIssue ? 2 : 1);
+    if (shouldIssue) {
+      const issuedNotification = documentNotifications.find((item) => item.title === 'Document issued');
+      assert.ok(issuedNotification);
+      assert.equal(issuedNotification.href, `/osd/?document=${documentId}`);
+    }
   }
 
   const failedSaveDocumentId = await createSignedDocument('person-chief', 'Failed approval write');
