@@ -19,10 +19,19 @@ const puzzleClientSource = readFileSync(path.join(__dirname, '../puzzle-system-c
 const puzzleGameSource = readFileSync(path.join(__dirname, '../puzzle-game.js'), 'utf8');
 const puzzlePlayerSource = readFileSync(path.join(__dirname, '../puzzle-player.js'), 'utf8');
 const puzzlePlayerHtml = readFileSync(path.join(__dirname, '../puzzle-player.html'), 'utf8');
+const puzzleSystemSource = readFileSync(path.join(__dirname, '../puzzle-system.js'), 'utf8');
 const serverSource = readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 
 const JPEG = 'data:image/jpeg;base64,/9j/2Q==';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2r8AAAAASUVORK5CYII=';
+
+test('public puzzle asks only for the answer and does not expose notes', () => {
+  assert.doesNotMatch(puzzlePlayerHtml, /ما الموقع\؟/);
+  assert.match(puzzlePlayerHtml, /aria-label="الإجابة"/);
+  assert.doesNotMatch(puzzlePlayerSource, /result\.solutionNote|الموقع:/);
+  assert.doesNotMatch(puzzleSystemSource, /name="solutionNote"/);
+  assert.doesNotMatch(puzzleClientSource, /solutionNote/);
+});
 
 function makePayload() {
   const pieces = [];
@@ -267,7 +276,7 @@ test('public player must place every piece before receiving the full photo or cl
   });
   assert.equal(rightAnswer.correct, true);
   assert.equal(rightAnswer.answer, storedPuzzle.answer_text);
-  assert.equal(rightAnswer.solutionNote, storedPuzzle.solution_note);
+  assert.equal('solutionNote' in rightAnswer, false);
 });
 
 test('Agent creation is denied unless a leader has granted the database permission', async () => {

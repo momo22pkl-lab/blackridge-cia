@@ -180,12 +180,12 @@
     image.alt = 'الصورة الكاملة بعد إكمال البازل';
     board.replaceChildren(image);
     byId('br-player-tray-wrap').hidden = true;
-    byId('br-player-intro').textContent = 'اكتمل تركيب الصورة. اقرأ اللغز واكتب إجابتك لكشف الموقع.';
+    byId('br-player-intro').textContent = 'اكتملت الصورة. اقرأ اللغز وأدخل إجابتك.';
     byId('br-player-clue').textContent = result.clue || '';
     byId('br-player-final-photo').src = result.image;
     byId('br-player-complete').hidden = false;
     byId('br-player-answer').focus({ preventScroll: true });
-    setMessage('اكتمل البازل. أجب عن اللغز لكشف الإجابة النهائية.', 'success');
+    setMessage('اكتمل البازل. أدخل إجابتك.', 'success');
   }
 
   async function checkAnswer(event) {
@@ -200,17 +200,12 @@
     const reveal = byId('br-player-reveal');
     reveal.replaceChildren();
     const heading = document.createElement('strong');
-    heading.textContent = `الموقع: ${result.answer}`;
+    heading.textContent = result.answer;
     reveal.append(heading);
-    if (result.solutionNote) {
-      const note = document.createElement('p');
-      note.textContent = result.solutionNote;
-      reveal.append(note);
-    }
     reveal.hidden = false;
     input.disabled = true;
     button.disabled = true;
-    setMessage('إجابة صحيحة — تم كشف الموقع.', 'success');
+    setMessage('إجابة صحيحة.', 'success');
   }
 
   async function loadPuzzle() {
