@@ -3464,7 +3464,7 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
     });
 
     const SHARED_STORAGE_KEYS = ['cia_users','cia_queue','cia_character_queue','cia_chats','cia_reports','cia_cases','cia_map_locations','cia_hq_locations'];
-    const ciaSocket = typeof io === 'function' ? io() : null;
+    const ciaSocket = typeof io === 'function' ? io({ transports: ['websocket'] }) : null;
     window.blackRidgeSocket = ciaSocket;
     let ciaSocketReady = false;
     let ciaSessionAuthenticated = false;
