@@ -3652,6 +3652,8 @@ body.ibp-mode{overflow:hidden;background:#05070b!important;color:#e7edf5}body.ib
       });
 
       ciaSocket.on('connect', function() {
+        const authMsg = document.getElementById('auth-msg');
+        if (authMsg && authMsg.innerText === 'الاتصال بالسيرفر غير جاهز.') authMsg.innerText = '';
         radioLifecycleConnectPending = false;
         ciaSocketReady = true;
         const seed = {};
