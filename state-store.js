@@ -63,4 +63,84 @@ class PostgresStateStore {
   }
 }
 
-module.exports = { PostgresStateStore, CREATE_TABLE_SQL, SELECT_STATE_SQL, SEED_STATE_SQL, UPSERT_STATE_SQL, UPSERT_PRIMARY_CHIEF_HANDOVER_SQL };
+function safeReadinessErrorCode(error) {
+  const code = String(error && error.code || '').trim();
+  return /^[A-Z0-9_]{1,32}$/.test(code) ? code : '';
+}
+
+async function checkReadiness({ state, postgresPool, stateStore, requirePostgres = false } = {}) {
+  if (!state || !Array.isArray(state.cia_users)) {
+    return { ready: false, system: 'application-state', reason: 'state_unavailable' };
+  }
+  if (requirePostgres && !postgresPool) {
+    return { ready: false, system: 'postgresql', reason: 'database_not_configured' };
+  }
+  if (!postgresPool) {
+    return { ready: true, storage: 'file' };
+  }
+
+  try {
+    await postgresPool.query({ text: 'SELECT 1', query_timeout: 3000 });
+  } catch (error) {
+    const code = safeReadinessErrorCode(error);
+    return {
+      ready: false,
+      system: 'postgresql',
+      reason: 'database_unavailable',
+      ...(code ? { code } : {})
+    };
+  }
+
+  if (stateStore && stateStore.lastWriteError) {
+    const code = safeReadinessErrorCode(stateStore.lastWriteError);
+    return {
+      ready: false,
+      system: 'postgresql-persistence',
+      reason: 'persistence_write_failed',
+      ...(code ? { code } : {})
+    };
+  }
+
+  return { ready: true, storage: 'postgres' };
+}
+
+function createReadinessReporter({ logger = console } = {}) {
+  let previousState = null;
+
+  return function reportReadiness(readiness = {}) {
+    const ready = readiness.ready === true;
+    const system = String(readiness.system || 'application').replace(/[^a-z0-9-]/gi, '');
+    const reason = String(readiness.reason || (ready ? 'ready' : 'unknown')).replace(/[^a-z0-9_-]/gi, '');
+    const code = safeReadinessErrorCode(readiness);
+    const signature = ready
+      ? `ready:${readiness.storage || 'unknown'}`
+      : `failed:${system}:${reason}:${code}`;
+
+    if (signature === previousState) return;
+    const wasPreviouslyChecked = previousState !== null;
+    previousState = signature;
+
+    if (!ready) {
+      const codeSuffix = code ? ` code=${code}` : '';
+      if (logger && typeof logger.error === 'function') {
+        logger.error(`[BLACK RIDGE] Readiness failed: system=${system} reason=${reason}${codeSuffix}`);
+      }
+      return;
+    }
+
+    if (wasPreviouslyChecked && logger && typeof logger.info === 'function') {
+      logger.info(`[BLACK RIDGE] Readiness recovered: system=application storage=${readiness.storage || 'unknown'}`);
+    }
+  };
+}
+
+module.exports = {
+  PostgresStateStore,
+  checkReadiness,
+  createReadinessReporter,
+  CREATE_TABLE_SQL,
+  SELECT_STATE_SQL,
+  SEED_STATE_SQL,
+  UPSERT_STATE_SQL,
+  UPSERT_PRIMARY_CHIEF_HANDOVER_SQL
+};

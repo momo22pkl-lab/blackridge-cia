@@ -50,6 +50,12 @@ function splitPackets(body) {
 async function pollUntil(client, predicate, timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (typeof client.nextPacket === 'function') {
+      const packet = await client.nextPacket(deadline - Date.now());
+      const match = predicate(packet);
+      if (match) return match;
+      continue;
+    }
     const response = await fetch(client.sessionUrl);
     assert.equal(response.ok, true, 'Socket.IO polling request failed');
     for (const packet of splitPackets(await response.text())) {
@@ -91,6 +97,11 @@ async function connectSocket(baseUrl) {
   const socketId = JSON.parse(namespacePacket.slice(2)).sid;
   let nextAckId = 0;
   const eventQueue = [];
+  const packets = [];
+  let pollPromise = null;
+  let pollController = null;
+  let pollError = null;
+  let closed = false;
 
   function rememberEvent(packet) {
     if (!packet.startsWith('42')) return false;
@@ -101,13 +112,82 @@ async function connectSocket(baseUrl) {
     return true;
   }
 
+  function ensurePoll() {
+    if (closed) return null;
+    if (pollPromise) return pollPromise;
+    pollController = new AbortController();
+    pollPromise = (async () => {
+      const response = await fetch(sessionUrl, { signal: pollController.signal });
+      if (!response.ok) {
+        throw new Error(`Socket.IO polling request failed with HTTP ${response.status}`);
+      }
+      for (const packet of splitPackets(await response.text())) {
+        if (packet === '2') {
+          const pong = await post('3');
+          if (!pong.ok) throw new Error(`Socket.IO heartbeat response failed with HTTP ${pong.status}`);
+          continue;
+        }
+        packets.push(packet);
+        if (packets.length > 200) packets.shift();
+      }
+    })().catch((error) => {
+      if (!closed) pollError = error;
+      throw error;
+    }).finally(() => {
+      pollPromise = null;
+      pollController = null;
+    });
+    return pollPromise;
+  }
+
+  function nextPacket(timeoutMs = 6000) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback(value);
+      };
+      const timer = setTimeout(
+        () => finish(reject, new Error('Timed out waiting for a Socket.IO packet.')),
+        Math.max(1, timeoutMs)
+      );
+      const waitForPacket = () => {
+        if (settled) return;
+        if (packets.length) {
+          finish(resolve, packets.shift());
+          return;
+        }
+        if (pollError) {
+          finish(reject, pollError);
+          return;
+        }
+        const activePoll = ensurePoll();
+        if (!activePoll) {
+          finish(reject, new Error('Socket.IO polling client is closed.'));
+          return;
+        }
+        activePoll.then(waitForPacket, (error) => finish(reject, error));
+      };
+      waitForPacket();
+    });
+  }
+
+  // Keep each polling session alive while the integration test exercises other clients.
+  const keepaliveTimer = setInterval(() => {
+    if (!pollPromise && !pollError) ensurePoll()?.catch(() => {});
+  }, 1000);
+  keepaliveTimer.unref?.();
+
   return {
     id: socketId,
     sessionUrl,
+    nextPacket,
     async emit(event, payload = {}) {
       const ackId = nextAckId++;
       const sent = await post('42' + ackId + JSON.stringify([event, payload]));
-      assert.equal(sent.ok, true, 'Socket.IO event POST failed');
+      assert.equal(sent.ok, true, `Socket.IO event POST failed with HTTP ${sent.status}`);
       const packet = await pollUntil(this, (frame) => {
         if (frame.startsWith('42')) { rememberEvent(frame); return null; }
         return frame.startsWith('43' + ackId) ? frame : null;
@@ -129,7 +209,10 @@ async function connectSocket(baseUrl) {
       return packet;
     },
     async close() {
+      closed = true;
+      clearInterval(keepaliveTimer);
       try { await post('41'); } catch (_error) {}
+      pollController?.abort();
     }
   };
 }
@@ -412,6 +495,17 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
 
   const chief = await login('Radio Chief', '8401');
+  const sosResult = await speaker.emit('sos:broadcast', {
+    location: { lat: 34.5, lng: 35.5, label: 'Readiness smoke test' },
+    count: 2,
+    status: 'OPEN',
+    note: 'Temporary startup-isolation test'
+  });
+  assert.equal(sosResult.ok, true, 'an authenticated user must be able to send an SOS after startup');
+  assert.equal(sosResult.alert.location.label, 'Readiness smoke test');
+  const receivedSOS = await listenerB.waitFor('sos:alert', (alert) => alert.id === sosResult.alert.id);
+  assert.equal(receivedSOS.status, 'OPEN');
+
   assert.equal((await chief.emit('radio:join', { channel: 'CH-1' })).ok, true);
   await speaker.waitFor('state:update', (snapshot) =>
     Array.isArray(snapshot.cia_users) && snapshot.cia_users.some((user) =>
@@ -432,7 +526,7 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(initialAdminList.ok, true, 'CIA CHIEF must be able to subscribe to the radio monitor');
   assert.deepEqual(
     initialAdminList.channels.filter((channel) => channel.type === 'main').map((channel) => channel.id).sort(),
-    ['CH-1', 'CH-3', 'TAC-1']
+    ['CH-1', 'CH-3', 'CH-4', 'CH-5', 'CH-6', 'CH-7', 'CH-8', 'CH-9', 'CH-10', 'TAC-1'].sort()
   );
   assert.equal(initialAdminList.channels.find((channel) => channel.name === '103.6').accessMode, 'open', 'legacy custom waves must stay open when no access mode was saved');
   const deniedAdminList = await speaker.emit('radio:admin:subscribe', {});
@@ -594,19 +688,19 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal(reopenWave.accessMode, 'open');
   assert.equal((await speaker.emit('radio:join', { channel: privateJoinA.channel })).ok, true, 'an open wave must accept members again');
 
-  assert.equal((await listenerA.emit('radio:join', { channel: 'CH-4' })).ok, true, 'an active-duty member must be able to join a new public main wave');
+  assert.equal((await switcher.emit('radio:join', { channel: 'CH-4' })).ok, true, 'an active-duty member must be able to join a new public main wave');
   assert.equal((await speaker.emit('radio:join', { channel: 'CH-4' })).ok, true);
   const newMainWaveTransmission = await startRadioTransmission(speaker, 'CH-4');
   assert.equal(newMainWaveTransmission.ok, true, 'a new main wave must carry radio audio');
-  assert.deepEqual(new Set(newMainWaveTransmission.peers), new Set([listenerA.id]));
-  await listenerA.waitFor('radio:state', (event) =>
+  assert.deepEqual(new Set(newMainWaveTransmission.peers), new Set([switcher.id]));
+  await switcher.waitFor('radio:state', (event) =>
     event.channel === 'CH-4' && event.socketId === speaker.id && event.ptt === true
   );
   await observer.waitFor('radio:speaker', (event) =>
     event.channel === 'CH-4' && event.socketId === speaker.id && event.speaking === true
   );
   assert.equal((await speaker.emit('radio:ptt:stop', { channel: 'CH-4' })).ok, true);
-  await listenerA.waitFor('radio:state', (event) =>
+  await switcher.waitFor('radio:state', (event) =>
     event.channel === 'CH-4' && event.socketId === speaker.id && event.ptt === false
   );
 });

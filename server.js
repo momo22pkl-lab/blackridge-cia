@@ -24,7 +24,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
-const { PostgresStateStore } = require('./state-store');
+const { PostgresStateStore, checkReadiness, createReadinessReporter } = require('./state-store');
 const { isPrimaryChief, restorePrimaryChiefInState } = require('./primary-chief-protection');
 const { createOsdRouter } = require('./osd/server');
 const { createOsdSsoTicketStore } = require('./osd/sso-tickets');
@@ -79,6 +79,7 @@ const {
 const DEFAULT_SECURITY_BLOCKED_TERMS = Object.freeze(DEFAULT_BLOCKED_TERMS.map(({ term }) => term));
 const SECURITY_BLOCKED_TERM_LIMIT = 250;
 const osdSsoTickets = createOsdSsoTicketStore();
+const reportReadiness = createReadinessReporter();
 
 function normalizeSecurityBlockedTerms(value) {
   return normalizeBlockedTerms(value, SECURITY_BLOCKED_TERM_LIMIT);
@@ -3025,33 +3026,33 @@ function characterListForUser(
    REST compatibility endpoints
 --------------------------------------------------------- */
 
-app.get(
-  '/health',
-  (req, res) => {
-    res.json({
-      ok: true,
-      service:
-        'BLACK RIDGE CITY CIA SYSTEM',
-      time: now(),
-      personnel:
-        state.cia_users.length
-    });
-  }
-);
+async function healthHandler(_req, res) {
+  const readiness = await checkReadiness({
+    state,
+    postgresPool,
+    stateStore,
+    requirePostgres: IS_RENDER_RUNTIME
+  });
+  reportReadiness(readiness);
+  const ready = readiness.ready === true;
+  return res.status(ready ? 200 : 503).json({
+    ok: ready,
+    ready,
+    service: 'BLACK RIDGE CITY CIA SYSTEM',
+    time: now(),
+    personnel: Array.isArray(state && state.cia_users) ? state.cia_users.length : 0,
+    ...(ready
+      ? { storage: readiness.storage }
+      : {
+          system: readiness.system,
+          reason: readiness.reason,
+          ...(readiness.code ? { code: readiness.code } : {})
+        })
+  });
+}
 
-app.get(
-  '/api/health',
-  (req, res) => {
-    res.json({
-      ok: true,
-      service:
-        'BLACK RIDGE CITY CIA SYSTEM',
-      time: now(),
-      personnel:
-        state.cia_users.length
-    });
-  }
-);
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 app.get(
   '/api/state',
@@ -11711,6 +11712,12 @@ function installPersistenceEmitBarriers() {
 }
 
 async function initializePersistence() {
+  if (IS_RENDER_RUNTIME && !DATABASE_URL) {
+    const error = new Error('Render startup requires DATABASE_URL for durable core state.');
+    error.code = 'DATABASE_URL_REQUIRED';
+    throw error;
+  }
+
   if (DATABASE_URL) {
     const { Pool } = require('pg');
     postgresPool = new Pool({

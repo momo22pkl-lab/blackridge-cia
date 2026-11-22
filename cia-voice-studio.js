@@ -7,6 +7,7 @@ const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 12000;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT = 6;
+let voiceStudioInitializationWarningLogged = false;
 
 const VOICE_PRESETS = Object.freeze({
   obsidian: { label: 'The Unknown · مجهول مهيب ومرعب', env: 'ELEVENLABS_VOICE_ID_OBSIDIAN' },
@@ -154,8 +155,14 @@ function toAudioBuffer(value) {
 }
 
 function createCiaVoiceStudioService(options = {}) {
-  const env = options.env || process.env;
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const settings = options && typeof options === 'object' ? options : {};
+  const runtimeEnv = globalThis.process &&
+    globalThis.process.env &&
+    typeof globalThis.process.env === 'object'
+    ? globalThis.process.env
+    : Object.create(null);
+  const env = settings.env && typeof settings.env === 'object' ? settings.env : runtimeEnv;
+  const fetchImpl = settings.fetchImpl || globalThis.fetch;
   const openAiModel = String(env.CIA_VOICE_TRANSLATION_MODEL || 'gpt-4o-mini').trim();
 
   function getStatus() {
@@ -322,7 +329,7 @@ function createCiaVoiceStudioService(options = {}) {
     return providerAudio(Buffer.from(await response.arrayBuffer()), format);
   }
 
-  async function process(payload) {
+  async function processAudio(payload) {
     const { audio, mimeType, extension } = validateAudio(payload.audio, payload.mimeType);
     const voiceId = requireVoiceId(String(payload.preset || 'obsidian'));
     const format = OUTPUT_FORMATS[String(payload.format || 'mp3')];
@@ -346,13 +353,53 @@ function createCiaVoiceStudioService(options = {}) {
     };
   }
 
-  return { getStatus, process };
+  return { getStatus, process: processAudio };
+}
+
+function createUnavailableVoiceStudioService() {
+  return {
+    getStatus() {
+      return {
+        voiceReady: false,
+        translationReady: false,
+        presets: Object.entries(VOICE_PRESETS).map(([id, preset]) => ({
+          id,
+          label: preset.label,
+          available: false
+        }))
+      };
+    },
+    async process() {
+      throw new VoiceStudioError('SERVICE_UNAVAILABLE', 'خدمة الصوت غير متاحة حالياً.');
+    }
+  };
+}
+
+function voiceInitializationFailureReason(error) {
+  if (error instanceof TypeError) return 'configuration_type_error';
+  const code = String(error && error.code || '').trim();
+  if (/^[A-Z0-9_]{1,32}$/.test(code)) return 'dependency_error';
+  return 'initialization_error';
 }
 
 function registerCiaVoiceStudioSocket(socket, context = {}) {
-  const service = context.service || createCiaVoiceStudioService(context);
-  const requireUser = typeof context.requireUser === 'function' ? context.requireUser : () => null;
-  const now = typeof context.now === 'function' ? context.now : Date.now;
+  const settings = context && typeof context === 'object' ? context : {};
+  let service = settings.service;
+  if (!service) {
+    try {
+      service = createCiaVoiceStudioService(settings);
+    } catch (error) {
+      service = createUnavailableVoiceStudioService();
+      if (!voiceStudioInitializationWarningLogged) {
+        voiceStudioInitializationWarningLogged = true;
+        console.warn(
+          `[BLACK RIDGE] Optional subsystem unavailable: system=voice-studio reason=${voiceInitializationFailureReason(error)} action=disabled`
+        );
+      }
+    }
+  }
+  const requireUser = typeof settings.requireUser === 'function' ? settings.requireUser : () => null;
+  const now = typeof settings.now === 'function' ? settings.now : Date.now;
   const requests = new Map();
 
   function callbackFor(callback, result) {
