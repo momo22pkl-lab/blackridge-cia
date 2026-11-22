@@ -1,0 +1,93 @@
+# Black Ridge City CIA
+
+## Render PostgreSQL setup
+
+1. Create a Render PostgreSQL database. In the web service settings, link its Internal Database URL as the DATABASE_URL environment variable. Keep the database and web service in the same region.
+2. Set the build command to npm install and the start command to npm start.
+3. On first startup, the server creates the blackridge_app_state table. If the database has no state row, it imports an accessible legacy cia-data.json file once; otherwise it starts from the configured empty state.
+4. Keep one web-service instance and one Node process (WEB_CONCURRENCY=1). Application state is stored as a JSONB snapshot; notifications use a separate PostgreSQL table. Socket.IO sessions are in memory, so multiple instances are not supported safely.
+
+Never put DATABASE_URL in source control or paste it into chat. Configure it as an environment variable in Render. When migrating an existing service, restore or attach any old JSON state file before the first database startup; files already lost from an ephemeral filesystem cannot be recovered by the migration.
+
+## Weapon Armory
+
+The main CIA dashboard includes a sector-scoped WEAPON ARMORY. Members can see only the enabled stock for their active sector, hold at most three active weapon issues across their account, and return only weapons whose sector-specific policy permits it; the return policy is recorded with each issue. Stock decrements, issue records, returns, and audit results are committed together in PostgreSQL transactions; the server locks the member row to enforce the limit across concurrent requests. Sector commanders with the existing rank/code scope can inspect their sector's records read-only. Only CIA CHIEF and SUPREME COMMANDER can manage the catalog and sector assignments, set each sector's return policy, adjust stock with a required reason, and search issue/audit history across their existing scope. These are server-side permissions.
+
+The armory creates its own additive PostgreSQL tables at startup. It is intentionally disabled when `DATABASE_URL` is absent rather than falling back to browser storage or the local JSON state file. Sector access follows the `sector` value on active CIA battalion records; keep those assignments current when sector names change. No additional environment variables are required.
+
+## First CIA CHIEF setup
+
+Before claiming the first CIA CHIEF, set `CIA_CHIEF_REGISTRATION_CODE` and `CIA_CHIEF_SAVE_CODE` as server-side environment variables in Render. Use different random values of at least 24 characters. Do not commit them to the repository or store them in browser storage. The server removes these fields from legacy persisted state when loading it, and new snapshots do not contain them. Existing chief accounts can continue to log in without these bootstrap variables.
+
+## Social account linking
+
+Social accounts are stored as an optional `socialAccounts` field on the existing CIA member record in the current JSONB state. Existing records normalize to an empty list; no member account, military code, rank, permission, or login credential is recreated or changed. OAuth access tokens are used only for the Discord profile lookup and are never saved.
+
+Members who do not want to link a social account can optionally save a contact name on that same existing member record. The name is shown only to the member and leaders allowed by the existing member-management scope; browser-side shared-state caches omit it.
+
+To enable official Discord linking, create an OAuth2 application in the Discord Developer Portal and register the exact callback URL `https://<your-site-host>/auth/discord/callback`. Configure `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_URI` as server-side environment variables; keep the client secret out of source control and browser storage. The OAuth grant requests only the `identify` scope and uses state validation plus PKCE. Local development may use an `http://localhost:<port>/auth/discord/callback` or `http://127.0.0.1:<port>/auth/discord/callback` redirect.
+
+Other platforms can be entered manually with a platform name, username, and HTTP(S) profile URL. Manual entries are explicitly marked unverified because the system cannot establish ownership. Discord identities and manual profile URLs are checked for duplicates across member records. Self-service linking and unlinking are tied to the currently authenticated member; leadership visibility follows the existing server-side member-management scope.
+
+## Local development
+
+Run npm install and npm start. Without DATABASE_URL, local development uses .blackridge-data/cia-data.json.
+Run npm test to check the PostgreSQL state-store adapter.
+
+## CIA Voice Studio
+
+The main dashboard includes an independent voice studio with three modes: voice conversion, audio translation, and direct text-to-speech. Voice conversion uses ElevenLabs Speech-to-Speech; translation uses ElevenLabs Scribe v2, OpenAI Chat Completions, and ElevenLabs Text-to-Speech; direct text mode uses ElevenLabs Text-to-Speech without sending audio or invoking Speech-to-Speech. The script helper creates an editable OpenAI draft for a mission brief, radio call, formal announcement, or directive. A draft is never converted automatically.
+
+Configure these as server-side environment variables in the deployment platform. Never commit their values:
+
+- `ELEVENLABS_API_KEY`
+- `OPENAI_API_KEY` (translation and script-draft modes)
+- `ELEVENLABS_VOICE_ID_OBSIDIAN`
+- `ELEVENLABS_VOICE_ID_DEEP_AUTHORITY`
+- `ELEVENLABS_VOICE_ID_OPERATOR`
+- `ELEVENLABS_VOICE_ID_PROFESSIONAL`
+- Optional: `CIA_VOICE_TRANSLATION_MODEL` (defaults to `gpt-4o-mini`)
+
+Each voice ID must identify a non-impersonating voice that the ElevenLabs account can use for voice conversion and multilingual speech. The IDs themselves are not returned to the browser. Configure only voices you have the rights to use; this feature does not clone voices.
+
+The consent checkbox is required before sending a recording, text, or script notes to the relevant provider. Voice previews are fetched only when requested and played only when the configured voice exposes a real preview; no sample is fabricated. Recordings, drafts, generated clips, and preview clips are not written to the database or filesystem. Browser audio URLs are revoked when results are deleted or the user leaves the studio. Provider data handling and retention remain subject to the configured provider accounts. Processing is limited to six requests per user every ten minutes; preview lookups are limited to twelve. Audio uploads and results are limited to 5 MB, direct text is limited to 12,000 characters, and output audio must match the selected MP3 or WAV format.
+
+## Field reports
+
+The main CIA dashboard's field-report deletion and image-download requirements are documented in [docs/field-report-requirements.md](docs/field-report-requirements.md). These requirements are separate from the signed OSD document workspace below.
+
+## Official Sector Documents (OSD)
+
+OSD is a separate document system at `/osd/`, with independent document tables and sessions; it does not combine documents with the CIA dashboard or map. OSD identities are linked to active, approved CIA personnel records and roles/clearance are derived server-side from the recorded rank. First-time chief setup requires a registered `CIA CHIEF` military code and server-side `OSD_BOOTSTRAP_CODE` (at least 24 random characters); the selected master password is stored only as a salted scrypt hash. Personnel sign in with their military code; the primary chief signs in with that code and the master password. OSD also requires `OSD_SIGNING_SECRET` (at least 32 random bytes). See [the OSD setup and scope notes](osd/README.md). Never commit either secret.
+
+## Intelligence notification center
+
+On startup, the server creates the `notifications` table and its indexes in the configured PostgreSQL database. Official warnings and their one-time replies also have dedicated `official_warnings` and `official_warning_responses` tables; existing warning notification rows are backfilled idempotently and retained. Warning delivery still uses the notification center, while the dedicated tables provide the canonical warning history and enforce one response per warning. These are automatic, additive schema migrations; no manual SQL or new environment variables are required. Keep `DATABASE_URL` configured for durable notifications and warnings on Render. Without it, local development falls back to the existing JSON state file.
+
+Notifications are scoped to the authenticated server-side user ID. The Socket.IO API supports counts, paged/searchable lists, missed-event summaries, mark-read, and acknowledgement of critical alerts. Reading a critical alert does not acknowledge it. The client adds a responsive notification center, critical unread banner, live toasts, and a welcome-back brief. `npm test` also exercises per-user isolation and notification state transitions.
+
+## Mobile Web Push (Phase 1)
+
+An active, authenticated member can opt in on each device. The current mobile-push composer issues an official summons with a subject and message to either all eligible members assigned to active battalions in a selected sector or one eligible member in that sector. Only CIA CHIEF and SUPREME COMMANDER can send. The client may request a sector or member ID, but the server revalidates the sender's leadership permission and each recipient's active status, eligibility, and sector membership before persisting or sending.
+
+Each official summons is stored as an owner-scoped `OFFICIAL_SUMMON` row in the existing `notifications` table; its issuer, recipient, reference number, subject, and issue time use the existing JSONB metadata field. It appears in the existing intelligence center and is also sent to each recipient's subscribed phone devices. A recipient without a push subscription still receives the saved in-app summons. A tap on a phone notification opens that recipient's matching in-app record. This does not create a second notification database or require a schema migration. Older generic mobile-push payloads remain accepted for compatibility.
+
+The site controls the in-app document design. Android and browser notification surfaces are OS-managed, so the service worker can provide the title, live message text, existing BLACK RIDGE emblem, Arabic direction hint, same-origin click-through, and a “عرض تفاصيل الاستدعاء” action where the browser supports actions, but cannot guarantee a custom card layout on every device.
+
+Before sending real pushes, configure these server-side environment variables:
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY` — keep this in the deployment's secret manager; never commit or share it.
+- `VAPID_SUBJECT` — a valid `mailto:` contact or HTTPS URL for the application operator.
+
+Generate a matching key pair with `npx web-push generate-vapid-keys`, then put the public and private keys into the service environment. If any value is missing or invalid, subscription and sending remain disabled without affecting login, radio, IBP, OSD, or the existing notification center. PostgreSQL installations create the separate `web_push_subscriptions` table and index automatically; local development stores subscriptions in the existing local state file.
+
+The application must be served over HTTPS outside localhost. Android browsers based on current Chrome support Web Push when the user grants permission. On iPhone/iPad, Web Push requires iOS/iPadOS 16.4 or later, adding the site to the Home Screen, opening it from that icon, and granting permission from the user-initiated enable button. Other browsers without the required Notification, Service Worker, or Push API show a compatibility message and do not attempt to subscribe.
+
+## Security and moderation
+
+The existing `security-moderation.js` engine remains the only text detector. The main server applies it to legacy and current Socket.IO write paths before any event handler can persist or broadcast text, including chat, radio, user/profile fields, SOS, reports, cases, operations, IBP, notifications, cover identities, and the weapon armory. `shared:data:seed` and `shared:data:set` are also screened so cached-state synchronization cannot bypass normal save events. The OSD REST router checks every JSON write request; the standalone personnel module uses the same engine for warnings, suspensions, dismissals, reports, and inquiries. Because that personnel module is a separate process, it reads engine defaults and `CIA_SECURITY_BLOCKED_TERMS`, not the main app's persisted dictionary. CIA CHIEF can still add, edit, and remove entries in the persisted English/Arabic dictionary from the Security Center. The one-time dictionary migration removes ambiguous standalone defaults that matched ordinary Arabic phrases, preserves other custom entries, and makes the engine's former fixed defaults editable. Additional deployment-level terms can still be configured with `CIA_SECURITY_BLOCKED_TERMS`, one term or phrase per line or separated by semicolons; these environment entries are separate from the in-app dictionary. Entries default to level 1; prefix one with `LEVEL 2:`, `LEVEL 3:`, or `LEVEL 4:` to set its severity. These terms are configuration, not credentials.
+
+Threat patterns are level 3 and suspicious script/HTML payload patterns are level 4. Obfuscation bypass attempts are level 3; repeated level-1 violations are raised to level 2. Level 2 restricts the account and ends its active session; levels 3–4 suspend it. Only CIA CHIEF can restore a restricted account, and restoration leaves it off duty. Security incidents and notification actions are persisted without storing the blocked message text; alert delivery reuses the durable notification center, including offline delivery.
+
+For a new Socket.IO write event, use a write-action event name so the pre-handler boundary scans its text fields; add an explicit field list to `moderation-boundaries.js` for unusual event names or control fields that need exact handling. The Security Center dictionary editor is intentionally excluded so authorized administrators can manage its rules. For a new HTTP API or an uploaded form, mount `createHttpTextModerationMiddleware` after the request parser and before route handlers, or call and await `moderateOutgoingText(actor, text, channel)` before persistence or broadcast. If moderation returns a truthy result, stop the operation and return the existing message or the generic warning. Browser warnings are feedback only, not a security boundary. PDF attachment bytes in the standalone personnel reports endpoint are not parsed; the associated `reportBody` field is screened, but text embedded inside an uploaded PDF is not.
