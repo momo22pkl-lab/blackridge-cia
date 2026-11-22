@@ -79,6 +79,48 @@ test('status reports configured presets without returning voice IDs or keys', ()
   assert.ok(!JSON.stringify(status).includes('unit-test-key'));
 });
 
+test('default service configuration safely reads the Node environment', () => {
+  const service = createCiaVoiceStudioService();
+  const status = service.getStatus();
+  assert.equal(typeof status.voiceReady, 'boolean');
+  assert.equal(typeof status.translationReady, 'boolean');
+});
+
+test('missing provider credentials disable voice features without throwing', () => {
+  const service = createCiaVoiceStudioService({ env: {} });
+  const status = service.getStatus();
+  assert.equal(status.voiceReady, false);
+  assert.equal(status.translationReady, false);
+  assert.ok(status.presets.every((preset) => preset.available === false));
+});
+
+test('voice initialization failures stay isolated from Socket.IO connections', async () => {
+  const handlers = {};
+  const socket = { on: (event, handler) => { handlers[event] = handler; } };
+  const brokenEnv = new Proxy({}, {
+    get(_target, key) {
+      if (key === 'CIA_VOICE_TRANSLATION_MODEL') throw new Error('test-only configuration read failure');
+      return undefined;
+    }
+  });
+
+  assert.doesNotThrow(() => registerCiaVoiceStudioSocket(socket, {
+    env: brokenEnv,
+    requireUser: () => ({ id: 'member-init-failure' })
+  }));
+
+  let status;
+  handlers['cia-voice:status']({}, (value) => { status = value; });
+  assert.equal(status.ok, true);
+  assert.equal(status.voiceReady, false);
+  assert.equal(status.translationReady, false);
+
+  let response;
+  await handlers['cia-voice:process']({ consent: true }, (value) => { response = value; });
+  assert.equal(response.ok, false);
+  assert.equal(response.code, 'SERVICE_UNAVAILABLE');
+});
+
 test('voice mode calls real speech-to-speech with the selected original voice', async () => {
   const calls = [];
   const service = createCiaVoiceStudioService({

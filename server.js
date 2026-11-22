@@ -24,7 +24,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
-const { PostgresStateStore } = require('./state-store');
+const { PostgresStateStore, checkReadiness } = require('./state-store');
 const { isPrimaryChief, restorePrimaryChiefInState } = require('./primary-chief-protection');
 const { createOsdRouter } = require('./osd/server');
 const { createOsdSsoTicketStore } = require('./osd/sso-tickets');
@@ -3027,14 +3027,21 @@ function characterListForUser(
 
 app.get(
   '/health',
-  (req, res) => {
-    res.json({
-      ok: true,
-      service:
-        'BLACK RIDGE CITY CIA SYSTEM',
+  async (_req, res) => {
+    const readiness = await checkReadiness({
+      state,
+      postgresPool,
+      stateStore,
+      requirePostgres: IS_RENDER_RUNTIME
+    });
+    const ready = readiness.ready;
+    return res.status(ready ? 200 : 503).json({
+      ok: ready,
+      ready,
+      service: 'BLACK RIDGE CITY CIA SYSTEM',
       time: now(),
-      personnel:
-        state.cia_users.length
+      personnel: Array.isArray(state && state.cia_users) ? state.cia_users.length : 0,
+      ...(ready ? { storage: readiness.storage } : { reason: readiness.reason })
     });
   }
 );
