@@ -375,17 +375,26 @@ function createUnavailableVoiceStudioService() {
   };
 }
 
+function voiceInitializationFailureReason(error) {
+  if (error instanceof TypeError) return 'configuration_type_error';
+  const code = String(error && error.code || '').trim();
+  if (/^[A-Z0-9_]{1,32}$/.test(code)) return 'dependency_error';
+  return 'initialization_error';
+}
+
 function registerCiaVoiceStudioSocket(socket, context = {}) {
   const settings = context && typeof context === 'object' ? context : {};
   let service = settings.service;
   if (!service) {
     try {
       service = createCiaVoiceStudioService(settings);
-    } catch (_error) {
+    } catch (error) {
       service = createUnavailableVoiceStudioService();
       if (!voiceStudioInitializationWarningLogged) {
         voiceStudioInitializationWarningLogged = true;
-        console.warn('[BLACK RIDGE] CIA Voice Studio initialization failed; audio features are disabled.');
+        console.warn(
+          `[BLACK RIDGE] Optional subsystem unavailable: system=voice-studio reason=${voiceInitializationFailureReason(error)} action=disabled`
+        );
       }
     }
   }

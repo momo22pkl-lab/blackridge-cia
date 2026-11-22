@@ -495,6 +495,17 @@ test('radio signaling supports concurrent talkers, resumes an open duty record, 
   assert.equal((await switcher.emit('radio:ptt:stop', { channel: 'TAC-1' })).ok, true);
 
   const chief = await login('Radio Chief', '8401');
+  const sosResult = await speaker.emit('sos:broadcast', {
+    location: { lat: 34.5, lng: 35.5, label: 'Readiness smoke test' },
+    count: 2,
+    status: 'OPEN',
+    note: 'Temporary startup-isolation test'
+  });
+  assert.equal(sosResult.ok, true, 'an authenticated user must be able to send an SOS after startup');
+  assert.equal(sosResult.alert.location.label, 'Readiness smoke test');
+  const receivedSOS = await listenerB.waitFor('sos:alert', (alert) => alert.id === sosResult.alert.id);
+  assert.equal(receivedSOS.status, 'OPEN');
+
   assert.equal((await chief.emit('radio:join', { channel: 'CH-1' })).ok, true);
   await speaker.waitFor('state:update', (snapshot) =>
     Array.isArray(snapshot.cia_users) && snapshot.cia_users.some((user) =>

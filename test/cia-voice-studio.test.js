@@ -99,15 +99,25 @@ test('voice initialization failures stay isolated from Socket.IO connections', a
   const socket = { on: (event, handler) => { handlers[event] = handler; } };
   const brokenEnv = new Proxy({}, {
     get(_target, key) {
-      if (key === 'CIA_VOICE_TRANSLATION_MODEL') throw new Error('test-only configuration read failure');
+      if (key === 'CIA_VOICE_TRANSLATION_MODEL') throw new TypeError('test-only configuration read failure');
       return undefined;
     }
   });
 
-  assert.doesNotThrow(() => registerCiaVoiceStudioSocket(socket, {
-    env: brokenEnv,
-    requireUser: () => ({ id: 'member-init-failure' })
-  }));
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+  try {
+    assert.doesNotThrow(() => registerCiaVoiceStudioSocket(socket, {
+      env: brokenEnv,
+      requireUser: () => ({ id: 'member-init-failure' })
+    }));
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.match(warnings[0], /system=voice-studio reason=configuration_type_error action=disabled/);
+  assert.ok(!warnings[0].includes('test-only configuration read failure'));
 
   let status;
   handlers['cia-voice:status']({}, (value) => { status = value; });
