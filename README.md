@@ -36,12 +36,12 @@ Run npm test to check the PostgreSQL state-store adapter.
 
 ## CIA Voice Studio
 
-The main dashboard includes an independent, audio-only voice studio. It uses ElevenLabs Speech-to-Speech with the multilingual voice-conversion model for voice changes, ElevenLabs Scribe v2 for transcription, and OpenAI Chat Completions for translation. The translated text is spoken with the selected ElevenLabs voice. Missing provider configuration returns an explicit error; the app never shows a fabricated conversion.
+The main dashboard includes an independent voice studio with three modes: voice conversion, audio translation, and direct text-to-speech. Voice conversion uses ElevenLabs Speech-to-Speech; translation uses ElevenLabs Scribe v2, OpenAI Chat Completions, and ElevenLabs Text-to-Speech; direct text mode uses ElevenLabs Text-to-Speech without sending audio or invoking Speech-to-Speech. The script helper creates an editable OpenAI draft for a mission brief, radio call, formal announcement, or directive. A draft is never converted automatically.
 
 Configure these as server-side environment variables in the deployment platform. Never commit their values:
 
 - `ELEVENLABS_API_KEY`
-- `OPENAI_API_KEY` (translation mode only)
+- `OPENAI_API_KEY` (translation and script-draft modes)
 - `ELEVENLABS_VOICE_ID_OBSIDIAN`
 - `ELEVENLABS_VOICE_ID_DEEP_AUTHORITY`
 - `ELEVENLABS_VOICE_ID_OPERATOR`
@@ -50,7 +50,7 @@ Configure these as server-side environment variables in the deployment platform.
 
 Each voice ID must identify a non-impersonating voice that the ElevenLabs account can use for voice conversion and multilingual speech. The IDs themselves are not returned to the browser. Configure only voices you have the rights to use; this feature does not clone voices.
 
-Audio is held temporarily in the browser and server memory, then sent to ElevenLabs for conversion/transcription and to OpenAI for translation. Blackridge does not write recordings or generated clips to its database or filesystem. The user must check the consent box before processing. Provider data handling and retention remain subject to the configured provider accounts. The in-memory per-user limit is six processing requests per ten minutes, and uploads/results are limited to 5 MB. WAV support depends on the ElevenLabs account; MP3 is the default.
+The consent checkbox is required before sending a recording, text, or script notes to the relevant provider. Voice previews are fetched only when requested and played only when the configured voice exposes a real preview; no sample is fabricated. Recordings, drafts, generated clips, and preview clips are not written to the database or filesystem. Browser audio URLs are revoked when results are deleted or the user leaves the studio. Provider data handling and retention remain subject to the configured provider accounts. Processing is limited to six requests per user every ten minutes; preview lookups are limited to twelve. Audio uploads and results are limited to 5 MB, direct text is limited to 12,000 characters, and output audio must match the selected MP3 or WAV format.
 
 ## Field reports
 

@@ -24,10 +24,15 @@
   let sourceBlob = null;
   let sourceUrl = '';
   let resultUrl = '';
+  let previewObjectUrl = '';
   let resultExtension = 'mp3';
   let voiceReady = false;
   let translationReady = false;
+  let scriptReady = false;
+  let availablePresets = new Map();
   let processing = false;
+  let previewing = false;
+  let studioWasActive = false;
 
   function element(id) {
     return root && root.document && typeof root.document.getElementById === 'function'
@@ -48,10 +53,26 @@
 
   function refreshButtons() {
     const processButton = element('cvs-process');
+    const generateButton = element('cvs-script-generate');
+    const previewButton = element('cvs-preview-button');
     const startButton = element('cvs-record-start');
     const stopButton = element('cvs-record-stop');
+    const scriptText = element('cvs-script-text');
+    const presetSelect = element('cvs-preset');
+    const selectedPresetAvailable = Boolean(presetSelect && presetSelect.selectedOptions &&
+      presetSelect.selectedOptions[0] && !presetSelect.selectedOptions[0].disabled);
     if (processButton) {
-      processButton.disabled = processing || !sourceBlob || !voiceReady || (mode === 'translate' && !translationReady);
+      processButton.disabled = processing || !voiceReady || !selectedPresetAvailable ||
+        (mode === 'text'
+          ? !String(scriptText && scriptText.value || '').trim() || String(scriptText && scriptText.value || '').trim().length > 12000
+          : !sourceBlob || (mode === 'translate' && !translationReady));
+    }
+    if (generateButton) generateButton.disabled = processing || !scriptReady;
+    if (previewButton) previewButton.disabled = processing || previewing || !selectedPresetAvailable;
+    if (root && root.document && typeof root.document.querySelectorAll === 'function') {
+      root.document.querySelectorAll('[data-cvs-preview]').forEach((button) => {
+        button.disabled = processing || previewing;
+      });
     }
     if (startButton) startButton.disabled = processing || !!recorder;
     if (stopButton) stopButton.disabled = !recorder;
@@ -62,6 +83,7 @@
     if (!socket || !socket.connected) {
       voiceReady = false;
       translationReady = false;
+      scriptReady = false;
       setStatus('سجّل الدخول وانتظر اتصال النظام للتحقق من إعدادات الصوت.', 'warning');
       refreshButtons();
       return;
@@ -76,13 +98,22 @@
       }
       voiceReady = response.voiceReady === true;
       translationReady = response.translationReady === true;
+      scriptReady = response.scriptReady === true;
       const presets = new Map((response.presets || []).map((preset) => [preset.id, preset]));
+      availablePresets = presets;
+      const generatorStatus = element('cvs-generator-status');
+      if (generatorStatus) {
+        generatorStatus.textContent = scriptReady
+          ? 'المسودة ستظهر في مربع النص لتراجعها وتحررها؛ لن تتحول إلى صوت تلقائياً.'
+          : 'مولّد النصوص معطّل حتى يُهيأ OPENAI_API_KEY على الخادم.';
+      }
       const select = element('cvs-preset');
       if (select) {
         Array.from(select.options || []).forEach((option) => {
           if (!option.value) return;
           const preset = presets.get(option.value);
           option.disabled = !preset || preset.available !== true;
+          option.hidden = !preset || preset.available !== true;
         });
         const selected = presets.get(select.value);
         if (!selected || selected.available !== true) {
@@ -90,14 +121,59 @@
           if (firstAvailable) select.value = firstAvailable.id;
         }
       }
-      if (!voiceReady) {
+      updatePresetDescription(presets);
+      renderAvailableVoices(response.presets || []);
+      if (mode === 'text' && !scriptReady) {
+        setStatus('مولّد النصوص غير جاهز. يلزم إعداد OpenAI على الخادم.', 'warning');
+      } else if (!voiceReady) {
         setStatus('خدمة الصوت غير جاهزة. يلزم إعداد ElevenLabs ومعرّف صوت صالح على الخادم.', 'warning');
       } else if (mode === 'translate' && !translationReady) {
         setStatus('تحويل الصوت جاهز؛ أضف إعداد OpenAI لتفعيل الترجمة.', 'warning');
+      } else if (mode === 'text') {
+        setStatus('اكتب النص أو أنشئ مسودة، ثم وافق على الإرسال قبل المعالجة.', 'success');
       } else {
         setStatus('الخدمة جاهزة. سجّل أو ارفع ملفاً صوتياً للبدء.', 'success');
       }
       refreshButtons();
+    });
+  }
+
+  function updatePresetDescription(presets) {
+    const select = element('cvs-preset');
+    const description = element('cvs-preset-description');
+    if (!select || !description) return;
+    const selected = (presets || availablePresets).get(select.value);
+    description.textContent = selected && selected.available === true
+      ? selected.description || 'هوية صوت متاحة على الخادم.'
+      : 'هذا الصوت غير مهيأ حالياً على الخادم.';
+  }
+
+  function renderAvailableVoices(presets) {
+    const list = element('cvs-voice-preview-list');
+    if (!list || !root.document || typeof root.document.createElement !== 'function') return;
+    list.replaceChildren();
+    const available = (Array.isArray(presets) ? presets : []).filter((preset) => preset && preset.available === true);
+    if (!available.length) {
+      const empty = root.document.createElement('p');
+      empty.className = 'cvs-note';
+      empty.textContent = 'لا توجد أصوات مهيأة حالياً على الخادم.';
+      list.appendChild(empty);
+      return;
+    }
+    available.forEach((preset) => {
+      const card = root.document.createElement('article');
+      card.className = 'cvs-voice-option';
+      const name = root.document.createElement('strong');
+      name.textContent = preset.label || 'صوت جاهز';
+      const description = root.document.createElement('p');
+      description.textContent = preset.description || 'هوية صوت متاحة على الخادم.';
+      const preview = root.document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'cvs-button cvs-voice-preview-action';
+      preview.textContent = 'اختيار ومعاينة';
+      preview.setAttribute('data-cvs-preview', preset.id);
+      card.append(name, description, preview);
+      list.appendChild(card);
     });
   }
 
@@ -137,10 +213,23 @@
     if (download) download.removeAttribute('href');
   }
 
+  function clearPreview() {
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = '';
+    const player = element('cvs-preview-player');
+    if (player) {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      player.hidden = true;
+    }
+  }
+
   function clearAll() {
     stopRecording(true);
     setSource(null);
     clearResult();
+    clearPreview();
     recordingSeconds = 0;
     const duration = element('cvs-duration');
     if (duration) duration.textContent = '00:00';
@@ -148,9 +237,15 @@
     if (upload) upload.value = '';
     const consent = element('cvs-consent');
     if (consent) consent.checked = false;
+    const scriptText = element('cvs-script-text');
+    const notes = element('cvs-script-notes');
+    if (scriptText) scriptText.value = '';
+    if (notes) notes.value = '';
     const transcriptWrap = element('cvs-transcript-wrap');
     if (transcriptWrap) transcriptWrap.hidden = true;
-    setStatus('تم حذف التسجيل والنتيجة المؤقتين من الصفحة.', 'success');
+    const generatorStatus = element('cvs-generator-status');
+    if (generatorStatus) generatorStatus.textContent = 'المسودة ستظهر في مربع النص لتراجعها وتحررها؛ لن تتحول إلى صوت تلقائياً.';
+    setStatus('تم حذف التسجيلات والمسودة والنتائج المؤقتة من الاستوديو.', 'success');
     refreshButtons();
   }
 
@@ -282,9 +377,15 @@
   }
 
   function selectMode(nextMode) {
-    mode = nextMode === 'translate' ? 'translate' : 'voice';
+    mode = ['voice', 'translate', 'text'].includes(nextMode) ? nextMode : 'voice';
     const options = element('cvs-translation-options');
     if (options) options.hidden = mode !== 'translate';
+    const recordCard = element('cvs-record-card');
+    const textCard = element('cvs-text-card');
+    const grid = element('cia-voice-studio-view')?.querySelector('.cvs-grid');
+    if (recordCard) recordCard.hidden = mode === 'text';
+    if (textCard) textCard.hidden = mode !== 'text';
+    if (grid) grid.dataset.mode = mode;
     const buttons = root.document.querySelectorAll('[data-mode]');
     buttons.forEach((button) => {
       const active = button.getAttribute('data-mode') === mode;
@@ -293,9 +394,22 @@
     });
     const submit = element('cvs-process');
     const label = submit && submit.querySelector('span');
-    if (label) label.textContent = mode === 'translate' ? 'ترجمة وإنشاء الصوت' : 'إنشاء الصوت الجديد';
-    if (voiceReady && mode === 'translate' && !translationReady) {
+    if (label) {
+      label.textContent = mode === 'translate'
+        ? 'ترجمة وإنشاء الصوت'
+        : mode === 'text' ? 'تحويل النص إلى صوت' : 'إنشاء الصوت الجديد';
+    }
+    const compare = element('cvs-compare');
+    const resultCard = element('cvs-result-card');
+    if (compare && resultCard && !resultCard.hidden) compare.hidden = mode === 'text';
+    if (mode === 'text' && !scriptReady) {
+      setStatus('مولّد النصوص غير جاهز. يلزم إعداد OpenAI على الخادم.', 'warning');
+    } else if (mode === 'text' && !voiceReady) {
+      setStatus('مولّد النصوص مستقل؛ يلزم إعداد ElevenLabs ومعرّف صوت لتحويل المسودة إلى صوت.', 'warning');
+    } else if (voiceReady && mode === 'translate' && !translationReady) {
       setStatus('تحويل الصوت جاهز؛ أضف إعداد OpenAI لتفعيل الترجمة.', 'warning');
+    } else if (mode === 'text') {
+      setStatus('اكتب النص أو أنشئ مسودة، ثم وافق على الإرسال قبل المعالجة.', 'success');
     }
     refreshButtons();
   }
@@ -307,7 +421,7 @@
     return null;
   }
 
-  function showResult(response) {
+  function showResult(response, resultMode) {
     const audio = toArrayBuffer(response.audio);
     if (!audio || !audio.byteLength) {
       setStatus('وصلت استجابة بلا ملف صوت صالح.', 'error');
@@ -337,13 +451,30 @@
     }
     const card = element('cvs-result-card');
     if (card) card.hidden = false;
-    setStatus('اكتملت المعالجة. النص ظاهر قبل تشغيل الصوت الجديد.', 'success');
+    const compare = element('cvs-compare');
+    if (compare) compare.hidden = (resultMode || mode) === 'text';
+    setStatus(
+      (resultMode || mode) === 'text'
+        ? 'اكتمل توليد الصوت. عدّل النص ثم أعد التوليد عند الحاجة.'
+        : 'اكتملت المعالجة. استمع إلى الصوت الجديد أو نزّله.',
+      'success'
+    );
   }
 
   async function processAudio() {
-    if (!sourceBlob || processing) return;
+    const textMode = mode === 'text';
+    const text = String(element('cvs-script-text')?.value || '').trim();
+    if (processing || (!textMode && !sourceBlob)) return;
+    if (textMode && !text) {
+      setStatus('اكتب النص أو أنشئ مسودة قبل تحويله إلى صوت.', 'warning');
+      return;
+    }
+    if (textMode && text.length > 12000) {
+      setStatus('النص يتجاوز الحد المسموح (12000 حرف).', 'error');
+      return;
+    }
     if (!element('cvs-consent')?.checked) {
-      setStatus('وافق على إرسال التسجيل إلى مزودي المعالجة قبل البدء.', 'warning');
+      setStatus('وافق على إرسال النص أو التسجيل إلى المزود المناسب قبل البدء.', 'warning');
       return;
     }
     socket = getSocket();
@@ -355,14 +486,14 @@
       setStatus('الترجمة غير مهيأة. يلزم إعداد OpenAI على الخادم.', 'warning');
       return;
     }
+    const requestMode = mode;
     processing = true;
     clearResult();
     refreshButtons();
-    setStatus('جارٍ معالجة الصوت عبر خدمة الذكاء الاصطناعي…', 'warning');
+    setStatus(textMode ? 'جارٍ تحويل النص إلى صوت…' : 'جارٍ معالجة الصوت عبر خدمة الذكاء الاصطناعي…', 'warning');
     try {
-      const audio = await sourceBlob.arrayBuffer();
       const payload = {
-        mode,
+        mode: requestMode,
         preset: element('cvs-preset')?.value || 'obsidian',
         format: element('cvs-format')?.value || 'mp3',
         depth: element('cvs-depth')?.value || '72',
@@ -370,10 +501,14 @@
         clarity: element('cvs-clarity')?.value || '78',
         sourceLanguage: element('cvs-source-language')?.value || 'auto',
         targetLanguage: element('cvs-target-language')?.value || 'en',
-        mimeType: sourceBlob.type || 'audio/webm',
-        consent: true,
-        audio
+        consent: true
       };
+      if (textMode) {
+        payload.text = text;
+      } else {
+        payload.mimeType = sourceBlob.type || 'audio/webm';
+        payload.audio = await sourceBlob.arrayBuffer();
+      }
       socket.emit('cia-voice:process', payload, function onProcessed(response) {
         processing = false;
         refreshButtons();
@@ -381,13 +516,111 @@
           setStatus(response && response.message || 'تعذر تحويل الصوت. لم يتم إنشاء نتيجة وهمية.', 'error');
           return;
         }
-        showResult(response);
+        showResult(response, requestMode);
       });
     } catch (_error) {
       processing = false;
       refreshButtons();
       setStatus('تعذر إرسال التسجيل للمعالجة. لم يتم حفظه على الخادم.', 'error');
     }
+  }
+
+  function generateScript() {
+    if (processing) return;
+    if (!scriptReady) {
+      setStatus('مولّد النصوص غير جاهز. يلزم إعداد OpenAI على الخادم.', 'warning');
+      return;
+    }
+    if (!element('cvs-consent')?.checked) {
+      setStatus('وافق على إرسال إعدادات المسودة إلى OpenAI قبل إنشائها.', 'warning');
+      return;
+    }
+    socket = getSocket();
+    if (!socket || !socket.connected) {
+      setStatus('اتصال النظام غير جاهز. سجّل الدخول ثم حاول مجدداً.', 'error');
+      return;
+    }
+    processing = true;
+    refreshButtons();
+    const generatorStatus = element('cvs-generator-status');
+    if (generatorStatus) generatorStatus.textContent = 'جارٍ إنشاء مسودة للمراجعة…';
+    setStatus('جارٍ إعداد مسودة نصية؛ لم يبدأ تحويل الصوت.', 'warning');
+    try {
+      socket.emit('cia-voice:generate-script', {
+        type: element('cvs-script-type')?.value || 'mission_brief',
+        language: element('cvs-script-language')?.value || 'ar',
+        tone: element('cvs-script-tone')?.value || 'formal',
+        lengthSeconds: Number(element('cvs-script-length')?.value || 30),
+        notes: String(element('cvs-script-notes')?.value || ''),
+        consent: true
+      }, function onScriptGenerated(response) {
+        processing = false;
+        refreshButtons();
+        if (!response || !response.ok || typeof response.text !== 'string' || !response.text.trim()) {
+          const message = response && response.message || 'تعذر إنشاء المسودة.';
+          if (generatorStatus) generatorStatus.textContent = message;
+          setStatus(message, 'error');
+          return;
+        }
+        const scriptText = element('cvs-script-text');
+        if (scriptText) scriptText.value = response.text;
+        if (generatorStatus) generatorStatus.textContent = 'المسودة جاهزة. راجعها وعدّلها قبل الضغط على تحويل النص إلى صوت.';
+        setStatus('المسودة جاهزة للتحرير؛ لم تُنشأ أي نتيجة صوتية.', 'success');
+        refreshButtons();
+      });
+    } catch (_error) {
+      processing = false;
+      refreshButtons();
+      const message = 'تعذر إرسال إعدادات المسودة. لم يتم حفظ النص على الخادم.';
+      if (generatorStatus) generatorStatus.textContent = message;
+      setStatus(message, 'error');
+    }
+  }
+
+  function requestVoicePreview() {
+    if (processing || previewing) return;
+    socket = getSocket();
+    if (!socket || !socket.connected) {
+      setStatus('اتصال النظام غير جاهز. سجّل الدخول ثم حاول مجدداً.', 'error');
+      return;
+    }
+    const preset = element('cvs-preset')?.value || '';
+    const status = element('cvs-preview-status');
+    const player = element('cvs-preview-player');
+    clearPreview();
+    previewing = true;
+    refreshButtons();
+    if (status) status.textContent = 'جارٍ التحقق من وجود عينة فعلية…';
+    socket.emit('cia-voice:preview', { preset }, function onVoicePreview(response) {
+      previewing = false;
+      refreshButtons();
+      if (!response || !response.ok) {
+        if (status) status.textContent = response && response.message || 'تعذر جلب عينة هذا الصوت حالياً.';
+        return;
+      }
+      if (response.available !== true) {
+        if (status) status.textContent = 'لا تتوفر عينة لهذا الصوت؛ لم يتم إنشاء عينة بديلة.';
+        return;
+      }
+      const audio = toArrayBuffer(response.audio);
+      if (!audio || !audio.byteLength || !player) {
+        if (status) status.textContent = 'لم تصل عينة صوت صالحة.';
+        return;
+      }
+      previewObjectUrl = URL.createObjectURL(new Blob([audio], {
+        type: response.mimeType || 'audio/mpeg'
+      }));
+      player.src = previewObjectUrl;
+      player.hidden = false;
+      player.load();
+      if (status) status.textContent = 'عينة فعلية جاهزة للتشغيل.';
+      const playResult = player.play();
+      if (playResult && typeof playResult.catch === 'function') {
+        playResult.catch(() => {
+          if (status) status.textContent = 'العينة جاهزة؛ اضغط تشغيل في المشغّل للاستماع.';
+        });
+      }
+    });
   }
 
   function compareAudio() {
@@ -412,11 +645,37 @@
     const process = element('cvs-process');
     const deleteButton = element('cvs-delete');
     const compare = element('cvs-compare');
+    const generate = element('cvs-script-generate');
+    const preview = element('cvs-preview-button');
+    const preset = element('cvs-preset');
     if (start) start.addEventListener('click', startRecording);
     if (stop) stop.addEventListener('click', () => stopRecording(false));
     if (process) process.addEventListener('click', processAudio);
     if (deleteButton) deleteButton.addEventListener('click', clearAll);
     if (compare) compare.addEventListener('click', compareAudio);
+    if (generate) generate.addEventListener('click', generateScript);
+    if (preview) preview.addEventListener('click', requestVoicePreview);
+    if (preset) preset.addEventListener('change', () => {
+      clearPreview();
+      updatePresetDescription();
+      const previewStatus = element('cvs-preview-status');
+      if (previewStatus) previewStatus.textContent = 'تُعرض عينة فعلية فقط إذا كانت متاحة لهذا الصوت.';
+      refreshButtons();
+    });
+    const voiceList = element('cvs-voice-preview-list');
+    if (voiceList) voiceList.addEventListener('click', (event) => {
+      const button = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-cvs-preview]')
+        : null;
+      const presetId = button && button.getAttribute('data-cvs-preview');
+      if (!presetId || !preset) return;
+      preset.value = presetId;
+      clearPreview();
+      updatePresetDescription();
+      requestVoicePreview();
+    });
+    const scriptText = element('cvs-script-text');
+    if (scriptText) scriptText.addEventListener('input', refreshButtons);
     if (upload) upload.addEventListener('change', () => {
       const file = upload.files && upload.files[0];
       if (!file) return;
@@ -457,6 +716,21 @@
     }
   }
 
+  function installPrivacyCleanup() {
+    const pane = element('cia-voice-studio-view');
+    if (!pane) return;
+    studioWasActive = Boolean(pane.classList && pane.classList.contains('active'));
+    if (typeof root.MutationObserver === 'function') {
+      const observer = new root.MutationObserver(() => {
+        const isActive = Boolean(pane.classList && pane.classList.contains('active') && !pane.hidden);
+        if (studioWasActive && !isActive) clearAll();
+        studioWasActive = isActive;
+      });
+      observer.observe(pane, { attributes: true, attributeFilter: ['class', 'hidden'] });
+    }
+    if (typeof root.addEventListener === 'function') root.addEventListener('pagehide', clearAll);
+  }
+
   function openCiaVoiceStudio() {
     if (!root || typeof root.showPane !== 'function') return false;
     root.showPane('cia-voice-studio-view', element('cia-voice-studio-nav'));
@@ -468,6 +742,7 @@
     if (initialized || !root || !root.document || !element('cia-voice-studio-view')) return false;
     initialized = true;
     installListeners();
+    installPrivacyCleanup();
     socket = getSocket();
     if (socket && typeof socket.on === 'function') socket.on('connect', requestStatus);
     const nav = element('cia-voice-studio-nav');
