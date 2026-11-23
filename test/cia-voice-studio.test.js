@@ -170,7 +170,7 @@ test('voice initialization failures stay isolated from Socket.IO connections', a
   assert.equal(response.code, 'SERVICE_UNAVAILABLE');
 });
 
-test('voice mode calls the ElevenLabs voice-changer endpoint with the selected voice and audio field', async () => {
+test('voice mode sends the required audiofile field to the ElevenLabs voice-changer endpoint', async () => {
   const calls = [];
   const service = createCiaVoiceStudioService({
     env: baseEnv(),
@@ -193,8 +193,8 @@ test('voice mode calls the ElevenLabs voice-changer endpoint with the selected v
   assert.match(calls[0].url, /output_format=mp3_44100_128/);
   assert.equal(calls[0].init.body.get('model_id'), 'eleven_multilingual_sts_v2');
   assert.equal(calls[0].init.body.get('remove_background_noise'), 'true');
-  assert.equal(calls[0].init.body.get('audio').name, 'recording.webm');
-  assert.equal(calls[0].init.body.get('audiofile'), null);
+  assert.equal(calls[0].init.body.get('audiofile').name, 'recording.webm');
+  assert.equal(calls[0].init.body.get('audio'), null);
   assert.equal(JSON.parse(calls[0].init.body.get('voice_settings')).speed, 0.84);
   assert.equal(result.mimeType, 'audio/mpeg');
   assert.equal(result.extension, 'mp3');

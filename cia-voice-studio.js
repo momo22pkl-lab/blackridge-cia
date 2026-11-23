@@ -529,7 +529,7 @@ function createCiaVoiceStudioService(options = {}) {
 
   async function changeVoice(audio, mimeType, extension, voiceId, format, settings) {
     const form = new FormData();
-    form.append('audio', new Blob([audio], { type: mimeType }), 'recording.' + extension);
+    form.append('audiofile', new Blob([audio], { type: mimeType }), 'recording.' + extension);
     form.append('model_id', 'eleven_multilingual_sts_v2');
     form.append('voice_settings', JSON.stringify(settings));
     form.append('remove_background_noise', 'true');
