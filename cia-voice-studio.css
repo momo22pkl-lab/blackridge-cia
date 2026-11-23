@@ -284,6 +284,86 @@
   font-size: .85rem;
 }
 
+.cvs-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 150px;
+  padding: 12px;
+  color: #f1eee8;
+  border: 1px solid #444e56;
+  border-radius: 4px;
+  background: #0d1216;
+  font: inherit;
+  font-size: .9rem;
+  line-height: 1.8;
+  resize: vertical;
+}
+
+.cvs-textarea::placeholder { color: #7d878e; }
+.cvs-textarea:focus-visible { outline: 2px solid #e4d09a; outline-offset: 2px; }
+.cvs-notes-textarea { min-height: 84px; }
+
+.cvs-generator-card {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid rgba(198, 170, 112, .2);
+  background: rgba(6, 10, 13, .48);
+}
+
+.cvs-generator-card .cvs-card-heading { margin-bottom: 12px; }
+.cvs-generator-card .cvs-card-heading h3 { margin: 0; color: #f0ede6; font-size: .98rem; }
+.cvs-generator-card .cvs-card-heading p { max-width: 440px; }
+
+.cvs-script-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.cvs-script-fields label {
+  display: grid;
+  gap: 7px;
+  color: #d8c99f;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.cvs-script-fields label:last-child { grid-column: 1 / -1; }
+#cvs-script-generate { width: 100%; margin-top: 12px; }
+
+.cvs-voice-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.cvs-voice-option {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(198, 170, 112, .18);
+  background: rgba(6, 10, 13, .48);
+}
+
+.cvs-voice-option strong { color: #f0e6cd; font-size: .82rem; }
+.cvs-voice-option p { margin: 0; color: var(--cvs-muted); font-size: .75rem; line-height: 1.6; }
+.cvs-voice-preview-action { width: 100%; }
+
+.cvs-preview-block {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 14px;
+  padding: 11px;
+  border: 1px solid rgba(198, 170, 112, .18);
+  background: rgba(6, 10, 13, .48);
+}
+
+.cvs-preview-block strong { color: #d9c999; font-size: .8rem; }
+.cvs-preview-block .cvs-note { margin: 4px 0 0; }
+.cvs-preview-block audio { width: 100%; min-height: 40px; }
+
 .cvs-select:focus-visible,
 .cvs-button:focus-visible,
 .cvs-mode:focus-visible,
@@ -425,6 +505,8 @@
   .cvs-record-controls .cvs-button { flex: 1 1 42%; }
   .cvs-duration { flex: 1 1 100%; text-align: start; }
   .cvs-language-pair { grid-template-columns: minmax(0, 1fr); }
+  .cvs-script-fields { grid-template-columns: minmax(0, 1fr); }
+  .cvs-script-fields label:last-child { grid-column: auto; }
   .cvs-language-arrow { display: none; }
   .cvs-result-actions > * { flex: 1 1 100%; }
 }
