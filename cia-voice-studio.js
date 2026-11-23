@@ -286,6 +286,18 @@ function createCiaVoiceStudioService(options = {}) {
     return hasFormat && hasAudioData;
   }
 
+  function safeProviderErrorCode(payload) {
+    const detail = payload && payload.detail && typeof payload.detail === 'object' ? payload.detail : null;
+    const providerError = payload && payload.error && typeof payload.error === 'object' ? payload.error : null;
+    const candidates = [detail && detail.status, providerError && providerError.code, payload && payload.code];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue;
+      const code = candidate.trim().toLowerCase();
+      if (/^[a-z][a-z0-9_-]{0,47}$/.test(code)) return code;
+    }
+    return '';
+  }
+
   async function providerFetch(url, init, provider) {
     if (typeof fetchImpl !== 'function') throw new VoiceStudioError('SERVICE_UNAVAILABLE', 'خدمة المعالجة غير متاحة على الخادم.');
     let response;
@@ -295,7 +307,20 @@ function createCiaVoiceStudioService(options = {}) {
       throw new VoiceStudioError('UPSTREAM_UNAVAILABLE', 'تعذر الاتصال بخدمة المعالجة. حاول مجدداً لاحقاً.');
     }
     if (!response.ok) {
-      throw new VoiceStudioError('UPSTREAM_FAILED', 'لم تكتمل المعالجة لدى ' + provider + '. تحقق من إعداد المزود أو جرّب ملفاً أقصر.');
+      let providerCode = '';
+      try {
+        if (typeof response.clone === 'function') {
+          providerCode = safeProviderErrorCode(await response.clone().json());
+        }
+      } catch (_error) {
+        providerCode = '';
+      }
+      const httpStatus = Number.isInteger(response.status) ? response.status : 0;
+      const diagnostic = [httpStatus > 0 ? 'HTTP ' + httpStatus : '', providerCode].filter(Boolean).join(': ');
+      throw new VoiceStudioError(
+        'UPSTREAM_FAILED',
+        'رفض ' + provider + ' الطلب' + (diagnostic ? ' (' + diagnostic + ')' : '') + '. راجع إعدادات المزود أو صيغة الملف.'
+      );
     }
     return response;
   }
