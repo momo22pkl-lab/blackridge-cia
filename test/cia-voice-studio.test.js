@@ -201,6 +201,31 @@ test('voice mode sends the required audiofile field to the ElevenLabs voice-chan
   assert.equal(result.transcript, '');
 });
 
+test('reports upstream HTTP status and a safe provider code without leaking response text', async () => {
+  const service = createCiaVoiceStudioService({
+    env: baseEnv(),
+    fetchImpl: async () => new Response(JSON.stringify({
+      detail: { status: 'invalid_audio', message: 'provider response detail should stay private' }
+    }), {
+      status: 422,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  });
+
+  await assert.rejects(service.process({
+    mode: 'voice',
+    preset: 'obsidian',
+    format: 'mp3',
+    audio: Buffer.alloc(512, 7),
+    mimeType: 'audio/webm;codecs=opus'
+  }), (error) => {
+    assert.equal(error.code, 'UPSTREAM_FAILED');
+    assert.match(error.message, /HTTP 422: invalid_audio/);
+    assert.doesNotMatch(error.message, /provider response detail should stay private|unit-test-key/);
+    return true;
+  });
+});
+
 test('translation mode transcribes, translates, then speaks before returning both texts', async () => {
   const calls = [];
   const service = createCiaVoiceStudioService({
